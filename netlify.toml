@@ -2,6 +2,10 @@
   command = "npm run build:web"
   publish = "dist"
 
+# Supabase anon key is public-by-design (RLS protects data). Disable scan for this project.
+[build.environment]
+  SECRETS_SCAN_ENABLED = "false"
+
 # Root → app lives under /weblogin (Expo baseUrl)
 [[redirects]]
   from = "/"

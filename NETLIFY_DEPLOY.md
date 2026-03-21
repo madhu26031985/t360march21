@@ -42,8 +42,8 @@ Add these (use **"Add another variable"** for each):
 
 | Key | Value | Scopes |
 |-----|-------|--------|
-| `EXPO_PUBLIC_SUPABASE_URL` | `https://supabase-proxy.madhumita26-ms.workers.dev/` (or your Supabase URL) | All |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key | All |
+| `EXPO_PUBLIC_SUPABASE_URL` | Your Supabase URL (e.g. `https://xxx.supabase.co` or proxy URL) | All |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key from project settings | All |
 
 These are baked into the build, so click **"Trigger deploy"** after saving.
 

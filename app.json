@@ -104,8 +104,8 @@
       ]
     ],
     "extra": {
-      "supabaseUrl": "https://chtkcretrpygqmwtyonx.supabase.co",
-      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNodGtjcmV0cnB5Z3Ftd3R5b254Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5ODkxMzAsImV4cCI6MjA2NjU2NTEzMH0.RzEPVTh22ZJrq5tnSHK5PQCLXRb5YUNU16EyDFk_ntU",
+      "supabaseUrl": "",
+      "supabaseAnonKey": "",
       "router": {},
       "eas": {
         "projectId": "0429620c-e876-4b8f-9d0a-3eb2ba451242"
