@@ -2,6 +2,12 @@
   command = "npm run build:web"
   publish = "dist"
 
+# Root → app lives under /weblogin (Expo baseUrl)
+[[redirects]]
+  from = "/"
+  to = "/weblogin/"
+  status = 302
+
 # SPA routing for /weblogin
 [[redirects]]
   from = "/weblogin"
