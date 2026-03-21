@@ -1,0 +1,3 @@
+# Netlify redirects for SPA routing at /weblogin
+/weblogin    /weblogin/    301
+/weblogin/*  /weblogin/index.html  200

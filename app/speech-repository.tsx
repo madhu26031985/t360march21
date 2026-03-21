@@ -1,0 +1,916 @@
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useState, useEffect } from 'react';
+import { router } from 'expo-router';
+import { Linking } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { ArrowLeft, Plus, Book, FileText, ExternalLink, Trash2, CreditCard as Edit3, Save, X, Calendar, Info, Home, Users, Settings } from 'lucide-react-native';
+import AddSpeechModal from '@/components/AddSpeechModal';
+import EditSpeechModal from '@/components/EditSpeechModal';
+import React from 'react';
+
+interface Speech {
+  id: string;
+  title: string;
+  document_type: 'google_doc';
+  created_at: string;
+  updated_at: string;
+}
+
+export default function SpeechRepository() {
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  
+  const [speeches, setSpeeches] = useState<Speech[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedSpeech, setSelectedSpeech] = useState<Speech | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [speechToDelete, setSpeechToDelete] = useState<Speech | null>(null);
+  const [showOpenModal, setShowOpenModal] = useState(false);
+  const [speechToOpen, setSpeechToOpen] = useState<Speech | null>(null);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+
+  useEffect(() => {
+    loadSpeeches();
+  }, []);
+
+  const loadSpeeches = async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('speeches')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error('Error loading speeches:', error);
+        Alert.alert('Error', 'Failed to load speeches');
+        return;
+      }
+
+      setSpeeches(data || []);
+    } catch (error) {
+      console.error('Error loading speeches:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddSpeech = () => {
+    if (speeches.length >= 5) {
+      Alert.alert('Limit Reached', 'You can store a maximum of 5 speeches. Please delete an existing speech to add a new one.');
+      return;
+    }
+    setShowAddModal(true);
+  };
+
+  const handleEditSpeech = (speech: Speech) => {
+    console.log('Starting edit for speech:', speech.title);
+    try {
+      setSelectedSpeech(speech);
+      setShowEditModal(true);
+      console.log('Edit modal should now be visible');
+    } catch (error) {
+      console.error('Error setting up edit modal:', error);
+      Alert.alert('Error', 'Failed to open edit dialog');
+    }
+  };
+
+  const handleDeleteSpeech = async (speechId: string, title: string) => {
+    const speech = speeches.find(s => s.id === speechId);
+    if (speech) {
+      setSpeechToDelete(speech);
+      setShowDeleteModal(true);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!speechToDelete) return;
+
+    try {
+      console.log('Deleting speech:', speechToDelete.title);
+      
+      const { error } = await supabase
+        .from('speeches')
+        .delete()
+        .eq('id', speechToDelete.id);
+
+      if (error) {
+        console.error('Error deleting speech:', error);
+        Alert.alert('Error', 'Failed to delete speech');
+        return;
+      }
+
+      setSpeeches(prev => prev.filter(s => s.id !== speechToDelete.id));
+      setShowDeleteModal(false);
+      setSpeechToDelete(null);
+      Alert.alert('Success', 'Speech deleted successfully');
+    } catch (error) {
+      console.error('Error deleting speech:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setSpeechToDelete(null);
+  };
+
+  const handleSaveSpeech = async (speechData: any) => {
+    if (!user) return;
+
+    try {
+      const saveData = {
+        user_id: user.id,
+        title: speechData.title.trim(),
+        document_type: speechData.document_type,
+        document_url: speechData.document_url.trim(),
+      };
+
+      if (selectedSpeech) {
+        const { error } = await supabase
+          .from('speeches')
+          .update({
+            ...saveData,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', selectedSpeech.id);
+
+        if (error) {
+          console.error('Error updating speech:', error);
+          Alert.alert('Error', 'Failed to update speech');
+          return;
+        }
+
+        Alert.alert('Success', 'Speech updated successfully');
+        setShowEditModal(false);
+        setSelectedSpeech(null);
+      } else {
+        const { error } = await supabase
+          .from('speeches')
+          .insert(saveData as any);
+
+        if (error) {
+          console.error('Error creating speech:', error);
+          Alert.alert('Error', 'Failed to create speech');
+          return;
+        }
+
+        Alert.alert('Success', 'Speech added successfully');
+        setShowAddModal(false);
+      }
+
+      loadSpeeches();
+    } catch (error) {
+      console.error('Error saving speech:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  };
+
+  const getDocumentTypeIcon = (type: string) => {
+    switch (type) {
+      case 'google_doc': return <FileText size={16} color="#4285f4" />;
+      default: return <FileText size={16} color="#6b7280" />;
+    }
+  };
+
+  const getDocumentTypeLabel = (type: string) => {
+    switch (type) {
+      case 'google_doc': return 'Google Doc';
+      default: return type;
+    }
+  };
+
+  const handleOpenDocument = (speech: Speech) => {
+    console.log('Open button pressed for speech:', speech.title);
+    setSpeechToOpen(speech);
+    setShowOpenModal(true);
+  };
+
+  const handleConfirmOpen = () => {
+    if (!speechToOpen) return;
+
+    try {
+      if (speechToOpen.document_url) {
+        // Try to open with WebBrowser first, fallback to Linking
+        if (WebBrowser && WebBrowser.openBrowserAsync) {
+          WebBrowser.openBrowserAsync(speechToOpen.document_url);
+        } else {
+          Linking.openURL(speechToOpen.document_url);
+        }
+      } else {
+        Alert.alert('Error', 'No document URL available');
+      }
+    } catch (error) {
+      console.error('Error opening document:', error);
+      // Fallback to Linking if WebBrowser fails
+      try {
+        Linking.openURL(speechToOpen.document_url || '');
+      } catch (linkingError) {
+        Alert.alert('Error', 'Failed to open document');
+      }
+    } finally {
+      setShowOpenModal(false);
+      setSpeechToOpen(null);
+    }
+  };
+
+  const handleCancelOpen = () => {
+    setShowOpenModal(false);
+    setSpeechToOpen(null);
+  };
+
+  const SpeechCard = ({ speech }: { speech: Speech }) => {
+    return (
+      <View style={[styles.speechCard, { backgroundColor: theme.colors.surface }]}>
+        <View style={styles.speechHeader}>
+          <View style={styles.speechInfo}>
+            <Text style={[styles.speechTitle, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
+              {speech.title}
+            </Text>
+            <View style={styles.speechMeta}>
+              <View style={styles.documentType}>
+                {getDocumentTypeIcon(speech.document_type)}
+                <Text style={[styles.documentTypeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {getDocumentTypeLabel(speech.document_type)}
+                </Text>
+              </View>
+              <View style={styles.speechDate}>
+                <Calendar size={12} color={theme.colors.textSecondary} />
+                <Text style={[styles.speechDateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {new Date(speech.created_at).toLocaleDateString()}
+                </Text>
+              </View>
+            </View>
+          </View>
+          
+          <View style={styles.speechActions}>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: '#dbeafe' }]}
+              onPress={() => handleOpenDocument(speech)}
+              activeOpacity={0.7}
+            >
+              <ExternalLink size={16} color="#3b82f6" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: '#dbeafe' }]}
+              onPress={() => handleEditSpeech(speech)}
+              activeOpacity={0.7}
+            >
+              <Edit3 size={16} color="#3b82f6" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: '#fee2e2' }]}
+              onPress={() => handleDeleteSpeech(speech.id, speech.title)}
+              activeOpacity={0.7}
+            >
+              <Trash2 size={16} color="#ef4444" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading speeches...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <ArrowLeft size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>My Speech Repository</Text>
+        <TouchableOpacity style={styles.infoButton} onPress={() => setShowInfoModal(true)}>
+          <Info size={24} color={theme.colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Info Card */}
+        <View style={[styles.infoCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={styles.speechCount}>
+            <Text style={[styles.countText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+              {speeches.length}/5 speeches stored
+            </Text>
+          </View>
+        </View>
+
+        {/* Speeches List */}
+        <View style={styles.speechesList}>
+          {speeches.map((speech) => (
+            <SpeechCard key={speech.id} speech={speech} />
+          ))}
+
+          {speeches.length > 0 && speeches.length < 5 && (
+            <View style={styles.addSpeechButtonContainer}>
+              <TouchableOpacity
+                style={styles.addSpeechButton}
+                onPress={handleAddSpeech}
+                activeOpacity={0.7}
+              >
+                <Plus size={16} color="#ffffff" />
+                <Text style={styles.addSpeechButtonText} maxFontSizeMultiplier={1.3}>
+                  Add Speech
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Empty State */}
+        {speeches.length === 0 && (
+          <View style={styles.emptyState}>
+            <TouchableOpacity
+              style={styles.addSpeechButton}
+              onPress={handleAddSpeech}
+              activeOpacity={0.7}
+            >
+              <Plus size={16} color="#ffffff" />
+              <Text style={styles.addSpeechButtonText} maxFontSizeMultiplier={1.3}>
+                Add Speech
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.navSpacer} />
+
+        {/* Navigation Icons */}
+        <View style={[styles.navigationSection, { backgroundColor: theme.colors.surface }]}>
+          <View style={styles.navigationBar}>
+            <TouchableOpacity
+              style={styles.navItem}
+              onPress={() => router.push('/(tabs)')}
+            >
+              <View style={[styles.navIcon, { backgroundColor: '#E8F4FD' }]}>
+                <Home size={16} color="#3b82f6" />
+              </View>
+              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.navItem}
+              onPress={() => router.push('/(tabs)/club')}
+            >
+              <View style={[styles.navIcon, { backgroundColor: '#FEF3E7' }]}>
+                <Users size={16} color="#f59e0b" />
+              </View>
+              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.navItem}
+              onPress={() => router.push('/(tabs)/meetings')}
+            >
+              <View style={[styles.navIcon, { backgroundColor: '#E0F2FE' }]}>
+                <Calendar size={16} color="#0ea5e9" />
+              </View>
+              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.navItem}
+              onPress={() => router.push('/(tabs)/settings')}
+            >
+              <View style={[styles.navIcon, { backgroundColor: '#F3E8FF' }]}>
+                <Settings size={16} color="#8b5cf6" />
+              </View>
+              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
+            </TouchableOpacity>
+
+            {user?.clubRole === 'excomm' && (
+              <TouchableOpacity
+                style={styles.navItem}
+                onPress={() => router.push('/(tabs)/admin')}
+              >
+                <View style={[styles.navIcon, { backgroundColor: '#FFE5E5' }]}>
+                  <Settings size={16} color="#dc2626" />
+                </View>
+                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Info Modal */}
+      <Modal
+        visible={showInfoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowInfoModal(false)}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={[styles.infoModalContainer, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.infoModalHeader}>
+              <Text style={[styles.infoModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                My Speech Repository
+              </Text>
+              <TouchableOpacity
+                style={styles.infoModalCloseButton}
+                onPress={() => setShowInfoModal(false)}
+              >
+                <X size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.infoModalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
+                🎤 My Speech Repository
+              </Text>
+
+              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Stop searching everywhere for your speeches. Keep them all in one place 📚 This is your personal speech library, accessible anytime on mobile, where your ideas, drafts, and final scripts live together.
+              </Text>
+
+              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                You can{'\n'}
+                ✏️ Open and edit speeches anytime{'\n'}
+                🗑️ Delete when no longer needed{'\n'}
+                📅 See source and date for each entry{'\n'}
+                🔗 Store up to 5 speech links{'\n'}
+                📄 Use Google Docs with full access control
+              </Text>
+
+              <Text style={[styles.infoModalText, { color: theme.colors.text, marginBottom: 0 }]} maxFontSizeMultiplier={1.3}>
+                More than a list. It's your ready to use speaking workspace ✨
+              </Text>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.infoModalButton, { backgroundColor: theme.colors.primary }]}
+              onPress={() => setShowInfoModal(false)}
+            >
+              <Text style={styles.infoModalButtonText} maxFontSizeMultiplier={1.3}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      {/* Open Confirmation Modal */}
+      <Modal
+        visible={showOpenModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelOpen}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={[styles.deleteModal, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.deleteModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Open Document</Text>
+            <Text style={[styles.deleteModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Do you want to open "{speechToOpen?.title}"?
+            </Text>
+            
+            <View style={styles.deleteModalButtons}>
+              <TouchableOpacity
+                style={[styles.deleteModalButton, styles.cancelButton, { borderColor: theme.colors.border }]}
+                onPress={handleCancelOpen}
+              >
+                <Text style={[styles.cancelButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.deleteModalButton, { backgroundColor: theme.colors.primary }]}
+                onPress={handleConfirmOpen}
+              >
+                <Text style={[styles.deleteButtonText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>Yes, Open</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showDeleteModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelDelete}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={[styles.deleteModal, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.deleteModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Delete Speech</Text>
+            <Text style={[styles.deleteModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Are you sure you want to delete "{speechToDelete?.title}"? This action cannot be undone.
+            </Text>
+            
+            <View style={styles.deleteModalButtons}>
+              <TouchableOpacity
+                style={[styles.deleteModalButton, styles.cancelButton, { borderColor: theme.colors.border }]}
+                onPress={handleCancelDelete}
+              >
+                <Text style={[styles.cancelButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.deleteModalButton, styles.deleteButton]}
+                onPress={handleConfirmDelete}
+              >
+                <Text style={styles.deleteButtonText} maxFontSizeMultiplier={1.3}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Speech Modal */}
+      <AddSpeechModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSave={handleSaveSpeech}
+      />
+
+      {/* Edit Speech Modal */}
+      <EditSpeechModal
+        visible={showEditModal}
+        speech={selectedSpeech}
+        onClose={() => {
+          setShowEditModal(false);
+          setSelectedSpeech(null);
+        }}
+        onSave={handleSaveSpeech}
+      />
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 16,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  infoButton: {
+    padding: 8,
+  },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingBottom: 0,
+    flexGrow: 1,
+  },
+  navSpacer: {
+    flex: 1,
+    minHeight: 24,
+  },
+  infoCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  infoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  infoTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  infoDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  speechCount: {
+    alignSelf: 'flex-start',
+  },
+  countText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  speechesList: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 0,
+  },
+  speechCard: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  speechHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  speechInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  speechTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    lineHeight: 22,
+  },
+  speechMeta: {
+    gap: 8,
+  },
+  documentType: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  documentTypeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  speechDate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  speechDateText: {
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  speechActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  actionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  addSpeechButtonContainer: {
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  addSpeechButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: '#3b82f6',
+    width: '50%',
+    shadowColor: '#3b82f6',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addSpeechButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 8,
+    color: '#ffffff',
+  },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteModal: {
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 40,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+    minWidth: 300,
+  },
+  deleteModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  deleteModalMessage: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  deleteModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  deleteModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+  },
+  deleteButton: {
+    backgroundColor: '#ef4444',
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  infoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  infoModalContainer: {
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  infoModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    flex: 1,
+  },
+  infoModalCloseButton: {
+    padding: 4,
+  },
+  infoModalContent: {
+    padding: 20,
+    maxHeight: 500,
+  },
+  infoModalText: {
+    fontSize: 15,
+    lineHeight: 24,
+    marginBottom: 16,
+  },
+  infoModalButton: {
+    margin: 20,
+    marginTop: 0,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  infoModalButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  navigationSection: {
+    marginTop: 24,
+    marginBottom: 16,
+    marginHorizontal: 16,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  navigationBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  navItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  navIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  navLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+});
