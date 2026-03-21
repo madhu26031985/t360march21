@@ -9,6 +9,10 @@ yarn-error.log*
 dist/
 web-build/
 
+# EAS / build artifacts (avoid accidental submodule)
+77/
+t360.75/
+
 # Native
 *.orig.*
 *.jks
