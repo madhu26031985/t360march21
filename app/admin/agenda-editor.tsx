@@ -2073,7 +2073,39 @@ export default function AgendaEditor() {
   ) => {
     const item = agendaItems.find(i => i.id === agendaItemId);
     if (!item) return;
-    const slots = parsePreparedSpeechesAgenda(item.prepared_speeches_agenda);
+    const parsed = parsePreparedSpeechesAgenda(item.prepared_speeches_agenda);
+    const openSlotDefs =
+      preparedSpeakerRoleDefs.length > 0
+        ? preparedSpeakerRoleDefs
+        : PREPARED_SPEAKER_ROLE_NAMES.map((roleName, i) => ({
+            slot: i + 1,
+            role_name: roleName,
+          }));
+    const parsedBySlot = new Map(parsed.map(s => [s.slot, s]));
+    const slots = openSlotDefs
+      .filter(def => def.slot >= 1 && def.slot <= 5)
+      .sort((a, b) => a.slot - b.slot)
+      .map(def => {
+        const existing = parsedBySlot.get(def.slot);
+        if (existing) return existing;
+        return {
+          slot: def.slot,
+          role_name: def.role_name,
+          booked: false,
+          pathway_id: null,
+          speaker_user_id: null,
+          speaker_name: null,
+          speech_title: null,
+          pathway_name: null,
+          level: null,
+          project_number: null,
+          project_name: null,
+          evaluation_form: null,
+          evaluator_user_id: null,
+          evaluator_name: null,
+          is_visible: true,
+        } as PreparedSpeechAgendaSlot;
+      });
     if (slots.length === 0) {
       Alert.alert(
         'Auto Fill first',
@@ -2109,10 +2141,39 @@ export default function AgendaEditor() {
     const item = agendaItemsRef.current.find(i => i.id === agendaItemId);
     if (!item) return;
 
-    const slots = parsePreparedSpeechesAgenda(item.prepared_speeches_agenda);
-    if (slots.length === 0) {
-      return;
-    }
+    const parsed = parsePreparedSpeechesAgenda(item.prepared_speeches_agenda);
+    const openSlotDefs =
+      preparedSpeakerRoleDefs.length > 0
+        ? preparedSpeakerRoleDefs
+        : PREPARED_SPEAKER_ROLE_NAMES.map((roleName, i) => ({
+            slot: i + 1,
+            role_name: roleName,
+          }));
+    const parsedBySlot = new Map(parsed.map(s => [s.slot, s]));
+    const slots = openSlotDefs
+      .filter(def => def.slot >= 1 && def.slot <= 5)
+      .sort((a, b) => a.slot - b.slot)
+      .map(def => {
+        const existing = parsedBySlot.get(def.slot);
+        if (existing) return existing;
+        return {
+          slot: def.slot,
+          role_name: def.role_name,
+          booked: false,
+          pathway_id: null,
+          speaker_user_id: null,
+          speaker_name: null,
+          speech_title: null,
+          pathway_name: null,
+          level: null,
+          project_number: null,
+          project_name: null,
+          evaluation_form: null,
+          evaluator_user_id: null,
+          evaluator_name: null,
+          is_visible: true,
+        } as PreparedSpeechAgendaSlot;
+      });
 
     const next = slots.map(s =>
       s.slot === slotNum ? { ...s, ...updates } : s

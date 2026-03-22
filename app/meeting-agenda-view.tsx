@@ -96,7 +96,7 @@ function parseMemberPreparedAgenda(raw: unknown): Array<{
     .map(s => ({
       slot: Number(s.slot) || 0,
       booked: !!s.booked,
-      is_visible: !!s.is_visible,
+      is_visible: s.is_visible !== false,
       speaker_user_id: (s.speaker_user_id as string) || null,
       speaker_name: (s.speaker_name as string) || null,
       speech_title: (s.speech_title as string) || null,
