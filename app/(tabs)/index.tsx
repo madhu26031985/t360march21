@@ -5,7 +5,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, UserCheck, ClipboardCheck, ChevronRight, MessageSquare, Mic } from 'lucide-react-native';
+import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap } from 'lucide-react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { supabase } from '@/lib/supabase';
 
@@ -146,6 +147,23 @@ export default function MyJourney() {
   const [speechesGivenCount, setSpeechesGivenCount] = useState<number>(0);
   const [rolesCompletedCount, setRolesCompletedCount] = useState<number>(0);
   const [evaluationsGivenCount, setEvaluationsGivenCount] = useState<number>(0);
+  const [hasActivePoll, setHasActivePoll] = useState<boolean>(false);
+  const [hasVotedInActivePoll, setHasVotedInActivePoll] = useState<boolean>(false);
+
+  const voteNowScale = useSharedValue(1);
+  useEffect(() => {
+    voteNowScale.value = withRepeat(
+      withSequence(
+        withTiming(1.08, { duration: 800 }),
+        withTiming(1, { duration: 800 })
+      ),
+      -1,
+      true
+    );
+  }, []);
+  const voteNowAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: voteNowScale.value }],
+  }));
 
   const daysToGo = (() => {
     if (!currentOpenMeetingDate) return null;
@@ -343,6 +361,37 @@ export default function MyJourney() {
 
     loadCurrentOpenMeeting();
   }, [user?.currentClubId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.currentClubId || !user?.id) {
+        setHasActivePoll(false);
+        setHasVotedInActivePoll(false);
+        return;
+      }
+      (async () => {
+        const { data: polls, error: pollsError } = await supabase
+          .from('polls')
+          .select('id')
+          .eq('club_id', user.currentClubId)
+          .eq('status', 'published');
+        const active = !pollsError && polls && polls.length > 0;
+        setHasActivePoll(!!active);
+        if (!active || !polls?.length) {
+          setHasVotedInActivePoll(false);
+          return;
+        }
+        const pollIds = polls.map((p: { id: string }) => p.id);
+        const { data: votes, error: votesError } = await supabase
+          .from('simple_poll_votes')
+          .select('poll_id')
+          .eq('user_id', user.id)
+          .in('poll_id', pollIds)
+          .limit(1);
+        setHasVotedInActivePoll(!votesError && votes && votes.length > 0);
+      })();
+    }, [user?.currentClubId, user?.id])
+  );
 
   const loadUserAvatar = async () => {
     if (!user) return;
@@ -571,8 +620,13 @@ export default function MyJourney() {
                   </View>
                   <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
                   {/* Meeting details */}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => router.push('/(tabs)/meetings')}
+                    style={styles.meetingDetailsRow}
+                  >
                   {currentOpenMeetingId ? (
-                <View style={styles.meetingDetailsRow}>
+                    <>
                   <View style={[styles.dateBadge, { backgroundColor: theme.colors.textSecondary + '18' }]}>
                     <Text style={[styles.dateBadgeDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {meetingDayNum ?? '—'}
@@ -609,23 +663,26 @@ export default function MyJourney() {
                       {meetingStatusText}
                     </Text>
                   </View>
-                </View>
+                    </>
               ) : (
-                <View style={styles.meetingDetailsRow}>
                   <Text style={[styles.meetingBarSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
                     No meeting is open - Contact VPE
                   </Text>
-                </View>
               )}
+                  </TouchableOpacity>
 
               <View style={[styles.meetingActionsDivider, { backgroundColor: theme.colors.border }]} />
 
-              <View style={styles.meetingActionsHeader}>
+              <TouchableOpacity
+                style={styles.meetingActionsHeader}
+                onPress={() => router.push('/(tabs)/meetings')}
+                activeOpacity={0.7}
+              >
                 <Text style={[styles.meetingActionsHeaderText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   Meeting Actions
                 </Text>
                 <ChevronRight size={18} color={theme.colors.textSecondary} />
-              </View>
+              </TouchableOpacity>
 
               <View style={styles.meetingActionsGrid}>
                 <MeetingActionButton
@@ -641,18 +698,6 @@ export default function MyJourney() {
                   }}
                 />
                 <MeetingActionButton
-                  title="Live Voting"
-                  icon={<Vote size={16} color="#ffffff" />}
-                  color="#8b5cf6"
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting to view live voting.');
-                      return;
-                    }
-                    router.push(`/live-voting?meetingId=${currentOpenMeetingId}`);
-                  }}
-                />
-                <MeetingActionButton
                   title="Meeting Agenda"
                   icon={<FileText size={16} color="#ffffff" />}
                   color="#10b981"
@@ -662,6 +707,18 @@ export default function MyJourney() {
                       return;
                     }
                     router.push(`/meeting-agenda-view?meetingId=${currentOpenMeetingId}`);
+                  }}
+                />
+                <MeetingActionButton
+                  title="Toastmaster of the day"
+                  icon={<MessageSquare size={16} color="#ffffff" />}
+                  color="#84cc16"
+                  onPress={() => {
+                    if (!currentOpenMeetingId) {
+                      Alert.alert('No open meeting', 'There is no current open meeting for Toastmaster.');
+                      return;
+                    }
+                    router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}`);
                   }}
                 />
                 <MeetingActionButton
@@ -677,30 +734,70 @@ export default function MyJourney() {
                   }}
                 />
                 <MeetingActionButton
-                  title="Mark Attendance"
-                  icon={<UserCheck size={16} color="#ffffff" />}
-                  color="#ec4899"
+                  title="Grammarian"
+                  icon={<BookOpen size={16} color="#ffffff" />}
+                  color="#8b5cf6"
                   onPress={() => {
                     if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting to mark attendance.');
+                      Alert.alert('No open meeting', 'There is no current open meeting for Grammarian.');
                       return;
                     }
-                    router.push(`/attendance-report?meetingId=${currentOpenMeetingId}`);
+                    router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
                   }}
                 />
                 <MeetingActionButton
-                  title="Toastmaster of the day"
-                  icon={<MessageSquare size={16} color="#ffffff" />}
-                  color="#84cc16"
+                  title="Educational speaker"
+                  icon={<GraduationCap size={16} color="#ffffff" />}
+                  color="#f97316"
                   onPress={() => {
                     if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for Toastmaster.');
+                      Alert.alert('No open meeting', 'There is no current open meeting for Educational speaker.');
                       return;
                     }
-                    router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}`);
+                    router.push({ pathname: '/educational-corner', params: { meetingId: currentOpenMeetingId } });
                   }}
                 />
               </View>
+
+              <TouchableOpacity
+                style={[styles.liveVotingHeroCard, { backgroundColor: theme.colors.surface, borderColor: '#93c5fd' }]}
+                onPress={() => {
+                  if (!currentOpenMeetingId) {
+                    Alert.alert('No open meeting', 'There is no current open meeting to view live voting.');
+                    return;
+                  }
+                  router.push(`/live-voting?meetingId=${currentOpenMeetingId}`);
+                }}
+                activeOpacity={0.85}
+              >
+                <View style={styles.liveVotingHeroContent}>
+                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: '#0a66c2' }]}>
+                    <Vote size={18} color="#ffffff" />
+                  </View>
+                  <View style={styles.liveVotingHeroTextWrap}>
+                    <View style={styles.liveVotingHeroTitleRow}>
+                      <Text style={[styles.liveVotingHeroTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
+                      {hasActivePoll && !hasVotedInActivePoll && (
+                        <View style={[styles.liveVotingBadge, { backgroundColor: '#dbeafe' }]}>
+                          <View style={styles.liveVotingBadgeDot} />
+                          <Text style={styles.liveVotingBadgeText} maxFontSizeMultiplier={1.3}>Live</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.liveVotingHeroSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>Participate in club polls</Text>
+                  </View>
+                  {hasActivePoll && !hasVotedInActivePoll ? (
+                    <Animated.View style={[styles.voteNowButtonWrap, voteNowAnimatedStyle]}>
+                      <View style={[styles.voteNowButton, { backgroundColor: '#0a66c2' }]}>
+                        <Text style={styles.voteNowButtonText} maxFontSizeMultiplier={1.3}>Vote now</Text>
+                        <ChevronRight size={12} color="#ffffff" />
+                      </View>
+                    </Animated.View>
+                  ) : (
+                    <ChevronRight size={20} color={theme.colors.textSecondary} />
+                  )}
+                </View>
+              </TouchableOpacity>
             </View>
           </>
         )}
@@ -1121,6 +1218,78 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+    marginBottom: 12,
+  },
+  liveVotingHeroCard: {
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 4,
+    borderWidth: 1,
+  },
+  liveVotingHeroContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  liveVotingHeroIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveVotingHeroTextWrap: {
+    flex: 1,
+  },
+  liveVotingHeroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 1,
+  },
+  liveVotingHeroTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  liveVotingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 1,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+  },
+  liveVotingBadgeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#0a66c2',
+  },
+  liveVotingBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#0a66c2',
+  },
+  liveVotingHeroSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  voteNowButtonWrap: {
+    marginLeft: 4,
+  },
+  voteNowButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 18,
+  },
+  voteNowButtonText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   meetingActionButton: {
     width: '48%',

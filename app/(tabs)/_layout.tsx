@@ -1,7 +1,9 @@
+import { Fragment } from 'react';
 import { Tabs } from 'expo-router';
 import { Chrome as Home, Users, Calendar, Settings, User } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import LiveVotingPopup from '@/components/LiveVotingPopup';
 
 export default function TabLayout() {
   const { user } = useAuth();
@@ -17,6 +19,7 @@ export default function TabLayout() {
   const tabBarHeight = 54 + tabBarBottomPadding;
 
   return (
+    <Fragment>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -95,5 +98,7 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    <LiveVotingPopup />
+    </Fragment>
   );
 }
