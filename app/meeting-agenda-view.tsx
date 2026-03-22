@@ -66,6 +66,7 @@ interface PreparedSpeaker {
   evaluation_id: string | null;
   evaluation_pdf_url: string | null;
   evaluation_form: string | null;
+  role_name?: string;
 }
 
 function parseMemberPreparedAgenda(raw: unknown): Array<{
@@ -112,36 +113,78 @@ function parseMemberPreparedAgenda(raw: unknown): Array<{
     .sort((a, b) => a.slot - b.slot);
 }
 
+function slotFromRoleName(roleName: string): number | null {
+  const m = roleName?.match(/(?:Prepared Speaker|prepared speaker)\s*(\d+)/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 function preparedSpeakersListForDisplay(item: {
   prepared_speeches_agenda?: unknown;
   prepared_speakers?: PreparedSpeaker[];
 }): PreparedSpeaker[] {
   const parsed = parseMemberPreparedAgenda(item.prepared_speeches_agenda);
-  if (parsed.length === 0) {
-    return item.prepared_speakers || [];
-  }
-  return parsed
-    .filter(s => s.is_visible)
-    .map(s => {
-      const pn = s.project_number ? parseInt(s.project_number, 10) : NaN;
-      return {
-        id: `agenda-ps-${s.slot}`,
-        speaker_name: s.booked ? s.speaker_name || 'TBA' : 'Open for booking',
-        speaker_id: s.speaker_user_id,
+  const fallback = item.prepared_speakers || [];
+
+  // Build slot->speaker map from fallback (meeting roles) using role_name if available
+  const fallbackBySlot = new Map<number, PreparedSpeaker & { slot?: number }>();
+  fallback.forEach((p, idx) => {
+    const slot = slotFromRoleName(p.role_name || '') ?? idx + 1;
+    if (slot >= 1 && slot <= 5) fallbackBySlot.set(slot, { ...p, slot });
+  });
+
+  // Ensure we show slots 1-5: merge parsed (agenda) with fallback, prefer agenda when both exist
+  const slotsToShow = 5;
+  const parsedBySlot = new Map(parsed.filter(s => s.is_visible).map(s => [s.slot, s]));
+  const result: PreparedSpeaker[] = [];
+
+  for (let slot = 1; slot <= slotsToShow; slot++) {
+    const fromAgenda = parsedBySlot.get(slot);
+    const fromFallback = fallbackBySlot.get(slot);
+
+    if (fromAgenda) {
+      const pn = fromAgenda.project_number ? parseInt(fromAgenda.project_number, 10) : NaN;
+      result.push({
+        id: `agenda-ps-${slot}`,
+        speaker_name: fromAgenda.booked ? fromAgenda.speaker_name || 'TBA' : 'Open for booking',
+        speaker_id: fromAgenda.speaker_user_id,
         speaker_avatar: null,
-        speech_title: s.speech_title,
-        pathway_name: s.pathway_name,
-        pathway_level: s.level,
-        project_title: s.project_name,
+        speech_title: fromAgenda.speech_title,
+        pathway_name: fromAgenda.pathway_name,
+        pathway_level: fromAgenda.level,
+        project_title: fromAgenda.project_name,
         project_number: !isNaN(pn) ? pn : null,
-        evaluator_name: s.evaluator_name,
-        evaluator_id: s.evaluator_user_id,
+        evaluator_name: fromAgenda.evaluator_name,
+        evaluator_id: fromAgenda.evaluator_user_id,
         evaluator_avatar: null,
         evaluation_id: null,
         evaluation_pdf_url: null,
-        evaluation_form: s.evaluation_form,
-      };
-    });
+        evaluation_form: fromAgenda.evaluation_form,
+      });
+    } else if (fromFallback) {
+      result.push(fromFallback);
+    } else {
+      // Slot missing from both – show placeholder so we always show 5 slots (matches Edit Agenda)
+      result.push({
+        id: `agenda-ps-${slot}`,
+        speaker_name: 'Open for booking',
+        speaker_id: null,
+        speaker_avatar: null,
+        speech_title: null,
+        pathway_name: null,
+        pathway_level: null,
+        project_title: null,
+        project_number: null,
+        evaluator_name: null,
+        evaluator_id: null,
+        evaluator_avatar: null,
+        evaluation_id: null,
+        evaluation_pdf_url: null,
+        evaluation_form: null,
+      });
+    }
+  }
+
+  return result.length > 0 ? result : fallback;
 }
 
 function usesPreparedSpeechesAgendaSnapshot(item: { prepared_speeches_agenda?: unknown }): boolean {
@@ -534,6 +577,7 @@ export default function MeetingAgendaView() {
           evaluation_id: evaluation?.id || null,
           evaluation_pdf_url: evaluation?.evaluation_pdf_url || null,
           evaluation_form: speaker.evaluation_form || null,
+          role_name: speaker.role_name || undefined,
         };
       }) || [];
 
