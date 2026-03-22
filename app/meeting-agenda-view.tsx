@@ -1976,7 +1976,7 @@ export default function MeetingAgendaView() {
                         </Text>
                       </View>
                     )}
-                    {item.duration_minutes && item.section_name !== 'Grammarian Corner' && item.section_name !== 'Daily Highlights' && (
+                    {(item.duration_minutes != null && item.duration_minutes > 0) && item.section_name !== 'Grammarian Corner' && item.section_name !== 'Daily Highlights' && (
                       <View style={styles.roleDetail}>
                         <Text style={[styles.roleDetailLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                           Duration:

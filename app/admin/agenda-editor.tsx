@@ -5,7 +5,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ChevronLeft, Save, Clock, Eye, EyeOff, Trash2, UserPlus, Search, X, ChevronUp, ChevronDown, RotateCcw, FileText, Zap, PencilLine, Users2, Filter, Check, Square } from 'lucide-react-native';
+import { ChevronLeft, Save, Clock, Eye, EyeOff, Trash2, UserPlus, Search, X, ChevronUp, ChevronDown, RotateCcw, FileText, Zap, PencilLine, Users2, Filter, Check, Square, ListOrdered } from 'lucide-react-native';
 import { useCallback } from 'react';
 
 interface AgendaItem {
@@ -243,6 +243,8 @@ export default function AgendaEditor() {
   const [selectedGeSubRole, setSelectedGeSubRole] = useState<GESubRole | null>(null);
   const [sectionFilter, setSectionFilter] = useState<'all' | Set<string>>('all');
   const [sectionFilterModalVisible, setSectionFilterModalVisible] = useState(false);
+  const [manageSequenceModalVisible, setManageSequenceModalVisible] = useState(false);
+  const hasAutoShownSequenceModal = useRef(false);
 
   /** Active booking only, latest row — avoids stale/cancelled duplicates. */
   const fetchLatestBookedAssignee = async (
@@ -330,6 +332,14 @@ export default function AgendaEditor() {
       recalculateAllTimes(agendaItems);
     }
   }, [meetingStartTime, loading]);
+
+  // Auto-show Manage sequence modal first time when Edit Agenda opens with sections
+  useEffect(() => {
+    if (agendaItems.length > 0 && !loading && !hasAutoShownSequenceModal.current) {
+      hasAutoShownSequenceModal.current = true;
+      setManageSequenceModalVisible(true);
+    }
+  }, [agendaItems.length, loading]);
 
   useFocusEffect(
     useCallback(() => {
@@ -3430,6 +3440,22 @@ export default function AgendaEditor() {
 
         {agendaItems.length > 0 && (
           <TouchableOpacity
+            onPress={() => setManageSequenceModalVisible(true)}
+            style={[styles.manageSequenceButton, {
+              backgroundColor: theme.colors.primary + '18',
+              borderColor: theme.colors.primary,
+            }]}
+            activeOpacity={0.7}
+          >
+            <ListOrdered size={20} color={theme.colors.primary} />
+            <Text style={[styles.manageSequenceButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+              Manage sequence ({agendaItems.length} sections)
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {agendaItems.length > 0 && (
+          <TouchableOpacity
             onPress={() => setSectionFilterModalVisible(true)}
             style={[styles.sectionFilterDropdown, {
               backgroundColor: theme.colors.surface,
@@ -5436,6 +5462,73 @@ export default function AgendaEditor() {
       </Modal>
 
       <Modal
+        visible={manageSequenceModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setManageSequenceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.manageSequenceModalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Manage sequence
+              </Text>
+              <TouchableOpacity onPress={() => setManageSequenceModalVisible(false)} style={styles.closeButton}>
+                <X size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.manageSequenceSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Reorder the full list of {agendaItems.length} sections. Changes save automatically.
+            </Text>
+            <ScrollView
+              style={styles.manageSequenceList}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={{ paddingBottom: 24 }}
+            >
+              {agendaItems.map((item, index) => (
+                <View
+                  key={item.id}
+                  style={[styles.manageSequenceRow, {
+                    backgroundColor: theme.colors.background,
+                    borderColor: theme.colors.border,
+                  }]}
+                >
+                  <Text style={[styles.manageSequenceOrder, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    {index + 1}
+                  </Text>
+                  <Text style={[styles.manageSequenceName, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
+                    {item.section_name}
+                  </Text>
+                  <View style={styles.manageSequenceActions}>
+                    <TouchableOpacity
+                      onPress={() => moveItemUp(index)}
+                      disabled={index === 0}
+                      style={[styles.manageSequenceArrow, index === 0 && styles.reorderButtonDisabled]}
+                    >
+                      <ChevronUp size={20} color={index === 0 ? theme.colors.border : theme.colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => moveItemDown(index)}
+                      disabled={index === agendaItems.length - 1}
+                      style={[styles.manageSequenceArrow, index === agendaItems.length - 1 && styles.reorderButtonDisabled]}
+                    >
+                      <ChevronDown size={20} color={index === agendaItems.length - 1 ? theme.colors.border : theme.colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              onPress={() => setManageSequenceModalVisible(false)}
+              style={[styles.manageSequenceDoneButton, { backgroundColor: theme.colors.primary }]}
+            >
+              <Text style={styles.manageSequenceDoneButtonText} maxFontSizeMultiplier={1.3}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={saaModalVisible}
         transparent={true}
         animationType="fade"
@@ -6474,6 +6567,78 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: '500',
+  },
+  manageSequenceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  manageSequenceButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  manageSequenceModalContent: {
+    marginHorizontal: 20,
+    marginVertical: 60,
+    borderRadius: 16,
+    overflow: 'hidden',
+    maxHeight: '85%',
+  },
+  manageSequenceSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  manageSequenceList: {
+    maxHeight: 400,
+    paddingHorizontal: 20,
+  },
+  manageSequenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  manageSequenceOrder: {
+    width: 28,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  manageSequenceName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  manageSequenceActions: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  manageSequenceArrow: {
+    padding: 4,
+  },
+  manageSequenceDoneButton: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 20,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  manageSequenceDoneButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   emptyStateCard: {
     marginHorizontal: 16,
