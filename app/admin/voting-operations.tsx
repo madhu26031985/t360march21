@@ -333,7 +333,6 @@ export default function VotingOperations() {
 
   const handleAutoFill = async () => {
     if (!user?.currentClubId) return;
-    setSelectedTab('create');
 
     try {
       const { data: meetings, error: meetingError } = await supabase
@@ -860,22 +859,7 @@ export default function VotingOperations() {
         {/* Tab Content */}
         {selectedTab === 'create' && !hasActivePoll && (
           <View style={[styles.createPollCard, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.formTitleRow}>
-              <Text style={[styles.formTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Create New Poll</Text>
-              <TouchableOpacity
-                style={[
-                  styles.autoFillIconButtonTop,
-                  {
-                    backgroundColor: isAutoFilling ? theme.colors.surface : '#8b5cf6' + '20',
-                    borderColor: '#8b5cf6',
-                  }
-                ]}
-                onPress={handleAutoFill}
-                disabled={isAutoFilling}
-              >
-                <Sparkles size={20} color={isAutoFilling ? theme.colors.textSecondary : "#8b5cf6"} />
-              </TouchableOpacity>
-            </View>
+            <Text style={[styles.formTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Create New Poll</Text>
             
             {/* Poll Title */}
             <View style={styles.formField}>
@@ -1439,17 +1423,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  formTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-    gap: 12,
-  },
   formTitle: {
     fontSize: 20,
     fontWeight: '700',
-    flex: 1,
+    marginBottom: 20,
   },
   formField: {
     marginBottom: 20,
@@ -1605,22 +1582,6 @@ const styles = StyleSheet.create({
   autoFillIconButton: {
     width: 48,
     height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  autoFillIconButtonTop: {
-    width: 44,
-    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8,
