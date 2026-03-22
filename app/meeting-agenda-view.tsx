@@ -262,7 +262,9 @@ export default function MeetingAgendaView() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const params = useLocalSearchParams();
-  const meetingId = params.meetingId as string;
+  // Normalize meetingId: expo-router can pass string or string[] on native
+  const rawMeetingId = params.meetingId;
+  const meetingId = Array.isArray(rawMeetingId) ? rawMeetingId[0] : (rawMeetingId as string);
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
@@ -278,6 +280,10 @@ export default function MeetingAgendaView() {
   const isInitialMount = useRef(true);
 
   useEffect(() => {
+    if (!meetingId || typeof meetingId !== 'string') {
+      setLoading(false);
+      return;
+    }
     loadData();
     checkExcommStatus();
   }, [meetingId]);
@@ -335,6 +341,7 @@ export default function MeetingAgendaView() {
   };
 
   const loadMeeting = async () => {
+    if (!meetingId) return;
     try {
       const { data, error } = await supabase
         .from('app_club_meeting')
@@ -397,6 +404,7 @@ export default function MeetingAgendaView() {
   };
 
   const loadAgendaItems = async () => {
+    if (!meetingId) return;
     try {
       // Load meeting theme along with other data for better performance
       const [
@@ -636,7 +644,7 @@ export default function MeetingAgendaView() {
         };
 
         // Add theme data to Toastmaster of the Day items (always add fields, even if null)
-        if (item.section_name.toLowerCase().includes('toastmaster of the day')) {
+        if ((item.section_name || '').toLowerCase().includes('toastmaster of the day')) {
           return {
             ...baseItem,
             theme_of_the_day: meetingData?.theme || null,
@@ -644,7 +652,7 @@ export default function MeetingAgendaView() {
         }
 
         // Add prepared speakers to Prepared Speeches Session
-        if (item.section_name.toLowerCase().includes('prepared speech')) {
+        if ((item.section_name || '').toLowerCase().includes('prepared speech')) {
           return {
             ...baseItem,
             prepared_speakers: preparedSpeakers,
@@ -652,7 +660,7 @@ export default function MeetingAgendaView() {
         }
 
         // Add prepared speakers to Speech Evaluation (same data: Evaluator, Speaker, Speech Title)
-        if (item.section_name.toLowerCase().includes('speech evaluation')) {
+        if ((item.section_name || '').toLowerCase().includes('speech evaluation')) {
           return {
             ...baseItem,
             prepared_speakers: preparedSpeakers,
@@ -660,7 +668,7 @@ export default function MeetingAgendaView() {
         }
 
         // Add ice breakers to Ice Breaker Sessions
-        if (item.section_name.toLowerCase().includes('ice breaker')) {
+        if ((item.section_name || '').toLowerCase().includes('ice breaker')) {
           return {
             ...baseItem,
             ice_breakers: iceBreakers,
@@ -668,7 +676,7 @@ export default function MeetingAgendaView() {
         }
 
         // Add educational topic to Educational Speaker items
-        if (item.section_name.toLowerCase().includes('educational speaker')) {
+        if ((item.section_name || '').toLowerCase().includes('educational speaker')) {
           return {
             ...baseItem,
             educational_topic: item.educational_topic || null,
@@ -743,7 +751,7 @@ export default function MeetingAgendaView() {
         }
 
         // Add Tag Team user data
-        if (item.section_name.toLowerCase().includes('tag team')) {
+        if ((item.section_name || '').toLowerCase().includes('tag team')) {
           return {
             ...baseItem,
             timer_name: timerProfile?.full_name || null,
@@ -762,7 +770,7 @@ export default function MeetingAgendaView() {
         }
 
         return baseItem;
-      }).filter((item: any) => !item.section_name.toLowerCase().includes('ancillary')) || [];
+      }).filter((item: any) => !(item.section_name || '').toLowerCase().includes('ancillary')) || [];
 
       setAgendaItems(items);
     } catch (error) {
@@ -771,6 +779,7 @@ export default function MeetingAgendaView() {
   };
 
   const loadTagTeamRoles = async () => {
+    if (!meetingId) return;
     try {
       // Try to load from agenda item first (just IDs)
       const { data: agendaData, error: agendaError } = await supabase
@@ -992,12 +1001,12 @@ export default function MeetingAgendaView() {
 
     const roleClass = item.role_details.role_classification?.toLowerCase();
 
-    if (roleClass === 'tag_team' || item.section_name.toLowerCase().includes('tag team')) {
+    if (roleClass === 'tag_team' || (item.section_name || '').toLowerCase().includes('tag team')) {
       return { label: 'Tag Team', color: '#f59e0b', bgColor: '#f59e0b15' };
     }
 
     if (roleClass === 'education_speech' || roleClass === 'educational_speaker' ||
-        item.section_name.toLowerCase().includes('education')) {
+        (item.section_name || '').toLowerCase().includes('education')) {
       return { label: 'Education Speech', color: '#8b5cf6', bgColor: '#8b5cf615' };
     }
 
@@ -1031,11 +1040,20 @@ export default function MeetingAgendaView() {
     );
   }
 
-  if (!meeting) {
+  if (!meetingId || !meeting) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <ChevronLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Agenda</Text>
+          <View style={{ width: 40 }} />
+        </View>
         <View style={styles.errorContainer}>
-          <Text style={[styles.errorText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting not found</Text>
+          <Text style={[styles.errorText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            {!meetingId ? 'No meeting selected' : 'Meeting not found'}
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -1153,7 +1171,7 @@ export default function MeetingAgendaView() {
             <Text style={styles.bannerSeparator} maxFontSizeMultiplier={1.2}>|</Text>
             <Users size={11} color="#ffffff" />
             <Text style={styles.bannerChipText} maxFontSizeMultiplier={1.2}>
-              Meeting {meeting.meeting_number}
+              Meeting {meeting.meeting_number || '—'}
             </Text>
           </View>
         </View>
@@ -1183,7 +1201,7 @@ export default function MeetingAgendaView() {
               >
                 <View style={styles.agendaItemHeader}>
                   <View style={styles.agendaItemTitleRow}>
-                    {item.section_name.toLowerCase().includes('tag team') ? (
+                    {(item.section_name || '').toLowerCase().includes('tag team') ? (
                       <View style={[styles.tagTeamHeaderIconWrap, { backgroundColor: '#f59e0b20' }]}>
                         <Users size={16} color="#f59e0b" />
                       </View>
@@ -1198,7 +1216,7 @@ export default function MeetingAgendaView() {
                           ? (item.section_name || '').replace(/\s+Session$/i, '')
                           : (item.section_name || '').replace(/^Speech Evaluation Session$/i, 'Speech Evaluation')}
                       </Text>
-                      {getSectionTypeTag(item) && !item.section_name.toLowerCase().includes('educational speaker') && (
+                      {getSectionTypeTag(item) && !(item.section_name || '').toLowerCase().includes('educational speaker') && (
                         <View style={[styles.sectionTypeTagSmall, {
                           backgroundColor: getSectionTypeTag(item)!.bgColor,
                           borderColor: getSectionTypeTag(item)!.color
@@ -1285,7 +1303,7 @@ export default function MeetingAgendaView() {
                   );
                 })()}
 
-                {item.section_name.toLowerCase().includes('toastmaster of the day') && (
+                {(item.section_name || '').toLowerCase().includes('toastmaster of the day') && (
                   <>
                   <View style={[styles.agendaItemDivider, { backgroundColor: theme.colors.border }]} />
                   <TouchableOpacity
@@ -1312,7 +1330,7 @@ export default function MeetingAgendaView() {
                   </>
                 )}
 
-                {item.section_name.toLowerCase().includes('educational speaker') && (
+                {(item.section_name || '').toLowerCase().includes('educational speaker') && (
                   <>
                   <View style={[styles.agendaItemDivider, { backgroundColor: theme.colors.border }]} />
                   <View style={styles.themeSection}>
@@ -1365,7 +1383,7 @@ export default function MeetingAgendaView() {
                   </>
                 )}
 
-                {item.section_name.toLowerCase().includes('keynote speaker') && (
+                {(item.section_name || '').toLowerCase().includes('keynote speaker') && (
                   <>
                   <View style={[styles.agendaItemDivider, { backgroundColor: theme.colors.border }]} />
                   <TouchableOpacity
@@ -1422,7 +1440,7 @@ export default function MeetingAgendaView() {
                   </>
                 )}
 
-                {item.section_name.toLowerCase().includes('speech evaluation') && (() => {
+                {(item.section_name || '').toLowerCase().includes('speech evaluation') && (() => {
                   const preparedItem = agendaItems.find((i: AgendaItem) => (i.section_name || '').toLowerCase().includes('prepared speech'));
                   const speechEvalSpeakers = preparedItem ? preparedSpeakersListForDisplay(preparedItem) : [];
                   return speechEvalSpeakers.length > 0 && (
@@ -1473,7 +1491,7 @@ export default function MeetingAgendaView() {
                   );
                 })()}
 
-                {item.section_name.toLowerCase().includes('prepared speech') && preparedSpeakersListForDisplay(item).length > 0 ? (
+                {(item.section_name || '').toLowerCase().includes('prepared speech') && preparedSpeakersListForDisplay(item).length > 0 ? (
                   <View style={styles.preparedSpeakersContainer}>
                     {preparedSpeakersListForDisplay(item).map((speaker, index) => (
                       <View
@@ -1595,14 +1613,14 @@ export default function MeetingAgendaView() {
                       </View>
                     ))}
                   </View>
-                ) : item.section_name.toLowerCase().includes('prepared speech') &&
+                ) : (item.section_name || '').toLowerCase().includes('prepared speech') &&
                   usesPreparedSpeechesAgendaSnapshot(item) ? (
                   <View style={[styles.profileCard, { paddingVertical: 12 }]}>
                     <Text style={{ color: theme.colors.textSecondary, textAlign: 'center', flex: 1 }} maxFontSizeMultiplier={1.3}>
                       Prepared speech slots are on the agenda, but none are set visible yet. Check back later.
                     </Text>
                   </View>
-                ) : item.section_name.toLowerCase().includes('prepared speech') ? (
+                ) : (item.section_name || '').toLowerCase().includes('prepared speech') ? (
                   <View style={styles.profileCardContainer}>
                     <View style={styles.profileCard}>
                       <View style={styles.profileAvatarBox}>
@@ -1744,7 +1762,7 @@ export default function MeetingAgendaView() {
                       </View>
                     ))}
                   </View>
-                ) : item.section_name.toLowerCase().includes('ice breaker') ? (
+                ) : (item.section_name || '').toLowerCase().includes('ice breaker') ? (
                   <View style={styles.profileCardContainer}>
                     <View style={styles.profileCard}>
                       <View style={styles.profileAvatarBox}>
@@ -1761,7 +1779,7 @@ export default function MeetingAgendaView() {
                       </View>
                     </View>
                   </View>
-                ) : item.section_name.toLowerCase().includes('tag team') ? (
+                ) : (item.section_name || '').toLowerCase().includes('tag team') ? (
                   <View style={styles.tagTeamRolesContainer}>
                     <View style={[styles.tagTeamHeaderDivider, { backgroundColor: theme.colors.border }]} />
                     {[
@@ -1887,7 +1905,7 @@ export default function MeetingAgendaView() {
                       </Text>
                     )}
                   </View>
-                ) : item.is_role_based && !item.section_name.toLowerCase().includes('educational speaker') && !item.section_name.toLowerCase().includes('keynote speaker') && !item.section_name.toLowerCase().includes('timer report') && !item.section_name.toLowerCase().includes('ah counter report') && !item.section_name.toLowerCase().includes('grammarian report') && !item.section_name.toLowerCase().includes('general evaluator feedback') && !item.section_name.toLowerCase().includes('voting') && !item.section_name.toLowerCase().includes('awards') && !item.section_name.toLowerCase().includes('tag team') && !item.section_name.toLowerCase().includes('speech evaluation') && !item.section_name.toLowerCase().includes('daily highlights') && !item.section_name.toLowerCase().includes('grammarian corner') && (
+                ) : item.is_role_based && !(item.section_name || '').toLowerCase().includes('educational speaker') && !(item.section_name || '').toLowerCase().includes('keynote speaker') && !(item.section_name || '').toLowerCase().includes('timer report') && !(item.section_name || '').toLowerCase().includes('ah counter report') && !(item.section_name || '').toLowerCase().includes('grammarian report') && !(item.section_name || '').toLowerCase().includes('general evaluator feedback') && !(item.section_name || '').toLowerCase().includes('voting') && !(item.section_name || '').toLowerCase().includes('awards') && !(item.section_name || '').toLowerCase().includes('tag team') && !(item.section_name || '').toLowerCase().includes('speech evaluation') && !(item.section_name || '').toLowerCase().includes('daily highlights') && !(item.section_name || '').toLowerCase().includes('grammarian corner') && (
                   <View style={styles.profileCardContainer}>
                     <TouchableOpacity
                       style={styles.profileCard}
@@ -1924,7 +1942,7 @@ export default function MeetingAgendaView() {
                   </View>
                 )}
 
-                {item.role_details && !item.section_name.toLowerCase().includes('educational speaker') && !item.section_name.toLowerCase().includes('keynote speaker') && (
+                {item.role_details && !(item.section_name || '').toLowerCase().includes('educational speaker') && !(item.section_name || '').toLowerCase().includes('keynote speaker') && (
                   <View style={styles.roleDetailsContainer}>
                     {item.role_details.speech_title && (
                       <View style={styles.roleDetail}>
