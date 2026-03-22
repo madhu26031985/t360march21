@@ -132,12 +132,29 @@ function preparedSpeakersListForDisplay(item: {
     if (slot >= 1 && slot <= 5) fallbackBySlot.set(slot, { ...p, slot });
   });
 
-  // Ensure we show slots 1-5: merge parsed (agenda) with fallback, prefer agenda when both exist
-  const slotsToShow = 5;
-  const parsedBySlot = new Map(parsed.filter(s => s.is_visible).map(s => [s.slot, s]));
+  // Show slots that have any content from Edit Agenda (booked, manually added speaker, title, pathway, etc.)
+  const hasContent = (s: {
+    booked: boolean;
+    speaker_name: string | null;
+    speech_title?: string | null;
+    pathway_name?: string | null;
+    project_name?: string | null;
+    evaluator_name?: string | null;
+    evaluation_form?: string | null;
+    level?: number | null;
+    project_number?: string | null;
+  }) => {
+    if (s.booked) return true;
+    const str = (v: unknown) => (v != null && String(v).trim() !== '' ? 1 : 0);
+    return str(s.speaker_name) + str(s.speech_title) + str(s.pathway_name) + str(s.project_name) +
+      str(s.evaluator_name) + str(s.evaluation_form) + (s.level != null ? 1 : 0) + str(s.project_number) > 0;
+  };
+  const parsedBySlot = new Map(
+    parsed.filter(s => s.is_visible && hasContent(s)).map(s => [s.slot, s])
+  );
   const result: PreparedSpeaker[] = [];
 
-  for (let slot = 1; slot <= slotsToShow; slot++) {
+  for (let slot = 1; slot <= 5; slot++) {
     const fromAgenda = parsedBySlot.get(slot);
     const fromFallback = fallbackBySlot.get(slot);
 
@@ -145,7 +162,7 @@ function preparedSpeakersListForDisplay(item: {
       const pn = fromAgenda.project_number ? parseInt(fromAgenda.project_number, 10) : NaN;
       result.push({
         id: `agenda-ps-${slot}`,
-        speaker_name: fromAgenda.booked ? fromAgenda.speaker_name || 'TBA' : 'Open for booking',
+        speaker_name: fromAgenda.speaker_name || 'TBA',
         speaker_id: fromAgenda.speaker_user_id,
         speaker_avatar: null,
         speech_title: fromAgenda.speech_title,
@@ -162,26 +179,8 @@ function preparedSpeakersListForDisplay(item: {
       });
     } else if (fromFallback) {
       result.push(fromFallback);
-    } else {
-      // Slot missing from both – show placeholder so we always show 5 slots (matches Edit Agenda)
-      result.push({
-        id: `agenda-ps-${slot}`,
-        speaker_name: 'Open for booking',
-        speaker_id: null,
-        speaker_avatar: null,
-        speech_title: null,
-        pathway_name: null,
-        pathway_level: null,
-        project_title: null,
-        project_number: null,
-        evaluator_name: null,
-        evaluator_id: null,
-        evaluator_avatar: null,
-        evaluation_id: null,
-        evaluation_pdf_url: null,
-        evaluation_form: null,
-      });
     }
+    // Skip unbooked slots – don't show "Open for booking" in Meeting Agenda
   }
 
   return result.length > 0 ? result : fallback;
