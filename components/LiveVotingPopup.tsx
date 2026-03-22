@@ -59,7 +59,7 @@ export default function LiveVotingPopup() {
       const hasVoted = !votesError && votes && votes.length > 0;
       if (hasVoted) return;
 
-      // Don't show if recently dismissed (within 5 minutes)
+      // Don't show if recently dismissed (within 90 seconds)
       if (Date.now() < dismissedUntil) return;
 
       // Show at most 2 times per session
@@ -89,8 +89,28 @@ export default function LiveVotingPopup() {
       appState.current = nextState;
     };
 
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    return () => subscription.remove();
+    const appSub = AppState.addEventListener('change', handleAppStateChange);
+
+    // Realtime: show popup as soon as poll is published (any screen)
+    const channel = supabase
+      .channel('live-voting-polls')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'polls',
+        filter: `club_id=eq.${user.currentClubId}`,
+      }, (payload) => {
+        const row = payload.new as { status?: string } | null;
+        if (row?.status === 'published') {
+          checkAndShow();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      appSub.remove();
+      supabase.removeChannel(channel);
+    };
   }, [user?.currentClubId, user?.id, checkAndShow]);
 
   const handleVoteNow = () => {
@@ -104,7 +124,7 @@ export default function LiveVotingPopup() {
 
   const handleDismiss = () => {
     setVisible(false);
-    setDismissedUntil(Date.now() + 5 * 60 * 1000); // Don't show again for 5 minutes
+    setDismissedUntil(Date.now() + 90 * 1000); // Don't show again for 90 seconds
   };
 
   const firstName = user?.fullName?.split(' ')[0] || 'Member';

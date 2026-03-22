@@ -412,36 +412,74 @@ export default function MyJourney() {
     loadCurrentOpenMeeting();
   }, [user?.currentClubId]);
 
+  const refreshPollStatus = useCallback(async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setHasActivePoll(false);
+      setHasVotedInActivePoll(false);
+      return;
+    }
+    const { data: polls, error: pollsError } = await supabase
+      .from('polls')
+      .select('id')
+      .eq('club_id', user.currentClubId)
+      .eq('status', 'published');
+    const active = !pollsError && polls && polls.length > 0;
+    setHasActivePoll(!!active);
+    if (!active || !polls?.length) {
+      setHasVotedInActivePoll(false);
+      return;
+    }
+    const pollIds = polls.map((p: { id: string }) => p.id);
+    const { data: votes, error: votesError } = await supabase
+      .from('simple_poll_votes')
+      .select('poll_id')
+      .eq('user_id', user.id)
+      .in('poll_id', pollIds)
+      .limit(1);
+    setHasVotedInActivePoll(!votesError && votes && votes.length > 0);
+  }, [user?.currentClubId, user?.id]);
+
   useFocusEffect(
     useCallback(() => {
-      if (!user?.currentClubId || !user?.id) {
-        setHasActivePoll(false);
-        setHasVotedInActivePoll(false);
-        return;
-      }
-      (async () => {
-        const { data: polls, error: pollsError } = await supabase
-          .from('polls')
-          .select('id')
-          .eq('club_id', user.currentClubId)
-          .eq('status', 'published');
-        const active = !pollsError && polls && polls.length > 0;
-        setHasActivePoll(!!active);
-        if (!active || !polls?.length) {
-          setHasVotedInActivePoll(false);
-          return;
-        }
-        const pollIds = polls.map((p: { id: string }) => p.id);
-        const { data: votes, error: votesError } = await supabase
-          .from('simple_poll_votes')
-          .select('poll_id')
-          .eq('user_id', user.id)
-          .in('poll_id', pollIds)
-          .limit(1);
-        setHasVotedInActivePoll(!votesError && votes && votes.length > 0);
-      })();
-    }, [user?.currentClubId, user?.id])
+      refreshPollStatus();
+    }, [refreshPollStatus])
   );
+
+  useEffect(() => {
+    if (!user?.currentClubId || !user?.id) return;
+
+    const channelPolls = supabase
+      .channel('journey-polls')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'polls',
+        filter: `club_id=eq.${user.currentClubId}`,
+      }, (payload) => {
+        const row = payload.new as { status?: string } | null;
+        if (row?.status === 'published' || payload.eventType === 'DELETE') {
+          refreshPollStatus();
+        }
+      })
+      .subscribe();
+
+    const channelVotes = supabase
+      .channel('journey-votes')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'simple_poll_votes',
+        filter: `user_id=eq.${user.id}`,
+      }, () => {
+        refreshPollStatus();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channelPolls);
+      supabase.removeChannel(channelVotes);
+    };
+  }, [user?.currentClubId, user?.id, refreshPollStatus]);
 
   useFocusEffect(
     useCallback(() => {

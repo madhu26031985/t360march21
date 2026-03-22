@@ -3,6 +3,21 @@
 const fs = require('fs');
 const path = require('path');
 
+// Load .env for EAS build (Supabase config comes from env, not app.json)
+try {
+  const envPath = path.join(process.cwd(), '.env');
+  if (fs.existsSync(envPath)) {
+    fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+      const match = line.match(/^([^=]+)=(.*)$/);
+      if (match) {
+        const key = match[1].trim();
+        const val = match[2].trim().replace(/^["']|["']$/g, '');
+        if (!process.env[key]) process.env[key] = val;
+      }
+    });
+  }
+} catch (e) { /* ignore */ }
+
 console.log('🔍 Running pre-build checks for T-360...');
 
 // Check if required files exist
@@ -78,10 +93,12 @@ try {
     allFilesExist = false;
   }
   
-  if (expo.extra?.supabaseUrl && expo.extra?.supabaseAnonKey) {
+  const supabaseUrl = expo.extra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = expo.extra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  if (supabaseUrl && supabaseAnonKey) {
     console.log('✅ Supabase configuration found');
   } else {
-    console.log('❌ Supabase configuration missing');
+    console.log('❌ Supabase configuration missing (set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env or app.json extra)');
     allFilesExist = false;
   }
 } catch (error) {

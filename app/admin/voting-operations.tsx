@@ -65,6 +65,8 @@ export default function VotingOperations() {
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [showMeetingSelectModal, setShowMeetingSelectModal] = useState(false);
   const [openMeetings, setOpenMeetings] = useState<Array<{ id: string; meeting_date: string; meeting_title: string }>>([]);
+  const [closePollConfirm, setClosePollConfirm] = useState<Poll | null>(null);
+  const [isClosingPoll, setIsClosingPoll] = useState(false);
 
   const [pollForm, setPollForm] = useState<PollForm>({
     title: '',
@@ -596,41 +598,40 @@ export default function VotingOperations() {
     router.push(`/admin/poll-results?pollId=${poll.id}`);
   };
 
-  const handleClosePoll = async (poll: Poll) => {
-    Alert.alert(
-      'Close Poll',
-      `Are you sure you want to close "${poll.title}"? This will stop accepting new votes.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Close Poll', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('polls')
-                .update({ 
-                  status: 'completed',
-                  end_time: new Date().toISOString()
-                } as any)
-                .eq('id', poll.id);
+  const handleClosePollClick = (poll: Poll) => {
+    setClosePollConfirm(poll);
+  };
 
-              if (error) {
-                console.error('Error closing poll:', error);
-                Alert.alert('Error', 'Failed to close poll');
-                return;
-              }
+  const confirmClosePoll = async () => {
+    const poll = closePollConfirm;
+    if (!poll) return;
 
-              Alert.alert('Success', 'Poll closed successfully');
-              loadPolls();
-            } catch (error) {
-              console.error('Error closing poll:', error);
-              Alert.alert('Error', 'An unexpected error occurred');
-            }
-          }
-        }
-      ]
-    );
+    setIsClosingPoll(true);
+    try {
+      const { error } = await supabase
+        .from('polls')
+        .update({ 
+          status: 'completed',
+          end_time: new Date().toISOString()
+        } as any)
+        .eq('id', poll.id);
+
+      if (error) {
+        console.error('Error closing poll:', error);
+        Alert.alert('Error', 'Failed to close poll');
+        setClosePollConfirm(null);
+        return;
+      }
+
+      setClosePollConfirm(null);
+      loadPolls();
+    } catch (error) {
+      console.error('Error closing poll:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+      setClosePollConfirm(null);
+    } finally {
+      setIsClosingPoll(false);
+    }
   };
 
   const getRoleIcon = (role: string) => {
@@ -710,11 +711,11 @@ export default function VotingOperations() {
         )}
         {poll.status === 'published' && (
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#fef2f2' }]}
-            onPress={() => handleClosePoll(poll)}
+            style={[styles.closePollsButton, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
+            onPress={() => handleClosePollClick(poll)}
             activeOpacity={0.7}
           >
-            <X size={14} color="#ef4444" />
+            <Text style={styles.closePollsButtonText}>Close polls</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -1071,6 +1072,51 @@ export default function VotingOperations() {
           </View>
         )}
       </ScrollView>
+
+      {/* Close Poll Confirmation Modal - works on web */}
+      <Modal
+        visible={!!closePollConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isClosingPoll && setClosePollConfirm(null)}
+      >
+        <TouchableOpacity
+          style={styles.closePollModalOverlay}
+          activeOpacity={1}
+          onPress={() => !isClosingPoll && setClosePollConfirm(null)}
+        >
+          <TouchableOpacity
+            style={[styles.closePollModalContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.closePollModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Close Poll
+            </Text>
+            <Text style={[styles.closePollModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Are you sure you want to close "{closePollConfirm?.title}"? This will stop accepting new votes.
+            </Text>
+            <View style={styles.closePollModalButtons}>
+              <TouchableOpacity
+                style={[styles.closePollModalCancelBtn, { borderColor: theme.colors.border }]}
+                onPress={() => !isClosingPoll && setClosePollConfirm(null)}
+                disabled={isClosingPoll}
+              >
+                <Text style={[styles.closePollModalCancelText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.closePollModalConfirmBtn, { backgroundColor: '#dc2626' }]}
+                onPress={confirmClosePoll}
+                disabled={isClosingPoll}
+              >
+                <Text style={styles.closePollModalConfirmText} maxFontSizeMultiplier={1.3}>
+                  {isClosingPoll ? 'Closing...' : 'Close Poll'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Meeting Selection Modal */}
       <Modal
@@ -1630,6 +1676,72 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  closePollsButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closePollsButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ef4444',
+  },
+  closePollModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  closePollModalContent: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  closePollModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  closePollModalMessage: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  closePollModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  closePollModalCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  closePollModalCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  closePollModalConfirmBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginLeft: 12,
+  },
+  closePollModalConfirmText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   emptyState: {
     alignItems: 'center',
