@@ -6,8 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Image
+  Image,
+  Modal
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -87,6 +89,7 @@ export default function EducationalCorner(): JSX.Element {
   const [educationalSpeaker, setEducationalSpeaker] = useState<EducationalSpeaker | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isExComm, setIsExComm] = useState(false);
+  const [showCongratsModal, setShowCongratsModal] = useState(false);
 
   // Load data on component mount
   useEffect(() => {
@@ -271,6 +274,36 @@ export default function EducationalCorner(): JSX.Element {
   const isEducationalSpeaker = (): boolean => {
     return educationalSpeaker?.assigned_user_id === user?.id;
   };
+
+  /**
+   * Check if Educational Title and Summary are both added
+   */
+  const hasTitleAndSummary = (): boolean => {
+    return !!(educationalSpeaker?.speech_title?.trim() && educationalSpeaker?.summary?.trim());
+  };
+
+  const EDUCATIONAL_CONGRATS_SEEN_KEY = meetingId ? `educationalCongratsSeen_${meetingId}` : null;
+
+  useEffect(() => {
+    if (isLoading || !meeting || !isEducationalSpeaker() || hasTitleAndSummary() || !EDUCATIONAL_CONGRATS_SEEN_KEY) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(EDUCATIONAL_CONGRATS_SEEN_KEY);
+        if (!cancelled && !seen) setShowCongratsModal(true);
+      } catch {
+        if (!cancelled) setShowCongratsModal(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isLoading, meeting, educationalSpeaker?.assigned_user_id, educationalSpeaker?.speech_title, educationalSpeaker?.summary, EDUCATIONAL_CONGRATS_SEEN_KEY]);
+
+  const dismissCongratsModal = useCallback(() => {
+    if (EDUCATIONAL_CONGRATS_SEEN_KEY) {
+      AsyncStorage.setItem(EDUCATIONAL_CONGRATS_SEEN_KEY, '1').catch(() => {});
+    }
+    setShowCongratsModal(false);
+  }, [EDUCATIONAL_CONGRATS_SEEN_KEY]);
 
   /**
    * Format meeting mode for display
@@ -494,17 +527,35 @@ export default function EducationalCorner(): JSX.Element {
             <>
               {/* Title Box */}
               <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-                <View style={styles.sectionHeader}>
-                  <View style={[styles.sectionIcon, { backgroundColor: '#f97316' + '20' }]}>
-                    <GraduationCap size={20} color="#f97316" />
+                {!(isEducationalSpeaker() && !hasTitleAndSummary()) && (
+                  <View style={styles.sectionHeader}>
+                    <View style={[styles.sectionIcon, { backgroundColor: '#f97316' + '20' }]}>
+                      <GraduationCap size={20} color="#f97316" />
+                    </View>
+                    <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Speech</Text>
                   </View>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Speech</Text>
-                </View>
+                )}
 
                 {educationalSpeaker?.speech_title ? (
                   <Text style={[styles.speechContentTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                     {educationalSpeaker.speech_title}
                   </Text>
+                ) : isEducationalSpeaker() && !hasTitleAndSummary() ? (
+                  <View style={styles.educationalInstructionsCard}>
+                    <Text style={[styles.educationalInstructionsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
+                    </Text>
+                    <Text style={[styles.educationalInstructionsBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      Great step in leading the educational session. Add your{' '}
+                      <Text style={styles.educationalInstructionsHighlight}>Educational Title</Text>
+                      {' '}and a short{' '}
+                      <Text style={styles.educationalInstructionsHighlight}>summary</Text>
+                      {' '}by opening the Educational Session tab in Your Prep Space to help members understand the context and what to expect.
+                    </Text>
+                    <Text style={[styles.educationalInstructionsBody, { color: theme.colors.textSecondary, marginTop: 12 }]} maxFontSizeMultiplier={1.3}>
+                      You can also add personal notes to prepare and organize your thoughts. These are visible only to you. Use the quick access button to jump to the agenda easily.
+                    </Text>
+                  </View>
                 ) : (
                   <View style={styles.educationalComingSoonCard}>
                     <Text style={[styles.educationalComingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -917,6 +968,43 @@ export default function EducationalCorner(): JSX.Element {
         )}
 
       </ScrollView>
+
+      {/* Congrats Educational Speaker modal - shown once per meeting when title/summary not added */}
+      <Modal
+        visible={showCongratsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissCongratsModal}
+      >
+        <TouchableOpacity
+          style={styles.congratsModalOverlay}
+          activeOpacity={1}
+          onPress={dismissCongratsModal}
+        >
+          <TouchableOpacity
+            style={[styles.congratsModalContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <Text style={[styles.congratsModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
+            </Text>
+            <Text style={[styles.congratsModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              You're the Educational Speaker, leading a knowledge-sharing session. Add your{' '}
+              <Text style={styles.congratsModalHighlight}>Educational Title</Text>
+              {' '}and{' '}
+              <Text style={styles.congratsModalHighlight}>summary</Text>
+              {' '}to set the stage!
+            </Text>
+            <TouchableOpacity
+              style={[styles.congratsModalButton, { backgroundColor: theme.colors.primary }]}
+              onPress={dismissCongratsModal}
+            >
+              <Text style={styles.congratsModalButtonText} maxFontSizeMultiplier={1.3}>Got it</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1187,6 +1275,65 @@ const styles = StyleSheet.create({
   summarySectionText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  educationalInstructionsCard: {
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+  },
+  educationalInstructionsTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  educationalInstructionsBody: {
+    fontSize: 15,
+    lineHeight: 24,
+    textAlign: 'left',
+  },
+  educationalInstructionsHighlight: {
+    fontWeight: 'bold',
+    fontStyle: 'italic',
+  },
+  congratsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  congratsModalContent: {
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+  },
+  congratsModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  congratsModalMessage: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  congratsModalHighlight: {
+    fontWeight: 'bold',
+    fontStyle: 'italic',
+  },
+  congratsModalButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  congratsModalButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   educationalComingSoonCard: {
     position: 'relative',

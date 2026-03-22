@@ -1,11 +1,12 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap } from 'lucide-react-native';
+import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { supabase } from '@/lib/supabase';
@@ -46,22 +47,66 @@ interface MeetingActionButtonProps {
   icon: React.ReactNode;
   color: string;
   onPress: () => void;
+  showAlert?: boolean;
 }
 
-function MeetingActionButton({ title, icon, color, onPress }: MeetingActionButtonProps) {
+function MeetingActionButton({ title, icon, color, onPress, showAlert }: MeetingActionButtonProps) {
   const { theme } = useTheme();
+  const alertScale = useSharedValue(1);
+  const iconPulse = useSharedValue(1);
+  useEffect(() => {
+    if (!showAlert) {
+      alertScale.value = 1;
+      iconPulse.value = 1;
+      return;
+    }
+    alertScale.value = withRepeat(
+      withSequence(
+        withTiming(1.2, { duration: 500 }),
+        withTiming(1, { duration: 500 })
+      ),
+      -1,
+      true
+    );
+    iconPulse.value = withRepeat(
+      withSequence(
+        withTiming(1.06, { duration: 600 }),
+        withTiming(1, { duration: 600 })
+      ),
+      -1,
+      true
+    );
+  }, [showAlert]);
+  const alertAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: alertScale.value }],
+  }));
+  const iconPulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconPulse.value }],
+  }));
   return (
     <TouchableOpacity
-      style={[styles.meetingActionButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+      style={[
+        styles.meetingActionButton,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        showAlert && styles.meetingActionButtonAlert,
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[styles.meetingActionButtonIcon, { backgroundColor: color }]}>
+      <Animated.View style={[styles.meetingActionButtonIcon, { backgroundColor: color }, iconPulseStyle]}>
         {icon}
-      </View>
+      </Animated.View>
       <Text style={[styles.meetingActionButtonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2} numberOfLines={2}>
         {title}
       </Text>
+      {showAlert && (
+        <Animated.View
+          pointerEvents="box-none"
+          style={[styles.meetingActionAlertBadge, alertAnimatedStyle]}
+        >
+          <AlertCircle size={14} color="#ef4444" fill="#ef4444" />
+        </Animated.View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -149,6 +194,11 @@ export default function MyJourney() {
   const [evaluationsGivenCount, setEvaluationsGivenCount] = useState<number>(0);
   const [hasActivePoll, setHasActivePoll] = useState<boolean>(false);
   const [hasVotedInActivePoll, setHasVotedInActivePoll] = useState<boolean>(false);
+  const [tmodNeedsThemeAlert, setTmodNeedsThemeAlert] = useState<boolean>(false);
+  const [educationalSpeakerNeedsAlert, setEducationalSpeakerNeedsAlert] = useState<boolean>(false);
+  const [showBookRolePrompt, setShowBookRolePrompt] = useState<boolean>(false);
+  const [showBookRoleAttention, setShowBookRoleAttention] = useState<boolean>(false);
+  const bookRolePromptHandledThisSession = useRef<boolean>(false);
 
   const voteNowScale = useSharedValue(1);
   useEffect(() => {
@@ -392,6 +442,156 @@ export default function MyJourney() {
       })();
     }, [user?.currentClubId, user?.id])
   );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentOpenMeetingId || !user?.id) {
+        setTmodNeedsThemeAlert(false);
+        return;
+      }
+      let cancelled = false;
+      (async () => {
+        const { data: roleData } = await supabase
+          .from('app_meeting_roles_management')
+          .select('id, assigned_user_id')
+          .eq('meeting_id', currentOpenMeetingId)
+          .ilike('role_name', '%toastmaster%')
+          .eq('booking_status', 'booked')
+          .limit(1);
+        const role = Array.isArray(roleData) && roleData.length > 0 ? roleData[0] : null;
+        const isCurrentUserTmod = role && role.assigned_user_id === user.id;
+        if (!isCurrentUserTmod || cancelled) {
+          if (!cancelled) setTmodNeedsThemeAlert(false);
+          return;
+        }
+        const { data: themeData } = await supabase
+          .from('toastmaster_meeting_data')
+          .select('theme_of_the_day, theme_summary')
+          .eq('meeting_id', currentOpenMeetingId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const hasTheme = !!(themeData?.theme_of_the_day?.trim() && themeData?.theme_summary?.trim());
+        if (!cancelled) setTmodNeedsThemeAlert(!hasTheme);
+      })();
+      return () => { cancelled = true; };
+    }, [currentOpenMeetingId, user?.id])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentOpenMeetingId || !user?.id) {
+        setEducationalSpeakerNeedsAlert(false);
+        return;
+      }
+      let cancelled = false;
+      (async () => {
+        const { data: roleData } = await supabase
+          .from('app_meeting_roles_management')
+          .select('id, assigned_user_id')
+          .eq('meeting_id', currentOpenMeetingId)
+          .eq('role_name', 'Educational Speaker')
+          .eq('booking_status', 'booked')
+          .limit(1);
+        const role = Array.isArray(roleData) && roleData.length > 0 ? roleData[0] : null;
+        const isCurrentUserEdSpeaker = role && role.assigned_user_id === user.id;
+        if (!isCurrentUserEdSpeaker || cancelled) {
+          if (!cancelled) setEducationalSpeakerNeedsAlert(false);
+          return;
+        }
+        const { data: contentData } = await supabase
+          .from('app_meeting_educational_speaker')
+          .select('speech_title, summary')
+          .eq('meeting_id', currentOpenMeetingId)
+          .eq('speaker_user_id', user.id)
+          .maybeSingle();
+        const hasContent = !!(contentData?.speech_title?.trim() && contentData?.summary?.trim());
+        if (!cancelled) setEducationalSpeakerNeedsAlert(!hasContent);
+      })();
+      return () => { cancelled = true; };
+    }, [currentOpenMeetingId, user?.id])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentOpenMeetingId || !user?.id || !user?.currentClubId) {
+        setShowBookRoleAttention(false);
+        return;
+      }
+      const r = (user.clubRole || user.role || '').toLowerCase();
+      if (r === 'guest') {
+        setShowBookRoleAttention(false);
+        return;
+      }
+      let cancelled = false;
+      (async () => {
+        try {
+          const { count, error } = await supabase
+            .from('app_meeting_roles_management')
+            .select('id', { count: 'exact', head: true })
+            .eq('club_id', user.currentClubId)
+            .eq('meeting_id', currentOpenMeetingId)
+            .eq('assigned_user_id', user.id)
+            .eq('booking_status', 'booked');
+          if (!cancelled) setShowBookRoleAttention(!error && (count ?? 0) === 0);
+        } catch {
+          if (!cancelled) setShowBookRoleAttention(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [currentOpenMeetingId, user?.id, user?.currentClubId, user?.clubRole, user?.role])
+  );
+
+  const BOOK_ROLE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentOpenMeetingId || !user?.id || !user?.currentClubId) {
+        setShowBookRolePrompt(false);
+        return;
+      }
+      const role = (user.clubRole || user.role || '').toLowerCase();
+      if (role === 'guest') {
+        setShowBookRolePrompt(false);
+        return;
+      }
+      let cancelled = false;
+      (async () => {
+        try {
+          const lastShownRaw = await AsyncStorage.getItem('bookRolePromptLastShown');
+          const lastShown = lastShownRaw ? parseInt(lastShownRaw, 10) : 0;
+          if (cancelled || (lastShown > 0 && Date.now() - lastShown < BOOK_ROLE_COOLDOWN_MS)) return;
+
+          const { count, error } = await supabase
+            .from('app_meeting_roles_management')
+            .select('id', { count: 'exact', head: true })
+            .eq('club_id', user.currentClubId)
+            .eq('meeting_id', currentOpenMeetingId)
+            .eq('assigned_user_id', user.id)
+            .eq('booking_status', 'booked');
+          if (cancelled || error || (count ?? 0) > 0) return;
+
+          bookRolePromptHandledThisSession.current = true;
+          setShowBookRolePrompt(true);
+        } catch {
+          if (!cancelled) setShowBookRolePrompt(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }, [currentOpenMeetingId, user?.id, user?.currentClubId, user?.clubRole, user?.role])
+  );
+
+  const dismissBookRolePrompt = useCallback(async () => {
+    bookRolePromptHandledThisSession.current = true;
+    setShowBookRolePrompt(false);
+    try {
+      await AsyncStorage.setItem('bookRolePromptLastShown', String(Date.now()));
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
 
   const loadUserAvatar = async () => {
     if (!user) return;
@@ -689,6 +889,7 @@ export default function MyJourney() {
                   title="Book a Role"
                   icon={<Calendar size={16} color="#ffffff" />}
                   color="#0a66c2"
+                  showAlert={showBookRoleAttention}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
                       Alert.alert('No open meeting', 'There is no current open meeting to book a role.');
@@ -713,12 +914,14 @@ export default function MyJourney() {
                   title="Toastmaster of the day"
                   icon={<MessageSquare size={16} color="#ffffff" />}
                   color="#84cc16"
+                  showAlert={tmodNeedsThemeAlert}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
                       Alert.alert('No open meeting', 'There is no current open meeting for Toastmaster.');
                       return;
                     }
-                    router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}`);
+                    const q = tmodNeedsThemeAlert ? '&showCongrats=1' : '';
+                    router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}${q}`);
                   }}
                 />
                 <MeetingActionButton
@@ -749,12 +952,19 @@ export default function MyJourney() {
                   title="Educational speaker"
                   icon={<GraduationCap size={16} color="#ffffff" />}
                   color="#f97316"
+                  showAlert={educationalSpeakerNeedsAlert}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
                       Alert.alert('No open meeting', 'There is no current open meeting for Educational speaker.');
                       return;
                     }
-                    router.push({ pathname: '/educational-corner', params: { meetingId: currentOpenMeetingId } });
+                    router.push({
+                      pathname: '/educational-corner',
+                      params: {
+                        meetingId: currentOpenMeetingId,
+                        ...(educationalSpeakerNeedsAlert && { showCongrats: '1' }),
+                      },
+                    });
                   }}
                 />
               </View>
@@ -802,6 +1012,75 @@ export default function MyJourney() {
           </>
         )}
       </ScrollView>
+
+      {/* Book Role prompt - for Visiting TM, ExComm, Member (not Guest) who haven't booked any role */}
+      <Modal
+        visible={showBookRolePrompt}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissBookRolePrompt}
+      >
+        <TouchableOpacity
+          style={styles.bookRolePromptOverlay}
+          activeOpacity={1}
+          onPress={dismissBookRolePrompt}
+        >
+          <TouchableOpacity
+            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <View style={styles.bookRolePromptHeaderRow}>
+              <Text style={[styles.bookRolePromptTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Ready to shine?
+              </Text>
+              <TouchableOpacity onPress={dismissBookRolePrompt} style={styles.bookRolePromptCloseBtn} hitSlop={12}>
+                <X size={20} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Your next opportunity is here.
+            </Text>
+            <View style={[styles.bookRolePromptDivider, { backgroundColor: theme.colors.border }]} />
+            <View style={styles.bookRolePromptMeetingRow}>
+              {(meetingMonth != null && meetingDayNum != null) && (
+                <View style={[styles.bookRolePromptDateBox, { backgroundColor: theme.colors.border }]}>
+                  <Text style={[styles.bookRolePromptDateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    {meetingMonth}
+                  </Text>
+                  <Text style={[styles.bookRolePromptDateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    {meetingDayNum}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.bookRolePromptMeetingInfo}>
+                <Text style={[styles.bookRolePromptMeetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {currentOpenMeetingTitle || 'Meeting'}
+                </Text>
+                {daysToGo !== null && (
+                  <View style={[styles.bookRolePromptMeetingStatus, { marginTop: 2 }]}>
+                    <View style={[styles.bookRolePromptStatusDot, { backgroundColor: daysToGo <= 1 ? '#22c55e' : '#94a3b8', marginRight: 6 }]} />
+                    <Text style={[styles.bookRolePromptMeetingStatusText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      {daysToGo === 0 ? 'Today' : daysToGo === 1 ? 'Tomorrow' : `In ${daysToGo} days`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text }]}
+              onPress={() => {
+                dismissBookRolePrompt();
+                if (currentOpenMeetingId) {
+                  router.push({ pathname: '/book-a-role', params: { meetingId: currentOpenMeetingId } });
+                }
+              }}
+            >
+              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>Book a role</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -809,6 +1088,100 @@ export default function MyJourney() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  bookRolePromptOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  bookRolePromptContent: {
+    borderRadius: 17,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxWidth: 289,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  bookRolePromptHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  bookRolePromptTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    flex: 1,
+  },
+  bookRolePromptCloseBtn: {
+    padding: 4,
+  },
+  bookRolePromptSubtitle: {
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  bookRolePromptDivider: {
+    height: 1,
+    marginBottom: 12,
+  },
+  bookRolePromptMeetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  bookRolePromptDateBox: {
+    width: 38,
+    height: 42,
+    borderRadius: 8,
+    marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookRolePromptDateMonth: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  bookRolePromptDateDay: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  bookRolePromptMeetingInfo: {
+    flex: 1,
+  },
+  bookRolePromptMeetingTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  bookRolePromptMeetingStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bookRolePromptStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  bookRolePromptMeetingStatusText: {
+    fontSize: 13,
+  },
+  bookRolePromptButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  bookRolePromptButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
   },
   authCheckContainer: {
     flex: 1,
@@ -1298,6 +1671,13 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 12,
     borderWidth: 1,
+  },
+  meetingActionButtonAlert: {
+    borderColor: '#fca5a5',
+    borderWidth: 1.5,
+  },
+  meetingActionAlertBadge: {
+    marginLeft: 4,
   },
   meetingActionButtonIcon: {
     width: 32,

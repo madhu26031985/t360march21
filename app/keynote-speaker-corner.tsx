@@ -6,8 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Image
+  Image,
+  Modal
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -95,6 +97,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isExComm, setIsExComm] = useState(false);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
+  const [showCongratsModal, setShowCongratsModal] = useState(false);
 
   // Load data on component mount
   useEffect(() => {
@@ -295,6 +298,36 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   const isKeynoteSpeaker = (): boolean => {
     return keynoteSpeaker?.assigned_user_id === user?.id;
   };
+
+  /**
+   * Check if Keynote Title and Summary are both added
+   */
+  const hasTitleAndSummary = (): boolean => {
+    return !!(keynoteSpeaker?.speech_title?.trim() && keynoteSpeaker?.summary?.trim());
+  };
+
+  const KEYNOTE_CONGRATS_SEEN_KEY = meetingId ? `keynoteCongratsSeen_${meetingId}` : null;
+
+  useEffect(() => {
+    if (isLoading || !meeting || !isKeynoteSpeaker() || hasTitleAndSummary() || !KEYNOTE_CONGRATS_SEEN_KEY) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(KEYNOTE_CONGRATS_SEEN_KEY);
+        if (!cancelled && !seen) setShowCongratsModal(true);
+      } catch {
+        if (!cancelled) setShowCongratsModal(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isLoading, meeting, keynoteSpeaker?.assigned_user_id, keynoteSpeaker?.speech_title, keynoteSpeaker?.summary, KEYNOTE_CONGRATS_SEEN_KEY]);
+
+  const dismissCongratsModal = useCallback(() => {
+    if (KEYNOTE_CONGRATS_SEEN_KEY) {
+      AsyncStorage.setItem(KEYNOTE_CONGRATS_SEEN_KEY, '1').catch(() => {});
+    }
+    setShowCongratsModal(false);
+  }, [KEYNOTE_CONGRATS_SEEN_KEY]);
 
   /**
    * Handle adding/editing keynote content
@@ -541,18 +574,38 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               <>
                 {/* Keynote Speech Title Box */}
                 <View style={[styles.section, { backgroundColor: '#ffffff' }]}>
-                  <View style={styles.keynoteHeaderRow}>
-                    <View style={[styles.keynoteHeaderIcon, { backgroundColor: '#FEF3C7' }]}>
-                      <Text style={styles.keynoteHeaderEmoji} maxFontSizeMultiplier={1.3}>🎤</Text>
+                  {!(isKeynoteSpeaker() && !hasTitleAndSummary()) && (
+                    <View style={styles.keynoteHeaderRow}>
+                      <View style={[styles.keynoteHeaderIcon, { backgroundColor: '#FEF3C7' }]}>
+                        <Text style={styles.keynoteHeaderEmoji} maxFontSizeMultiplier={1.3}>🎤</Text>
+                      </View>
+                      <Text style={[styles.keynoteHeaderTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote Speech</Text>
                     </View>
-                    <Text style={[styles.keynoteHeaderTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote Speech</Text>
-                  </View>
+                  )}
 
-                  <View style={styles.keynoteComingSoonCard}>
-                    <Text style={[styles.keynoteComingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Get ready for a powerful experience story by the Keynote Speaker — coming soon.
-                    </Text>
-                  </View>
+                  {isKeynoteSpeaker() && !hasTitleAndSummary() ? (
+                    <View style={styles.keynoteInstructionsCard}>
+                      <Text style={[styles.keynoteInstructionsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                        Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
+                      </Text>
+                      <Text style={[styles.keynoteInstructionsBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                        Great step in leading the keynote session. Add your{' '}
+                        <Text style={styles.keynoteInstructionsHighlight}>Keynote Title</Text>
+                        {' '}and a short{' '}
+                        <Text style={styles.keynoteInstructionsHighlight}>summary</Text>
+                        {' '}by opening the Keynote Speech tab in Your Prep Space to help members understand the context and what to expect.
+                      </Text>
+                      <Text style={[styles.keynoteInstructionsBody, { color: theme.colors.textSecondary, marginTop: 12 }]} maxFontSizeMultiplier={1.3}>
+                        You can also add personal notes to prepare and organize your thoughts. These are visible only to you. Use the quick access button to jump to the agenda easily.
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.keynoteComingSoonCard}>
+                      <Text style={[styles.keynoteComingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                        Get ready for a powerful experience story by the Keynote Speaker — coming soon.
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </>
             )}
@@ -911,6 +964,42 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
 
       </ScrollView>
 
+      {/* Congrats Keynote Speaker modal - shown once per meeting when title/summary not added */}
+      <Modal
+        visible={showCongratsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissCongratsModal}
+      >
+        <TouchableOpacity
+          style={styles.congratsModalOverlay}
+          activeOpacity={1}
+          onPress={dismissCongratsModal}
+        >
+          <TouchableOpacity
+            style={[styles.congratsModalContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <Text style={[styles.congratsModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
+            </Text>
+            <Text style={[styles.congratsModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              You're the Keynote Speaker, leading a powerful experience story. Add your{' '}
+              <Text style={styles.congratsModalHighlight}>Keynote Title</Text>
+              {' '}and{' '}
+              <Text style={styles.congratsModalHighlight}>summary</Text>
+              {' '}to set the stage!
+            </Text>
+            <TouchableOpacity
+              style={[styles.congratsModalButton, { backgroundColor: theme.colors.primary }]}
+              onPress={dismissCongratsModal}
+            >
+              <Text style={styles.congratsModalButtonText} maxFontSizeMultiplier={1.3}>Got it</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1157,6 +1246,65 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
+  },
+  keynoteInstructionsCard: {
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+  },
+  keynoteInstructionsTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  keynoteInstructionsBody: {
+    fontSize: 15,
+    lineHeight: 24,
+    textAlign: 'left',
+  },
+  keynoteInstructionsHighlight: {
+    fontWeight: 'bold',
+    fontStyle: 'italic',
+  },
+  congratsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  congratsModalContent: {
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+  },
+  congratsModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  congratsModalMessage: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  congratsModalHighlight: {
+    fontWeight: 'bold',
+    fontStyle: 'italic',
+  },
+  congratsModalButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  congratsModalButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   keynoteComingSoonCard: {
     position: 'relative',

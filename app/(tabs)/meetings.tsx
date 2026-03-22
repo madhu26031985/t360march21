@@ -5,7 +5,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Calendar, Vote, Building2, Clock, Lock, FileText, Timer, ChartBar as BarChart3, BookOpen, Star, MessageSquare, ClipboardCheck, UserCheck, Award, Book, MessageCircle, ChevronRight, ChevronDown, ChevronUp, BookCheck, Ear, UserPlus, Mic, ClipboardList, MessageSquareQuote, ScrollText, UserCog, Lightbulb, Target, RefreshCw, MonitorCheck, CheckCircle, Search } from 'lucide-react-native';
+import { Calendar, Vote, Building2, Clock, Lock, FileText, Timer, ChartBar as BarChart3, BookOpen, Star, MessageSquare, ClipboardCheck, UserCheck, Award, Book, MessageCircle, ChevronRight, ChevronDown, ChevronUp, BookCheck, Ear, UserPlus, Mic, ClipboardList, MessageSquareQuote, ScrollText, UserCog, Lightbulb, Target, RefreshCw, MonitorCheck, CheckCircle, Search, AlertCircle } from 'lucide-react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
 
 interface Meeting {
@@ -55,6 +56,198 @@ function FeatureCard({ title, description, icon, onPress }: FeatureCardProps) {
   );
 }
 
+interface KeyRoleCardWithTmodAlertProps {
+  tab: TabItem;
+  meetingId: string;
+  onPress: () => void;
+  showAlert?: boolean;
+}
+
+interface SpeakingRoleCardWithAlertProps {
+  tab: TabItem;
+  meetingId: string;
+  onPress: () => void;
+  showAlert?: boolean;
+}
+
+function SpeakingRoleCardWithAlert({ tab, meetingId, onPress, showAlert }: SpeakingRoleCardWithAlertProps) {
+  const { theme } = useTheme();
+  const alertScale = useSharedValue(1);
+  useEffect(() => {
+    if (!showAlert) {
+      alertScale.value = 1;
+      return;
+    }
+    alertScale.value = withRepeat(
+      withSequence(
+        withTiming(1.2, { duration: 500 }),
+        withTiming(1, { duration: 500 })
+      ),
+      -1,
+      true
+    );
+  }, [showAlert]);
+  const alertAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: alertScale.value }],
+  }));
+  const title = tab.id === 'evaluation_corner' ? 'Prepared Speeches' : tab.id === 'educational_corner' ? 'Educational Corner' : 'Keynote Speaker';
+  return (
+    <TouchableOpacity
+      style={[
+        styles.speakingRoleCard,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        showAlert && styles.speakingRoleCardAlert,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.speakingRoleIcon, { backgroundColor: tab.color + '25' }]}>
+        {tab.id === 'evaluation_corner' && <Mic size={22} color={tab.color} />}
+        {tab.id === 'educational_corner' && <Lightbulb size={22} color={tab.color} />}
+        {tab.id === 'keynote_speaker' && <Mic size={22} color={tab.color} />}
+      </View>
+      <Text style={[styles.speakingRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+        {title}
+      </Text>
+      {showAlert && (
+        <Animated.View pointerEvents="box-none" style={[styles.speakingRoleAlertBadge, alertAnimatedStyle]}>
+          <AlertCircle size={12} color="#ef4444" fill="#ef4444" />
+        </Animated.View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+interface BookRoleCoreCardProps {
+  tab: TabItem;
+  description: string;
+  showAttention: boolean;
+  onPress: () => void;
+}
+
+/** Book a Role row with pulse + border when user has no roles booked for this meeting */
+function BookRoleCoreCard({ tab, description, showAttention, onPress }: BookRoleCoreCardProps) {
+  const { theme } = useTheme();
+  const alertScale = useSharedValue(1);
+  const iconPulse = useSharedValue(1);
+  useEffect(() => {
+    if (!showAttention) {
+      alertScale.value = 1;
+      iconPulse.value = 1;
+      return;
+    }
+    alertScale.value = withRepeat(
+      withSequence(
+        withTiming(1.2, { duration: 500 }),
+        withTiming(1, { duration: 500 })
+      ),
+      -1,
+      true
+    );
+    iconPulse.value = withRepeat(
+      withSequence(
+        withTiming(1.06, { duration: 600 }),
+        withTiming(1, { duration: 600 })
+      ),
+      -1,
+      true
+    );
+  }, [showAttention]);
+  const alertAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: alertScale.value }],
+  }));
+  const iconPulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconPulse.value }],
+  }));
+  return (
+    <TouchableOpacity
+      style={[
+        styles.keyRoleCard,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        showAttention && styles.keyRoleCardTmodAlert,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Animated.View style={[styles.keyRoleIcon, { backgroundColor: tab.color + '25' }, iconPulseStyle]}>
+        <Calendar size={20} color={tab.color} />
+      </Animated.View>
+      <View style={styles.keyRoleContent}>
+        <Text style={[styles.keyRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          {tab.title}
+        </Text>
+        {description ? (
+          <Text style={[styles.keyRoleSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            {description}
+          </Text>
+        ) : null}
+      </View>
+      {showAttention && (
+        <Animated.View pointerEvents="box-none" style={[styles.keyRoleAlertBadge, alertAnimatedStyle]}>
+          <AlertCircle size={14} color="#ef4444" fill="#ef4444" />
+        </Animated.View>
+      )}
+      <ChevronRight size={20} color={theme.colors.textSecondary} />
+    </TouchableOpacity>
+  );
+}
+
+function KeyRoleCardWithTmodAlert({ tab, meetingId, onPress, showAlert }: KeyRoleCardWithTmodAlertProps) {
+  const { theme } = useTheme();
+  const alertScale = useSharedValue(1);
+  useEffect(() => {
+    if (!showAlert) {
+      alertScale.value = 1;
+      return;
+    }
+    alertScale.value = withRepeat(
+      withSequence(
+        withTiming(1.2, { duration: 500 }),
+        withTiming(1, { duration: 500 })
+      ),
+      -1,
+      true
+    );
+  }, [showAlert]);
+  const alertAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: alertScale.value }],
+  }));
+  const title = tab.id === 'toastmaster_corner' ? 'Toastmaster of the Day' : tab.id === 'general_evaluator' ? 'General Evaluator' : 'Table Topics Master';
+  const subtitle = tab.id === 'toastmaster_corner' ? 'Leads meeting, introduces speakers' : tab.id === 'general_evaluator' ? 'Evaluates meeting and all roles' : 'Conducts impromptu speaking';
+  return (
+    <TouchableOpacity
+      key={tab.id}
+      style={[
+        styles.keyRoleCard,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        showAlert && styles.keyRoleCardTmodAlert,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.keyRoleIcon, { backgroundColor: tab.color + '25' }]}>
+        {tab.id === 'toastmaster_corner' && <MessageSquare size={20} color={tab.color} />}
+        {tab.id === 'general_evaluator' && <Star size={20} color={tab.color} />}
+        {tab.id === 'table_topic_corner' && <MessageSquare size={20} color={tab.color} />}
+      </View>
+      <View style={styles.keyRoleContent}>
+        <Text style={[styles.keyRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          {title}
+        </Text>
+        <Text style={[styles.keyRoleSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+          {subtitle}
+        </Text>
+      </View>
+      {showAlert && (
+        <Animated.View pointerEvents="box-none" style={[styles.keyRoleAlertBadge, alertAnimatedStyle]}>
+          <AlertCircle size={14} color="#ef4444" fill="#ef4444" />
+        </Animated.View>
+      )}
+      <ChevronRight size={20} color={theme.colors.textSecondary} />
+    </TouchableOpacity>
+  );
+}
+
 export default function ClubMeetings() {
   const { theme } = useTheme();
   const { user, isAuthenticated, refreshUserProfile } = useAuth();
@@ -66,6 +259,10 @@ export default function ClubMeetings() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasOnlyOneOpenMeeting, setHasOnlyOneOpenMeeting] = useState(false);
   const [vpeName, setVpeName] = useState<string>('VPE');
+  const [tmodNeedsThemeByMeeting, setTmodNeedsThemeByMeeting] = useState<Record<string, boolean>>({});
+  const [educationalSpeakerNeedsByMeeting, setEducationalSpeakerNeedsByMeeting] = useState<Record<string, boolean>>({});
+  const [keynoteSpeakerNeedsByMeeting, setKeynoteSpeakerNeedsByMeeting] = useState<Record<string, boolean>>({});
+  const [bookRoleNoRolesByMeeting, setBookRoleNoRolesByMeeting] = useState<Record<string, boolean>>({});
   const lastRefreshTime = useRef<number>(0);
   const hasLoadedOnce = useRef<boolean>(false);
 
@@ -95,6 +292,154 @@ export default function ClubMeetings() {
         Promise.all(tasks);
       }
     }, [user?.currentClubId, isAuthenticated, refreshUserProfile])
+  );
+
+  useEffect(() => {
+    const meetingIds: string[] = [];
+    if (currentMeeting?.id && !currentMeeting?.isPlaceholder) meetingIds.push(currentMeeting.id);
+    nextMeetings.forEach((m) => {
+      if (m?.id && !m?.isPlaceholder && !m.id.startsWith('placeholder')) meetingIds.push(m.id);
+    });
+    if (meetingIds.length === 0 || !user?.id) {
+      setTmodNeedsThemeByMeeting({});
+      setEducationalSpeakerNeedsByMeeting({});
+      setKeynoteSpeakerNeedsByMeeting({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const tmodResult: Record<string, boolean> = {};
+      const edResult: Record<string, boolean> = {};
+      const keynoteResult: Record<string, boolean> = {};
+      for (const mid of meetingIds) {
+        if (cancelled) break;
+        const { data: roleData } = await supabase
+          .from('app_meeting_roles_management')
+          .select('id, assigned_user_id')
+          .eq('meeting_id', mid)
+          .ilike('role_name', '%toastmaster%')
+          .eq('booking_status', 'booked')
+          .limit(1);
+        const role = Array.isArray(roleData) && roleData.length > 0 ? roleData[0] : null;
+        const isCurrentUserTmod = role && role.assigned_user_id === user.id;
+        if (!isCurrentUserTmod) {
+          tmodResult[mid] = false;
+        } else {
+          const { data: themeData } = await supabase
+            .from('toastmaster_meeting_data')
+            .select('theme_of_the_day, theme_summary')
+            .eq('meeting_id', mid)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const hasTheme = !!(themeData?.theme_of_the_day?.trim() && themeData?.theme_summary?.trim());
+          tmodResult[mid] = !hasTheme;
+        }
+        const { data: edRoleData } = await supabase
+          .from('app_meeting_roles_management')
+          .select('id, assigned_user_id')
+          .eq('meeting_id', mid)
+          .eq('role_name', 'Educational Speaker')
+          .eq('booking_status', 'booked')
+          .limit(1);
+        const edRole = Array.isArray(edRoleData) && edRoleData.length > 0 ? edRoleData[0] : null;
+        const isCurrentUserEdSpeaker = edRole && edRole.assigned_user_id === user.id;
+        if (!isCurrentUserEdSpeaker) {
+          edResult[mid] = false;
+        } else {
+          const { data: contentData } = await supabase
+            .from('app_meeting_educational_speaker')
+            .select('speech_title, summary')
+            .eq('meeting_id', mid)
+            .eq('speaker_user_id', user.id)
+            .maybeSingle();
+          const hasContent = !!(contentData?.speech_title?.trim() && contentData?.summary?.trim());
+          edResult[mid] = !hasContent;
+        }
+        const { data: keynoteRoleData } = await supabase
+          .from('app_meeting_roles_management')
+          .select('id, assigned_user_id')
+          .eq('meeting_id', mid)
+          .ilike('role_name', '%keynote speaker%')
+          .eq('booking_status', 'booked')
+          .limit(1);
+        const keynoteRole = Array.isArray(keynoteRoleData) && keynoteRoleData.length > 0 ? keynoteRoleData[0] : null;
+        const isCurrentUserKeynote = keynoteRole && keynoteRole.assigned_user_id === user.id;
+        if (!isCurrentUserKeynote) {
+          keynoteResult[mid] = false;
+        } else {
+          const { data: keynoteContentData } = await supabase
+            .from('app_meeting_keynote_speaker')
+            .select('speech_title, summary')
+            .eq('meeting_id', mid)
+            .eq('speaker_user_id', user.id)
+            .maybeSingle();
+          const hasKeynoteContent = !!(keynoteContentData?.speech_title?.trim() && keynoteContentData?.summary?.trim());
+          keynoteResult[mid] = !hasKeynoteContent;
+        }
+      }
+      if (!cancelled) {
+        setTmodNeedsThemeByMeeting(tmodResult);
+        setEducationalSpeakerNeedsByMeeting(edResult);
+        setKeynoteSpeakerNeedsByMeeting(keynoteResult);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentMeeting?.id, nextMeetings, user?.id]);
+
+  const refreshBookRoleAttention = useCallback(() => {
+    if (!user?.id || !user?.currentClubId) {
+      setBookRoleNoRolesByMeeting({});
+      return;
+    }
+    const r = (user.clubRole || user.role || '').toLowerCase();
+    if (r === 'guest') {
+      setBookRoleNoRolesByMeeting({});
+      return;
+    }
+    const ids = new Set<string>();
+    if (currentMeeting?.id && !currentMeeting.isPlaceholder) ids.add(currentMeeting.id);
+    nextMeetings.forEach((m) => {
+      if (m?.id && !m?.isPlaceholder && !String(m.id).startsWith('placeholder')) ids.add(m.id);
+    });
+    if (selectedMeeting?.id && !selectedMeeting.isPlaceholder) ids.add(selectedMeeting.id);
+    if (expandedNextMeeting && !String(expandedNextMeeting).startsWith('placeholder')) {
+      ids.add(expandedNextMeeting);
+    }
+    if (ids.size === 0) {
+      setBookRoleNoRolesByMeeting({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, boolean> = {};
+      for (const mid of ids) {
+        const { count, error } = await supabase
+          .from('app_meeting_roles_management')
+          .select('id', { count: 'exact', head: true })
+          .eq('club_id', user.currentClubId)
+          .eq('meeting_id', mid)
+          .eq('assigned_user_id', user.id)
+          .eq('booking_status', 'booked');
+        next[mid] = !error && (count ?? 0) === 0;
+      }
+      if (!cancelled) setBookRoleNoRolesByMeeting(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.currentClubId, user?.clubRole, user?.role, currentMeeting, nextMeetings, selectedMeeting, expandedNextMeeting]);
+
+  useEffect(() => {
+    const cleanup = refreshBookRoleAttention();
+    return typeof cleanup === 'function' ? cleanup : undefined;
+  }, [refreshBookRoleAttention]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const cleanup = refreshBookRoleAttention();
+      return typeof cleanup === 'function' ? cleanup : undefined;
+    }, [refreshBookRoleAttention])
   );
 
   const loadVPEInfo = async () => {
@@ -228,7 +573,16 @@ export default function ClubMeetings() {
 
   const handleTabPress = (tab: TabItem, meetingId: string) => {
     if (tab.route) {
-      const routeWithId = tab.route.replace('meetingId=undefined', `meetingId=${meetingId}`);
+      let routeWithId = tab.route.replace('meetingId=undefined', `meetingId=${meetingId}`);
+      if (tab.id === 'toastmaster_corner' && tmodNeedsThemeByMeeting[meetingId]) {
+        routeWithId += '&showCongrats=1';
+      }
+      if (tab.id === 'educational_corner' && educationalSpeakerNeedsByMeeting[meetingId]) {
+        routeWithId += '&showCongrats=1';
+      }
+      if (tab.id === 'keynote_speaker' && keynoteSpeakerNeedsByMeeting[meetingId]) {
+        routeWithId += '&showCongrats=1';
+      }
       router.push(routeWithId);
       return;
     }
@@ -325,6 +679,17 @@ export default function ClubMeetings() {
                   agenda: 'View and manage meeting agenda',
                 };
                 const description = descriptions[tab.id] || '';
+                if (tab.id === 'book_role') {
+                  return (
+                    <BookRoleCoreCard
+                      key={tab.id}
+                      tab={tab}
+                      description={description}
+                      showAttention={bookRoleNoRolesByMeeting[meetingId] === true}
+                      onPress={() => handleTabPress(tab, meetingId)}
+                    />
+                  );
+                }
                 return (
                   <TouchableOpacity
                     key={tab.id}
@@ -334,7 +699,6 @@ export default function ClubMeetings() {
                     disabled={!!tab.comingSoon}
                   >
                     <View style={[styles.keyRoleIcon, { backgroundColor: tab.color + '25' }]}>
-                      {tab.id === 'book_role' && <Calendar size={20} color={tab.color} />}
                       {tab.id === 'overview' && <RefreshCw size={20} color={tab.color} />}
                       {tab.id === 'agenda' && <MonitorCheck size={20} color={tab.color} />}
                     </View>
@@ -455,6 +819,9 @@ export default function ClubMeetings() {
 
   const renderRolesTabContent = (meetingId: string) => {
     const { keyRoles, speakingRoles, supportRoles } = getTabsByCategory(meetingId);
+    const tmodNeedsAlert = tmodNeedsThemeByMeeting[meetingId] === true;
+    const educationalSpeakerNeedsAlert = educationalSpeakerNeedsByMeeting[meetingId] === true;
+    const keynoteSpeakerNeedsAlert = keynoteSpeakerNeedsByMeeting[meetingId] === true;
 
     return (
       <View style={styles.rolesTabContainer}>
@@ -464,27 +831,13 @@ export default function ClubMeetings() {
             <Text style={[styles.rolesSectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Key Roles</Text>
             <View style={styles.keyRolesList}>
               {keyRoles.map((tab) => (
-                <TouchableOpacity
+                <KeyRoleCardWithTmodAlert
                   key={tab.id}
-                  style={[styles.keyRoleCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                  tab={tab}
+                  meetingId={meetingId}
                   onPress={() => handleTabPress(tab, meetingId)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.keyRoleIcon, { backgroundColor: tab.color + '25' }]}>
-                    {tab.id === 'toastmaster_corner' && <MessageSquare size={20} color={tab.color} />}
-                    {tab.id === 'general_evaluator' && <Star size={20} color={tab.color} />}
-                    {tab.id === 'table_topic_corner' && <MessageSquare size={20} color={tab.color} />}
-                  </View>
-                  <View style={styles.keyRoleContent}>
-                    <Text style={[styles.keyRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      {tab.id === 'toastmaster_corner' ? 'Toastmaster of the Day' : tab.id === 'general_evaluator' ? 'General Evaluator' : 'Table Topics Master'}
-                    </Text>
-                    <Text style={[styles.keyRoleSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      {tab.id === 'toastmaster_corner' ? 'Leads meeting, introduces speakers' : tab.id === 'general_evaluator' ? 'Evaluates meeting and all roles' : 'Conducts impromptu speaking'}
-                    </Text>
-                  </View>
-                  <ChevronRight size={20} color={theme.colors.textSecondary} />
-                </TouchableOpacity>
+                  showAlert={tab.id === 'toastmaster_corner' && tmodNeedsAlert}
+                />
               ))}
             </View>
           </View>
@@ -497,21 +850,13 @@ export default function ClubMeetings() {
             <View style={[styles.rolesSectionDivider, { backgroundColor: theme.colors.border }]} />
             <View style={styles.speakingRolesGrid}>
               {speakingRoles.map((tab) => (
-                <TouchableOpacity
+                <SpeakingRoleCardWithAlert
                   key={tab.id}
-                  style={[styles.speakingRoleCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                  tab={tab}
+                  meetingId={meetingId}
                   onPress={() => handleTabPress(tab, meetingId)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.speakingRoleIcon, { backgroundColor: tab.color + '25' }]}>
-                    {tab.id === 'evaluation_corner' && <Mic size={22} color={tab.color} />}
-                    {tab.id === 'educational_corner' && <Lightbulb size={22} color={tab.color} />}
-                    {tab.id === 'keynote_speaker' && <Mic size={22} color={tab.color} />}
-                  </View>
-                  <Text style={[styles.speakingRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                    {tab.id === 'evaluation_corner' ? 'Prepared Speeches' : tab.id === 'educational_corner' ? 'Educational Corner' : 'Keynote Speaker'}
-                  </Text>
-                </TouchableOpacity>
+                  showAlert={(tab.id === 'educational_corner' && educationalSpeakerNeedsAlert) || (tab.id === 'keynote_speaker' && keynoteSpeakerNeedsAlert)}
+                />
               ))}
             </View>
           </View>
@@ -1549,6 +1894,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
   },
+  keyRoleCardTmodAlert: {
+    borderColor: '#fca5a5',
+    borderWidth: 1.5,
+  },
+  keyRoleAlertBadge: {
+    marginRight: 4,
+  },
   keyRoleIcon: {
     width: 40,
     height: 40,
@@ -1581,6 +1933,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',
+    position: 'relative',
+  },
+  speakingRoleCardAlert: {
+    borderColor: '#fca5a5',
+    borderWidth: 1.5,
+  },
+  speakingRoleAlertBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
   },
   speakingRoleIcon: {
     width: 44,

@@ -97,6 +97,8 @@ export default function BookARole() {
   const [selectedClassification, setSelectedClassification] = useState('all');
   const [classificationTabs, setClassificationTabs] = useState<ClassificationTab[]>([]);
   const [filteredRoles, setFilteredRoles] = useState<MeetingRole[]>([]);
+  const [withdrawConfirmRole, setWithdrawConfirmRole] = useState<MeetingRole | null>(null);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
   
   // Removed all speech, evaluation, theme, word form modal states and their associated form states
 
@@ -478,57 +480,55 @@ export default function BookARole() {
     }
   };
 
-  const handleWithdrawRole = async (role: MeetingRole) => {
+  const handleWithdrawRole = (role: MeetingRole) => {
     if (!user) return;
+    setWithdrawConfirmRole(role);
+  };
 
-    Alert.alert(
-      'Withdraw Role',
-      `Are you sure you want to withdraw from ${role.role_name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Withdraw',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('app_meeting_roles_management')
-                .update({
-                  assigned_user_id: null,
-                  booking_status: 'available',
-                  withdrawn_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', role.id);
+  const confirmWithdrawRole = async () => {
+    const role = withdrawConfirmRole;
+    if (!role || !user) return;
 
-              if (error) {
-                console.error('Error withdrawing role:', error);
-                Alert.alert('Error', 'Failed to withdraw role');
-                return;
-              }
+    setIsWithdrawing(true);
+    try {
+      const { error } = await supabase
+        .from('app_meeting_roles_management')
+        .update({
+          assigned_user_id: null,
+          booking_status: 'available',
+          withdrawn_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', role.id);
 
-              if (role.role_classification === 'educational_speaker') {
-                const { error: deleteError } = await supabase
-                  .from('app_meeting_educational_speaker')
-                  .delete()
-                  .eq('meeting_id', role.meeting_id)
-                  .eq('speaker_user_id', user.id);
+      if (error) {
+        console.error('Error withdrawing role:', error);
+        setWithdrawConfirmRole(null);
+        Alert.alert('Error', 'Failed to withdraw role');
+        return;
+      }
 
-                if (deleteError) {
-                  console.error('Error deleting educational speaker record:', deleteError);
-                }
-              }
+      if (role.role_classification === 'educational_speaker') {
+        const { error: deleteError } = await supabase
+          .from('app_meeting_educational_speaker')
+          .delete()
+          .eq('meeting_id', role.meeting_id)
+          .eq('speaker_user_id', user.id);
 
-              Alert.alert('Success', 'Role withdrawn successfully!');
-              loadMeetingRoles();
-            } catch (error) {
-              console.error('Error withdrawing role:', error);
-              Alert.alert('Error', 'An unexpected error occurred');
-            }
-          }
+        if (deleteError) {
+          console.error('Error deleting educational speaker record:', deleteError);
         }
-      ]
-    );
+      }
+
+      setWithdrawConfirmRole(null);
+      loadMeetingRoles();
+    } catch (error) {
+      console.error('Error withdrawing role:', error);
+      setWithdrawConfirmRole(null);
+      Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setIsWithdrawing(false);
+    }
   };
 
   // const handleEditCollaboration = (role: MeetingRole) => {
@@ -1273,6 +1273,51 @@ export default function BookARole() {
       {/* Removed Theme Form Modal */}
       
       {/* Removed Meeting Information Modal */}
+
+      {/* Withdraw confirmation modal - works on web (Alert.alert does not) */}
+      <Modal
+        visible={!!withdrawConfirmRole}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isWithdrawing && setWithdrawConfirmRole(null)}
+      >
+        <TouchableOpacity
+          style={styles.withdrawModalOverlay}
+          activeOpacity={1}
+          onPress={() => !isWithdrawing && setWithdrawConfirmRole(null)}
+        >
+          <TouchableOpacity
+            style={[styles.withdrawModalContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.withdrawModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Withdraw Role
+            </Text>
+            <Text style={[styles.withdrawModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Are you sure you want to withdraw from {withdrawConfirmRole?.role_name}?
+            </Text>
+            <View style={styles.withdrawModalButtons}>
+              <TouchableOpacity
+                style={[styles.withdrawModalCancelBtn, { borderColor: theme.colors.border }]}
+                onPress={() => !isWithdrawing && setWithdrawConfirmRole(null)}
+                disabled={isWithdrawing}
+              >
+                <Text style={[styles.withdrawModalCancelText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.withdrawModalConfirmBtn, { backgroundColor: '#dc2626', marginLeft: 12 }]}
+                onPress={confirmWithdrawRole}
+                disabled={isWithdrawing}
+              >
+                <Text style={styles.withdrawModalConfirmText} maxFontSizeMultiplier={1.3}>
+                  {isWithdrawing ? 'Withdrawing...' : 'Withdraw'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1708,6 +1753,58 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#ef4444',
+  },
+  withdrawModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  withdrawModalContent: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  withdrawModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  withdrawModalMessage: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  withdrawModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  withdrawModalCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  withdrawModalCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  withdrawModalConfirmBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  withdrawModalConfirmText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   emptyState: {
     alignItems: 'center',

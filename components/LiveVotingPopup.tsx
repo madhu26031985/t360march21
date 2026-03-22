@@ -1,12 +1,10 @@
-import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, AppState, AppStateStatus } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Vote, X } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
-
-const POLL_CHECK_INTERVAL_MS = 60000; // Check every 60 seconds
 
 export default function LiveVotingPopup() {
   const { theme } = useTheme();
@@ -74,6 +72,8 @@ export default function LiveVotingPopup() {
     }
   }, [user?.currentClubId, user?.id, dismissedUntil, showCount]);
 
+  const appState = useRef(AppState.currentState);
+
   useEffect(() => {
     if (!user?.currentClubId || !user?.id) {
       setVisible(false);
@@ -81,8 +81,16 @@ export default function LiveVotingPopup() {
     }
 
     checkAndShow();
-    const interval = setInterval(checkAndShow, POLL_CHECK_INTERVAL_MS);
-    return () => clearInterval(interval);
+
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && nextState === 'active') {
+        checkAndShow();
+      }
+      appState.current = nextState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
   }, [user?.currentClubId, user?.id, checkAndShow]);
 
   const handleVoteNow = () => {

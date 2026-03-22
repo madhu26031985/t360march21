@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Modal } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -60,6 +61,7 @@ export default function ToastmasterCorner() {
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
+  const [showCongratsModal, setShowCongratsModal] = useState(false);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [toastmasterOfDay, setToastmasterOfDay] = useState<ToastmasterOfDay | null>(null);
   const [toastmasterMeetingData, setToastmasterMeetingData] = useState<ToastmasterMeetingData | null>(null); // New state for consolidated data
@@ -121,6 +123,29 @@ export default function ToastmasterCorner() {
       }
     }, [meetingId, user?.currentClubId])
   );
+
+  const TMOD_CONGRATS_SEEN_KEY = meetingId ? `tmodCongratsSeen_${meetingId}` : null;
+
+  useEffect(() => {
+    if (isLoading || !meeting || !isToastmasterOfDay() || isThemeCompleted() || !TMOD_CONGRATS_SEEN_KEY) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(TMOD_CONGRATS_SEEN_KEY);
+        if (!cancelled && !seen) setShowCongratsModal(true);
+      } catch {
+        if (!cancelled) setShowCongratsModal(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isLoading, meeting, toastmasterOfDay?.assigned_user_id, toastmasterMeetingData?.theme_of_the_day, toastmasterMeetingData?.theme_summary, TMOD_CONGRATS_SEEN_KEY]);
+
+  const dismissCongratsModal = useCallback(() => {
+    if (TMOD_CONGRATS_SEEN_KEY) {
+      AsyncStorage.setItem(TMOD_CONGRATS_SEEN_KEY, '1').catch(() => {});
+    }
+    setShowCongratsModal(false);
+  }, [TMOD_CONGRATS_SEEN_KEY]);
 
   const loadToastmasterCornerData = async () => {
     if (!meetingId || !user?.currentClubId) {
@@ -575,17 +600,37 @@ export default function ToastmasterCorner() {
               <>
                 {/* Theme Title Box */}
                 <View style={[styles.section, { backgroundColor: '#ffffff' }]}>
-                  <View style={styles.themeHeaderRow}>
-                    <View style={[styles.themeHeaderIcon, { backgroundColor: '#FFF4E6' }]}>
-                      <Text style={styles.themeHeaderEmoji} maxFontSizeMultiplier={1.3}>🎭</Text>
+                  {!(isToastmasterOfDay() && !isThemeCompleted()) && (
+                    <View style={styles.themeHeaderRow}>
+                      <View style={[styles.themeHeaderIcon, { backgroundColor: '#FFF4E6' }]}>
+                        <Text style={styles.themeHeaderEmoji} maxFontSizeMultiplier={1.3}>🎭</Text>
+                      </View>
+                      <Text style={[styles.themeHeaderTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Theme of the Day</Text>
                     </View>
-                    <Text style={[styles.themeHeaderTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Theme of the Day</Text>
-                  </View>
+                  )}
 
                   {toastmasterMeetingData?.theme_of_the_day ? (
                     <Text style={[styles.themeTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {toastmasterMeetingData.theme_of_the_day}
                     </Text>
+                  ) : isToastmasterOfDay() && !isThemeCompleted() ? (
+                    <View style={styles.tmodInstructionsCard}>
+                      <Text style={[styles.tmodInstructionsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                        Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
+                      </Text>
+                      <Text style={[styles.tmodInstructionsBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                        Great step in leading the meeting as TMOD. Add your{' '}
+                        <Text style={styles.tmodInstructionsHighlight}>Theme of the Day</Text>
+                        {' '}and a short{' '}
+                        <Text style={styles.tmodInstructionsHighlight}>theme summary</Text>
+                        {' '}by clicking{' '}
+                        <Text style={styles.tmodInstructionsHighlight}>Add Theme</Text>
+                        {' '}to help members understand the context and what to expect.
+                      </Text>
+                      <Text style={[styles.tmodInstructionsBody, { color: theme.colors.textSecondary, marginTop: 12 }]} maxFontSizeMultiplier={1.3}>
+                        You can also add personal notes next to the theme summary to prepare and organize your thoughts. These are visible only to you. Use the quick access button beside Notes to jump to the agenda easily.
+                      </Text>
+                    </View>
                   ) : (
                     <View style={styles.themeComingSoonCard}>
                       <Text style={[styles.themeComingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -986,6 +1031,42 @@ export default function ToastmasterCorner() {
 
       </ScrollView>
 
+      {/* Congrats TMOD modal - shown once per meeting when TMOD has not added theme */}
+      <Modal
+        visible={showCongratsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissCongratsModal}
+      >
+        <TouchableOpacity
+          style={styles.congratsModalOverlay}
+          activeOpacity={1}
+          onPress={dismissCongratsModal}
+        >
+          <TouchableOpacity
+            style={[styles.congratsModalContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <Text style={[styles.congratsModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
+            </Text>
+            <Text style={[styles.congratsModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              You're the TMOD, leading the meeting as captain and host. Add{' '}
+              <Text style={styles.congratsModalHighlight}>Theme of the Day</Text>
+              {' '}and{' '}
+              <Text style={styles.congratsModalHighlight}>Theme summary</Text>
+              {' '}to set the stage!
+            </Text>
+            <TouchableOpacity
+              style={[styles.congratsModalButton, { backgroundColor: theme.colors.primary }]}
+              onPress={dismissCongratsModal}
+            >
+              <Text style={styles.congratsModalButtonText} maxFontSizeMultiplier={1.3}>Got it</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1002,6 +1083,45 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  congratsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  congratsModalContent: {
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+  },
+  congratsModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  congratsModalMessage: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  congratsModalHighlight: {
+    fontWeight: 'bold',
+    fontStyle: 'italic',
+  },
+  congratsModalButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  congratsModalButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',
@@ -1580,6 +1700,26 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  tmodInstructionsCard: {
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+  },
+  tmodInstructionsTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  tmodInstructionsBody: {
+    fontSize: 15,
+    lineHeight: 24,
+    textAlign: 'left',
+  },
+  tmodInstructionsHighlight: {
+    fontWeight: 'bold',
+    fontStyle: 'italic',
   },
   themeComingSoonCard: {
     position: 'relative',
