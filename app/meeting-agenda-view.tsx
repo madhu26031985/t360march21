@@ -108,7 +108,7 @@ function parseMemberPreparedAgenda(raw: unknown): Array<{
       evaluator_user_id: (s.evaluator_user_id as string) || null,
       evaluator_name: (s.evaluator_name as string) || null,
     }))
-    .filter(s => s.slot >= 1 && s.slot <= 3)
+    .filter(s => s.slot >= 1 && s.slot <= 5)
     .sort((a, b) => a.slot - b.slot);
 }
 
