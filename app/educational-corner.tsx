@@ -366,7 +366,7 @@ export default function EducationalCorner(): JSX.Element {
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: 20, flexGrow: 1 }}
       >
         {/* Meeting Card */}
         <View style={[styles.meetingCard, {
@@ -600,7 +600,7 @@ export default function EducationalCorner(): JSX.Element {
         {!educationalSpeaker?.assigned_user_id && (
           <View style={[styles.footerNavigationInline, {
             backgroundColor: theme.colors.surface,
-            marginTop: 24,
+            marginTop: 'auto',
             marginBottom: 16,
           }]}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>

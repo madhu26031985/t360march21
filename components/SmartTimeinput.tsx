@@ -36,10 +36,15 @@ export default function SmartTimeInput({
   const [showPicker, setShowPicker] = useState(false);
 
   React.useEffect(() => {
-    if (visible && Platform.OS === 'android') {
+    if (!visible) return;
+
+    // Keep picker value in sync with latest field value whenever modal opens.
+    setSelectedDate(parseInitialTime(initialTime));
+
+    if (Platform.OS === 'android') {
       setShowPicker(true);
     }
-  }, [visible]);
+  }, [visible, initialTime]);
 
   const formatTimeToHHMM = (date: Date): string => {
     const hours = date.getHours().toString().padStart(2, '0');
@@ -107,9 +112,9 @@ export default function SmartTimeInput({
                 value={selectedDate}
                 mode="time"
                 is24Hour={false}
-                display="spinner"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 onChange={handleChange}
-                textColor={theme.colors.text}
+                {...(Platform.OS === 'ios' ? { textColor: theme.colors.text } : {})}
               />
             </View>
 

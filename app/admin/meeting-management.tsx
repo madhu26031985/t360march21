@@ -131,9 +131,38 @@ export default function MeetingManagement() {
   const filterMeetings = () => {
     if (selectedTab === 'open') {
       setFilteredMeetings(meetings.filter(m => m.meeting_status === 'open'));
-    } else {
-      setFilteredMeetings(meetings.filter(m => m.meeting_status === 'close'));
+      return;
     }
+
+    // Closed: show latest closed meeting on top.
+    const closed = meetings.filter(m => m.meeting_status === 'close');
+
+    const parseTimePartToHMS = (timeStr?: string): { hh: number; mm: number; ss: number } => {
+      const t = String(timeStr || '00:00:00').trim();
+      const match = t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if (!match) return { hh: 0, mm: 0, ss: 0 };
+      return {
+        hh: parseInt(match[1], 10),
+        mm: parseInt(match[2], 10),
+        ss: parseInt(match[3] || '0', 10),
+      };
+    };
+
+    const getSortValue = (m: Meeting) => {
+      // Use JS's date parsing like the UI does for rendering.
+      const base = new Date(m.meeting_date);
+      if (Number.isNaN(base.getTime())) return 0;
+
+      // Prefer end time (close), fallback to start time.
+      const time = m.meeting_end_time || m.meeting_start_time || '00:00:00';
+      const { hh, mm, ss } = parseTimePartToHMS(time);
+
+      base.setHours(hh, mm, ss, 0);
+      return base.getTime();
+    };
+
+    closed.sort((a, b) => getSortValue(b) - getSortValue(a));
+    setFilteredMeetings(closed);
   };
 
   const handleAddMeeting = () => {
@@ -261,6 +290,72 @@ export default function MeetingManagement() {
     }
   };
 
+  const getOpenMeetingStatusBadge = (meeting: Meeting) => {
+    if (meeting.meeting_status !== 'open') {
+      return {
+        text: 'Closed',
+        textColor: '#6b7280',
+        backgroundColor: '#6b7280' + '20',
+      };
+    }
+
+    if (!meeting.meeting_date) {
+      return {
+        text: 'Open',
+        textColor: '#10b981',
+        backgroundColor: '#10b981' + '20',
+      };
+    }
+
+    const now = new Date();
+    const meetingDateMidnight = new Date(`${meeting.meeting_date}T00:00:00`);
+    const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const daysToGo = Math.ceil((meetingDateMidnight.getTime() - nowMidnight.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysToGo > 0) {
+      return {
+        text: `In ${daysToGo} days`,
+        textColor: '#ca8a04',
+        backgroundColor: '#fef3c7',
+      };
+    }
+
+    if (daysToGo < 0) {
+      return {
+        text: 'Completed',
+        textColor: '#16a34a',
+        backgroundColor: '#dcfce7',
+      };
+    }
+
+    // Same day (Today): if end time has passed, mark completed.
+    if (meeting.meeting_end_time) {
+      const endParts = meeting.meeting_end_time.split(':').map(Number);
+      const meetingEnd = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        endParts[0] || 0,
+        endParts[1] || 0,
+        0
+      );
+
+      if (now > meetingEnd) {
+        return {
+          text: 'Completed',
+          textColor: '#16a34a',
+          backgroundColor: '#dcfce7',
+        };
+      }
+    }
+
+    return {
+      text: 'Today',
+      textColor: '#dc2626',
+      backgroundColor: '#fee2e2',
+    };
+  };
+
   const MeetingCard = ({ meeting }: { meeting: Meeting }) => (
     <View style={[styles.meetingCard, { backgroundColor: theme.colors.surface }]}>
       {/* Meeting Information */}
@@ -281,17 +376,16 @@ export default function MeetingManagement() {
               #{meeting.meeting_number}
             </Text>
           )}
-          <View style={[
-            styles.statusTag,
-            { backgroundColor: meeting.meeting_status === 'open' ? '#10b981' + '20' : '#6b7280' + '20' }
-          ]}>
-            <Text style={[
-              styles.statusText,
-              { color: meeting.meeting_status === 'open' ? '#10b981' : '#6b7280' }
-            ]} maxFontSizeMultiplier={1.3}>
-              {meeting.meeting_status === 'open' ? 'Open' : 'Closed'}
-            </Text>
-          </View>
+          {(() => {
+            const badge = getOpenMeetingStatusBadge(meeting);
+            return (
+              <View style={[styles.statusTag, { backgroundColor: badge.backgroundColor }]}>
+                <Text style={[styles.statusText, { color: badge.textColor }]} maxFontSizeMultiplier={1.3}>
+                  {badge.text}
+                </Text>
+              </View>
+            );
+          })()}
         </View>
         
         {meeting.meeting_start_time && (

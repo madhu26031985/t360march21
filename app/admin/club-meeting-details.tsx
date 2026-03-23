@@ -371,67 +371,53 @@ export default function ClubMeetingDetails() {
             <View style={[styles.sectionIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
               <Calendar size={20} color={theme.colors.primary} />
             </View>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Schedule</Text>
-          </View>
-          
-          {/* Meeting Day and Frequency */}
-          <View style={styles.formRow}>
-            <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Day</Text>
-              <TouchableOpacity
-                style={[styles.dropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => setShowDayModal(true)}
-              >
-                <Calendar size={16} color={theme.colors.textSecondary} />
-                <Text style={[styles.dropdownText, { color: meetingDetails.meeting_day ? theme.colors.text : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  {getDayLabel()}
-                </Text>
-                <ChevronDown size={16} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Frequency</Text>
-              <TouchableOpacity
-                style={[styles.dropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => setShowFrequencyModal(true)}
-              >
-                <Repeat size={16} color={theme.colors.textSecondary} />
-                <Text style={[styles.dropdownText, { color: meetingDetails.meeting_frequency ? theme.colors.text : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  {getFrequencyLabel()}
-                </Text>
-                <ChevronDown size={16} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
+            <View style={styles.sectionHeaderText}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Schedule</Text>
+              <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Your schedule helps members know your regular meeting time.
+              </Text>
             </View>
           </View>
 
-          {/* Meeting Times */}
-          <View style={styles.formRow}>
-            <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Start Time</Text>
-              <TouchableOpacity
-                style={[styles.dropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => setShowStartTimeModal(true)}
-              >
-                <Clock size={16} color={theme.colors.textSecondary} />
-                <Text style={[styles.dropdownText, { color: meetingDetails.meeting_start_time ? theme.colors.text : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+          <View style={[styles.settingsList, { borderColor: theme.colors.border }]}>
+            <TouchableOpacity style={styles.settingRow} onPress={() => setShowDayModal(true)}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Day</Text>
+              <View style={styles.settingValueWrap}>
+                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{getDayLabel()}</Text>
+                <ChevronDown size={16} color={theme.colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+            <View style={[styles.settingDivider, { backgroundColor: theme.colors.border }]} />
+
+            <TouchableOpacity style={styles.settingRow} onPress={() => setShowFrequencyModal(true)}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Frequency</Text>
+              <View style={styles.settingValueWrap}>
+                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{getFrequencyLabel()}</Text>
+                <ChevronDown size={16} color={theme.colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+            <View style={[styles.settingDivider, { backgroundColor: theme.colors.border }]} />
+
+            <TouchableOpacity style={styles.settingRow} onPress={() => setShowStartTimeModal(true)}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Start Time</Text>
+              <View style={styles.settingValueWrap}>
+                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   {formatTime(meetingDetails.meeting_start_time)}
                 </Text>
-              </TouchableOpacity>
-            </View>
+                <ChevronDown size={16} color={theme.colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+            <View style={[styles.settingDivider, { backgroundColor: theme.colors.border }]} />
 
-            <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>End Time</Text>
-              <TouchableOpacity
-                style={[styles.dropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => setShowEndTimeModal(true)}
-              >
-                <Clock size={16} color={theme.colors.textSecondary} />
-                <Text style={[styles.dropdownText, { color: meetingDetails.meeting_end_time ? theme.colors.text : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            <TouchableOpacity style={styles.settingRow} onPress={() => setShowEndTimeModal(true)}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>End Time</Text>
+              <View style={styles.settingValueWrap}>
+                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   {formatTime(meetingDetails.meeting_end_time)}
                 </Text>
-              </TouchableOpacity>
-            </View>
+                <ChevronDown size={16} color={theme.colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -441,27 +427,29 @@ export default function ClubMeetingDetails() {
             <View style={[styles.sectionIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
               <MapPin size={20} color={theme.colors.primary} />
             </View>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Format</Text>
+            <View style={styles.sectionHeaderText}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Format</Text>
+              <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Choose how your members attend each meeting.
+              </Text>
+            </View>
           </View>
-          
-          {/* Meeting Type */}
-          <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Type</Text>
+
+          <View style={[styles.settingsList, { borderColor: theme.colors.border }]}>
             <TouchableOpacity
-              style={[styles.dropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+              style={styles.settingRow}
               onPress={() => {
                 setTempSelectedType(meetingDetails.meeting_type);
                 setShowTypeModal(true);
               }}
             >
-              <MapPin size={16} color={theme.colors.textSecondary} />
-              <Text style={[styles.dropdownText, { color: meetingDetails.meeting_type ? theme.colors.text : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {getTypeLabel()}
-              </Text>
-              <ChevronDown size={16} color={theme.colors.textSecondary} />
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Type</Text>
+              <View style={styles.settingValueWrap}>
+                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{getTypeLabel()}</Text>
+                <ChevronDown size={16} color={theme.colors.textSecondary} />
+              </View>
             </TouchableOpacity>
           </View>
-
         </View>
       </ScrollView>
 
@@ -817,8 +805,11 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 20,
+  },
+  sectionHeaderText: {
+    flex: 1,
   },
   sectionIconContainer: {
     width: 40,
@@ -831,6 +822,41 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  settingsList: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  settingRow: {
+    minHeight: 56,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  settingLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  settingValueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingValue: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  settingDivider: {
+    height: 1,
+    marginLeft: 14,
   },
   formRow: {
     flexDirection: 'row',

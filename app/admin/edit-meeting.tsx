@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseUrl } from '@/lib/supabase';
 import { ArrowLeft, Save } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -19,11 +19,18 @@ interface MeetingForm {
   link: string;
 }
 
+function normalizeRouteParam(value: string | string[] | undefined): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (Array.isArray(value) && value[0] && String(value[0]).trim()) return String(value[0]).trim();
+  return undefined;
+}
+
 export default function EditMeeting() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const params = useLocalSearchParams();
-  const meetingId = params.meetingId as string;
+  /** Web / Expo Router can pass query params as string | string[] */
+  const meetingId = normalizeRouteParam(params.meetingId as string | string[] | undefined);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -128,6 +135,35 @@ export default function EditMeeting() {
     });
   };
 
+  /** Local calendar date — avoid `toISOString().split('T')[0]` (UTC) shifting the day for non-UTC users */
+  const formatDateForDb = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  /** Postgres `time` — explicit 24h, avoids locale quirks in `toLocaleTimeString` on web */
+  const formatTimeForDb = (date: Date) => {
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const s = String(date.getSeconds()).padStart(2, '0');
+    return `${h}:${min}:${s}`;
+  };
+
+  const alertWebSafe = (title: string, message?: string, onOk?: () => void) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.alert(message ? `${title}\n\n${message}` : title);
+      onOk?.();
+      return;
+    }
+    if (onOk) {
+      Alert.alert(title, message || '', [{ text: 'OK', onPress: onOk }]);
+    } else {
+      Alert.alert(title, message || '');
+    }
+  };
+
   const handleDateChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
@@ -157,45 +193,69 @@ export default function EditMeeting() {
 
   const validateForm = (): boolean => {
     if (!meetingForm.title.trim()) {
-      Alert.alert('Error', 'Please enter a meeting title');
+      alertWebSafe('Error', 'Please enter a meeting title');
       return false;
     }
 
     if (!meetingForm.number.trim()) {
-      Alert.alert('Error', 'Please enter a meeting number');
+      alertWebSafe('Error', 'Please enter a meeting number');
       return false;
     }
 
     if (meetingForm.endTime <= meetingForm.startTime) {
-      Alert.alert('Time Error', 'Looks like the time is incorrect—please update it. The end time must be after the start time.');
+      alertWebSafe(
+        'Time Error',
+        'Looks like the time is incorrect—please update it. The end time must be after the start time.'
+      );
       return false;
     }
 
     if (meetingForm.mode === 'online' && !meetingForm.link.trim()) {
-      Alert.alert('Error', 'Please provide a meeting link for online meetings');
+      alertWebSafe('Error', 'Please provide a meeting link for online meetings');
       return false;
     }
 
     if (meetingForm.mode === 'in_person' && !meetingForm.location.trim()) {
-      Alert.alert('Error', 'Please provide a location for in-person meetings');
+      alertWebSafe('Error', 'Please provide a location for in-person meetings');
       return false;
+    }
+
+    if (meetingForm.mode === 'hybrid') {
+      if (!meetingForm.location.trim()) {
+        alertWebSafe('Error', 'Please provide a location for hybrid meetings');
+        return false;
+      }
+      if (!meetingForm.link.trim()) {
+        alertWebSafe('Error', 'Please provide a meeting link for hybrid meetings');
+        return false;
+      }
     }
 
     return true;
   };
 
   const handleUpdateMeeting = async () => {
-    if (!validateForm() || !user?.currentClubId) return;
+    if (!validateForm()) return;
+
+    if (!meetingId) {
+      alertWebSafe('Error', 'Meeting ID is missing. Go back and open Edit Meeting again.');
+      return;
+    }
+
+    if (!user?.currentClubId) {
+      alertWebSafe('Error', 'No active club selected. Open the app from your club context and try again.');
+      return;
+    }
 
     setIsSaving(true);
 
     try {
       const updateData = {
         meeting_title: meetingForm.title.trim(),
-        meeting_date: meetingForm.date.toISOString().split('T')[0],
+        meeting_date: formatDateForDb(meetingForm.date),
         meeting_number: meetingForm.number.trim() || null,
-        meeting_start_time: formatTime(meetingForm.startTime),
-        meeting_end_time: formatTime(meetingForm.endTime),
+        meeting_start_time: formatTimeForDb(meetingForm.startTime),
+        meeting_end_time: formatTimeForDb(meetingForm.endTime),
         meeting_mode: meetingForm.mode,
         meeting_location: meetingForm.mode === 'in_person' || meetingForm.mode === 'hybrid'
           ? meetingForm.location.trim() || null
@@ -203,13 +263,13 @@ export default function EditMeeting() {
         meeting_link: meetingForm.mode === 'online' || meetingForm.mode === 'hybrid'
           ? meetingForm.link.trim() || null
           : null,
-        updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      const { data: updatedRows, error } = await supabase
         .from('app_club_meeting')
         .update(updateData)
-        .eq('id', meetingId);
+        .eq('id', meetingId)
+        .select('id');
 
       if (error) {
         console.error('Error updating meeting:', error);
@@ -224,11 +284,11 @@ export default function EditMeeting() {
 
             const { data: club } = await supabase
               .from('clubs')
-              .select('club_name')
-              .eq('club_id', user?.currentClubId)
+              .select('name')
+              .eq('id', user?.currentClubId)
               .maybeSingle();
 
-            const apiUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/notify-slack-meeting-error`;
+            const apiUrl = `${supabaseUrl}/functions/v1/notify-slack-meeting-error`;
 
             await fetch(apiUrl, {
               method: 'POST',
@@ -241,7 +301,7 @@ export default function EditMeeting() {
                 userEmail: profile?.email,
                 userName: profile?.full_name,
                 clubId: user?.currentClubId,
-                clubName: club?.club_name,
+                clubName: club?.name,
                 errorMessage: `Meeting Update Failed: ${error.message || 'Unknown error'}`,
                 errorDetails: error,
                 meetingData: { ...updateData, meetingId },
@@ -255,22 +315,28 @@ export default function EditMeeting() {
         notifySlack();
 
         if (error.message && error.message.includes('time')) {
-          Alert.alert('Time Error', 'Looks like the time is incorrect—please update it.');
+          alertWebSafe('Time Error', 'Looks like the time is incorrect—please update it.');
         } else {
-          Alert.alert('Error', `Failed to update meeting: ${error.message || 'Unknown error'}`);
+          alertWebSafe(
+            'Error',
+            `Failed to update meeting: ${error.message || 'Unknown error'}${error.code ? ` (code: ${error.code})` : ''}`
+          );
         }
         return;
       }
 
-      Alert.alert('Success', 'Meeting updated successfully', [
-        {
-          text: 'OK',
-          onPress: () => router.replace('/admin/meeting-management')
-        }
-      ]);
-    } catch (error) {
+      if (!updatedRows || updatedRows.length === 0) {
+        alertWebSafe(
+          'Update Failed',
+          'No row was updated. This usually means the meeting ID did not match, or your account does not have ExComm/Club Leader permission for this club. Refresh the list and try again.'
+        );
+        return;
+      }
+
+      alertWebSafe('Success', 'Meeting updated successfully', () => router.replace('/admin/meeting-management'));
+    } catch (error: any) {
       console.error('Error updating meeting:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      alertWebSafe('Error', `An unexpected error occurred: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
@@ -279,12 +345,20 @@ export default function EditMeeting() {
   const confirmUpdateMeeting = () => {
     if (isSaving) return;
 
+    // RN Web: multi-button Alert often breaks (focus + aria-hidden); native confirm is reliable.
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('Are you sure you want to update this meeting?')) {
+        void handleUpdateMeeting();
+      }
+      return;
+    }
+
     Alert.alert(
       'Confirm update',
       'Are you sure you want to update this meeting?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Update Meeting', onPress: handleUpdateMeeting },
+        { text: 'Update Meeting', onPress: () => void handleUpdateMeeting() },
       ]
     );
   };

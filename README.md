@@ -63,7 +63,17 @@ eas build --platform android --profile production
 ## 🔧 Configuration
 
 ### Environment Variables
-The app uses Supabase for backend services. Configuration is handled in `app.json`:
+The app uses Supabase for backend services. Use `.env` (see `app.config.js`) with:
+
+- `EXPO_PUBLIC_SUPABASE_URL` — Supabase project URL (often `https://<project-ref>.supabase.co`)
+- `EXPO_PUBLIC_SUPABASE_ANON_KEY` — anon public key
+
+**Web + Realtime / WebSocket errors:** If `EXPO_PUBLIC_SUPABASE_URL` points at a **proxy** (e.g. `*.workers.dev`) that only forwards HTTPS and **not** `wss://…/realtime/v1/websocket`, the browser will log WebSocket failures and live subscriptions won’t work. Fixes:
+
+1. Prefer setting `EXPO_PUBLIC_SUPABASE_URL` to your real `https://<project-ref>.supabase.co` URL (Supabase allows browser CORS for the anon key).
+2. Or set **`EXPO_PUBLIC_SUPABASE_WEB_URL`** to `https://<project-ref>.supabase.co` so **web** uses the real host for REST + Realtime while native builds can keep a different `EXPO_PUBLIC_SUPABASE_URL` if you need that.
+
+You can still mirror keys in `app.json` `extra` for legacy tooling:
 
 ```json
 {
