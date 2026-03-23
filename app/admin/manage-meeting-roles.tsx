@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Users, User, Crown, Shield, Eye, UserCheck, Building2, Calendar, Clock, MapPin, Search, X, Trash2, UserRoundCog, UserPlus } from 'lucide-react-native';
+import { ArrowLeft, Users, User, Crown, Shield, Eye, UserCheck, Building2, Calendar, Clock, MapPin, Search, X, Trash2, UserRoundCog, UserPlus, Info } from 'lucide-react-native';
 import { Image } from 'react-native';
 import React from 'react';
  
@@ -74,6 +74,7 @@ export default function ManageMeetingRoles() {
   const [meetingRoles, setMeetingRoles] = useState<MeetingRoleAssignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showMemberModal, setShowMemberModal] = useState(false);
+  const [showRolesInfoModal, setShowRolesInfoModal] = useState(false);
   const [selectedRoleForAssignment, setSelectedRoleForAssignment] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<'available' | 'deleted'>('available');
   const [selectedClassification, setSelectedClassification] = useState<string>('');
@@ -513,7 +514,14 @@ export default function ManageMeetingRoles() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Manage Meeting Roles</Text>
-        <View style={styles.headerSpacer} />
+          <TouchableOpacity
+            style={styles.infoButton}
+            onPress={() => setShowRolesInfoModal(true)}
+            accessibilityLabel="Manage roles information"
+            accessibilityHint="Learn how available and deleted roles work"
+          >
+            <Info size={20} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -821,6 +829,83 @@ export default function ManageMeetingRoles() {
           </View>
         </View>
       </Modal>
+
+      {/* Roles Info Modal */}
+      <Modal
+        visible={showRolesInfoModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowRolesInfoModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.infoModal, { backgroundColor: theme.colors.background }]}>
+            <View style={[styles.infoModalHeader, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.infoModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Manage Roles
+              </Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowRolesInfoModal(false)}
+              >
+                <X size={17} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.infoModalBody} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                This section allows you to manage which roles are available for members to book for a meeting.
+              </Text>
+
+              <Text style={[styles.infoSectionHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                Available Roles
+              </Text>
+              <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                These are roles that members can view and book for the selected meeting.
+              </Text>
+
+              <Text style={[styles.infoSectionHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                Deleted Roles
+              </Text>
+              <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                These roles are not available for booking but can be restored anytime.
+              </Text>
+
+              <Text style={[styles.infoSectionHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                What You Can Do (as ExComm)
+              </Text>
+
+              <Text style={[styles.infoListItem, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Delete a role
+              </Text>
+              <Text style={[styles.infoListItem, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Move a role from Available to Deleted if it's not needed.
+              </Text>
+
+              <Text style={[styles.infoListItem, { color: theme.colors.textSecondary, marginTop: 6 }]} maxFontSizeMultiplier={1.2}>
+                Restore a role
+              </Text>
+              <Text style={[styles.infoListItem, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Bring back any deleted role to make it available again.
+              </Text>
+
+              <Text style={[styles.infoListItem, { color: theme.colors.textSecondary, marginTop: 6 }]} maxFontSizeMultiplier={1.2}>
+                Assign a role
+              </Text>
+              <Text style={[styles.infoListItem, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Assign a role to a member on their behalf.
+              </Text>
+
+              <Text style={[styles.infoListItem, { color: theme.colors.textSecondary, marginTop: 6 }]} maxFontSizeMultiplier={1.2}>
+                Unassign a role
+              </Text>
+              <Text style={[styles.infoListItem, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Remove a member from an assigned role if needed.
+              </Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1066,6 +1151,66 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 14,
     elevation: 18,
+  },
+
+  infoButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  infoModal: {
+    borderRadius: 14,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '70%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 7,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 18,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 17,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+  },
+  infoModalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  infoModalBody: {
+    paddingHorizontal: 17,
+    paddingVertical: 14,
+  },
+  infoSectionHeading: {
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 10,
+    marginBottom: 6,
+    letterSpacing: -0.1,
+  },
+  infoText: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  infoListItem: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    fontWeight: '600',
+    marginBottom: 4,
   },
   modalHeader: {
     flexDirection: 'row',

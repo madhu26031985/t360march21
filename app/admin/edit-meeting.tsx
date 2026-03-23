@@ -265,7 +265,7 @@ export default function EditMeeting() {
       Alert.alert('Success', 'Meeting updated successfully', [
         {
           text: 'OK',
-          onPress: () => router.back()
+          onPress: () => router.replace('/admin/meeting-management')
         }
       ]);
     } catch (error) {
@@ -274,6 +274,19 @@ export default function EditMeeting() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const confirmUpdateMeeting = () => {
+    if (isSaving) return;
+
+    Alert.alert(
+      'Confirm update',
+      'Are you sure you want to update this meeting?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Update Meeting', onPress: handleUpdateMeeting },
+      ]
+    );
   };
 
   if (isLoading) {
@@ -639,7 +652,7 @@ export default function EditMeeting() {
                   opacity: isSaving ? 0.7 : 1,
                 }
               ]}
-              onPress={handleUpdateMeeting}
+              onPress={confirmUpdateMeeting}
               disabled={isSaving}
             >
               <Save size={18} color="#ffffff" />

@@ -255,6 +255,8 @@ export default function MyJourney() {
     return '✅ Completed';
   })();
 
+  const isCurrentOpenMeetingCompleted = meetingStatusText.includes('Completed');
+
   const meetingDateObj = currentOpenMeetingDate ? new Date(`${currentOpenMeetingDate}T00:00:00`) : null;
   const meetingDayNum = meetingDateObj ? meetingDateObj.getDate() : null;
   const meetingMonth = meetingDateObj
@@ -556,6 +558,10 @@ export default function MyJourney() {
         setShowBookRoleAttention(false);
         return;
       }
+      if (isCurrentOpenMeetingCompleted) {
+        setShowBookRoleAttention(false);
+        return;
+      }
       const r = (user.clubRole || user.role || '').toLowerCase();
       if (r === 'guest') {
         setShowBookRoleAttention(false);
@@ -579,7 +585,7 @@ export default function MyJourney() {
       return () => {
         cancelled = true;
       };
-    }, [currentOpenMeetingId, user?.id, user?.currentClubId, user?.clubRole, user?.role])
+    }, [currentOpenMeetingId, user?.id, user?.currentClubId, user?.clubRole, user?.role, isCurrentOpenMeetingCompleted])
   );
 
   const BOOK_ROLE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours

@@ -392,25 +392,7 @@ export default function MeetingManagement() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Management</Text>
-        <TouchableOpacity
-          style={[
-            styles.addButton,
-            {
-              backgroundColor: meetings.filter(m => m.meeting_status === 'open').length >= 3
-                ? theme.colors.surface
-                : theme.colors.primary,
-              borderColor: theme.colors.border,
-              borderWidth: meetings.filter(m => m.meeting_status === 'open').length >= 3 ? 1 : 0,
-            }
-          ]}
-          onPress={handleAddMeeting}
-          disabled={meetings.filter(m => m.meeting_status === 'open').length >= 3}
-          accessibilityLabel="Create Meeting"
-          accessibilityHint="Create a new meeting"
-          {...(Platform.OS === 'web' && { title: 'Create Meeting' })}
-        >
-          <Plus size={16} color={meetings.filter(m => m.meeting_status === 'open').length >= 3 ? theme.colors.textSecondary : "#ffffff"} />
-        </TouchableOpacity>
+        <View style={styles.headerRightSpacer} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -459,6 +441,49 @@ export default function MeetingManagement() {
             </View>
           </View>
         )}
+
+        {/* Create Meeting Hero */}
+        <View style={[styles.createMeetingHeroWrap, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <TouchableOpacity
+            style={[
+              styles.createMeetingHeroButton,
+              {
+                backgroundColor:
+                  meetings.filter(m => m.meeting_status === 'open').length >= 3
+                    ? theme.colors.surface
+                    : '#0ea5e9' + '15',
+                borderColor:
+                  meetings.filter(m => m.meeting_status === 'open').length >= 3
+                    ? theme.colors.border
+                    : '#0ea5e9' + '40',
+              },
+            ]}
+            onPress={handleAddMeeting}
+            disabled={meetings.filter(m => m.meeting_status === 'open').length >= 3}
+            activeOpacity={0.8}
+            accessibilityLabel="Create meeting"
+            accessibilityHint="Create a new meeting"
+          >
+            <View style={styles.createMeetingHeroRow}>
+              <View style={[styles.createMeetingHeroIconCircle, { backgroundColor: '#0ea5e9' + '2a' }]}>
+                <Plus size={18} color={theme.colors.primary} />
+              </View>
+              <View style={styles.createMeetingHeroTextCol}>
+                <Text style={[styles.createMeetingHeroTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                  Create meeting
+                </Text>
+                <Text style={[styles.createMeetingHeroSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1} numberOfLines={2}>
+                  {meetings.filter(m => m.meeting_status === 'open').length >= 3
+                    ? 'Close an open meeting to create a new one.'
+                    : 'Add a new meeting for your club.'}
+                </Text>
+              </View>
+              <View style={{ justifyContent: 'center', paddingHorizontal: 2 }}>
+                <Text style={[styles.createMeetingHeroArrow, { color: theme.colors.textSecondary }]}>></Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
 
         {/* Tabs */}
         <View style={styles.tabsContainer}>
@@ -647,6 +672,55 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerRightSpacer: {
+    width: 40,
+    height: 40,
+  },
+
+  createMeetingHeroWrap: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 14,
+    borderRadius: 16,
+    padding: 1,
+  },
+  createMeetingHeroButton: {
+    borderRadius: 15,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+  },
+  createMeetingHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  createMeetingHeroIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createMeetingHeroTextCol: {
+    flex: 1,
+  },
+  createMeetingHeroTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  createMeetingHeroSubtext: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  createMeetingHeroArrow: {
+    fontSize: 26,
+    fontWeight: '700',
+    lineHeight: 26,
   },
   content: {
     flex: 1,

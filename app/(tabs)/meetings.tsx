@@ -410,10 +410,48 @@ export default function ClubMeetings() {
       setBookRoleNoRolesByMeeting({});
       return;
     }
+
+    const isMeetingCompletedForHighlight = (m: Meeting) => {
+      if (!m?.meeting_date) return false;
+
+      const now = new Date();
+      const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const meetingMidnight = new Date(`${m.meeting_date}T00:00:00`);
+
+      const diffDays = meetingMidnight.getTime() - nowMidnight.getTime();
+      const daysToGo = Math.ceil(diffDays / (1000 * 60 * 60 * 24));
+      if (daysToGo < 0) return true;
+
+      const hasTimes = !!(m.meeting_start_time || m.meeting_end_time);
+      if (!hasTimes) return false;
+
+      const endTime = m.meeting_end_time || '23:59:59';
+      const endParts = endTime.split(':').map(Number);
+      const meetingEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), endParts[0] || 0, endParts[1] || 0, 0);
+      return now > meetingEnd;
+    };
+
     let cancelled = false;
     (async () => {
       const next: Record<string, boolean> = {};
+
+      const meetingById = new Map<string, Meeting>();
+      if (currentMeeting?.id && !currentMeeting.isPlaceholder) meetingById.set(currentMeeting.id, currentMeeting);
+      nextMeetings.forEach((m) => {
+        if (m?.id && !m?.isPlaceholder) meetingById.set(m.id, m);
+      });
+      if (selectedMeeting?.id && !selectedMeeting.isPlaceholder) meetingById.set(selectedMeeting.id, selectedMeeting);
+      if (expandedNextMeeting && !String(expandedNextMeeting).startsWith('placeholder')) {
+        // We may not have the full object here, so completion-by-time only applies when meetingById has it.
+      }
+
       for (const mid of ids) {
+        const m = meetingById.get(mid);
+        if (m && isMeetingCompletedForHighlight(m)) {
+          next[mid] = false;
+          continue;
+        }
+
         const { count, error } = await supabase
           .from('app_meeting_roles_management')
           .select('id', { count: 'exact', head: true })
