@@ -106,7 +106,6 @@ export default function TimerReportDetails() {
 
   const speechCategories = [
     { value: 'prepared_speaker', label: 'Speeches', color: '#3b82f6', icon: 'message-circle', classifications: ['Prepared Speaker'], roleNames: ['Prepared Speaker 1', 'Prepared Speaker 2', 'Prepared Speaker 3', 'Prepared Speaker 4', 'Prepared Speaker 5'] },
-    { value: 'ice_breaker', label: 'Ice Breaker', color: '#06b6d4', icon: 'snowflake', classifications: ['Ice Breaker'], roleNames: ['Ice Breaker Speech 1', 'Ice Breaker Speech 2', 'Ice Breaker Speech 3', 'Ice Breaker Speech 4', 'Ice Breaker Speech 5'] },
     { value: 'table_topic_speaker', label: 'Table Topics', color: '#f97316', icon: 'mic', classifications: ['On-the-Spot Speaking'], roleNames: ['Table Topics Speaker 1', 'Table Topics Speaker 2', 'Table Topics Speaker 3', 'Table Topics Speaker 4', 'Table Topics Speaker 5', 'Table Topics Speaker 6', 'Table Topics Speaker 7', 'Table Topics Speaker 8', 'Table Topics Speaker 9', 'Table Topics Speaker 10', 'Table Topics Speaker 11', 'Table Topics Speaker 12'] },
     { value: 'evaluation', label: 'Evaluators', color: '#10b981', icon: 'message-square', classifications: ['Speech evaluvator', 'Master evaluvator', 'TT _ Evaluvator'], roleNames: ['Evaluator 1', 'Evaluator 2', 'Evaluator 3', 'Evaluator 4', 'Evaluator 5', 'Master Evaluator 1', 'Master Evaluator 2', 'Master Evaluator 3', 'Table Topic Evaluator 1', 'Table Topic Evaluator 2', 'Table Topic Evaluator 3'] },
     { value: 'educational_session', label: 'Education', color: '#8b5cf6', icon: 'lightbulb', classifications: ['Educational speaker'], roleNames: ['Educational Speaker'] },
@@ -700,8 +699,8 @@ export default function TimerReportDetails() {
       // Reload saved reports to show the new one
       await loadSavedReports();
       
-      // Switch to Individual Report tab to show the saved report
-      setSelectedTab('reports');
+      // Stay on Log Time tab (Summary tab removed)
+      setSelectedTab('record');
     } catch (error) {
       console.error('Error saving report:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -985,7 +984,7 @@ export default function TimerReportDetails() {
                   <Text style={[styles.howToSectionBadgeText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>Log Time Tab</Text>
                 </View>
                 {[
-                  { num: 1, color: '#F59E0B', title: 'Select Category', desc: 'Choose the category. Speech / Ice Breaker / Table Topics / Evaluation.' },
+                  { num: 1, color: '#F59E0B', title: 'Select Category', desc: 'Choose the category. Speech / Table Topics / Evaluation.' },
                   { num: 2, color: '#06B6D4', title: 'Select the Speaker', desc: "Choose the speaker's name from the dropdown." },
                   { num: 3, color: '#10B981', title: 'Use the Stopwatch', desc: <Text maxFontSizeMultiplier={1.3}>Tap <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Start</Text> when the speech begins and <Text style={{ fontWeight: '700' }}>Stop</Text> when it ends.</Text> },
                   { num: 4, color: '#6366F1', title: 'Enter the Final Time', desc: <Text maxFontSizeMultiplier={1.3}>The time can be entered or adjusted in <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Add Time</Text>.</Text> },
@@ -1163,35 +1162,6 @@ export default function TimerReportDetails() {
             ]} maxFontSizeMultiplier={1.3}>
               Log Time
             </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              {
-                backgroundColor: selectedTab === 'reports' ? '#3b82f6' : theme.colors.surface,
-                borderColor: selectedTab === 'reports' ? '#3b82f6' : theme.colors.border,
-              }
-            ]}
-            onPress={() => setSelectedTab('reports')}
-          >
-            <Text style={[
-              styles.tabText,
-              { color: selectedTab === 'reports' ? '#ffffff' : theme.colors.textSecondary }
-            ]} maxFontSizeMultiplier={1.3}>
-              Summary
-            </Text>
-            <View style={[
-              styles.tabCount,
-              { backgroundColor: selectedTab === 'reports' ? 'rgba(255, 255, 255, 0.2)' : '#3b82f6' + '20' }
-            ]}>
-              <Text style={[
-                styles.tabCountText,
-                { color: selectedTab === 'reports' ? '#ffffff' : '#3b82f6' }
-              ]} maxFontSizeMultiplier={1.3}>
-                {savedReports.length}
-              </Text>
-            </View>
           </TouchableOpacity>
         </View>
 
@@ -2268,7 +2238,7 @@ export default function TimerReportDetails() {
               </View>
 
               {[
-                { num: 1, color: '#F59E0B', title: 'Select Category', desc: 'Choose the category. Speech / Ice Breaker / Table Topics / Evaluation.' },
+                { num: 1, color: '#F59E0B', title: 'Select Category', desc: 'Choose the category. Speech / Table Topics / Evaluation.' },
                 { num: 2, color: '#06B6D4', title: 'Select the Speaker', desc: "Choose the speaker's name from the dropdown." },
                 { num: 3, color: '#10B981', title: 'Use the Stopwatch', desc: <Text maxFontSizeMultiplier={1.3}>Tap <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Start</Text> when the speech begins and <Text style={{ fontWeight: '700' }}>Stop</Text> when it ends.</Text> },
                 { num: 4, color: '#6366F1', title: 'Enter the Final Time', desc: <Text maxFontSizeMultiplier={1.3}>The time can be entered or adjusted in <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Add Time</Text>.</Text> },
