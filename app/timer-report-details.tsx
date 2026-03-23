@@ -1522,6 +1522,25 @@ export default function TimerReportDetails() {
               )}
             </View>
 
+            {/* Timer Review Report Button (below Timer Logged Time) */}
+            <TouchableOpacity
+              style={[styles.timerReviewButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+              onPress={() => router.push(`/timer-review?meetingId=${meetingId}`)}
+            >
+              <View style={[styles.timerReviewIconWrap, { backgroundColor: '#FFF4E6' }]}>
+                <FileBarChart size={20} color="#f59e0b" />
+              </View>
+              <View style={styles.timerReviewTextWrap}>
+                <Text style={[styles.timerReviewTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Timer Review
+                </Text>
+                <Text style={[styles.timerReviewSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  View report
+                </Text>
+              </View>
+              <ChevronDown size={18} color={theme.colors.textSecondary} style={{ transform: [{ rotate: '-90deg' }] }} />
+            </TouchableOpacity>
+
             {/* Navigation Quick Actions Box */}
             <View style={[styles.quickActionsBoxContainer, { backgroundColor: '#ffffff' }]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
@@ -1680,26 +1699,7 @@ export default function TimerReportDetails() {
           </>
         ) : (
           /* Summary Tab */
-          <View style={styles.reportsTabContent}>
-            {/* Timer Review Button */}
-            <TouchableOpacity
-              style={[styles.timerReviewButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-              onPress={() => router.push(`/timer-review?meetingId=${meetingId}`)}
-            >
-              <View style={[styles.timerReviewIconWrap, { backgroundColor: '#FFF4E6' }]}>
-                <FileBarChart size={20} color="#f59e0b" />
-              </View>
-              <View style={styles.timerReviewTextWrap}>
-                <Text style={[styles.timerReviewTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Timer Review
-                </Text>
-                <Text style={[styles.timerReviewSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  View report
-                </Text>
-              </View>
-              <ChevronDown size={18} color={theme.colors.textSecondary} style={{ transform: [{ rotate: '-90deg' }] }} />
-            </TouchableOpacity>
-          </View>
+          <View style={styles.reportsTabContent} />
         )}
       </ScrollView>
 
