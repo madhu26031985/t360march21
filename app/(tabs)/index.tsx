@@ -370,9 +370,9 @@ export default function MyJourney() {
       }
 
       try {
-        const thirtysixHoursAgo = new Date();
-        thirtysixHoursAgo.setHours(thirtysixHoursAgo.getHours() - 36);
-        const cutoffDate = thirtysixHoursAgo.toISOString().split('T')[0];
+        const fourHoursAgo = new Date();
+        fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
+        const cutoffDate = fourHoursAgo.toISOString().split('T')[0];
 
         const { data, error } = await supabase
           .from('app_club_meeting')
@@ -381,7 +381,7 @@ export default function MyJourney() {
           .eq('meeting_status', 'open')
           .gte('meeting_date', cutoffDate)
           .order('meeting_date', { ascending: true })
-          .limit(1);
+          .limit(5);
 
         if (error) {
           console.error('Error loading current open meeting:', error);
@@ -394,12 +394,22 @@ export default function MyJourney() {
           return;
         }
 
-        setCurrentOpenMeetingId((data && data[0]?.id) || null);
-        setCurrentOpenMeetingTitle((data && data[0]?.meeting_title) || null);
-        setCurrentOpenMeetingDate((data && data[0]?.meeting_date) || null);
-        setCurrentOpenMeetingStartTime((data && data[0]?.meeting_start_time) || null);
-        setCurrentOpenMeetingEndTime((data && data[0]?.meeting_end_time) || null);
-        setCurrentOpenMeetingMode((data && data[0]?.meeting_mode) || null);
+        const now = new Date();
+        const openMeetingsWithinWindow = (data || []).filter((meeting) => {
+          const meetingEndDateTime = new Date(
+            `${meeting.meeting_date}T${meeting.meeting_end_time || '23:59:59'}`
+          );
+          const hoursSinceMeetingEnd = (now.getTime() - meetingEndDateTime.getTime()) / (1000 * 60 * 60);
+          return hoursSinceMeetingEnd < 4;
+        });
+
+        const active = openMeetingsWithinWindow[0];
+        setCurrentOpenMeetingId(active?.id || null);
+        setCurrentOpenMeetingTitle(active?.meeting_title || null);
+        setCurrentOpenMeetingDate(active?.meeting_date || null);
+        setCurrentOpenMeetingStartTime(active?.meeting_start_time || null);
+        setCurrentOpenMeetingEndTime(active?.meeting_end_time || null);
+        setCurrentOpenMeetingMode(active?.meeting_mode || null);
       } catch (e) {
         console.error('Exception loading current open meeting:', e);
         setCurrentOpenMeetingId(null);

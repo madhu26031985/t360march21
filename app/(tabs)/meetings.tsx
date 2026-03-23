@@ -525,9 +525,9 @@ export default function ClubMeetings() {
     if (isFirstLoad) setIsLoading(true);
 
     try {
-      const thirtysixHoursAgo = new Date();
-      thirtysixHoursAgo.setHours(thirtysixHoursAgo.getHours() - 36);
-      const cutoffDate = thirtysixHoursAgo.toISOString().split('T')[0];
+      const fourHoursAgo = new Date();
+      fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
+      const cutoffDate = fourHoursAgo.toISOString().split('T')[0];
 
       const { data: openData, error: openError } = await supabase
         .from('app_club_meeting')
@@ -550,7 +550,7 @@ export default function ClubMeetings() {
       const openMeetings = allOpenMeetings.filter(meeting => {
         const meetingEndDateTime = new Date(`${meeting.meeting_date}T${meeting.meeting_end_time || '23:59:59'}`);
         const hoursSinceMeetingEnd = (now.getTime() - meetingEndDateTime.getTime()) / (1000 * 60 * 60);
-        return hoursSinceMeetingEnd < 36;
+        return hoursSinceMeetingEnd < 4;
       });
 
       if (openMeetings.length > 0) {
