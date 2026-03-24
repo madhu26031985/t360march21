@@ -29,6 +29,7 @@ function AppContent() {
         <Stack.Screen name="signup" options={{ headerShown: false }} />
         <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
         <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="vpe-nudges" options={{ headerShown: false }} />
         <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         <Stack.Screen name="accept-invitation" options={{ headerShown: false }} />
         <Stack.Screen name="create-club" options={{ headerShown: false }} />

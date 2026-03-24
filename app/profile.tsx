@@ -50,12 +50,18 @@ export default function Profile() {
   const [selectedSocialPlatform, setSelectedSocialPlatform] = useState<string | null>(null);
   const [tempSocialUrl, setTempSocialUrl] = useState('');
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
   const [isExComm, setIsExComm] = useState(false);
 
   useEffect(() => {
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
     loadProfile();
     loadUserRole();
-  }, []);
+  }, [user?.id]);
 
   const loadProfile = async () => {
     if (!user) {
@@ -179,7 +185,7 @@ export default function Profile() {
     setHasUnsavedChanges(true);
   };
 
-  const handleSave = async () => {
+  const performSaveProfile = async () => {
     if (!user) return;
 
     setIsSaving(true);
@@ -202,19 +208,46 @@ export default function Profile() {
 
       if (error) {
         console.error('Error updating profile:', error);
-        Alert.alert('Error', 'Failed to update profile');
+        if (Platform.OS === 'web') {
+          // eslint-disable-next-line no-alert
+          alert('Failed to update profile. Please try again.');
+        } else {
+          Alert.alert('Error', 'Failed to update profile');
+        }
         return;
       }
 
-      Alert.alert('Success', 'Profile updated successfully');
+      if (Platform.OS === 'web') {
+        // Native Alert is unreliable on web; use browser dialog for result feedback.
+        // eslint-disable-next-line no-alert
+        alert('Profile updated successfully');
+      } else {
+        Alert.alert('Success', 'Profile updated successfully');
+      }
       setHasUnsavedChanges(false);
       await refreshUserProfile();
     } catch (error) {
       console.error('Error updating profile:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      if (Platform.OS === 'web') {
+        // eslint-disable-next-line no-alert
+        alert('An unexpected error occurred. Please try again.');
+      } else {
+        Alert.alert('Error', 'An unexpected error occurred');
+      }
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSave = () => {
+    if (!user || isSaving || !hasUnsavedChanges) return;
+    // Alert.alert with multiple buttons is unreliable on React Native Web (no dialog / focus issues).
+    setShowSaveConfirmModal(true);
+  };
+
+  const confirmSaveFromModal = () => {
+    setShowSaveConfirmModal(false);
+    void performSaveProfile();
   };
 
   const checkAndRequestPermissions = async (useCamera: boolean): Promise<boolean> => {
@@ -816,6 +849,65 @@ export default function Profile() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Save confirmation — Modal works on web; multi-button Alert.alert often does not */}
+      <Modal
+        visible={showSaveConfirmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isSaving && setShowSaveConfirmModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => !isSaving && setShowSaveConfirmModal(false)}
+        >
+          <TouchableOpacity
+            style={styles.modal}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle} maxFontSizeMultiplier={1.3}>
+                Save changes?
+              </Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                disabled={isSaving}
+                onPress={() => setShowSaveConfirmModal(false)}
+              >
+                <X size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.saveConfirmMessage} maxFontSizeMultiplier={1.3}>
+              Your profile will be updated with the information you entered.
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' }]}
+                disabled={isSaving}
+                onPress={() => setShowSaveConfirmModal(false)}
+              >
+                <Text style={[styles.modalButtonText, { color: '#111827' }]} maxFontSizeMultiplier={1.3}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }]}
+                disabled={isSaving}
+                onPress={confirmSaveFromModal}
+              >
+                <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]} maxFontSizeMultiplier={1.3}>
+                  {isSaving ? 'Saving…' : 'Save'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Info Modal */}
       <Modal
         visible={showInfoModal}
@@ -1164,6 +1256,13 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     fontSize: 15,
     color: '#111827',
+    marginBottom: 20,
+  },
+  saveConfirmMessage: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#4B5563',
+    lineHeight: 22,
     marginBottom: 20,
   },
   modalButtons: {

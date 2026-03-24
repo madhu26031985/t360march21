@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
@@ -235,23 +236,60 @@ interface JourneyListCardProps {
   color: string;
   onPress: () => void;
   inline?: boolean;
+  /** Amber border + pulse + dot (same language as Meeting Actions pending) */
+  showPendingHighlight?: boolean;
 }
 
-function JourneyListCard({ title, description, icon, color, onPress, inline }: JourneyListCardProps) {
+function JourneyListCard({
+  title,
+  description,
+  icon,
+  color,
+  onPress,
+  inline,
+  showPendingHighlight,
+}: JourneyListCardProps) {
   const { theme } = useTheme();
+  const alertScale = useSharedValue(1);
+  const iconPulse = useSharedValue(1);
+  useEffect(() => {
+    if (!showPendingHighlight) {
+      alertScale.value = 1;
+      iconPulse.value = 1;
+      return;
+    }
+    alertScale.value = withRepeat(
+      withSequence(withTiming(1.2, { duration: 500 }), withTiming(1, { duration: 500 })),
+      -1,
+      true
+    );
+    iconPulse.value = withRepeat(
+      withSequence(withTiming(1.06, { duration: 600 }), withTiming(1, { duration: 600 })),
+      -1,
+      true
+    );
+  }, [showPendingHighlight]);
+  const alertAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: alertScale.value }],
+  }));
+  const iconPulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconPulse.value }],
+  }));
+
   return (
     <TouchableOpacity
       style={[
         styles.journeyListCard,
         !inline && { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
         inline && styles.journeyListCardInline,
+        showPendingHighlight && styles.journeyListCardPending,
       ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[styles.journeyListIconWrap, { backgroundColor: `${color}20` }]}>
+      <Animated.View style={[styles.journeyListIconWrap, { backgroundColor: `${color}20` }, iconPulseStyle]}>
         {icon}
-      </View>
+      </Animated.View>
       <View style={styles.journeyListTextCol}>
         <Text style={[styles.journeyListTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
           {title}
@@ -260,6 +298,11 @@ function JourneyListCard({ title, description, icon, color, onPress, inline }: J
           {description}
         </Text>
       </View>
+      {showPendingHighlight && (
+        <Animated.View pointerEvents="box-none" style={[styles.journeyListAlertBadge, alertAnimatedStyle]}>
+          <AlertCircle size={12} color={PENDING_ACTION_UI.accent} fill={PENDING_ACTION_UI.accent} />
+        </Animated.View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -299,9 +342,20 @@ export default function MyJourney() {
   const [showBookRolePrompt, setShowBookRolePrompt] = useState<boolean>(false);
   const [showBookRoleAttention, setShowBookRoleAttention] = useState<boolean>(false);
   const bookRolePromptHandledThisSession = useRef<boolean>(false);
+  /** Profile “About” has non-empty text */
+  const [profileHasAbout, setProfileHasAbout] = useState<boolean>(false);
+  const [profileFieldsLoaded, setProfileFieldsLoaded] = useState<boolean>(false);
+  const [showIncompleteProfileModal, setShowIncompleteProfileModal] = useState<boolean>(false);
+  const [showPreparedSpeechDetailsModal, setShowPreparedSpeechDetailsModal] = useState<boolean>(false);
+  const [showGrammarianWotdModal, setShowGrammarianWotdModal] = useState<boolean>(false);
+  const [showToastmasterThemeModal, setShowToastmasterThemeModal] = useState<boolean>(false);
+  const [showEducationalSpeakerModal, setShowEducationalSpeakerModal] = useState<boolean>(false);
+  /** Vice President Education for current club (`club_profiles.vpe_id`) */
+  const [isVPEForCurrentClub, setIsVPEForCurrentClub] = useState<boolean>(false);
 
   const voteNowScale = useSharedValue(1);
   const heroReminderFade = useSharedValue(1);
+  const headerAvatarRingPulse = useSharedValue(1);
   useEffect(() => {
     voteNowScale.value = withRepeat(
       withSequence(
@@ -314,6 +368,9 @@ export default function MyJourney() {
   }, []);
   const voteNowAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: voteNowScale.value }],
+  }));
+  const headerAvatarRingAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: headerAvatarRingPulse.value }],
   }));
   const heroReminderTextAnimatedStyle = useAnimatedStyle(() => ({
     opacity: heroReminderFade.value,
@@ -455,11 +512,80 @@ export default function MyJourney() {
     if (isAuthenticated) loadJourneyStats();
   }, [isAuthenticated, user?.id, user?.currentClubId]);
 
-  useEffect(() => {
-    if (user?.id) {
-      loadUserAvatar();
+  const loadUserJourneyProfileFields = useCallback(async () => {
+    const uid = user?.id;
+    if (!uid) {
+      setUserAvatar(null);
+      setProfileHasAbout(false);
+      setProfileFieldsLoaded(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('app_user_profiles')
+        .select('avatar_url, About')
+        .eq('id', uid)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error loading journey profile fields:', error);
+        setUserAvatar(null);
+        setProfileHasAbout(false);
+        return;
+      }
+
+      const row = data as { avatar_url?: string | null; About?: string | null } | null;
+      const url = (row?.avatar_url ?? '').trim();
+      setUserAvatar(url || null);
+      const aboutRaw = row?.About;
+      setProfileHasAbout(typeof aboutRaw === 'string' && aboutRaw.trim().length > 0);
+    } catch (e) {
+      console.error('Could not load journey profile fields:', e);
+      setUserAvatar(null);
+      setProfileHasAbout(false);
+    } finally {
+      setProfileFieldsLoaded(true);
     }
   }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserJourneyProfileFields();
+    }, [loadUserJourneyProfileFields])
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadVPEForClub = async () => {
+      if (!user?.id || !user?.currentClubId) {
+        if (!cancelled) setIsVPEForCurrentClub(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('club_profiles')
+          .select('vpe_id')
+          .eq('club_id', user.currentClubId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) {
+          console.error('Error loading VPE for Journey:', error);
+          setIsVPEForCurrentClub(false);
+          return;
+        }
+        setIsVPEForCurrentClub(data?.vpe_id === user.id);
+      } catch (e) {
+        if (!cancelled) {
+          console.error('Error loading VPE for Journey:', e);
+          setIsVPEForCurrentClub(false);
+        }
+      }
+    };
+    loadVPEForClub();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.currentClubId]);
 
   useEffect(() => {
     const loadCurrentOpenMeeting = async () => {
@@ -1120,32 +1246,116 @@ export default function MyJourney() {
     [currentOpenMeetingId]
   );
 
-  const loadUserAvatar = async () => {
-    if (!user) return;
+  const showMyProfilePending =
+    profileFieldsLoaded && (!userAvatar || !profileHasAbout);
+  const showHeaderAvatarPending = profileFieldsLoaded && !userAvatar;
 
-    try {
-      const { data, error } = await supabase
-        .from('app_user_profiles')
-        .select('avatar_url')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading avatar:', error);
-        setUserAvatar(null);
-        return;
-      }
-
-      if ((data as any)?.avatar_url) {
-        setUserAvatar((data as any).avatar_url);
-      } else {
-        setUserAvatar(null);
-      }
-    } catch (error) {
-      console.error('Could not load user avatar:', error);
-      setUserAvatar(null);
+  const handleMyProfilePress = useCallback(() => {
+    if (showMyProfilePending) {
+      setShowIncompleteProfileModal(true);
+      return;
     }
-  };
+    router.push('/profile');
+  }, [showMyProfilePending]);
+
+  const goToProfileFromIncompleteModal = useCallback(() => {
+    setShowIncompleteProfileModal(false);
+    router.push('/profile');
+  }, []);
+
+  const handlePreparedSpeechesPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting for prepared speeches.');
+      return;
+    }
+    if (preparedSpeakerNeedsSpeechDetailsAlert) {
+      setShowPreparedSpeechDetailsModal(true);
+      return;
+    }
+    router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
+  }, [currentOpenMeetingId, preparedSpeakerNeedsSpeechDetailsAlert]);
+
+  const goToEvaluationCornerFromSpeechModal = useCallback(() => {
+    setShowPreparedSpeechDetailsModal(false);
+    if (currentOpenMeetingId) {
+      router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
+    }
+  }, [currentOpenMeetingId]);
+
+  const handleGrammarianPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting for Grammarian.');
+      return;
+    }
+    if (grammarianNeedsWordOfTheDayAlert) {
+      setShowGrammarianWotdModal(true);
+      return;
+    }
+    router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
+  }, [currentOpenMeetingId, grammarianNeedsWordOfTheDayAlert]);
+
+  const goToGrammarianFromWotdModal = useCallback(() => {
+    setShowGrammarianWotdModal(false);
+    if (currentOpenMeetingId) {
+      router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
+    }
+  }, [currentOpenMeetingId]);
+
+  const handleToastmasterPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting for Toastmaster.');
+      return;
+    }
+    if (tmodNeedsThemeAlert) {
+      setShowToastmasterThemeModal(true);
+      return;
+    }
+    router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}`);
+  }, [currentOpenMeetingId, tmodNeedsThemeAlert]);
+
+  const goToToastmasterFromThemeModal = useCallback(() => {
+    setShowToastmasterThemeModal(false);
+    if (currentOpenMeetingId) {
+      router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}&showCongrats=1`);
+    }
+  }, [currentOpenMeetingId]);
+
+  const handleEducationalSpeakerPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting for Educational speaker.');
+      return;
+    }
+    if (educationalSpeakerNeedsAlert) {
+      setShowEducationalSpeakerModal(true);
+      return;
+    }
+    router.push({
+      pathname: '/educational-corner',
+      params: { meetingId: currentOpenMeetingId },
+    });
+  }, [currentOpenMeetingId, educationalSpeakerNeedsAlert]);
+
+  const goToEducationalFromModal = useCallback(() => {
+    setShowEducationalSpeakerModal(false);
+    if (currentOpenMeetingId) {
+      router.push({
+        pathname: '/educational-corner',
+        params: { meetingId: currentOpenMeetingId, showCongrats: '1' },
+      });
+    }
+  }, [currentOpenMeetingId]);
+
+  useEffect(() => {
+    if (!showHeaderAvatarPending) {
+      headerAvatarRingPulse.value = 1;
+      return;
+    }
+    headerAvatarRingPulse.value = withRepeat(
+      withSequence(withTiming(1.06, { duration: 650 }), withTiming(1, { duration: 650 })),
+      -1,
+      true
+    );
+  }, [showHeaderAvatarPending]);
 
   if (!isAuthenticated || !user) {
     return (
@@ -1170,17 +1380,25 @@ export default function MyJourney() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <View style={styles.profileHeader}>
-          <View style={styles.profileAvatar}>
-            {userAvatar ? (
-              <Image 
-                source={{ uri: userAvatar }} 
-                style={styles.profileAvatarImage}
-                onError={() => setUserAvatar(null)}
-              />
-            ) : (
-              <User size={20} color="#ffffff" />
-            )}
-          </View>
+          <Animated.View
+            style={[
+              styles.profileAvatarOuter,
+              showHeaderAvatarPending && styles.profileAvatarOuterPending,
+              showHeaderAvatarPending && headerAvatarRingAnimatedStyle,
+            ]}
+          >
+            <View style={styles.profileAvatar}>
+              {userAvatar ? (
+                <Image
+                  source={{ uri: userAvatar }}
+                  style={styles.profileAvatarImage}
+                  onError={() => setUserAvatar(null)}
+                />
+              ) : (
+                <User size={20} color="#ffffff" />
+              )}
+            </View>
+          </Animated.View>
           <View style={styles.profileInfo}>
             <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
               {user.fullName}
@@ -1252,8 +1470,9 @@ export default function MyJourney() {
                   description="View and edit your personal information"
                   icon={<User size={18} color="#3b82f6" />}
                   color="#3b82f6"
-                  onPress={() => router.push('/profile')}
+                  onPress={handleMyProfilePress}
                   inline
+                  showPendingHighlight={showMyProfilePending}
                 />
                 <JourneyListCard
                   title="My Speeches"
@@ -1285,13 +1504,44 @@ export default function MyJourney() {
                   <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
                   {/* Profile, Speeches, Mentor */}
                   <View style={styles.journeyListCardsContainer}>
+                    {isVPEForCurrentClub && (
+                      <TouchableOpacity
+                        style={[
+                          styles.journeyListCard,
+                          styles.journeyListCardInline,
+                          {
+                            backgroundColor: theme.colors.surface,
+                            borderWidth: 1,
+                            borderColor: theme.colors.border,
+                          },
+                        ]}
+                        onPress={() => router.push('/vpe-nudges')}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.journeyListIconWrap, { backgroundColor: '#25D366' }]}>
+                          <FontAwesome name="whatsapp" size={18} color="#ffffff" />
+                        </View>
+                        <View style={styles.journeyListTextCol}>
+                          <Text style={[styles.journeyListTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                            VPE Nudge
+                          </Text>
+                          <Text
+                            style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]}
+                            maxFontSizeMultiplier={1.2}
+                          >
+                            Nudge members to book the role
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
                     <JourneyListCard
                       title="My Profile"
                       description="View and edit your personal information"
                       icon={<User size={18} color="#3b82f6" />}
                       color="#3b82f6"
-                      onPress={() => router.push('/profile')}
+                      onPress={handleMyProfilePress}
                       inline
+                      showPendingHighlight={showMyProfilePending}
                     />
                     <JourneyListCard
                       title="My Speeches"
@@ -1443,14 +1693,7 @@ export default function MyJourney() {
                   color="#84cc16"
                   avatarUrls={journeyToastmasterDisplayAvatarUrls}
                   showAlert={tmodNeedsThemeAlert}
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for Toastmaster.');
-                      return;
-                    }
-                    const q = tmodNeedsThemeAlert ? '&showCongrats=1' : '';
-                    router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}${q}`);
-                  }}
+                  onPress={handleToastmasterPress}
                 />
                 <MeetingActionButton
                   title="Prepared Speeches"
@@ -1458,13 +1701,7 @@ export default function MyJourney() {
                   color="#14b8a6"
                   avatarUrls={journeyPreparedSpeakerAvatarUrls}
                   showAlert={preparedSpeakerNeedsSpeechDetailsAlert}
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for prepared speeches.');
-                      return;
-                    }
-                    router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
-                  }}
+                  onPress={handlePreparedSpeechesPress}
                 />
                 <MeetingActionButton
                   title="Grammarian"
@@ -1472,13 +1709,7 @@ export default function MyJourney() {
                   color="#8b5cf6"
                   avatarUrls={journeyGrammarianAvatarUrls}
                   showAlert={grammarianNeedsWordOfTheDayAlert}
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for Grammarian.');
-                      return;
-                    }
-                    router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
-                  }}
+                  onPress={handleGrammarianPress}
                 />
                 <MeetingActionButton
                   title="Educational speaker"
@@ -1486,19 +1717,7 @@ export default function MyJourney() {
                   color="#f97316"
                   avatarUrls={journeyEducationalAvatarUrls}
                   showAlert={educationalSpeakerNeedsAlert}
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for Educational speaker.');
-                      return;
-                    }
-                    router.push({
-                      pathname: '/educational-corner',
-                      params: {
-                        meetingId: currentOpenMeetingId,
-                        ...(educationalSpeakerNeedsAlert && { showCongrats: '1' }),
-                      },
-                    });
-                  }}
+                  onPress={handleEducationalSpeakerPress}
                 />
                 <MeetingActionButton
                   title="Table Topics Master"
@@ -1687,6 +1906,274 @@ export default function MyJourney() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* Incomplete profile — opens when user taps My Profile while photo or About is missing */}
+      <Modal
+        visible={showIncompleteProfileModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowIncompleteProfileModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.bookRolePromptOverlay}
+          activeOpacity={1}
+          onPress={() => setShowIncompleteProfileModal(false)}
+        >
+          <TouchableOpacity
+            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <View style={styles.bookRolePromptHeaderRow}>
+              <Text style={[styles.bookRolePromptTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Finish your profile
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowIncompleteProfileModal(false)}
+                style={styles.bookRolePromptCloseBtn}
+                hitSlop={12}
+              >
+                <X size={20} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
+              A complete profile helps your club recognize and connect with you.
+            </Text>
+            <View style={[styles.bookRolePromptDivider, { backgroundColor: theme.colors.border }]} />
+            <View style={styles.incompleteProfileBulletBlock}>
+              {!userAvatar && (
+                <View style={styles.incompleteProfileBulletRow}>
+                  <View style={[styles.incompleteProfileDot, { backgroundColor: PENDING_ACTION_UI.accent }]} />
+                  <Text style={[styles.incompleteProfileBulletText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Add a profile picture (tap Change Photo on Edit Profile).
+                  </Text>
+                </View>
+              )}
+              {!profileHasAbout && (
+                <View style={styles.incompleteProfileBulletRow}>
+                  <View style={[styles.incompleteProfileDot, { backgroundColor: PENDING_ACTION_UI.accent }]} />
+                  <Text style={[styles.incompleteProfileBulletText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Fill in your About section so others know your story.
+                  </Text>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 16 }]}
+              onPress={goToProfileFromIncompleteModal}
+            >
+              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
+                Go to Edit Profile
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.incompleteProfileLaterBtn}
+              onPress={() => setShowIncompleteProfileModal(false)}
+              hitSlop={12}
+            >
+              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Not now
+              </Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Prepared Speeches — reminder when speech details are missing (amber highlight) */}
+      <Modal
+        visible={showPreparedSpeechDetailsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPreparedSpeechDetailsModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.bookRolePromptOverlay}
+          activeOpacity={1}
+          onPress={() => setShowPreparedSpeechDetailsModal(false)}
+        >
+          <TouchableOpacity
+            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <View style={[styles.bookRolePromptHeaderRow, styles.preparedSpeechModalHeaderRow]}>
+              <Text
+                style={[styles.bookRolePromptTitle, styles.preparedSpeechModalTitle, { color: theme.colors.text }]}
+                maxFontSizeMultiplier={1.3}
+              >
+                Add Speech details
+              </Text>
+            </View>
+            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
+              Add your title, pathway, and evaluation form to help evaluators provide accurate, guideline-based feedback.
+            </Text>
+            <TouchableOpacity
+              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 8 }]}
+              onPress={goToEvaluationCornerFromSpeechModal}
+            >
+              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
+                Update now
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.incompleteProfileLaterBtn}
+              onPress={() => setShowPreparedSpeechDetailsModal(false)}
+              hitSlop={12}
+            >
+              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Not now
+              </Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Grammarian — Word of the Day missing (amber highlight) */}
+      <Modal
+        visible={showGrammarianWotdModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGrammarianWotdModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.bookRolePromptOverlay}
+          activeOpacity={1}
+          onPress={() => setShowGrammarianWotdModal(false)}
+        >
+          <TouchableOpacity
+            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <View style={[styles.bookRolePromptHeaderRow, styles.preparedSpeechModalHeaderRow]}>
+              <Text
+                style={[styles.bookRolePromptTitle, styles.preparedSpeechModalTitle, { color: theme.colors.text }]}
+                maxFontSizeMultiplier={1.3}
+              >
+                Add Word of the Day
+              </Text>
+            </View>
+            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
+              Add the Word of the Day and supporting details so members can learn and use it during the session.
+            </Text>
+            <TouchableOpacity
+              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 8 }]}
+              onPress={goToGrammarianFromWotdModal}
+            >
+              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
+                Update now
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.incompleteProfileLaterBtn}
+              onPress={() => setShowGrammarianWotdModal(false)}
+              hitSlop={12}
+            >
+              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Not now
+              </Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Toastmaster — Theme of the Day missing (amber highlight) */}
+      <Modal
+        visible={showToastmasterThemeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowToastmasterThemeModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.bookRolePromptOverlay}
+          activeOpacity={1}
+          onPress={() => setShowToastmasterThemeModal(false)}
+        >
+          <TouchableOpacity
+            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <View style={[styles.bookRolePromptHeaderRow, styles.preparedSpeechModalHeaderRow]}>
+              <Text
+                style={[styles.bookRolePromptTitle, styles.preparedSpeechModalTitle, { color: theme.colors.text }]}
+                maxFontSizeMultiplier={1.3}
+              >
+                Add Theme of the Day
+              </Text>
+            </View>
+            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
+              Add the meeting theme and any welcome details so members know the tone and focus for the day.
+            </Text>
+            <TouchableOpacity
+              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 8 }]}
+              onPress={goToToastmasterFromThemeModal}
+            >
+              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
+                Update now
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.incompleteProfileLaterBtn}
+              onPress={() => setShowToastmasterThemeModal(false)}
+              hitSlop={12}
+            >
+              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Not now
+              </Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Educational speaker — details missing (amber highlight) */}
+      <Modal
+        visible={showEducationalSpeakerModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEducationalSpeakerModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.bookRolePromptOverlay}
+          activeOpacity={1}
+          onPress={() => setShowEducationalSpeakerModal(false)}
+        >
+          <TouchableOpacity
+            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <View style={[styles.bookRolePromptHeaderRow, styles.preparedSpeechModalHeaderRow]}>
+              <Text
+                style={[styles.bookRolePromptTitle, styles.preparedSpeechModalTitle, { color: theme.colors.text }]}
+                maxFontSizeMultiplier={1.3}
+              >
+                Add educational details
+              </Text>
+            </View>
+            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
+              Add your educational segment title, materials, and notes so the club can prepare and introduce you smoothly.
+            </Text>
+            <TouchableOpacity
+              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 8 }]}
+              onPress={goToEducationalFromModal}
+            >
+              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
+                Update now
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.incompleteProfileLaterBtn}
+              onPress={() => setShowEducationalSpeakerModal(false)}
+              hitSlop={12}
+            >
+              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Not now
+              </Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1725,6 +2212,13 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: '700',
     flex: 1,
+  },
+  /** Prepared speech details modal: title 15% smaller than bookRolePromptTitle (19 × 0.85) */
+  preparedSpeechModalTitle: {
+    fontSize: 16.15,
+  },
+  preparedSpeechModalHeaderRow: {
+    marginBottom: 14,
   },
   bookRolePromptCloseBtn: {
     padding: 4,
@@ -1789,6 +2283,35 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  incompleteProfileBulletBlock: {
+    gap: 12,
+    marginBottom: 4,
+  },
+  incompleteProfileBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  incompleteProfileDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 6,
+  },
+  incompleteProfileBulletText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  incompleteProfileLaterBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  incompleteProfileLaterText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
   authCheckContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1824,6 +2347,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
+  profileAvatarOuter: {
+    marginRight: 12,
+    padding: 3,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  profileAvatarOuterPending: {
+    borderColor: PENDING_ACTION_UI.border,
+  },
   profileAvatar: {
     width: 40,
     height: 40,
@@ -1831,7 +2364,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#3b82f6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
     overflow: 'hidden',
   },
   profileAvatarImage: {
@@ -2094,11 +2626,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 8,
     gap: 12,
+    position: 'relative',
   },
   journeyListCardInline: {
     borderWidth: 0,
     marginBottom: 4,
     paddingVertical: 10,
+  },
+  journeyListCardPending: {
+    borderColor: PENDING_ACTION_UI.border,
+    borderWidth: 1.5,
+  },
+  journeyListAlertBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 10,
   },
   journeyListIconWrap: {
     width: 40,
