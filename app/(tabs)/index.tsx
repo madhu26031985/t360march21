@@ -2,14 +2,15 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X } from 'lucide-react-native';
+import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { supabase } from '@/lib/supabase';
+import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
 
 interface IconTileProps {
   title: string;
@@ -48,10 +49,70 @@ interface MeetingActionButtonProps {
   color: string;
   onPress: () => void;
   showAlert?: boolean;
+  /** Single avatar fallback. Ignored if `avatarUrls` is non-empty. */
+  avatarUrl?: string | null;
+  /** Booked members’ avatars; if more than one, cycles every `avatarRotateIntervalMs`. */
+  avatarUrls?: string[];
+  /** Default 3000 ms when multiple `avatarUrls`. */
+  avatarRotateIntervalMs?: number;
 }
 
-function MeetingActionButton({ title, icon, color, onPress, showAlert }: MeetingActionButtonProps) {
+function MeetingActionButton({
+  title,
+  icon,
+  color,
+  onPress,
+  showAlert,
+  avatarUrl,
+  avatarUrls,
+  avatarRotateIntervalMs = 3000,
+}: MeetingActionButtonProps) {
   const { theme } = useTheme();
+  const sourceList = useMemo(() => {
+    const multi = (avatarUrls ?? []).map((u) => u.trim()).filter(Boolean);
+    if (multi.length > 0) return multi;
+    const one = avatarUrl?.trim();
+    return one ? [one] : [];
+  }, [avatarUrl, avatarUrls]);
+
+  const sourceKey = sourceList.join('\u0000');
+  const [activeUrls, setActiveUrls] = useState<string[]>([]);
+  const [rotateIndex, setRotateIndex] = useState(0);
+  const [droppedUrls, setDroppedUrls] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    setActiveUrls(sourceList);
+    setRotateIndex(0);
+    setDroppedUrls(new Set());
+  }, [sourceKey]);
+
+  const visibleUrls = useMemo(
+    () => activeUrls.filter((u) => !droppedUrls.has(u)),
+    [activeUrls, droppedUrls]
+  );
+  const visibleKey = visibleUrls.join('\u0000');
+
+  useEffect(() => {
+    const n = visibleUrls.length;
+    if (n <= 1) return;
+    const id = setInterval(() => {
+      setRotateIndex((i) => (i + 1) % n);
+    }, avatarRotateIntervalMs);
+    return () => clearInterval(id);
+  }, [visibleKey, visibleUrls.length, avatarRotateIntervalMs]);
+
+  useEffect(() => {
+    const n = visibleUrls.length;
+    if (n === 0) {
+      setRotateIndex(0);
+      return;
+    }
+    setRotateIndex((i) => i % n);
+  }, [visibleKey, visibleUrls.length]);
+
+  const currentUri = visibleUrls.length > 0 ? visibleUrls[rotateIndex % visibleUrls.length] : null;
+  const showAvatar = !!currentUri;
+
   const alertScale = useSharedValue(1);
   const iconPulse = useSharedValue(1);
   useEffect(() => {
@@ -83,6 +144,13 @@ function MeetingActionButton({ title, icon, color, onPress, showAlert }: Meeting
   const iconPulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: iconPulse.value }],
   }));
+
+  const handleAvatarError = () => {
+    if (!currentUri) return;
+    setDroppedUrls((prev) => new Set(prev).add(currentUri));
+    setRotateIndex(0);
+  };
+
   return (
     <TouchableOpacity
       style={[
@@ -93,8 +161,26 @@ function MeetingActionButton({ title, icon, color, onPress, showAlert }: Meeting
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <Animated.View style={[styles.meetingActionButtonIcon, { backgroundColor: color }, iconPulseStyle]}>
-        {icon}
+      <Animated.View
+        style={[
+          styles.meetingActionButtonIcon,
+          showAvatar
+            ? [styles.meetingActionButtonIconWithAvatar, { backgroundColor: color }]
+            : { backgroundColor: color },
+          iconPulseStyle,
+        ]}
+      >
+        {showAvatar ? (
+          <Image
+            key={currentUri}
+            source={{ uri: currentUri }}
+            style={styles.meetingActionButtonAvatarImage}
+            resizeMode="cover"
+            onError={handleAvatarError}
+          />
+        ) : (
+          icon
+        )}
       </Animated.View>
       <Text style={[styles.meetingActionButtonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2} numberOfLines={2}>
         {title}
@@ -104,7 +190,7 @@ function MeetingActionButton({ title, icon, color, onPress, showAlert }: Meeting
           pointerEvents="box-none"
           style={[styles.meetingActionAlertBadge, alertAnimatedStyle]}
         >
-          <AlertCircle size={14} color="#ef4444" fill="#ef4444" />
+          <AlertCircle size={14} color={PENDING_ACTION_UI.accent} fill={PENDING_ACTION_UI.accent} />
         </Animated.View>
       )}
     </TouchableOpacity>
@@ -195,12 +281,27 @@ export default function MyJourney() {
   const [hasActivePoll, setHasActivePoll] = useState<boolean>(false);
   const [hasVotedInActivePoll, setHasVotedInActivePoll] = useState<boolean>(false);
   const [tmodNeedsThemeAlert, setTmodNeedsThemeAlert] = useState<boolean>(false);
+  /** Current user has Toastmaster of the Day booked for the open meeting */
+  const [userBookedToastmaster, setUserBookedToastmaster] = useState<boolean>(false);
   const [educationalSpeakerNeedsAlert, setEducationalSpeakerNeedsAlert] = useState<boolean>(false);
+  /** Booked Prepared Speaker / Ice Breaker but missing speech details in app_evaluation_pathway (same checks as evaluation-corner) */
+  const [preparedSpeakerNeedsSpeechDetailsAlert, setPreparedSpeakerNeedsSpeechDetailsAlert] = useState<boolean>(false);
+  /** Booked Grammarian but no word of the day (matches grammarian.tsx: daily elements or structured WOTD row for this user) */
+  const [grammarianNeedsWordOfTheDayAlert, setGrammarianNeedsWordOfTheDayAlert] = useState<boolean>(false);
+  /** Booked role avatars for Journey Meeting Actions (visible to all; multiple → rotate 3s) */
+  const [journeyGrammarianAvatarUrls, setJourneyGrammarianAvatarUrls] = useState<string[]>([]);
+  /** Booked Toastmaster (any member) — same source as Meetings → Roles */
+  const [journeyToastmasterAvatarUrls, setJourneyToastmasterAvatarUrls] = useState<string[]>([]);
+  const [journeyEducationalAvatarUrls, setJourneyEducationalAvatarUrls] = useState<string[]>([]);
+  const [journeyPreparedSpeakerAvatarUrls, setJourneyPreparedSpeakerAvatarUrls] = useState<string[]>([]);
+  const [journeyTableTopicsMasterAvatarUrls, setJourneyTableTopicsMasterAvatarUrls] = useState<string[]>([]);
+  const [journeyTableTopicsSpeakerAvatarUrls, setJourneyTableTopicsSpeakerAvatarUrls] = useState<string[]>([]);
   const [showBookRolePrompt, setShowBookRolePrompt] = useState<boolean>(false);
   const [showBookRoleAttention, setShowBookRoleAttention] = useState<boolean>(false);
   const bookRolePromptHandledThisSession = useRef<boolean>(false);
 
   const voteNowScale = useSharedValue(1);
+  const heroReminderFade = useSharedValue(1);
   useEffect(() => {
     voteNowScale.value = withRepeat(
       withSequence(
@@ -213,6 +314,9 @@ export default function MyJourney() {
   }, []);
   const voteNowAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: voteNowScale.value }],
+  }));
+  const heroReminderTextAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: heroReminderFade.value,
   }));
 
   const daysToGo = (() => {
@@ -497,6 +601,7 @@ export default function MyJourney() {
     useCallback(() => {
       if (!currentOpenMeetingId || !user?.id) {
         setTmodNeedsThemeAlert(false);
+        setUserBookedToastmaster(false);
         return;
       }
       let cancelled = false;
@@ -509,7 +614,10 @@ export default function MyJourney() {
           .eq('booking_status', 'booked')
           .limit(1);
         const role = Array.isArray(roleData) && roleData.length > 0 ? roleData[0] : null;
-        const isCurrentUserTmod = role && role.assigned_user_id === user.id;
+        const isCurrentUserTmod = !!(role && role.assigned_user_id === user.id);
+        if (!cancelled) {
+          setUserBookedToastmaster(isCurrentUserTmod);
+        }
         if (!isCurrentUserTmod || cancelled) {
           if (!cancelled) setTmodNeedsThemeAlert(false);
           return;
@@ -560,6 +668,255 @@ export default function MyJourney() {
       })();
       return () => { cancelled = true; };
     }, [currentOpenMeetingId, user?.id])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentOpenMeetingId || !user?.id || isCurrentOpenMeetingCompleted) {
+        setPreparedSpeakerNeedsSpeechDetailsAlert(false);
+        return;
+      }
+      let cancelled = false;
+
+      const pathwayHasSpeechDetails = (p: {
+        speech_title?: string | null;
+        pathway_name?: string | null;
+        level?: number | null;
+        project_name?: string | null;
+        evaluation_form?: string | null;
+        comments_for_evaluator?: string | null;
+      } | null) =>
+        !!(
+          p &&
+          (p.speech_title?.trim() ||
+            p.pathway_name?.trim() ||
+            p.level != null ||
+            p.project_name?.trim() ||
+            p.evaluation_form?.trim() ||
+            p.comments_for_evaluator?.trim())
+        );
+
+      (async () => {
+        const { data: psRoles, error: rolesErr } = await supabase
+          .from('app_meeting_roles_management')
+          .select('role_name')
+          .eq('meeting_id', currentOpenMeetingId)
+          .eq('assigned_user_id', user.id)
+          .eq('booking_status', 'booked')
+          .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%ice%breaker%');
+
+        if (rolesErr || cancelled) {
+          if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(false);
+          return;
+        }
+        if (!psRoles?.length) {
+          if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(false);
+          return;
+        }
+
+        const { data: pathways, error: pathErr } = await supabase
+          .from('app_evaluation_pathway')
+          .select(
+            'role_name, speech_title, pathway_name, level, project_name, evaluation_form, comments_for_evaluator'
+          )
+          .eq('meeting_id', currentOpenMeetingId)
+          .eq('user_id', user.id);
+
+        if (pathErr || cancelled) {
+          if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(false);
+          return;
+        }
+
+        const byRole = new Map(
+          (pathways || []).map((row: any) => [row.role_name as string, row])
+        );
+
+        let needs = false;
+        for (const row of psRoles) {
+          const p = byRole.get(row.role_name);
+          if (!pathwayHasSpeechDetails(p || null)) {
+            needs = true;
+            break;
+          }
+        }
+        if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(needs);
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [currentOpenMeetingId, user?.id, isCurrentOpenMeetingCompleted])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentOpenMeetingId || !user?.id || isCurrentOpenMeetingCompleted) {
+        setGrammarianNeedsWordOfTheDayAlert(false);
+        return;
+      }
+      let cancelled = false;
+      (async () => {
+        const { data: gRole, error: rErr } = await supabase
+          .from('app_meeting_roles_management')
+          .select('id')
+          .eq('meeting_id', currentOpenMeetingId)
+          .eq('assigned_user_id', user.id)
+          .eq('booking_status', 'booked')
+          .ilike('role_name', '%grammarian%')
+          .limit(1)
+          .maybeSingle();
+
+        if (rErr || cancelled || !gRole) {
+          if (!cancelled) setGrammarianNeedsWordOfTheDayAlert(false);
+          return;
+        }
+
+        const [dailyRes, wotdRes] = await Promise.all([
+          supabase
+            .from('app_grammarian_daily_elements')
+            .select('word_of_the_day')
+            .eq('meeting_id', currentOpenMeetingId)
+            .eq('grammarian_user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from('grammarian_word_of_the_day')
+            .select('word, grammarian_user_id')
+            .eq('meeting_id', currentOpenMeetingId)
+            .maybeSingle(),
+        ]);
+
+        if (cancelled) return;
+
+        const dailyWord = (dailyRes.data?.word_of_the_day || '').trim();
+        const wotd = wotdRes.data;
+        const structuredWord =
+          wotd && wotd.grammarian_user_id === user.id ? (wotd.word || '').trim() : '';
+
+        const hasWord = !!(dailyWord || structuredWord);
+        if (!cancelled) setGrammarianNeedsWordOfTheDayAlert(!hasWord);
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [currentOpenMeetingId, user?.id, isCurrentOpenMeetingCompleted])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!currentOpenMeetingId || isCurrentOpenMeetingCompleted) {
+        setJourneyGrammarianAvatarUrls([]);
+        setJourneyToastmasterAvatarUrls([]);
+        setJourneyEducationalAvatarUrls([]);
+        setJourneyPreparedSpeakerAvatarUrls([]);
+        setJourneyTableTopicsMasterAvatarUrls([]);
+        setJourneyTableTopicsSpeakerAvatarUrls([]);
+        return;
+      }
+      const meetingId = currentOpenMeetingId;
+      let cancelled = false;
+
+      const orderedAvatarUrlsForRoles = async (
+        rolesPromise: Promise<{
+          data: { assigned_user_id: string | null }[] | null;
+          error: unknown;
+        }>
+      ): Promise<string[]> => {
+        const { data, error } = await rolesPromise;
+        if (cancelled || error || !data?.length) return [];
+        const seen = new Set<string>();
+        const orderedIds: string[] = [];
+        for (const row of data) {
+          const id = row.assigned_user_id;
+          if (id && !seen.has(id)) {
+            seen.add(id);
+            orderedIds.push(id);
+          }
+        }
+        if (!orderedIds.length) return [];
+        const { data: profiles, error: pErr } = await supabase
+          .from('app_user_profiles')
+          .select('id, avatar_url')
+          .in('id', orderedIds);
+        if (cancelled || pErr || !profiles?.length) return [];
+        const urlById = new Map(
+          (profiles as { id: string; avatar_url: string | null }[]).map((p) => [
+            p.id,
+            (p.avatar_url || '').trim() || null,
+          ])
+        );
+        return orderedIds.map((id) => urlById.get(id)).filter((u): u is string => !!u);
+      };
+
+      (async () => {
+        const [gUrls, tmUrls, eUrls, pUrls, ttmUrls, ttsUrls] = await Promise.all([
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .ilike('role_name', '%grammarian%')
+          ),
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .ilike('role_name', '%toastmaster%')
+          ),
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .eq('role_name', 'Educational Speaker')
+          ),
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%ice%breaker%')
+          ),
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .ilike('role_name', '%table%topics%master%')
+          ),
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .or(
+                'role_name.ilike.%Table Topics Speaker%,role_name.ilike.%Table Topic Speaker%,role_name.ilike.%Table Topics Participant%,role_name.ilike.%Table Topic Participant%'
+              )
+          ),
+        ]);
+        if (!cancelled) {
+          setJourneyGrammarianAvatarUrls(gUrls);
+          setJourneyToastmasterAvatarUrls(tmUrls);
+          setJourneyEducationalAvatarUrls(eUrls);
+          setJourneyPreparedSpeakerAvatarUrls(pUrls);
+          setJourneyTableTopicsMasterAvatarUrls(ttmUrls);
+          setJourneyTableTopicsSpeakerAvatarUrls(ttsUrls);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [currentOpenMeetingId, isCurrentOpenMeetingCompleted])
   );
 
   useFocusEffect(
@@ -646,6 +1003,122 @@ export default function MyJourney() {
       // Ignore storage errors
     }
   }, []);
+
+  /** TMOD tile: show booked member’s photo for everyone; fallback to session avatar if you’re TM but DB has no URL */
+  const journeyToastmasterDisplayAvatarUrls = useMemo(() => {
+    if (journeyToastmasterAvatarUrls.length > 0) return journeyToastmasterAvatarUrls;
+    if (userBookedToastmaster && userAvatar) return [userAvatar];
+    return [];
+  }, [journeyToastmasterAvatarUrls, userBookedToastmaster, userAvatar]);
+
+  type PendingMeetingReminderKey =
+    | 'book_role'
+    | 'toastmaster_theme'
+    | 'educational_speech'
+    | 'grammarian_wotd'
+    | 'prepared_speech';
+
+  const pendingMeetingReminders = useMemo((): { key: PendingMeetingReminderKey; text: string }[] => {
+    if (!currentOpenMeetingId || isCurrentOpenMeetingCompleted) return [];
+    const name =
+      (user?.fullName || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)[0] || 'You';
+    const out: { key: PendingMeetingReminderKey; text: string }[] = [];
+    if (showBookRoleAttention) {
+      out.push({
+        key: 'book_role',
+        text: `${name}, the stage is waiting. Book your role now!`,
+      });
+    }
+    if (tmodNeedsThemeAlert) {
+      out.push({
+        key: 'toastmaster_theme',
+        text: `${name}, please add the Theme of the Day.`,
+      });
+    }
+    if (educationalSpeakerNeedsAlert) {
+      out.push({
+        key: 'educational_speech',
+        text: `${name}, please add the educational details.`,
+      });
+    }
+    if (grammarianNeedsWordOfTheDayAlert) {
+      out.push({
+        key: 'grammarian_wotd',
+        text: `${name}, don't forget to add the Word of the Day!`,
+      });
+    }
+    if (preparedSpeakerNeedsSpeechDetailsAlert) {
+      out.push({
+        key: 'prepared_speech',
+        text: `${name}, please add your speech details.`,
+      });
+    }
+    return out;
+  }, [
+    currentOpenMeetingId,
+    isCurrentOpenMeetingCompleted,
+    showBookRoleAttention,
+    tmodNeedsThemeAlert,
+    educationalSpeakerNeedsAlert,
+    grammarianNeedsWordOfTheDayAlert,
+    preparedSpeakerNeedsSpeechDetailsAlert,
+    user?.fullName,
+  ]);
+
+  const pendingRemindersKey = pendingMeetingReminders.map((r) => r.key).join('|');
+
+  const [heroReminderSlide, setHeroReminderSlide] = useState(0);
+
+  useEffect(() => {
+    setHeroReminderSlide(0);
+  }, [pendingRemindersKey]);
+
+  useEffect(() => {
+    const n = pendingMeetingReminders.length;
+    if (n <= 1) return;
+    const id = setInterval(() => {
+      setHeroReminderSlide((i) => (i + 1) % n);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [pendingRemindersKey, pendingMeetingReminders.length]);
+
+  useEffect(() => {
+    if (pendingMeetingReminders.length === 0) return;
+    heroReminderFade.value = 0.35;
+    heroReminderFade.value = withTiming(1, { duration: 400 });
+  }, [heroReminderSlide, pendingMeetingReminders.length]);
+
+  const openPendingReminderTarget = useCallback(
+    (key: PendingMeetingReminderKey) => {
+      if (!currentOpenMeetingId) return;
+      switch (key) {
+        case 'book_role':
+          router.push(`/book-a-role?meetingId=${currentOpenMeetingId}`);
+          break;
+        case 'toastmaster_theme':
+          router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}&showCongrats=1`);
+          break;
+        case 'educational_speech':
+          router.push({
+            pathname: '/educational-corner',
+            params: { meetingId: currentOpenMeetingId, showCongrats: '1' },
+          });
+          break;
+        case 'grammarian_wotd':
+          router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
+          break;
+        case 'prepared_speech':
+          router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
+          break;
+        default:
+          break;
+      }
+    },
+    [currentOpenMeetingId]
+  );
 
   const loadUserAvatar = async () => {
     if (!user) return;
@@ -968,6 +1441,7 @@ export default function MyJourney() {
                   title="Toastmaster of the day"
                   icon={<MessageSquare size={16} color="#ffffff" />}
                   color="#84cc16"
+                  avatarUrls={journeyToastmasterDisplayAvatarUrls}
                   showAlert={tmodNeedsThemeAlert}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
@@ -982,6 +1456,8 @@ export default function MyJourney() {
                   title="Prepared Speeches"
                   icon={<Mic size={16} color="#ffffff" />}
                   color="#14b8a6"
+                  avatarUrls={journeyPreparedSpeakerAvatarUrls}
+                  showAlert={preparedSpeakerNeedsSpeechDetailsAlert}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
                       Alert.alert('No open meeting', 'There is no current open meeting for prepared speeches.');
@@ -994,6 +1470,8 @@ export default function MyJourney() {
                   title="Grammarian"
                   icon={<BookOpen size={16} color="#ffffff" />}
                   color="#8b5cf6"
+                  avatarUrls={journeyGrammarianAvatarUrls}
+                  showAlert={grammarianNeedsWordOfTheDayAlert}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
                       Alert.alert('No open meeting', 'There is no current open meeting for Grammarian.');
@@ -1006,6 +1484,7 @@ export default function MyJourney() {
                   title="Educational speaker"
                   icon={<GraduationCap size={16} color="#ffffff" />}
                   color="#f97316"
+                  avatarUrls={journeyEducationalAvatarUrls}
                   showAlert={educationalSpeakerNeedsAlert}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
@@ -1019,6 +1498,32 @@ export default function MyJourney() {
                         ...(educationalSpeakerNeedsAlert && { showCongrats: '1' }),
                       },
                     });
+                  }}
+                />
+                <MeetingActionButton
+                  title="Table Topics Master"
+                  icon={<MessageSquare size={16} color="#ffffff" />}
+                  color="#ea580c"
+                  avatarUrls={journeyTableTopicsMasterAvatarUrls}
+                  onPress={() => {
+                    if (!currentOpenMeetingId) {
+                      Alert.alert('No open meeting', 'There is no current open meeting for Table Topics.');
+                      return;
+                    }
+                    router.push({ pathname: '/table-topic-corner', params: { meetingId: currentOpenMeetingId } });
+                  }}
+                />
+                <MeetingActionButton
+                  title="Table Topics Speaker"
+                  icon={<Mic size={16} color="#ffffff" />}
+                  color="#fb923c"
+                  avatarUrls={journeyTableTopicsSpeakerAvatarUrls}
+                  onPress={() => {
+                    if (!currentOpenMeetingId) {
+                      Alert.alert('No open meeting', 'There is no current open meeting for Table Topics.');
+                      return;
+                    }
+                    router.push({ pathname: '/table-topic-corner', params: { meetingId: currentOpenMeetingId } });
                   }}
                 />
               </View>
@@ -1062,6 +1567,53 @@ export default function MyJourney() {
                   )}
                 </View>
               </TouchableOpacity>
+
+              {pendingMeetingReminders.length > 0 && (
+                <TouchableOpacity
+                  style={[
+                    styles.actionReminderHeroCard,
+                    {
+                      backgroundColor: theme.colors.surface,
+                      borderColor: theme.colors.border,
+                    },
+                  ]}
+                  onPress={() => {
+                    const item = pendingMeetingReminders[heroReminderSlide];
+                    if (item) openPendingReminderTarget(item.key);
+                  }}
+                  activeOpacity={0.88}
+                >
+                  <View style={styles.actionReminderHeroRow}>
+                    <View style={styles.actionReminderHeroIconWrap}>
+                      <Bell size={16} color={PENDING_ACTION_UI.accent} strokeWidth={2} />
+                    </View>
+                    <View style={styles.actionReminderHeroTextCol}>
+                      <Animated.View style={heroReminderTextAnimatedStyle}>
+                        <Text
+                          style={[styles.actionReminderHeroMessage, { color: theme.colors.textSecondary }]}
+                          maxFontSizeMultiplier={1.25}
+                        >
+                          {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
+                        </Text>
+                      </Animated.View>
+                    </View>
+                    <ChevronRight size={14} color={theme.colors.textSecondary} />
+                  </View>
+                  {pendingMeetingReminders.length > 1 && (
+                    <View style={styles.actionReminderDots}>
+                      {pendingMeetingReminders.map((r, i) => (
+                        <View
+                          key={r.key}
+                          style={[
+                            styles.actionReminderDot,
+                            i === heroReminderSlide ? styles.actionReminderDotActive : styles.actionReminderDotInactive,
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </>
         )}
@@ -1718,6 +2270,61 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
   },
+  actionReminderHeroCard: {
+    marginTop: 6,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  actionReminderHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionReminderHeroIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: PENDING_ACTION_UI.softBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionReminderHeroTextCol: {
+    flex: 1,
+    paddingRight: 2,
+  },
+  actionReminderHeroMessage: {
+    fontSize: 11,
+    fontWeight: '500',
+    lineHeight: 14,
+  },
+  actionReminderDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
+  actionReminderDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  actionReminderDotActive: {
+    backgroundColor: PENDING_ACTION_UI.accent,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  actionReminderDotInactive: {
+    backgroundColor: '#e5e7eb',
+  },
   meetingActionButton: {
     width: '48%',
     flexDirection: 'row',
@@ -1727,7 +2334,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   meetingActionButtonAlert: {
-    borderColor: '#fca5a5',
+    borderColor: PENDING_ACTION_UI.border,
     borderWidth: 1.5,
   },
   meetingActionAlertBadge: {
@@ -1740,6 +2347,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
+  },
+  /** Ring color comes from tile `color` prop */
+  meetingActionButtonIconWithAvatar: {
+    padding: 2,
+    overflow: 'hidden',
+  },
+  meetingActionButtonAvatarImage: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
   meetingActionButtonTitle: {
     flex: 1,

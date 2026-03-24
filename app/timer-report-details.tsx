@@ -1,10 +1,11 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import { ArrowLeft, Timer, Calendar, User, ChevronDown, Save, Trash2, X, FileText, Search, Lock, MessageCircle, Snowflake, Mic, MessageSquare, Lightbulb, NotebookPen, Plus, Bell, Users, BookOpen, Star, CheckSquare, ClipboardCheck, FileBarChart, Clock, Info, HelpCircle, Upload } from 'lucide-react-native';
 import { Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -98,6 +99,7 @@ export default function TimerReportDetails() {
   const [savedReports, setSavedReports] = useState<TimerReport[]>([]);
   const [deletingReports, setDeletingReports] = useState<Set<string>>(new Set());
   const [bookedSpeakers, setBookedSpeakers] = useState<ClubMember[]>([]);
+  const [bookingTimerRole, setBookingTimerRole] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
 
   const [stopwatchTime, setStopwatchTime] = useState(0);
@@ -338,6 +340,29 @@ export default function TimerReportDetails() {
       }
     } catch (error) {
       console.error('Error loading assigned Timer:', error);
+    }
+  };
+
+  const handleBookTimerInline = async () => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+    setBookingTimerRole(true);
+    try {
+      const result = await bookOpenMeetingRole(
+        user.id,
+        meetingId,
+        { eqRoleName: 'Timer' },
+        'Timer is already booked or not set up for this meeting.'
+      );
+      if (result.ok) {
+        await loadAssignedTimer();
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingTimerRole(false);
     }
   };
 
@@ -843,10 +868,23 @@ export default function TimerReportDetails() {
               Every great meeting needs a time hero! 🦸‍♂️ Take charge — book the Timer role.
             </Text>
             <TouchableOpacity
-              style={[styles.bookRoleButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
+              style={[
+                styles.bookRoleButton,
+                {
+                  backgroundColor: theme.colors.primary,
+                  opacity: bookingTimerRole ? 0.85 : 1,
+                },
+              ]}
+              onPress={() => handleBookTimerInline()}
+              disabled={bookingTimerRole}
             >
-              <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>Book Timer Role</Text>
+              {bookingTimerRole ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                  Book Timer Role
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
           </View>

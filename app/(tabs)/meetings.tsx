@@ -1,13 +1,71 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type ComponentType } from 'react';
 import { supabase } from '@/lib/supabase';
+import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
 import { Calendar, Vote, Building2, Clock, Lock, FileText, Timer, ChartBar as BarChart3, BookOpen, Star, MessageSquare, ClipboardCheck, UserCheck, Award, Book, MessageCircle, ChevronRight, ChevronDown, ChevronUp, BookCheck, Ear, UserPlus, Mic, ClipboardList, MessageSquareQuote, ScrollText, UserCog, Lightbulb, Target, RefreshCw, MonitorCheck, CheckCircle, Search, AlertCircle } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
+
+const ROLE_AVATAR_ROTATE_MS = 3000;
+
+/** Cycle through booked members’ avatar URLs (Journey / Meetings tabs). */
+function useRotatingRoleAvatars(avatarUrls: string[] | undefined) {
+  const sourceList = useMemo(
+    () => (avatarUrls ?? []).map((u) => u.trim()).filter(Boolean),
+    [avatarUrls]
+  );
+  const sourceKey = sourceList.join('\u0000');
+  const [activeUrls, setActiveUrls] = useState<string[]>([]);
+  const [rotateIndex, setRotateIndex] = useState(0);
+  const [droppedUrls, setDroppedUrls] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    setActiveUrls(sourceList);
+    setRotateIndex(0);
+    setDroppedUrls(new Set());
+  }, [sourceKey]);
+
+  const visibleUrls = useMemo(
+    () => activeUrls.filter((u) => !droppedUrls.has(u)),
+    [activeUrls, droppedUrls]
+  );
+  const visibleKey = visibleUrls.join('\u0000');
+
+  useEffect(() => {
+    const n = visibleUrls.length;
+    if (n <= 1) return;
+    const id = setInterval(() => {
+      setRotateIndex((i) => (i + 1) % n);
+    }, ROLE_AVATAR_ROTATE_MS);
+    return () => clearInterval(id);
+  }, [visibleKey, visibleUrls.length]);
+
+  useEffect(() => {
+    const n = visibleUrls.length;
+    if (n === 0) {
+      setRotateIndex(0);
+      return;
+    }
+    setRotateIndex((i) => i % n);
+  }, [visibleKey, visibleUrls.length]);
+
+  const currentUri = visibleUrls.length > 0 ? visibleUrls[rotateIndex % visibleUrls.length] : null;
+  const currentUriRef = useRef<string | null>(null);
+  currentUriRef.current = currentUri;
+
+  const onImageError = useCallback(() => {
+    const u = currentUriRef.current;
+    if (!u) return;
+    setDroppedUrls((prev) => new Set(prev).add(u));
+    setRotateIndex(0);
+  }, []);
+
+  return { currentUri, hasPhoto: !!currentUri, onImageError };
+}
 
 interface Meeting {
   id: string;
@@ -61,6 +119,8 @@ interface KeyRoleCardWithTmodAlertProps {
   meetingId: string;
   onPress: () => void;
   showAlert?: boolean;
+  /** Booked Toastmaster's profile photo — visible to all members */
+  bookedToastmasterAvatarUrl?: string | null;
 }
 
 interface SpeakingRoleCardWithAlertProps {
@@ -68,14 +128,25 @@ interface SpeakingRoleCardWithAlertProps {
   meetingId: string;
   onPress: () => void;
   showAlert?: boolean;
+  /** Booked members’ avatars; multiple → rotate every 3s */
+  avatarUrls?: string[];
 }
 
-function SpeakingRoleCardWithAlert({ tab, meetingId, onPress, showAlert }: SpeakingRoleCardWithAlertProps) {
+function SpeakingRoleCardWithAlert({
+  tab,
+  meetingId,
+  onPress,
+  showAlert,
+  avatarUrls,
+}: SpeakingRoleCardWithAlertProps) {
   const { theme } = useTheme();
+  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls);
   const alertScale = useSharedValue(1);
+  const iconPulse = useSharedValue(1);
   useEffect(() => {
     if (!showAlert) {
       alertScale.value = 1;
+      iconPulse.value = 1;
       return;
     }
     alertScale.value = withRepeat(
@@ -86,9 +157,20 @@ function SpeakingRoleCardWithAlert({ tab, meetingId, onPress, showAlert }: Speak
       -1,
       true
     );
+    iconPulse.value = withRepeat(
+      withSequence(
+        withTiming(1.06, { duration: 600 }),
+        withTiming(1, { duration: 600 })
+      ),
+      -1,
+      true
+    );
   }, [showAlert]);
   const alertAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: alertScale.value }],
+  }));
+  const iconPulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconPulse.value }],
   }));
   const title = tab.id === 'evaluation_corner' ? 'Prepared Speeches' : tab.id === 'educational_corner' ? 'Educational Corner' : 'Keynote Speaker';
   return (
@@ -101,18 +183,154 @@ function SpeakingRoleCardWithAlert({ tab, meetingId, onPress, showAlert }: Speak
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[styles.speakingRoleIcon, { backgroundColor: tab.color + '25' }]}>
-        {tab.id === 'evaluation_corner' && <Mic size={22} color={tab.color} />}
-        {tab.id === 'educational_corner' && <Lightbulb size={22} color={tab.color} />}
-        {tab.id === 'keynote_speaker' && <Mic size={22} color={tab.color} />}
-      </View>
+      {hasPhoto && currentUri ? (
+        <Animated.View
+          style={[
+            styles.speakingRoleIcon,
+            styles.speakingRoleIconAvatarRing,
+            { backgroundColor: tab.color },
+            iconPulseStyle,
+          ]}
+        >
+          <Image
+            key={currentUri}
+            source={{ uri: currentUri }}
+            style={styles.speakingRoleIconAvatarImage}
+            resizeMode="cover"
+            onError={onImageError}
+          />
+        </Animated.View>
+      ) : (
+        <Animated.View style={[styles.speakingRoleIcon, { backgroundColor: tab.color + '25' }, iconPulseStyle]}>
+          {tab.id === 'evaluation_corner' && <Mic size={22} color={tab.color} />}
+          {tab.id === 'educational_corner' && <Lightbulb size={22} color={tab.color} />}
+          {tab.id === 'keynote_speaker' && <Mic size={22} color={tab.color} />}
+        </Animated.View>
+      )}
       <Text style={[styles.speakingRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
         {title}
       </Text>
       {showAlert && (
         <Animated.View pointerEvents="box-none" style={[styles.speakingRoleAlertBadge, alertAnimatedStyle]}>
-          <AlertCircle size={12} color="#ef4444" fill="#ef4444" />
+          <AlertCircle size={12} color={PENDING_ACTION_UI.accent} fill={PENDING_ACTION_UI.accent} />
         </Animated.View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+type SupportRowIcon = ComponentType<{ size?: number; color?: string }>;
+
+interface SupportFullWidthRoleCardWithAlertProps {
+  title: string;
+  description: string;
+  iconColor: string;
+  SupportIcon: SupportRowIcon;
+  showAlert?: boolean;
+  comingSoon?: boolean;
+  onPress: () => void;
+  avatarUrls?: string[];
+}
+
+/** Full-width support role row (e.g. Grammarian) with optional pending-action border + pulse */
+function SupportFullWidthRoleCardWithAlert({
+  title,
+  description,
+  iconColor,
+  SupportIcon,
+  showAlert,
+  comingSoon,
+  onPress,
+  avatarUrls,
+}: SupportFullWidthRoleCardWithAlertProps) {
+  const { theme } = useTheme();
+  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls);
+  const alertScale = useSharedValue(1);
+  const iconPulse = useSharedValue(1);
+  useEffect(() => {
+    if (!showAlert) {
+      alertScale.value = 1;
+      iconPulse.value = 1;
+      return;
+    }
+    alertScale.value = withRepeat(
+      withSequence(
+        withTiming(1.2, { duration: 500 }),
+        withTiming(1, { duration: 500 })
+      ),
+      -1,
+      true
+    );
+    iconPulse.value = withRepeat(
+      withSequence(
+        withTiming(1.06, { duration: 600 }),
+        withTiming(1, { duration: 600 })
+      ),
+      -1,
+      true
+    );
+  }, [showAlert]);
+  const alertAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: alertScale.value }],
+  }));
+  const iconPulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: iconPulse.value }],
+  }));
+  return (
+    <TouchableOpacity
+      style={[
+        styles.keyRoleCard,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        showAlert && styles.keyRoleCardTmodAlert,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      disabled={comingSoon}
+    >
+      {hasPhoto && currentUri ? (
+        <Animated.View
+          style={[
+            styles.keyRoleIcon,
+            styles.keyRoleIconAvatarRing,
+            { backgroundColor: iconColor },
+            iconPulseStyle,
+          ]}
+        >
+          <Image
+            key={currentUri}
+            source={{ uri: currentUri }}
+            style={styles.keyRoleIconAvatarImage}
+            resizeMode="cover"
+            onError={onImageError}
+          />
+        </Animated.View>
+      ) : (
+        <Animated.View style={[styles.keyRoleIcon, { backgroundColor: iconColor + '25' }, iconPulseStyle]}>
+          <SupportIcon size={20} color={iconColor} />
+        </Animated.View>
+      )}
+      <View style={styles.keyRoleContent}>
+        <Text style={[styles.keyRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          {title}
+        </Text>
+        {description ? (
+          <Text style={[styles.keyRoleSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            {description}
+          </Text>
+        ) : null}
+      </View>
+      {showAlert && (
+        <Animated.View pointerEvents="box-none" style={[styles.keyRoleAlertBadge, alertAnimatedStyle]}>
+          <AlertCircle size={14} color={PENDING_ACTION_UI.accent} fill={PENDING_ACTION_UI.accent} />
+        </Animated.View>
+      )}
+      {!comingSoon && <ChevronRight size={20} color={theme.colors.textSecondary} />}
+      {comingSoon && (
+        <View style={styles.actionComingSoonBadge}>
+          <Text style={styles.actionComingSoonText} maxFontSizeMultiplier={1.2}>
+            Coming Soon
+          </Text>
+        </View>
       )}
     </TouchableOpacity>
   );
@@ -184,7 +402,7 @@ function BookRoleCoreCard({ tab, description, showAttention, onPress }: BookRole
       </View>
       {showAttention && (
         <Animated.View pointerEvents="box-none" style={[styles.keyRoleAlertBadge, alertAnimatedStyle]}>
-          <AlertCircle size={14} color="#ef4444" fill="#ef4444" />
+          <AlertCircle size={14} color={PENDING_ACTION_UI.accent} fill={PENDING_ACTION_UI.accent} />
         </Animated.View>
       )}
       <ChevronRight size={20} color={theme.colors.textSecondary} />
@@ -192,8 +410,18 @@ function BookRoleCoreCard({ tab, description, showAttention, onPress }: BookRole
   );
 }
 
-function KeyRoleCardWithTmodAlert({ tab, meetingId, onPress, showAlert }: KeyRoleCardWithTmodAlertProps) {
+function KeyRoleCardWithTmodAlert({
+  tab,
+  meetingId,
+  onPress,
+  showAlert,
+  bookedToastmasterAvatarUrl,
+}: KeyRoleCardWithTmodAlertProps) {
   const { theme } = useTheme();
+  const [tmodAvatarFailed, setTmodAvatarFailed] = useState(false);
+  useEffect(() => {
+    setTmodAvatarFailed(false);
+  }, [bookedToastmasterAvatarUrl]);
   const alertScale = useSharedValue(1);
   useEffect(() => {
     if (!showAlert) {
@@ -214,6 +442,8 @@ function KeyRoleCardWithTmodAlert({ tab, meetingId, onPress, showAlert }: KeyRol
   }));
   const title = tab.id === 'toastmaster_corner' ? 'Toastmaster of the Day' : tab.id === 'general_evaluator' ? 'General Evaluator' : 'Table Topics Master';
   const subtitle = tab.id === 'toastmaster_corner' ? 'Leads meeting, introduces speakers' : tab.id === 'general_evaluator' ? 'Evaluates meeting and all roles' : 'Conducts impromptu speaking';
+  const showTmodPhoto =
+    tab.id === 'toastmaster_corner' && !!bookedToastmasterAvatarUrl && !tmodAvatarFailed;
   return (
     <TouchableOpacity
       key={tab.id}
@@ -225,11 +455,22 @@ function KeyRoleCardWithTmodAlert({ tab, meetingId, onPress, showAlert }: KeyRol
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[styles.keyRoleIcon, { backgroundColor: tab.color + '25' }]}>
-        {tab.id === 'toastmaster_corner' && <MessageSquare size={20} color={tab.color} />}
-        {tab.id === 'general_evaluator' && <Star size={20} color={tab.color} />}
-        {tab.id === 'table_topic_corner' && <MessageSquare size={20} color={tab.color} />}
-      </View>
+      {showTmodPhoto ? (
+        <View style={[styles.keyRoleIcon, styles.keyRoleIconAvatarRing, { backgroundColor: tab.color }]}>
+          <Image
+            source={{ uri: bookedToastmasterAvatarUrl as string }}
+            style={styles.keyRoleIconAvatarImage}
+            resizeMode="cover"
+            onError={() => setTmodAvatarFailed(true)}
+          />
+        </View>
+      ) : (
+        <View style={[styles.keyRoleIcon, { backgroundColor: tab.color + '25' }]}>
+          {tab.id === 'toastmaster_corner' && <MessageSquare size={20} color={tab.color} />}
+          {tab.id === 'general_evaluator' && <Star size={20} color={tab.color} />}
+          {tab.id === 'table_topic_corner' && <MessageSquare size={20} color={tab.color} />}
+        </View>
+      )}
       <View style={styles.keyRoleContent}>
         <Text style={[styles.keyRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
           {title}
@@ -240,7 +481,7 @@ function KeyRoleCardWithTmodAlert({ tab, meetingId, onPress, showAlert }: KeyRol
       </View>
       {showAlert && (
         <Animated.View pointerEvents="box-none" style={[styles.keyRoleAlertBadge, alertAnimatedStyle]}>
-          <AlertCircle size={14} color="#ef4444" fill="#ef4444" />
+          <AlertCircle size={14} color={PENDING_ACTION_UI.accent} fill={PENDING_ACTION_UI.accent} />
         </Animated.View>
       )}
       <ChevronRight size={20} color={theme.colors.textSecondary} />
@@ -262,7 +503,27 @@ export default function ClubMeetings() {
   const [tmodNeedsThemeByMeeting, setTmodNeedsThemeByMeeting] = useState<Record<string, boolean>>({});
   const [educationalSpeakerNeedsByMeeting, setEducationalSpeakerNeedsByMeeting] = useState<Record<string, boolean>>({});
   const [keynoteSpeakerNeedsByMeeting, setKeynoteSpeakerNeedsByMeeting] = useState<Record<string, boolean>>({});
+  const [preparedSpeakerNeedsByMeeting, setPreparedSpeakerNeedsByMeeting] = useState<Record<string, boolean>>({});
+  const [grammarianNeedsWotdByMeeting, setGrammarianNeedsWotdByMeeting] = useState<Record<string, boolean>>({});
   const [bookRoleNoRolesByMeeting, setBookRoleNoRolesByMeeting] = useState<Record<string, boolean>>({});
+  /** Booked Toastmaster's avatar URL per meeting (for all members to see) */
+  const [toastmasterBookedAvatarByMeeting, setToastmasterBookedAvatarByMeeting] = useState<
+    Record<string, string | null>
+  >({});
+  /** Booked Toastmaster's user id per meeting (for merging with local avatar fallback) */
+  const [toastmasterBookedUserIdByMeeting, setToastmasterBookedUserIdByMeeting] = useState<
+    Record<string, string | null>
+  >({});
+  /** Signed-in user's avatar (Profile tab); used if meeting query omits URL but user is TM */
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState<string | null>(null);
+  /** Booked role avatar URL lists per meeting (Speaking + Grammarian rows) */
+  const [grammarianAvatarsByMeeting, setGrammarianAvatarsByMeeting] = useState<Record<string, string[]>>({});
+  const [educationalSpeakerAvatarsByMeeting, setEducationalSpeakerAvatarsByMeeting] = useState<
+    Record<string, string[]>
+  >({});
+  const [preparedSpeakerAvatarsByMeeting, setPreparedSpeakerAvatarsByMeeting] = useState<
+    Record<string, string[]>
+  >({});
   const lastRefreshTime = useRef<number>(0);
   const hasLoadedOnce = useRef<boolean>(false);
 
@@ -273,6 +534,48 @@ export default function ClubMeetings() {
       setIsLoading(false);
     }
   }, [user?.currentClubId]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setCurrentUserAvatarUrl(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('app_user_profiles')
+        .select('avatar_url')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      const url = (data as { avatar_url?: string | null } | null)?.avatar_url?.trim();
+      if (error || !url) setCurrentUserAvatarUrl(null);
+      else setCurrentUserAvatarUrl(url);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      let cancelled = false;
+      (async () => {
+        const { data } = await supabase
+          .from('app_user_profiles')
+          .select('avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        const url = (data as { avatar_url?: string | null } | null)?.avatar_url?.trim();
+        setCurrentUserAvatarUrl(url || null);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [user?.id])
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -304,13 +607,132 @@ export default function ClubMeetings() {
       setTmodNeedsThemeByMeeting({});
       setEducationalSpeakerNeedsByMeeting({});
       setKeynoteSpeakerNeedsByMeeting({});
+      setPreparedSpeakerNeedsByMeeting({});
+      setGrammarianNeedsWotdByMeeting({});
+      setToastmasterBookedAvatarByMeeting({});
+      setToastmasterBookedUserIdByMeeting({});
+      setGrammarianAvatarsByMeeting({});
+      setEducationalSpeakerAvatarsByMeeting({});
+      setPreparedSpeakerAvatarsByMeeting({});
       return;
     }
     let cancelled = false;
     (async () => {
+      const isMeetingCompletedForAlerts = (m: Meeting) => {
+        if (!m?.meeting_date) return false;
+        const now = new Date();
+        const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const meetingMidnight = new Date(`${m.meeting_date}T00:00:00`);
+        const diffDays = meetingMidnight.getTime() - nowMidnight.getTime();
+        const daysToGo = Math.ceil(diffDays / (1000 * 60 * 60 * 24));
+        if (daysToGo < 0) return true;
+        const hasTimes = !!(m.meeting_start_time || m.meeting_end_time);
+        if (!hasTimes) return false;
+        const endTime = m.meeting_end_time || '23:59:59';
+        const endParts = endTime.split(':').map(Number);
+        const meetingEnd = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          endParts[0] || 0,
+          endParts[1] || 0,
+          0
+        );
+        return now > meetingEnd;
+      };
+
+      const meetingById = new Map<string, Meeting>();
+      if (currentMeeting?.id && !currentMeeting?.isPlaceholder) {
+        meetingById.set(currentMeeting.id, currentMeeting);
+      }
+      nextMeetings.forEach((mt) => {
+        if (mt?.id && !mt?.isPlaceholder && !String(mt.id).startsWith('placeholder')) {
+          meetingById.set(mt.id, mt);
+        }
+      });
+
+      const pathwayHasSpeechDetails = (p: {
+        speech_title?: string | null;
+        pathway_name?: string | null;
+        level?: number | null;
+        project_name?: string | null;
+        evaluation_form?: string | null;
+        comments_for_evaluator?: string | null;
+      } | null) =>
+        !!(
+          p &&
+          (p.speech_title?.trim() ||
+            p.pathway_name?.trim() ||
+            p.level != null ||
+            p.project_name?.trim() ||
+            p.evaluation_form?.trim() ||
+            p.comments_for_evaluator?.trim())
+        );
+
       const tmodResult: Record<string, boolean> = {};
+      const tmodAvatarResult: Record<string, string | null> = {};
+      const tmodBookedUserIdResult: Record<string, string | null> = {};
       const edResult: Record<string, boolean> = {};
       const keynoteResult: Record<string, boolean> = {};
+      const preparedResult: Record<string, boolean> = {};
+      const grammarianResult: Record<string, boolean> = {};
+      const grammarianAvatarsResult: Record<string, string[]> = {};
+      const educationalAvatarsResult: Record<string, string[]> = {};
+      const preparedAvatarsResult: Record<string, string[]> = {};
+
+      const fetchOrderedAvatarUrls = async (
+        meetingId: string,
+        kind: 'grammarian' | 'educational' | 'prepared'
+      ): Promise<string[]> => {
+        let q;
+        if (kind === 'grammarian') {
+          q = supabase
+            .from('app_meeting_roles_management')
+            .select('assigned_user_id')
+            .eq('meeting_id', meetingId)
+            .eq('booking_status', 'booked')
+            .ilike('role_name', '%grammarian%');
+        } else if (kind === 'educational') {
+          q = supabase
+            .from('app_meeting_roles_management')
+            .select('assigned_user_id')
+            .eq('meeting_id', meetingId)
+            .eq('booking_status', 'booked')
+            .eq('role_name', 'Educational Speaker');
+        } else {
+          q = supabase
+            .from('app_meeting_roles_management')
+            .select('assigned_user_id')
+            .eq('meeting_id', meetingId)
+            .eq('booking_status', 'booked')
+            .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%ice%breaker%');
+        }
+        const { data, error } = await q;
+        if (cancelled || error || !data?.length) return [];
+        const seen = new Set<string>();
+        const orderedIds: string[] = [];
+        for (const row of data as { assigned_user_id: string | null }[]) {
+          const id = row.assigned_user_id;
+          if (id && !seen.has(id)) {
+            seen.add(id);
+            orderedIds.push(id);
+          }
+        }
+        if (!orderedIds.length) return [];
+        const { data: profiles, error: pErr } = await supabase
+          .from('app_user_profiles')
+          .select('id, avatar_url')
+          .in('id', orderedIds);
+        if (cancelled || pErr || !profiles?.length) return [];
+        const urlById = new Map(
+          (profiles as { id: string; avatar_url: string | null }[]).map((p) => [
+            p.id,
+            (p.avatar_url || '').trim() || null,
+          ])
+        );
+        return orderedIds.map((id) => urlById.get(id)).filter((u): u is string => !!u);
+      };
+
       for (const mid of meetingIds) {
         if (cancelled) break;
         const { data: roleData } = await supabase
@@ -321,6 +743,21 @@ export default function ClubMeetings() {
           .eq('booking_status', 'booked')
           .limit(1);
         const role = Array.isArray(roleData) && roleData.length > 0 ? roleData[0] : null;
+        const tmodBookedUserId = role?.assigned_user_id as string | undefined;
+        tmodBookedUserIdResult[mid] = tmodBookedUserId || null;
+        if (!tmodBookedUserId) {
+          tmodAvatarResult[mid] = null;
+        } else {
+          const { data: tmodProfile, error: tmodProfErr } = await supabase
+            .from('app_user_profiles')
+            .select('avatar_url')
+            .eq('id', tmodBookedUserId)
+            .maybeSingle();
+          const avatarUrl = tmodProfErr
+            ? null
+            : (tmodProfile as { avatar_url?: string | null } | null)?.avatar_url?.trim() || null;
+          tmodAvatarResult[mid] = avatarUrl;
+        }
         const isCurrentUserTmod = role && role.assigned_user_id === user.id;
         if (!isCurrentUserTmod) {
           tmodResult[mid] = false;
@@ -377,15 +814,116 @@ export default function ClubMeetings() {
           const hasKeynoteContent = !!(keynoteContentData?.speech_title?.trim() && keynoteContentData?.summary?.trim());
           keynoteResult[mid] = !hasKeynoteContent;
         }
+
+        const mt = meetingById.get(mid);
+        const completed = mt ? isMeetingCompletedForAlerts(mt) : false;
+        if (completed) {
+          preparedResult[mid] = false;
+          grammarianResult[mid] = false;
+        } else {
+          const { data: psRoles, error: rolesErr } = await supabase
+            .from('app_meeting_roles_management')
+            .select('role_name')
+            .eq('meeting_id', mid)
+            .eq('assigned_user_id', user.id)
+            .eq('booking_status', 'booked')
+            .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%ice%breaker%');
+
+          if (rolesErr || cancelled) {
+            preparedResult[mid] = false;
+          } else if (!psRoles?.length) {
+            preparedResult[mid] = false;
+          } else {
+            const { data: pathways, error: pathErr } = await supabase
+              .from('app_evaluation_pathway')
+              .select(
+                'role_name, speech_title, pathway_name, level, project_name, evaluation_form, comments_for_evaluator'
+              )
+              .eq('meeting_id', mid)
+              .eq('user_id', user.id);
+
+            if (pathErr || cancelled) {
+              preparedResult[mid] = false;
+            } else {
+              const byRole = new Map((pathways || []).map((row: { role_name: string }) => [row.role_name, row]));
+              let needsPrepared = false;
+              for (const row of psRoles) {
+                const p = byRole.get(row.role_name);
+                if (!pathwayHasSpeechDetails(p || null)) {
+                  needsPrepared = true;
+                  break;
+                }
+              }
+              preparedResult[mid] = needsPrepared;
+            }
+          }
+
+          const { data: gRole, error: gErr } = await supabase
+            .from('app_meeting_roles_management')
+            .select('id')
+            .eq('meeting_id', mid)
+            .eq('assigned_user_id', user.id)
+            .eq('booking_status', 'booked')
+            .ilike('role_name', '%grammarian%')
+            .limit(1)
+            .maybeSingle();
+
+          if (gErr || cancelled || !gRole) {
+            grammarianResult[mid] = false;
+          } else {
+            const [dailyRes, wotdRes] = await Promise.all([
+              supabase
+                .from('app_grammarian_daily_elements')
+                .select('word_of_the_day')
+                .eq('meeting_id', mid)
+                .eq('grammarian_user_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+              supabase
+                .from('grammarian_word_of_the_day')
+                .select('word, grammarian_user_id')
+                .eq('meeting_id', mid)
+                .maybeSingle(),
+            ]);
+            if (cancelled) {
+              grammarianResult[mid] = false;
+            } else {
+              const dailyWord = (dailyRes.data?.word_of_the_day || '').trim();
+              const wotd = wotdRes.data;
+              const structuredWord =
+                wotd && wotd.grammarian_user_id === user.id ? (wotd.word || '').trim() : '';
+              grammarianResult[mid] = !(dailyWord || structuredWord);
+            }
+          }
+        }
+
+        if (!cancelled) {
+          const [gAv, eAv, pAv] = await Promise.all([
+            fetchOrderedAvatarUrls(mid, 'grammarian'),
+            fetchOrderedAvatarUrls(mid, 'educational'),
+            fetchOrderedAvatarUrls(mid, 'prepared'),
+          ]);
+          grammarianAvatarsResult[mid] = gAv;
+          educationalAvatarsResult[mid] = eAv;
+          preparedAvatarsResult[mid] = pAv;
+        }
       }
       if (!cancelled) {
         setTmodNeedsThemeByMeeting(tmodResult);
+        setToastmasterBookedAvatarByMeeting(tmodAvatarResult);
+        setToastmasterBookedUserIdByMeeting(tmodBookedUserIdResult);
         setEducationalSpeakerNeedsByMeeting(edResult);
         setKeynoteSpeakerNeedsByMeeting(keynoteResult);
+        setPreparedSpeakerNeedsByMeeting(preparedResult);
+        setGrammarianNeedsWotdByMeeting(grammarianResult);
+        setGrammarianAvatarsByMeeting(grammarianAvatarsResult);
+        setEducationalSpeakerAvatarsByMeeting(educationalAvatarsResult);
+        setPreparedSpeakerAvatarsByMeeting(preparedAvatarsResult);
       }
     })();
     return () => { cancelled = true; };
-  }, [currentMeeting?.id, nextMeetings, user?.id]);
+  }, [currentMeeting, nextMeetings, user?.id]);
 
   const refreshBookRoleAttention = useCallback(() => {
     if (!user?.id || !user?.currentClubId) {
@@ -860,6 +1398,14 @@ export default function ClubMeetings() {
     const tmodNeedsAlert = tmodNeedsThemeByMeeting[meetingId] === true;
     const educationalSpeakerNeedsAlert = educationalSpeakerNeedsByMeeting[meetingId] === true;
     const keynoteSpeakerNeedsAlert = keynoteSpeakerNeedsByMeeting[meetingId] === true;
+    const preparedSpeakerNeedsAlert = preparedSpeakerNeedsByMeeting[meetingId] === true;
+    const grammarianNeedsAlert = grammarianNeedsWotdByMeeting[meetingId] === true;
+    const tmBookedUserId = toastmasterBookedUserIdByMeeting[meetingId];
+    const tmAvatarFromDb = toastmasterBookedAvatarByMeeting[meetingId]?.trim() || null;
+    const toastmasterDisplayAvatarUrl =
+      tmAvatarFromDb ||
+      (tmBookedUserId && user?.id === tmBookedUserId ? currentUserAvatarUrl : null) ||
+      null;
 
     return (
       <View style={styles.rolesTabContainer}>
@@ -875,6 +1421,9 @@ export default function ClubMeetings() {
                   meetingId={meetingId}
                   onPress={() => handleTabPress(tab, meetingId)}
                   showAlert={tab.id === 'toastmaster_corner' && tmodNeedsAlert}
+                  bookedToastmasterAvatarUrl={
+                    tab.id === 'toastmaster_corner' ? toastmasterDisplayAvatarUrl : null
+                  }
                 />
               ))}
             </View>
@@ -893,7 +1442,18 @@ export default function ClubMeetings() {
                   tab={tab}
                   meetingId={meetingId}
                   onPress={() => handleTabPress(tab, meetingId)}
-                  showAlert={(tab.id === 'educational_corner' && educationalSpeakerNeedsAlert) || (tab.id === 'keynote_speaker' && keynoteSpeakerNeedsAlert)}
+                  showAlert={
+                    (tab.id === 'evaluation_corner' && preparedSpeakerNeedsAlert) ||
+                    (tab.id === 'educational_corner' && educationalSpeakerNeedsAlert) ||
+                    (tab.id === 'keynote_speaker' && keynoteSpeakerNeedsAlert)
+                  }
+                  avatarUrls={
+                    tab.id === 'evaluation_corner'
+                      ? preparedSpeakerAvatarsByMeeting[meetingId]
+                      : tab.id === 'educational_corner'
+                        ? educationalSpeakerAvatarsByMeeting[meetingId]
+                        : undefined
+                  }
                 />
               ))}
             </View>
@@ -946,33 +1506,17 @@ export default function ClubMeetings() {
                 };
                 const description = descriptions[tab.id] || '';
                 return (
-                  <TouchableOpacity
+                  <SupportFullWidthRoleCardWithAlert
                     key={tab.id}
-                    style={[styles.keyRoleCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                    title={tab.title}
+                    description={description}
+                    iconColor={iconColor}
+                    SupportIcon={SupportIcon}
+                    showAlert={tab.id === 'grammarian' && grammarianNeedsAlert}
+                    comingSoon={!!tab.comingSoon}
                     onPress={() => handleTabPress(tab, meetingId)}
-                    activeOpacity={0.7}
-                    disabled={!!tab.comingSoon}
-                  >
-                    <View style={[styles.keyRoleIcon, { backgroundColor: iconColor + '25' }]}>
-                      <SupportIcon size={20} color={iconColor} />
-                    </View>
-                    <View style={styles.keyRoleContent}>
-                      <Text style={[styles.keyRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        {tab.title}
-                      </Text>
-                      {description ? (
-                        <Text style={[styles.keyRoleSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                          {description}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {!tab.comingSoon && <ChevronRight size={20} color={theme.colors.textSecondary} />}
-                    {tab.comingSoon && (
-                      <View style={styles.actionComingSoonBadge}>
-                        <Text style={styles.actionComingSoonText} maxFontSizeMultiplier={1.2}>Coming Soon</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                    avatarUrls={tab.id === 'grammarian' ? grammarianAvatarsByMeeting[meetingId] : undefined}
+                  />
                 );
               })}
             </View>
@@ -1933,7 +2477,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   keyRoleCardTmodAlert: {
-    borderColor: '#fca5a5',
+    borderColor: PENDING_ACTION_UI.border,
     borderWidth: 1.5,
   },
   keyRoleAlertBadge: {
@@ -1946,6 +2490,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  keyRoleIconAvatarRing: {
+    padding: 2,
+    overflow: 'hidden',
+  },
+  keyRoleIconAvatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   keyRoleContent: {
     flex: 1,
@@ -1974,7 +2527,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   speakingRoleCardAlert: {
-    borderColor: '#fca5a5',
+    borderColor: PENDING_ACTION_UI.border,
     borderWidth: 1.5,
   },
   speakingRoleAlertBadge: {
@@ -1989,6 +2542,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
+  },
+  speakingRoleIconAvatarRing: {
+    padding: 2,
+    overflow: 'hidden',
+  },
+  speakingRoleIconAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   speakingRoleTitle: {
     fontSize: 9,

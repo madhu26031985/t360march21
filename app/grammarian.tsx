@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Animated, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import { ArrowLeft, BookOpen, Calendar, Clock, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb } from 'lucide-react-native';
 import { Image } from 'react-native';
 
@@ -143,6 +144,7 @@ export default function GrammarianReport() {
   });
   const isInitialMount = useRef(true);
   const notebookPulse = useRef(new Animated.Value(1)).current;
+  const [bookingGrammarianRole, setBookingGrammarianRole] = useState(false);
 
   useEffect(() => {
     if (meetingId) {
@@ -192,6 +194,29 @@ export default function GrammarianReport() {
       Alert.alert('Error', 'Failed to load Grammarian data');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBookGrammarianInline = async () => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+    setBookingGrammarianRole(true);
+    try {
+      const result = await bookOpenMeetingRole(
+        user.id,
+        meetingId,
+        { ilikeRoleName: '%grammarian%' },
+        'Grammarian is already booked or not set up for this meeting.'
+      );
+      if (result.ok) {
+        await loadData();
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingGrammarianRole(false);
     }
   };
 
@@ -1145,10 +1170,23 @@ export default function GrammarianReport() {
               Love good words and great grammar?{'\n'}This role is waiting for you!
             </Text>
             <TouchableOpacity
-              style={[styles.bookRoleButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
+              style={[
+                styles.bookRoleButton,
+                {
+                  backgroundColor: theme.colors.primary,
+                  opacity: bookingGrammarianRole ? 0.85 : 1,
+                },
+              ]}
+              onPress={() => handleBookGrammarianInline()}
+              disabled={bookingGrammarianRole}
             >
-              <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>Book Grammarian Role</Text>
+              {bookingGrammarianRole ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                  Book Grammarian Role
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
           </View>

@@ -5,6 +5,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import { ArrowLeft, Calendar, Clock, MapPin, Building2, User, FileText, ChartBar, Play, ClipboardList, Bell, Users, BookOpen, Star, Mic, CheckSquare, FileBarChart, MessageSquare, Crown, Settings, UserCog, LayoutDashboard, Vote, Info, X, UserCheck, NotebookPen, ClipboardCheck, Trash2, Plus } from 'lucide-react-native';
 import { Image } from 'react-native';
 
@@ -105,6 +106,7 @@ export default function AhCounterCorner() {
   const [guestMembers, setGuestMembers] = useState<{ user_id: string; full_name: string }[]>([]);
   const [showAddGuestModal, setShowAddGuestModal] = useState(false);
   const [newGuestInput, setNewGuestInput] = useState('');
+  const [bookingAhCounterRole, setBookingAhCounterRole] = useState(false);
 
   useEffect(() => {
     if (meetingId && user?.currentClubId) {
@@ -131,6 +133,29 @@ export default function AhCounterCorner() {
       loadAuditMembers();
     }
   }, [activeTab, meetingId, user?.currentClubId]);
+
+  const handleBookAhCounterInline = async () => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+    setBookingAhCounterRole(true);
+    try {
+      const result = await bookOpenMeetingRole(
+        user.id,
+        meetingId,
+        { ilikeRoleName: '%Ah Counter%' },
+        'Ah Counter is already booked or not set up for this meeting.'
+      );
+      if (result.ok) {
+        await loadData();
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingAhCounterRole(false);
+    }
+  };
 
   const loadData = async () => {
     if (!meetingId || !user?.currentClubId) {
@@ -661,10 +686,23 @@ export default function AhCounterCorner() {
               It's time to become — Ah Counter now. 😊
             </Text>
             <TouchableOpacity
-              style={[styles.bookRoleButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
+              style={[
+                styles.bookRoleButton,
+                {
+                  backgroundColor: theme.colors.primary,
+                  opacity: bookingAhCounterRole ? 0.85 : 1,
+                },
+              ]}
+              onPress={() => handleBookAhCounterInline()}
+              disabled={bookingAhCounterRole}
             >
-              <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>Book Ah Counter Role</Text>
+              {bookingAhCounterRole ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                  Book Ah Counter Role
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
           </View>

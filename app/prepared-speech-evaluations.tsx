@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { ChevronLeft, User, FileText, CheckCircle2, AlertCircle, Eye, Clock, Bell, Users, Calendar, BookOpen, Star, Mic, CheckSquare, FileBarChart, MessageSquare, ClipboardCheck } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
+import { bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { Image } from 'react-native';
 
 interface PreparedSpeechEvaluation {
@@ -40,6 +41,12 @@ interface OpenEvaluatorRole {
   role_classification: string;
 }
 
+interface OpenSpeakerRole {
+  id: string;
+  role_name: string;
+  role_classification: string | null;
+}
+
 interface BookedEvaluatorRole {
   id: string;
   role_name: string;
@@ -59,6 +66,8 @@ export default function PreparedSpeechEvaluations() {
   const [openEvaluatorRoles, setOpenEvaluatorRoles] = useState<OpenEvaluatorRole[]>([]);
   const [bookedEvaluatorRoles, setBookedEvaluatorRoles] = useState<BookedEvaluatorRole[]>([]);
   const [bookedSpeakerRoles, setBookedSpeakerRoles] = useState<any[]>([]);
+  const [openSpeakerRoles, setOpenSpeakerRoles] = useState<OpenSpeakerRole[]>([]);
+  const [bookingRoleId, setBookingRoleId] = useState<string | null>(null);
   const [meetingInfo, setMeetingInfo] = useState<{
     title: string;
     date: string;
@@ -74,6 +83,7 @@ export default function PreparedSpeechEvaluations() {
       loadOpenEvaluatorRoles();
       loadBookedEvaluatorRoles();
       loadBookedSpeakerRoles();
+      loadOpenSpeakerRoles();
     }
   }, [user, meetingId]);
 
@@ -85,6 +95,7 @@ export default function PreparedSpeechEvaluations() {
         loadOpenEvaluatorRoles();
         loadBookedEvaluatorRoles();
         loadBookedSpeakerRoles();
+        loadOpenSpeakerRoles();
       }
     });
 
@@ -268,6 +279,30 @@ export default function PreparedSpeechEvaluations() {
     }
   };
 
+  const loadOpenSpeakerRoles = async () => {
+    if (!meetingId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('app_meeting_roles_management')
+        .select('id, role_name, role_classification')
+        .eq('meeting_id', meetingId)
+        .in('role_classification', ['Prepared speaker', 'Ice Breaker'])
+        .eq('role_status', 'Available')
+        .is('assigned_user_id', null)
+        .order('role_name', { ascending: true });
+
+      if (error) {
+        console.error('Error loading open speaker roles:', error);
+        return;
+      }
+
+      setOpenSpeakerRoles((data as OpenSpeakerRole[]) || []);
+    } catch (error) {
+      console.error('Error loading open speaker roles:', error);
+    }
+  };
+
   const loadBookedSpeakerRoles = async () => {
     if (!meetingId) return;
 
@@ -305,8 +340,28 @@ export default function PreparedSpeechEvaluations() {
     }
   };
 
-  const handleBookEvaluatorRole = (roleId: string) => {
-    router.push(`/book-a-role?meetingId=${meetingId}&roleId=${roleId}`);
+  const handleBookRoleInline = async (roleId: string) => {
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+    setBookingRoleId(roleId);
+    try {
+      const result = await bookMeetingRoleForCurrentUser(user.id, roleId);
+      if (result.ok) {
+        await Promise.all([
+          loadOpenEvaluatorRoles(),
+          loadBookedEvaluatorRoles(),
+          loadOpenSpeakerRoles(),
+          loadBookedSpeakerRoles(),
+          loadEvaluations(),
+        ]);
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingRoleId(null);
+    }
   };
 
   const handleOpenEvaluation = (evaluation: PreparedSpeechEvaluation) => {
@@ -482,7 +537,8 @@ export default function PreparedSpeechEvaluations() {
               <TouchableOpacity
                 key={role.id}
                 style={[styles.openRoleCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.primary }]}
-                onPress={() => handleBookEvaluatorRole(role.id)}
+                onPress={() => !bookingRoleId && handleBookRoleInline(role.id)}
+                disabled={!!bookingRoleId}
               >
                 <View style={styles.openRoleContent}>
                   <View style={[styles.openRoleIcon, { backgroundColor: theme.colors.primary + '20' }]}>
@@ -497,9 +553,13 @@ export default function PreparedSpeechEvaluations() {
                     </Text>
                   </View>
                   <View style={[styles.bookButton, { backgroundColor: theme.colors.primary }]}>
-                    <Text style={[styles.bookButtonText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>
-                      Book
-                    </Text>
+                    {bookingRoleId === role.id ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={[styles.bookButtonText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>
+                        Book
+                      </Text>
+                    )}
                   </View>
                 </View>
               </TouchableOpacity>
@@ -507,7 +567,57 @@ export default function PreparedSpeechEvaluations() {
           </>
         )}
 
-        <Text style={[styles.pageTitle, { color: theme.colors.text, marginTop: (openEvaluatorRoles.length > 0 || bookedEvaluatorRoles.length > 0) ? 24 : 0 }]} maxFontSizeMultiplier={1.3}>
+        {/* Open Prepared / Ice Breaker speaker slots */}
+        {openSpeakerRoles.length > 0 && (
+          <>
+            <Text
+              style={[
+                styles.pageTitle,
+                {
+                  color: theme.colors.text,
+                  marginTop:
+                    openEvaluatorRoles.length > 0 || bookedEvaluatorRoles.length > 0 ? 24 : 0,
+                },
+              ]}
+              maxFontSizeMultiplier={1.3}
+            >
+              Open speaker slots ({openSpeakerRoles.length})
+            </Text>
+            {openSpeakerRoles.map((role) => (
+              <TouchableOpacity
+                key={role.id}
+                style={[styles.openRoleCard, { backgroundColor: theme.colors.surface, borderColor: '#10b981' }]}
+                onPress={() => !bookingRoleId && handleBookRoleInline(role.id)}
+                disabled={!!bookingRoleId}
+              >
+                <View style={styles.openRoleContent}>
+                  <View style={[styles.openRoleIcon, { backgroundColor: '#10b981' + '20' }]}>
+                    <Mic size={24} color="#10b981" />
+                  </View>
+                  <View style={styles.openRoleInfo}>
+                    <Text style={[styles.openRoleName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      {role.role_name}
+                    </Text>
+                    <Text style={[styles.openRoleStatus, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      Book yourself as speaker — tap to book
+                    </Text>
+                  </View>
+                  <View style={[styles.bookButton, { backgroundColor: '#10b981' }]}>
+                    {bookingRoleId === role.id ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={[styles.bookButtonText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>
+                        Book
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+
+        <Text style={[styles.pageTitle, { color: theme.colors.text, marginTop: (openEvaluatorRoles.length > 0 || bookedEvaluatorRoles.length > 0 || openSpeakerRoles.length > 0) ? 24 : 0 }]} maxFontSizeMultiplier={1.3}>
           All Speakers ({bookedSpeakerRoles.length + evaluations.length})
         </Text>
 
@@ -599,6 +709,7 @@ export default function PreparedSpeechEvaluations() {
         {evaluations.length === 0 &&
          bookedEvaluatorRoles.length === 0 &&
          openEvaluatorRoles.length === 0 &&
+         openSpeakerRoles.length === 0 &&
          bookedSpeakerRoles.length === 0 ? (
           <View style={styles.emptyContainer}>
             <FileText size={64} color={theme.colors.textSecondary} />

@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   Image,
-  Modal
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +16,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import {
   ArrowLeft,
   GraduationCap,
@@ -90,6 +92,7 @@ export default function EducationalCorner(): JSX.Element {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isExComm, setIsExComm] = useState(false);
   const [showCongratsModal, setShowCongratsModal] = useState(false);
+  const [bookingEducationalRole, setBookingEducationalRole] = useState(false);
 
   // Load data on component mount
   useEffect(() => {
@@ -167,6 +170,29 @@ export default function EducationalCorner(): JSX.Element {
   /**
    * Load Educational Speaker assignment and its details
    */
+  const handleBookEducationalSpeakerInline = async (): Promise<void> => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+    setBookingEducationalRole(true);
+    try {
+      const result = await bookOpenMeetingRole(
+        user.id,
+        meetingId,
+        { eqRoleName: 'Educational Speaker' },
+        'Educational Speaker is already booked or not set up for this meeting.'
+      );
+      if (result.ok) {
+        await loadEducationalSpeaker();
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingEducationalRole(false);
+    }
+  };
+
   const loadEducationalSpeaker = async (): Promise<void> => {
     if (!meetingId || !user?.id) return;
 
@@ -454,13 +480,23 @@ export default function EducationalCorner(): JSX.Element {
                 The stage is yours — make it count.
               </Text>
               <TouchableOpacity
-                style={[styles.bookSpeakerButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => router.push({
-                  pathname: '/book-a-role',
-                  params: { meetingId: meeting?.id }
-                })}
+                style={[
+                  styles.bookSpeakerButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingEducationalRole ? 0.85 : 1,
+                  },
+                ]}
+                onPress={() => handleBookEducationalSpeakerInline()}
+                disabled={bookingEducationalRole}
               >
-                <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>Book Educational Speaker Role</Text>
+                {bookingEducationalRole ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
+                    Book Educational Speaker Role
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           )}

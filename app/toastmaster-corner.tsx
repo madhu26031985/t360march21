@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Modal, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -6,6 +6,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import { ArrowLeft, Calendar, Clock, MapPin, Building2, Crown, User, Shield, Eye, UserCheck, Plus, Edit3, FileText, NotebookPen, Star, MessageSquare, Bell, FileBarChart, Award, BookOpen, Mic, ClipboardCheck, CheckSquare, Users, MessageCircle, Settings, UserCog, LayoutDashboard, Vote } from 'lucide-react-native';
 import { Image } from 'react-native';
 
@@ -67,6 +68,7 @@ export default function ToastmasterCorner() {
   const [toastmasterMeetingData, setToastmasterMeetingData] = useState<ToastmasterMeetingData | null>(null); // New state for consolidated data
   const [isExComm, setIsExComm] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [bookingTmodRole, setBookingTmodRole] = useState(false);
 
   const themeIconPulse = useRef(new Animated.Value(1)).current;
 
@@ -146,6 +148,29 @@ export default function ToastmasterCorner() {
     }
     setShowCongratsModal(false);
   }, [TMOD_CONGRATS_SEEN_KEY]);
+
+  const handleBookTmodInline = async () => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+    setBookingTmodRole(true);
+    try {
+      const result = await bookOpenMeetingRole(
+        user.id,
+        meetingId,
+        { ilikeRoleName: '%toastmaster%' },
+        'Toastmaster of the Day is already booked or not set up for this meeting.'
+      );
+      if (result.ok) {
+        await loadToastmasterCornerData();
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingTmodRole(false);
+    }
+  };
 
   const loadToastmasterCornerData = async () => {
     if (!meetingId || !user?.currentClubId) {
@@ -525,13 +550,23 @@ export default function ToastmasterCorner() {
                 It's time to become — TMOD now. 💫
               </Text>
               <TouchableOpacity
-                style={[styles.bookRoleButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => router.push({
-                  pathname: '/book-a-role',
-                  params: { meetingId: meeting?.id }
-                })}
+                style={[
+                  styles.bookRoleButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingTmodRole ? 0.85 : 1,
+                  },
+                ]}
+                onPress={() => handleBookTmodInline()}
+                disabled={bookingTmodRole}
               >
-                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>Book TMOD Role</Text>
+                {bookingTmodRole ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                    Book TMOD Role
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           )}

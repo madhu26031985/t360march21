@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   Image,
-  Modal
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +16,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import {
   ArrowLeft,
   Mic,
@@ -98,6 +100,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   const [isExComm, setIsExComm] = useState(false);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [showCongratsModal, setShowCongratsModal] = useState(false);
+  const [bookingKeynoteRole, setBookingKeynoteRole] = useState(false);
 
   // Load data on component mount
   useEffect(() => {
@@ -160,6 +163,29 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
       setMeeting(data);
     } catch (error) {
       console.error('Error loading meeting:', error);
+    }
+  };
+
+  const handleBookKeynoteSpeakerInline = async (): Promise<void> => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+    setBookingKeynoteRole(true);
+    try {
+      const result = await bookOpenMeetingRole(
+        user.id,
+        meetingId,
+        { ilikeRoleName: '%keynote speaker%' },
+        'Keynote Speaker is already booked or not set up for this meeting.'
+      );
+      if (result.ok) {
+        await loadKeynoteSpeaker();
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingKeynoteRole(false);
     }
   };
 
@@ -499,13 +525,23 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                 Your voice matters! 🎤
               </Text>
               <TouchableOpacity
-                style={[styles.bookSpeakerButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => router.push({
-                  pathname: '/book-a-role',
-                  params: { meetingId: meeting?.id }
-                })}
+                style={[
+                  styles.bookSpeakerButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingKeynoteRole ? 0.85 : 1,
+                  },
+                ]}
+                onPress={() => handleBookKeynoteSpeakerInline()}
+                disabled={bookingKeynoteRole}
               >
-                <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>Book Keynote Speaker Role</Text>
+                {bookingKeynoteRole ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
+                    Book Keynote Speaker Role
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           )}

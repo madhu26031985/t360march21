@@ -19,6 +19,10 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import {
+  bookMeetingRoleForCurrentUser as bookMeetingRoleInline,
+  bookOpenMeetingRole,
+} from '@/lib/bookMeetingRoleInline';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import {
@@ -145,6 +149,9 @@ export default function TableTopicCorner(): JSX.Element {
   const [publishedQuestions, setPublishedQuestions] = useState<AssignedQuestion[]>([]);
   const [clubInfo, setClubInfo] = useState<{ name: string; club_number: string | null; banner_color: string | null } | null>(null);
   const [isSharing, setIsSharing] = useState<boolean>(false);
+  /** Inline book-a-role: loading state per participant row */
+  const [bookingRoleId, setBookingRoleId] = useState<string | null>(null);
+  const [bookingTableTopicMaster, setBookingTableTopicMaster] = useState<boolean>(false);
 
   // Ref for screenshot
   const summaryViewRef = useRef<ViewShot>(null);
@@ -815,6 +822,51 @@ export default function TableTopicCorner(): JSX.Element {
     }
   };
 
+  const handleBookTableTopicParticipant = async (participant: TableTopicParticipant): Promise<void> => {
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+    setBookingRoleId(participant.id);
+    try {
+      const result = await bookMeetingRoleInline(user.id, participant.id);
+      if (result.ok) {
+        await loadTableTopicParticipants();
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingRoleId(null);
+    }
+  };
+
+  const handleBookTableTopicMaster = async (): Promise<void> => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+
+    setBookingTableTopicMaster(true);
+    try {
+      const result = await bookOpenMeetingRole(
+        user.id,
+        meetingId,
+        {
+          orRoleName:
+            'role_name.ilike.%Table Topics Master%,role_name.ilike.%Table Topic Master%',
+        },
+        'Table Topic Master is already booked or this meeting has no master role set up.'
+      );
+      if (result.ok) {
+        await loadTableTopicMaster();
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingTableTopicMaster(false);
+    }
+  };
+
   /**
    * Handle clearing question for a participant
    */
@@ -918,10 +970,23 @@ export default function TableTopicCorner(): JSX.Element {
               {participant.role_name}
             </Text>
             <TouchableOpacity
-              style={[styles.bookRoleButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => router.push(`/book-a-role?meetingId=${meetingId}&roleId=${participant.id}`)}
+              style={[
+                styles.bookRoleButton,
+                {
+                  backgroundColor: theme.colors.primary,
+                  opacity: bookingRoleId === participant.id ? 0.85 : 1,
+                },
+              ]}
+              onPress={() => handleBookTableTopicParticipant(participant)}
+              disabled={!!bookingRoleId}
             >
-              <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>Book a Role</Text>
+              {bookingRoleId === participant.id ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                  Book a Role
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -1105,10 +1170,23 @@ export default function TableTopicCorner(): JSX.Element {
             
               </Text>
               <TouchableOpacity
-                style={[styles.bookRoleButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
+                style={[
+                  styles.bookRoleButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingTableTopicMaster ? 0.85 : 1,
+                  },
+                ]}
+                onPress={() => handleBookTableTopicMaster()}
+                disabled={bookingTableTopicMaster}
               >
-                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>Book Table Topic Master</Text>
+                {bookingTableTopicMaster ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                    Book Table Topic Master
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           )}

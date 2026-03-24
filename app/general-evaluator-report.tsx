@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
 import { ArrowLeft, Calendar, Clock, MapPin, Building2, Star, Info, CircleCheck as CheckCircle, Circle, CircleAlert as AlertCircle, X, NotebookPen, Bell, FileText, Users, MessageSquare, Mic, BookOpen, CheckSquare, ClipboardCheck, FileBarChart } from 'lucide-react-native';
 import { Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
@@ -104,6 +105,7 @@ export default function GeneralEvaluatorReport() {
   });
   const [existingEvaluation, setExistingEvaluation] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'categories' | 'feedback'>('categories');
+  const [bookingGeRole, setBookingGeRole] = useState(false);
 
   const evaluationCategories: EvaluationCategory[] = [
     {
@@ -267,6 +269,29 @@ export default function GeneralEvaluatorReport() {
       Alert.alert('Error', 'Failed to load general evaluator data');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBookGeneralEvaluatorInline = async () => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to book this role.');
+      return;
+    }
+    setBookingGeRole(true);
+    try {
+      const result = await bookOpenMeetingRole(
+        user.id,
+        meetingId,
+        { ilikeRoleName: '%general evaluator%' },
+        'General Evaluator is already booked or not set up for this meeting.'
+      );
+      if (result.ok) {
+        await loadGeneralEvaluatorData();
+      } else {
+        Alert.alert('Could not book', result.message);
+      }
+    } finally {
+      setBookingGeRole(false);
     }
   };
 
@@ -849,12 +874,17 @@ export default function GeneralEvaluatorReport() {
                 Guide the meeting to excellence ⭐
               </Text>
               <TouchableOpacity
-                style={styles.bookRoleButton}
-                onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
+                style={[styles.bookRoleButton, { opacity: bookingGeRole ? 0.85 : 1 }]}
+                onPress={() => handleBookGeneralEvaluatorInline()}
+                disabled={bookingGeRole}
               >
-                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                  Book the GE role
-                </Text>
+                {bookingGeRole ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                    Book the GE role
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           )}
