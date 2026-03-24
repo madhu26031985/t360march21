@@ -119,8 +119,8 @@ interface KeyRoleCardWithTmodAlertProps {
   meetingId: string;
   onPress: () => void;
   showAlert?: boolean;
-  /** Booked Toastmaster's profile photo — visible to all members */
-  bookedToastmasterAvatarUrl?: string | null;
+  /** Booked member photo(s) for this key role; multiple → rotate every 3s */
+  avatarUrls?: string[];
 }
 
 interface SpeakingRoleCardWithAlertProps {
@@ -336,6 +336,61 @@ function SupportFullWidthRoleCardWithAlert({
   );
 }
 
+/** Timer / Ah Counter half-width tile with optional booked member photo */
+function SupportHalfRoleCardWithAvatar({
+  tab,
+  iconColor,
+  SupportIcon,
+  avatarUrls,
+  onPress,
+  comingSoon,
+}: {
+  tab: TabItem;
+  iconColor: string;
+  SupportIcon: SupportRowIcon;
+  avatarUrls?: string[];
+  onPress: () => void;
+  comingSoon?: boolean;
+}) {
+  const { theme } = useTheme();
+  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls);
+  return (
+    <TouchableOpacity
+      style={[styles.supportRoleCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      disabled={!!comingSoon}
+    >
+      {hasPhoto && currentUri ? (
+        <View style={[styles.supportRoleIcon, styles.supportRoleIconAvatarRing, { backgroundColor: iconColor }]}>
+          <Image
+            key={currentUri}
+            source={{ uri: currentUri }}
+            style={styles.supportRoleIconAvatarImage}
+            resizeMode="cover"
+            onError={onImageError}
+          />
+        </View>
+      ) : (
+        <View style={[styles.supportRoleIcon, { backgroundColor: iconColor + '25' }]}>
+          <SupportIcon size={20} color={iconColor} />
+        </View>
+      )}
+      <Text style={[styles.supportRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+        {tab.title}
+      </Text>
+      {!comingSoon && <ChevronRight size={18} color={theme.colors.textSecondary} />}
+      {comingSoon && (
+        <View style={[styles.comingSoonBadge]}>
+          <Text style={styles.comingSoonBadgeText} maxFontSizeMultiplier={1.2}>
+            Coming Soon
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 interface BookRoleCoreCardProps {
   tab: TabItem;
   description: string;
@@ -415,13 +470,10 @@ function KeyRoleCardWithTmodAlert({
   meetingId,
   onPress,
   showAlert,
-  bookedToastmasterAvatarUrl,
+  avatarUrls,
 }: KeyRoleCardWithTmodAlertProps) {
   const { theme } = useTheme();
-  const [tmodAvatarFailed, setTmodAvatarFailed] = useState(false);
-  useEffect(() => {
-    setTmodAvatarFailed(false);
-  }, [bookedToastmasterAvatarUrl]);
+  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls);
   const alertScale = useSharedValue(1);
   useEffect(() => {
     if (!showAlert) {
@@ -442,8 +494,6 @@ function KeyRoleCardWithTmodAlert({
   }));
   const title = tab.id === 'toastmaster_corner' ? 'Toastmaster of the Day' : tab.id === 'general_evaluator' ? 'General Evaluator' : 'Table Topics Master';
   const subtitle = tab.id === 'toastmaster_corner' ? 'Leads meeting, introduces speakers' : tab.id === 'general_evaluator' ? 'Evaluates meeting and all roles' : 'Conducts impromptu speaking';
-  const showTmodPhoto =
-    tab.id === 'toastmaster_corner' && !!bookedToastmasterAvatarUrl && !tmodAvatarFailed;
   return (
     <TouchableOpacity
       key={tab.id}
@@ -455,13 +505,14 @@ function KeyRoleCardWithTmodAlert({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {showTmodPhoto ? (
+      {hasPhoto && currentUri ? (
         <View style={[styles.keyRoleIcon, styles.keyRoleIconAvatarRing, { backgroundColor: tab.color }]}>
           <Image
-            source={{ uri: bookedToastmasterAvatarUrl as string }}
+            key={currentUri}
+            source={{ uri: currentUri }}
             style={styles.keyRoleIconAvatarImage}
             resizeMode="cover"
-            onError={() => setTmodAvatarFailed(true)}
+            onError={onImageError}
           />
         </View>
       ) : (
@@ -524,6 +575,17 @@ export default function ClubMeetings() {
   const [preparedSpeakerAvatarsByMeeting, setPreparedSpeakerAvatarsByMeeting] = useState<
     Record<string, string[]>
   >({});
+  const [keynoteSpeakerAvatarsByMeeting, setKeynoteSpeakerAvatarsByMeeting] = useState<
+    Record<string, string[]>
+  >({});
+  const [generalEvaluatorAvatarsByMeeting, setGeneralEvaluatorAvatarsByMeeting] = useState<
+    Record<string, string[]>
+  >({});
+  const [tableTopicsMasterAvatarsByMeeting, setTableTopicsMasterAvatarsByMeeting] = useState<
+    Record<string, string[]>
+  >({});
+  const [timerAvatarsByMeeting, setTimerAvatarsByMeeting] = useState<Record<string, string[]>>({});
+  const [ahCounterAvatarsByMeeting, setAhCounterAvatarsByMeeting] = useState<Record<string, string[]>>({});
   const lastRefreshTime = useRef<number>(0);
   const hasLoadedOnce = useRef<boolean>(false);
 
@@ -614,6 +676,11 @@ export default function ClubMeetings() {
       setGrammarianAvatarsByMeeting({});
       setEducationalSpeakerAvatarsByMeeting({});
       setPreparedSpeakerAvatarsByMeeting({});
+      setKeynoteSpeakerAvatarsByMeeting({});
+      setGeneralEvaluatorAvatarsByMeeting({});
+      setTableTopicsMasterAvatarsByMeeting({});
+      setTimerAvatarsByMeeting({});
+      setAhCounterAvatarsByMeeting({});
       return;
     }
     let cancelled = false;
@@ -679,10 +746,23 @@ export default function ClubMeetings() {
       const grammarianAvatarsResult: Record<string, string[]> = {};
       const educationalAvatarsResult: Record<string, string[]> = {};
       const preparedAvatarsResult: Record<string, string[]> = {};
+      const keynoteAvatarsResult: Record<string, string[]> = {};
+      const generalEvaluatorAvatarsResult: Record<string, string[]> = {};
+      const tableTopicsMasterAvatarsResult: Record<string, string[]> = {};
+      const timerAvatarsResult: Record<string, string[]> = {};
+      const ahCounterAvatarsResult: Record<string, string[]> = {};
 
       const fetchOrderedAvatarUrls = async (
         meetingId: string,
-        kind: 'grammarian' | 'educational' | 'prepared'
+        kind:
+          | 'grammarian'
+          | 'educational'
+          | 'prepared'
+          | 'keynote'
+          | 'general_evaluator'
+          | 'table_topic_master'
+          | 'timer'
+          | 'ah_counter'
       ): Promise<string[]> => {
         let q;
         if (kind === 'grammarian') {
@@ -699,6 +779,41 @@ export default function ClubMeetings() {
             .eq('meeting_id', meetingId)
             .eq('booking_status', 'booked')
             .eq('role_name', 'Educational Speaker');
+        } else if (kind === 'keynote') {
+          q = supabase
+            .from('app_meeting_roles_management')
+            .select('assigned_user_id')
+            .eq('meeting_id', meetingId)
+            .eq('booking_status', 'booked')
+            .ilike('role_name', '%keynote speaker%');
+        } else if (kind === 'general_evaluator') {
+          q = supabase
+            .from('app_meeting_roles_management')
+            .select('assigned_user_id')
+            .eq('meeting_id', meetingId)
+            .eq('booking_status', 'booked')
+            .ilike('role_name', '%general evaluator%');
+        } else if (kind === 'table_topic_master') {
+          q = supabase
+            .from('app_meeting_roles_management')
+            .select('assigned_user_id')
+            .eq('meeting_id', meetingId)
+            .eq('booking_status', 'booked')
+            .or('role_name.ilike.%Table Topics Master%,role_name.ilike.%Table Topic Master%');
+        } else if (kind === 'timer') {
+          q = supabase
+            .from('app_meeting_roles_management')
+            .select('assigned_user_id')
+            .eq('meeting_id', meetingId)
+            .eq('booking_status', 'booked')
+            .eq('role_name', 'Timer');
+        } else if (kind === 'ah_counter') {
+          q = supabase
+            .from('app_meeting_roles_management')
+            .select('assigned_user_id')
+            .eq('meeting_id', meetingId)
+            .eq('booking_status', 'booked')
+            .ilike('role_name', '%Ah Counter%');
         } else {
           q = supabase
             .from('app_meeting_roles_management')
@@ -899,14 +1014,33 @@ export default function ClubMeetings() {
         }
 
         if (!cancelled) {
-          const [gAv, eAv, pAv] = await Promise.all([
+          const [
+            gAv,
+            eAv,
+            pAv,
+            knAv,
+            geAv,
+            ttmAv,
+            timerAv,
+            ahAv,
+          ] = await Promise.all([
             fetchOrderedAvatarUrls(mid, 'grammarian'),
             fetchOrderedAvatarUrls(mid, 'educational'),
             fetchOrderedAvatarUrls(mid, 'prepared'),
+            fetchOrderedAvatarUrls(mid, 'keynote'),
+            fetchOrderedAvatarUrls(mid, 'general_evaluator'),
+            fetchOrderedAvatarUrls(mid, 'table_topic_master'),
+            fetchOrderedAvatarUrls(mid, 'timer'),
+            fetchOrderedAvatarUrls(mid, 'ah_counter'),
           ]);
           grammarianAvatarsResult[mid] = gAv;
           educationalAvatarsResult[mid] = eAv;
           preparedAvatarsResult[mid] = pAv;
+          keynoteAvatarsResult[mid] = knAv;
+          generalEvaluatorAvatarsResult[mid] = geAv;
+          tableTopicsMasterAvatarsResult[mid] = ttmAv;
+          timerAvatarsResult[mid] = timerAv;
+          ahCounterAvatarsResult[mid] = ahAv;
         }
       }
       if (!cancelled) {
@@ -920,6 +1054,11 @@ export default function ClubMeetings() {
         setGrammarianAvatarsByMeeting(grammarianAvatarsResult);
         setEducationalSpeakerAvatarsByMeeting(educationalAvatarsResult);
         setPreparedSpeakerAvatarsByMeeting(preparedAvatarsResult);
+        setKeynoteSpeakerAvatarsByMeeting(keynoteAvatarsResult);
+        setGeneralEvaluatorAvatarsByMeeting(generalEvaluatorAvatarsResult);
+        setTableTopicsMasterAvatarsByMeeting(tableTopicsMasterAvatarsResult);
+        setTimerAvatarsByMeeting(timerAvatarsResult);
+        setAhCounterAvatarsByMeeting(ahCounterAvatarsResult);
       }
     })();
     return () => { cancelled = true; };
@@ -1406,6 +1545,9 @@ export default function ClubMeetings() {
       tmAvatarFromDb ||
       (tmBookedUserId && user?.id === tmBookedUserId ? currentUserAvatarUrl : null) ||
       null;
+    const toastmasterAvatarUrlsForCard = toastmasterDisplayAvatarUrl
+      ? [toastmasterDisplayAvatarUrl]
+      : [];
 
     return (
       <View style={styles.rolesTabContainer}>
@@ -1421,8 +1563,14 @@ export default function ClubMeetings() {
                   meetingId={meetingId}
                   onPress={() => handleTabPress(tab, meetingId)}
                   showAlert={tab.id === 'toastmaster_corner' && tmodNeedsAlert}
-                  bookedToastmasterAvatarUrl={
-                    tab.id === 'toastmaster_corner' ? toastmasterDisplayAvatarUrl : null
+                  avatarUrls={
+                    tab.id === 'toastmaster_corner'
+                      ? toastmasterAvatarUrlsForCard
+                      : tab.id === 'general_evaluator'
+                        ? generalEvaluatorAvatarsByMeeting[meetingId] ?? []
+                        : tab.id === 'table_topic_corner'
+                          ? tableTopicsMasterAvatarsByMeeting[meetingId] ?? []
+                          : []
                   }
                 />
               ))}
@@ -1452,7 +1600,9 @@ export default function ClubMeetings() {
                       ? preparedSpeakerAvatarsByMeeting[meetingId]
                       : tab.id === 'educational_corner'
                         ? educationalSpeakerAvatarsByMeeting[meetingId]
-                        : undefined
+                        : tab.id === 'keynote_speaker'
+                          ? keynoteSpeakerAvatarsByMeeting[meetingId]
+                          : undefined
                   }
                 />
               ))}
@@ -1471,26 +1621,19 @@ export default function ClubMeetings() {
                 const iconColor = tab.color || '#6b7280';
                 const SupportIcon = tab.id === 'timer' ? Timer : BarChart3;
                 return (
-                  <TouchableOpacity
+                  <SupportHalfRoleCardWithAvatar
                     key={tab.id}
-                    style={[styles.supportRoleCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                    tab={tab}
+                    iconColor={iconColor}
+                    SupportIcon={SupportIcon}
+                    avatarUrls={
+                      tab.id === 'timer'
+                        ? timerAvatarsByMeeting[meetingId]
+                        : ahCounterAvatarsByMeeting[meetingId]
+                    }
                     onPress={() => handleTabPress(tab, meetingId)}
-                    activeOpacity={0.7}
-                    disabled={!!tab.comingSoon}
-                  >
-                    <View style={[styles.supportRoleIcon, { backgroundColor: iconColor + '25' }]}>
-                      <SupportIcon size={20} color={iconColor} />
-                    </View>
-                    <Text style={[styles.supportRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                      {tab.title}
-                    </Text>
-                    {!tab.comingSoon && <ChevronRight size={18} color={theme.colors.textSecondary} />}
-                    {tab.comingSoon && (
-                      <View style={[styles.comingSoonBadge]}>
-                        <Text style={styles.comingSoonBadgeText} maxFontSizeMultiplier={1.2}>Coming Soon</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                    comingSoon={!!tab.comingSoon}
+                  />
                 );
               })}
             </View>
@@ -2577,6 +2720,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
+  },
+  supportRoleIconAvatarRing: {
+    padding: 2,
+    overflow: 'hidden',
+  },
+  supportRoleIconAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   supportRoleTitle: {
     flex: 1,
