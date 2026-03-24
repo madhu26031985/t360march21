@@ -1171,8 +1171,10 @@ export default function AgendaEditor() {
     }
   };
 
-  const toggleVisibility = async (itemId: string, currentVisibility: boolean) => {
-    const newVisibility = !currentVisibility;
+  const toggleVisibility = async (itemId: string, currentVisibility?: boolean) => {
+    const liveVisibility =
+      currentVisibility ?? agendaItems.find((item) => item.id === itemId)?.is_visible ?? true;
+    const newVisibility = !liveVisibility;
 
     // Update local state immediately for instant feedback
     const updatedItems = agendaItems.map(item =>
@@ -1190,7 +1192,7 @@ export default function AgendaEditor() {
       console.error('Error updating visibility:', error);
       // Revert local state if database update failed
       setAgendaItems(items =>
-        items.map(item => (item.id === itemId ? { ...item, is_visible: currentVisibility } : item))
+        items.map(item => (item.id === itemId ? { ...item, is_visible: liveVisibility } : item))
       );
       Alert.alert('Error', 'Failed to update visibility');
       return;
@@ -3573,29 +3575,21 @@ export default function AgendaEditor() {
                 </View>
                 <TouchableOpacity
                   onPress={() => {
-                    if (!isAgendaVisible) {
-                      Alert.alert(
-                        'Agenda Hidden',
-                        'The entire agenda is currently hidden from members. Please enable "Agenda Visible to Members" first to show individual sections.'
-                      );
-                      return;
-                    }
                     toggleVisibility(item.id, item.is_visible);
                   }}
                   style={[
-                    styles.sectionVisibilityButton,
+                    styles.sectionHeaderEyeButton,
                     {
-                      backgroundColor: item.is_visible ? '#16a34a15' : '#ef444415',
-                      borderColor: item.is_visible ? '#16a34a' : '#ef4444',
+                      backgroundColor: item.is_visible ? '#16a34a' : '#ef4444',
+                      borderColor: item.is_visible ? '#15803d' : '#dc2626',
                     },
-                    !isAgendaVisible && styles.disabledButton,
                   ]}
-                  disabled={!isAgendaVisible}
+                  activeOpacity={0.85}
                 >
                   {item.is_visible ? (
-                    <Eye size={20} color={!isAgendaVisible ? theme.colors.border : '#16a34a'} />
+                    <Eye size={18} color="#ffffff" />
                   ) : (
-                    <EyeOff size={20} color={!isAgendaVisible ? theme.colors.border : '#ef4444'} />
+                    <EyeOff size={18} color="#ffffff" />
                   )}
                 </TouchableOpacity>
               </View>
@@ -5484,6 +5478,8 @@ export default function AgendaEditor() {
               style={styles.manageSequenceList}
               showsVerticalScrollIndicator={true}
               contentContainerStyle={{ paddingBottom: 24 }}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
             >
               {agendaItems.map((item, index) => (
                 <View
@@ -5496,10 +5492,30 @@ export default function AgendaEditor() {
                   <Text style={[styles.manageSequenceOrder, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {index + 1}
                   </Text>
-                  <Text style={[styles.manageSequenceName, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
+                  <Text
+                    style={[
+                      styles.manageSequenceName,
+                      {
+                        color: item.is_visible ? theme.colors.text : theme.colors.textSecondary,
+                        textDecorationLine: item.is_visible ? 'none' : 'line-through',
+                      },
+                    ]}
+                    numberOfLines={2}
+                    maxFontSizeMultiplier={1.3}
+                  >
                     {item.section_name}
                   </Text>
                   <View style={styles.manageSequenceActions}>
+                    <TouchableOpacity
+                      onPress={() => toggleVisibility(item.id)}
+                      style={styles.manageSequenceEye}
+                    >
+                      {item.is_visible ? (
+                        <Eye size={18} color={theme.colors.primary} />
+                      ) : (
+                        <EyeOff size={18} color={theme.colors.textSecondary} />
+                      )}
+                    </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => moveItemUp(index)}
                       disabled={index === 0}
@@ -6584,11 +6600,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   manageSequenceModalContent: {
-    marginHorizontal: 20,
-    marginVertical: 60,
+    width: '92%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    marginVertical: 40,
     borderRadius: 16,
     overflow: 'hidden',
-    maxHeight: '85%',
+    maxHeight: '88%',
   },
   manageSequenceSubtitle: {
     fontSize: 13,
@@ -6597,7 +6615,8 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   manageSequenceList: {
-    maxHeight: 400,
+    flexGrow: 1,
+    minHeight: 220,
     paddingHorizontal: 20,
   },
   manageSequenceRow: {
@@ -6622,10 +6641,14 @@ const styles = StyleSheet.create({
   },
   manageSequenceActions: {
     flexDirection: 'row',
-    gap: 4,
+    alignItems: 'center',
+    gap: 2,
+  },
+  manageSequenceEye: {
+    padding: 6,
   },
   manageSequenceArrow: {
-    padding: 4,
+    padding: 6,
   },
   manageSequenceDoneButton: {
     marginHorizontal: 20,
@@ -7255,6 +7278,15 @@ const styles = StyleSheet.create({
   hiddenFieldText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  // Small eye button used on section header rows
+  sectionHeaderEyeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Small eye button used on section header rows
   sectionVisibilityButton: {
