@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Image, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -258,13 +258,36 @@ interface TagTeamRole {
   is_visible: boolean;
 }
 
-export default function MeetingAgendaView() {
+function AgendaScreenShell({
+  embedded,
+  backgroundColor,
+  children,
+}: {
+  embedded: boolean;
+  backgroundColor: string;
+  children: ReactNode;
+}) {
+  const baseStyle = [{ flex: 1 as const }, { backgroundColor }];
+  if (embedded) {
+    return <View style={[...baseStyle, { minHeight: 0 }]}>{children}</View>;
+  }
+  return (
+    <SafeAreaView style={baseStyle} edges={['top']}>
+      {children}
+    </SafeAreaView>
+  );
+}
+
+export function MeetingAgendaViewContent({
+  meetingId: meetingIdProp,
+  embedded = false,
+}: {
+  meetingId?: string;
+  embedded?: boolean;
+}) {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const params = useLocalSearchParams();
-  // Normalize meetingId: expo-router can pass string or string[] on native
-  const rawMeetingId = params.meetingId;
-  const meetingId = Array.isArray(rawMeetingId) ? rawMeetingId[0] : (rawMeetingId as string);
+  const meetingId = meetingIdProp;
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
@@ -1029,24 +1052,28 @@ export default function MeetingAgendaView() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <AgendaScreenShell embedded={embedded} backgroundColor={theme.colors.background}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
             Loading agenda...
           </Text>
         </View>
-      </SafeAreaView>
+      </AgendaScreenShell>
     );
   }
 
   if (!meetingId || !meeting) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <AgendaScreenShell embedded={embedded} backgroundColor={theme.colors.background}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <ChevronLeft size={24} color={theme.colors.text} />
-          </TouchableOpacity>
+          {embedded ? (
+            <View style={styles.backButton} />
+          ) : (
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <ChevronLeft size={24} color={theme.colors.text} />
+            </TouchableOpacity>
+          )}
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Agenda</Text>
           <View style={{ width: 40 }} />
         </View>
@@ -1055,20 +1082,24 @@ export default function MeetingAgendaView() {
             {!meetingId ? 'No meeting selected' : 'Meeting not found'}
           </Text>
         </View>
-      </SafeAreaView>
+      </AgendaScreenShell>
     );
   }
 
   if (!isExcomm && meeting.is_agenda_visible === false) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <AgendaScreenShell embedded={embedded} backgroundColor={theme.colors.background}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <ChevronLeft size={24} color={theme.colors.text} />
-          </TouchableOpacity>
+          {embedded ? (
+            <View style={styles.backButton} />
+          ) : (
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <ChevronLeft size={24} color={theme.colors.text} />
+            </TouchableOpacity>
+          )}
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
             Meeting Agenda
           </Text>
@@ -1084,16 +1115,20 @@ export default function MeetingAgendaView() {
             Check back soon—this page will be freshly served before the meeting!
           </Text>
         </View>
-      </SafeAreaView>
+      </AgendaScreenShell>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <AgendaScreenShell embedded={embedded} backgroundColor={theme.colors.background}>
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ChevronLeft size={24} color={theme.colors.text} />
-        </TouchableOpacity>
+        {embedded ? (
+          <View style={styles.backButton} />
+        ) : (
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <ChevronLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+        )}
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Agenda</Text>
         <View style={styles.headerActions}>
           {meeting?.is_agenda_visible && (
@@ -2075,8 +2110,15 @@ export default function MeetingAgendaView() {
           </View>
         </View>
       )}
-    </SafeAreaView>
+    </AgendaScreenShell>
   );
+}
+
+export default function MeetingAgendaView() {
+  const params = useLocalSearchParams();
+  const rawMeetingId = params.meetingId;
+  const meetingId = Array.isArray(rawMeetingId) ? rawMeetingId[0] : (rawMeetingId as string);
+  return <MeetingAgendaViewContent meetingId={meetingId} embedded={false} />;
 }
 
 const styles = StyleSheet.create({

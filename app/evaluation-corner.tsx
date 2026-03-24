@@ -901,7 +901,7 @@ export default function EvaluationCorner() {
             style={[styles.actionButton, {
               backgroundColor: pathway?.is_locked
                 ? theme.colors.textSecondary + '40'
-                : (hasInfo ? theme.colors.primary : theme.colors.primary + '30'),
+                : theme.colors.primary,
               opacity: pathway?.is_locked ? 0.6 : 1
             }]}
             onPress={() => handleEditPathway(booking)}

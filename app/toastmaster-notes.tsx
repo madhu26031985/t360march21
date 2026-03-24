@@ -1,11 +1,12 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, X, StickyNote, FileText, UserCheck, ClipboardList, Shield, Sparkles, Vote, Clock, BookOpen, Bell, Award, Mic, GraduationCap, Settings, UserCog, LayoutDashboard, CalendarCheck, MessageSquare, Calendar, Save } from 'lucide-react-native';
+import { ArrowLeft, X, StickyNote, FileText } from 'lucide-react-native';
+import { MeetingAgendaViewContent } from './meeting-agenda-view';
 
 interface Meeting {
   id: string;
@@ -57,25 +58,18 @@ export default function ToastmasterNotes() {
   const [openingNotes, setOpeningNotes] = useState('');
   const [midSectionNotes, setMidSectionNotes] = useState('');
   const [closureNotes, setClosureNotes] = useState('');
-  const [themeOfTheDay, setThemeOfTheDay] = useState('');
-  const [themeSummary, setThemeSummary] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [hasUnsavedThemeChanges, setHasUnsavedThemeChanges] = useState(false);
-  const [isExcomm, setIsExcomm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'notes' | 'quick_access' | 'theme'>('theme');
+  const [activeTab, setActiveTab] = useState<'notes' | 'meeting_agenda'>('notes');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initialDataLoaded = useRef(false);
-  const themeNamePulse = useRef(new Animated.Value(1)).current;
-  const themeSummaryPulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (meetingId) {
       loadNotesData();
-      checkExcommStatus();
     }
   }, [meetingId]);
 
-  // Auto-save effect with debouncing (only for notes, not theme)
+  // Auto-save effect with debouncing
   useEffect(() => {
     if (!initialDataLoaded.current) {
       return;
@@ -97,41 +91,6 @@ export default function ToastmasterNotes() {
       }
     };
   }, [openingNotes, midSectionNotes, closureNotes, hasUnsavedChanges]);
-
-  useEffect(() => {
-    const shouldAnimateName = themeOfTheDay.length === 0;
-    const shouldAnimateSummary = themeSummary.length === 0;
-
-    const createLoop = (value: Animated.Value) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(value, { toValue: 1.05, duration: 600, useNativeDriver: true }),
-          Animated.timing(value, { toValue: 1, duration: 600, useNativeDriver: true }),
-        ])
-      );
-
-    let nameAnim: Animated.CompositeAnimation | null = null;
-    let summaryAnim: Animated.CompositeAnimation | null = null;
-
-    if (shouldAnimateName) {
-      nameAnim = createLoop(themeNamePulse);
-      nameAnim.start();
-    } else {
-      themeNamePulse.setValue(1);
-    }
-
-    if (shouldAnimateSummary) {
-      summaryAnim = createLoop(themeSummaryPulse);
-      summaryAnim.start();
-    } else {
-      themeSummaryPulse.setValue(1);
-    }
-
-    return () => {
-      if (nameAnim) nameAnim.stop();
-      if (summaryAnim) summaryAnim.stop();
-    };
-  }, [themeOfTheDay, themeSummary, themeNamePulse, themeSummaryPulse]);
 
   const loadNotesData = async () => {
     if (!meetingId || !user?.currentClubId) {
@@ -228,37 +187,15 @@ export default function ToastmasterNotes() {
         setOpeningNotes(data.opening_notes || '');
         setMidSectionNotes(data.mid_section_notes || '');
         setClosureNotes(data.closure_notes || '');
-        setThemeOfTheDay(data.theme_of_the_day || '');
-        setThemeSummary(data.theme_summary || '');
       }
       // Reset unsaved changes flags
       setHasUnsavedChanges(false);
-      setHasUnsavedThemeChanges(false);
       // Mark initial data as loaded after a short delay
       setTimeout(() => {
         initialDataLoaded.current = true;
       }, 100);
     } catch (error) {
       console.error('Error loading toastmaster meeting data:', error);
-    }
-  };
-
-  const checkExcommStatus = async () => {
-    if (!user?.id || !user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-
-      if (!error && data) {
-        setIsExcomm(data.role === 'excomm' || data.role === 'club_leader');
-      }
-    } catch (error) {
-      console.error('Error checking excomm status:', error);
     }
   };
 
@@ -288,20 +225,6 @@ export default function ToastmasterNotes() {
     }
   };
 
-  const handleThemeChange = (theme: string) => {
-    if (theme.length <= 200) {
-      setThemeOfTheDay(theme);
-      checkForUnsavedThemeChanges(theme, themeSummary);
-    }
-  };
-
-  const handleThemeSummaryChange = (summary: string) => {
-    if (summary.length <= 600) {
-      setThemeSummary(summary);
-      checkForUnsavedThemeChanges(themeOfTheDay, summary);
-    }
-  };
-
   const checkForUnsavedChanges = (
     currentOpening: string,
     currentMid: string,
@@ -314,16 +237,6 @@ export default function ToastmasterNotes() {
     setHasUnsavedChanges(hasChanges);
   };
 
-  const checkForUnsavedThemeChanges = (
-    currentTheme: string,
-    currentSummary: string
-  ) => {
-    const hasChanges =
-      currentTheme !== (meetingData?.theme_of_the_day || '') ||
-      currentSummary !== (meetingData?.theme_summary || '');
-    setHasUnsavedThemeChanges(hasChanges);
-  };
-
   const autoSave = async () => {
     if (!isToastmasterOfDay() || !meetingId || !user?.currentClubId || isSaving) {
       return;
@@ -333,7 +246,7 @@ export default function ToastmasterNotes() {
 
     try {
       if (meetingData) {
-        // Update existing record (only notes, not theme)
+        // Update existing record
         const { error } = await supabase
           .from('toastmaster_meeting_data')
           .update({
@@ -349,7 +262,7 @@ export default function ToastmasterNotes() {
           return;
         }
       } else {
-        // Create new record (only notes, not theme)
+        // Create new record
         const { data, error } = await supabase
           .from('toastmaster_meeting_data')
           .insert({
@@ -381,80 +294,6 @@ export default function ToastmasterNotes() {
     }
   };
 
-  const saveTheme = async () => {
-    if (!isToastmasterOfDay() || !meetingId || !user?.currentClubId || isSaving) {
-      return;
-    }
-
-    const charCount = themeSummary.trim().length;
-    if (charCount > 400) {
-      Alert.alert('Validation Error', 'Theme summary cannot exceed 400 characters.');
-      return;
-    }
-
-    setIsSaving(true);
-
-    try {
-      if (meetingData) {
-        // Update existing record
-        const updatedAt = new Date().toISOString();
-        const { error } = await supabase
-          .from('toastmaster_meeting_data')
-          .update({
-            theme_of_the_day: themeOfTheDay.trim() || null,
-            theme_summary: themeSummary.trim() || null,
-            updated_at: updatedAt,
-          })
-          .eq('id', meetingData.id);
-
-        if (error) {
-          console.error('Error updating theme:', error);
-          Alert.alert('Error', 'Failed to save theme. Please try again.');
-          return;
-        }
-
-        // Update local state with saved values
-        setMeetingData({
-          ...meetingData,
-          theme_of_the_day: themeOfTheDay.trim() || null,
-          theme_summary: themeSummary.trim() || null,
-          updated_at: updatedAt,
-        });
-      } else {
-        // Create new record with theme only
-        const { data, error } = await supabase
-          .from('toastmaster_meeting_data')
-          .insert({
-            meeting_id: meetingId,
-            club_id: user.currentClubId,
-            toastmaster_user_id: user.id,
-            theme_of_the_day: themeOfTheDay.trim() || null,
-            theme_summary: themeSummary.trim() || null,
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.error('Error creating theme:', error);
-          Alert.alert('Error', 'Failed to save theme. Please try again.');
-          return;
-        }
-
-        if (data) {
-          setMeetingData(data);
-        }
-      }
-
-      setHasUnsavedThemeChanges(false);
-      Alert.alert('Success', 'Theme saved successfully!');
-    } catch (error) {
-      console.error('Error saving theme:', error);
-      Alert.alert('Error', 'Failed to save theme. Please try again.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleClearOpeningNotes = () => {
     setOpeningNotes('');
     checkForUnsavedChanges('', midSectionNotes, closureNotes);
@@ -468,16 +307,6 @@ export default function ToastmasterNotes() {
   const handleClearClosureNotes = () => {
     setClosureNotes('');
     checkForUnsavedChanges(openingNotes, midSectionNotes, '');
-  };
-
-  const handleClearTheme = () => {
-    setThemeOfTheDay('');
-    checkForUnsavedThemeChanges('', themeSummary);
-  };
-
-  const handleClearThemeSummary = () => {
-    setThemeSummary('');
-    checkForUnsavedThemeChanges(themeOfTheDay, '');
   };
 
   const formatMeetingMode = (mode: string) => {
@@ -561,23 +390,6 @@ export default function ToastmasterNotes() {
         <TouchableOpacity
           style={[
             styles.tab,
-            activeTab === 'theme' && styles.activeTab,
-            { borderBottomColor: theme.colors.primary }
-          ]}
-          onPress={() => setActiveTab('theme')}
-        >
-          <Sparkles size={18} color={activeTab === 'theme' ? theme.colors.primary : theme.colors.textSecondary} />
-          <Text style={[
-            styles.tabText,
-            { color: activeTab === 'theme' ? theme.colors.primary : theme.colors.textSecondary }
-          ]} maxFontSizeMultiplier={1.3}>
-            Theme
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.tab,
             activeTab === 'notes' && styles.activeTab,
             { borderBottomColor: theme.colors.primary }
           ]}
@@ -595,185 +407,27 @@ export default function ToastmasterNotes() {
         <TouchableOpacity
           style={[
             styles.tab,
-            activeTab === 'quick_access' && styles.activeTab,
+            activeTab === 'meeting_agenda' && styles.activeTab,
             { borderBottomColor: theme.colors.primary }
           ]}
-          onPress={() => setActiveTab('quick_access')}
+          onPress={() => setActiveTab('meeting_agenda')}
         >
-          <ClipboardList size={18} color={activeTab === 'quick_access' ? theme.colors.primary : theme.colors.textSecondary} />
+          <FileText size={18} color={activeTab === 'meeting_agenda' ? theme.colors.primary : theme.colors.textSecondary} />
           <Text style={[
             styles.tabText,
-            { color: activeTab === 'quick_access' ? theme.colors.primary : theme.colors.textSecondary }
+            { color: activeTab === 'meeting_agenda' ? theme.colors.primary : theme.colors.textSecondary }
           ]} maxFontSizeMultiplier={1.3}>
-            Quick Access
+            Meeting Agenda
           </Text>
         </TouchableOpacity>
       </ScrollView>
 
+      {activeTab === 'meeting_agenda' && meetingId ? (
+        <View style={styles.agendaEmbedWrap}>
+          <MeetingAgendaViewContent meetingId={meetingId} embedded />
+        </View>
+      ) : (
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Theme Tab */}
-        {activeTab === 'theme' && (
-          <View style={[styles.themeSection, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.themeHeader}>
-              <View style={[styles.themeIcon, { backgroundColor: '#f0e7ff' }]}>
-                <Sparkles size={20} color="#8b5cf6" />
-              </View>
-              <View style={styles.themeTitleContainer}>
-                <Text style={[styles.themeTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Meeting Theme
-                </Text>
-                <Text style={[styles.themeSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Set the theme of the day for your meeting
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.themeInputSection}>
-              <View style={styles.inputLabelRow}>
-                <Text style={[styles.themeInputLabel, { color: '#6B7280' }]} maxFontSizeMultiplier={1.3}>
-                  THEME NAME
-                </Text>
-                {themeOfTheDay.length > 0 && (
-                  <TouchableOpacity
-                    style={[styles.clearButton, { backgroundColor: theme.colors.border }]}
-                    onPress={handleClearTheme}
-                  >
-                    <X size={14} color={theme.colors.text} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <Animated.View
-                style={
-                  themeOfTheDay.length === 0
-                    ? [
-                        styles.themeAttentionHighlight,
-                        {
-                          transform: [{ scale: themeNamePulse }],
-                        },
-                      ]
-                    : undefined
-                }
-              >
-                <TextInput
-                  style={[styles.themeTextInput, {
-                    backgroundColor: theme.colors.background,
-                    borderColor: theme.colors.border,
-                    color: theme.colors.text
-                  }]}
-                  placeholder="e.g., Innovation, Leadership, Growth..."
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={themeOfTheDay}
-                  onChangeText={handleThemeChange}
-                  maxLength={125}
-                />
-              </Animated.View>
-              <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {themeOfTheDay.length}/125
-              </Text>
-            </View>
-
-            <View style={styles.themeInputSection}>
-              <View style={styles.inputLabelRow}>
-                <Text style={[styles.themeInputLabel, { color: '#6B7280' }]} maxFontSizeMultiplier={1.3}>
-                  THEME SUMMARY
-                </Text>
-                {themeSummary.length > 0 && (
-                  <TouchableOpacity
-                    style={[styles.clearButton, { backgroundColor: theme.colors.border }]}
-                    onPress={handleClearThemeSummary}
-                  >
-                    <X size={14} color={theme.colors.text} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <Animated.View
-                style={
-                  themeSummary.length === 0
-                    ? [
-                        styles.themeAttentionHighlight,
-                        {
-                          transform: [{ scale: themeSummaryPulse }],
-                        },
-                      ]
-                    : undefined
-                }
-              >
-                <TextInput
-                  style={[styles.themeSummaryInput, {
-                    backgroundColor: theme.colors.background,
-                    borderColor: theme.colors.border,
-                    color: theme.colors.text
-                  }]}
-                  placeholder="Describe the theme and how it relates to today's meeting..."
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={themeSummary}
-                  onChangeText={handleThemeSummaryChange}
-                  multiline
-                  numberOfLines={8}
-                  textAlignVertical="top"
-                  maxLength={400}
-                />
-              </Animated.View>
-              <Text
-                style={[
-                  styles.characterCount,
-                  {
-                    color: themeSummary.length > 400
-                      ? '#dc2626'
-                      : theme.colors.textSecondary
-                  }
-                ]}
-                maxFontSizeMultiplier={1.3}
-              >
-                {themeSummary.length}/400
-              </Text>
-              <Text style={[styles.characterHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Maximum 400 characters
-              </Text>
-            </View>
-
-            {/* Save Button */}
-            <TouchableOpacity
-              style={[
-                styles.saveThemeButton,
-                {
-                  backgroundColor: !isSaving
-                    ? theme.colors.primary
-                    : theme.colors.border,
-                  opacity: !isSaving ? 1 : 0.5
-                }
-              ]}
-              onPress={saveTheme}
-              disabled={isSaving}
-            >
-              <View style={styles.saveThemeButtonContent}>
-                {!isSaving && (
-                  <Save
-                    size={20}
-                    color="#FFFFFF"
-                  />
-                )}
-                <Text
-                  style={[
-                    styles.saveThemeButtonText,
-                    {
-                      color: !isSaving
-                        ? '#FFFFFF'
-                        : theme.colors.textSecondary,
-                      marginLeft: isSaving ? 0 : 8
-                    }
-                  ]}
-                  maxFontSizeMultiplier={1.3}
-                >
-                  {isSaving ? 'Saving...' : 'Save Theme'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Notes Tab */}
-        {activeTab === 'notes' && (
           <View style={[styles.notesSection, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.notesHeader}>
               <View style={[styles.notesIcon, { backgroundColor: '#FFF4E6' }]}>
@@ -912,252 +566,11 @@ export default function ToastmasterNotes() {
               </View>
             )}
           </View>
-        )}
-
-        {/* Quick Access Tab */}
-        {activeTab === 'quick_access' && (
-          <View style={[styles.quickAccessSection, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.quickAccessHeader}>
-              <Text style={[styles.quickAccessTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Quick Access
-              </Text>
-              <Text style={[styles.quickAccessSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Navigate to key meeting functions
-              </Text>
-            </View>
-
-            <View style={styles.quickAccessGrid}>
-              {/* Agenda */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/meeting-agenda-view?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <FileText size={22} color="#10b981" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Agenda
-                </Text>
-              </TouchableOpacity>
-
-              {/* Ah Counter */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/ah-counter-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Bell size={22} color="#dc2626" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Ah Counter
-                </Text>
-              </TouchableOpacity>
-
-              {/* Attendance */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/attendance-report?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <UserCheck size={22} color="#3b82f6" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Attendance
-                </Text>
-              </TouchableOpacity>
-
-              {/* Book a Role */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <CalendarCheck size={22} color="#22c55e" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Book a Role
-                </Text>
-              </TouchableOpacity>
-
-              {/* Educational Speaker */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/educational-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <GraduationCap size={22} color="#0891b2" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Educational Speaker
-                </Text>
-              </TouchableOpacity>
-
-              {/* General Evaluator */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/general-evaluator-report?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Award size={22} color="#f59e0b" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  General Evaluator
-                </Text>
-              </TouchableOpacity>
-
-              {/* Grammarian */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/grammarian?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <BookOpen size={22} color="#059669" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Grammarian
-                </Text>
-              </TouchableOpacity>
-
-              {/* Live Voting */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/live-voting?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Vote size={22} color="#8b5cf6" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Live Voting
-                </Text>
-              </TouchableOpacity>
-
-              {/* Prepared Speaker */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/evaluation-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Mic size={22} color="#ec4899" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Prepared Speaker
-                </Text>
-              </TouchableOpacity>
-
-              {/* Roles Completion */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/role-completion-report?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <ClipboardList size={22} color="#6366f1" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Roles Completion
-                </Text>
-              </TouchableOpacity>
-
-              {/* Table Topic Corner */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/table-topic-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <MessageSquare size={22} color="#14b8a6" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Table Topic Corner
-                </Text>
-              </TouchableOpacity>
-
-              {/* Timer */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/timer-report-details?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Clock size={22} color="#9333ea" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Timer
-                </Text>
-              </TouchableOpacity>
-
-            </View>
-
-            {/* ExComm Only Section */}
-            {isExcomm && (
-              <>
-                <View style={styles.excommHeader}>
-                  <View style={[styles.excommBadge, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
-                    <Shield size={16} color={theme.colors.primary} />
-                    <Text style={[styles.excommBadgeText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                      ExComm Only
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.quickAccessGrid}>
-                  {/* Admin Panel */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/club-operations`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <LayoutDashboard size={22} color="#16a34a" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Admin Panel
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Manage Users */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/manage-club-users`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <UserCog size={22} color="#ea580c" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Manage Users
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Meeting Management */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/meeting-management`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <Calendar size={22} color="#2563eb" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Meeting Management
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Voting Ops */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/voting-operations?meetingId=${meetingId}`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <Vote size={22} color="#7c3aed" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Voting Ops
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        )}
 
         {/* Bottom padding */}
         <View style={styles.bottomPadding} />
       </ScrollView>
+      )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1215,6 +628,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  agendaEmbedWrap: {
+    flex: 1,
+    minHeight: 0,
   },
   notesSection: {
     marginHorizontal: 16,
@@ -1322,86 +739,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
   },
-  quickAccessSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  quickAccessHeader: {
-    marginBottom: 20,
-  },
-  quickAccessTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 4,
-    letterSpacing: -0.3,
-  },
-  quickAccessSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  quickAccessGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  quickAccessCard: {
-    width: '22%',
-    minWidth: 80,
-    aspectRatio: 1,
-    borderRadius: 16,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  quickAccessIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  quickAccessLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  excommHeader: {
-    marginTop: 24,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  excommBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-  },
-  excommBadgeText: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
   tabContainer: {
     borderBottomWidth: 1,
     maxHeight: 56,
@@ -1428,60 +765,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  themeSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  themeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  themeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  themeTitleContainer: {
-    flex: 1,
-  },
-  themeTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  themeSubtitle: {
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  themeInputSection: {
-    marginBottom: 20,
-  },
   inputLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
-  },
-  themeInputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
   clearButton: {
     width: 24,
@@ -1490,56 +778,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  themeTextInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  themeSummaryInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    minHeight: 160,
-    lineHeight: 24,
-    textAlignVertical: 'top',
-    marginBottom: 8,
-  },
   characterCount: {
     fontSize: 13,
     textAlign: 'right',
     fontWeight: '600',
-  },
-  characterHint: {
-    fontSize: 11,
-    textAlign: 'right',
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
-  themeAttentionHighlight: {
-    borderRadius: 16,
-    padding: 4,
-  },
-  saveThemeButton: {
-    marginTop: 20,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveThemeButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveThemeButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 0.3,
   },
 });

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Animated, Modal, ActivityIndicator, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -7,7 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
-import { ArrowLeft, Calendar, Clock, MapPin, Building2, Crown, User, Shield, Eye, UserCheck, Plus, Edit3, FileText, NotebookPen, Star, MessageSquare, Bell, FileBarChart, Award, BookOpen, Mic, ClipboardCheck, CheckSquare, Users, MessageCircle, Settings, UserCog, LayoutDashboard, Vote } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, MapPin, Building2, Crown, User, Shield, Eye, UserCheck, Plus, Edit3, FileText, NotebookPen, MessageSquare, Bell, FileBarChart, Award, BookOpen, Mic, ClipboardCheck, CheckSquare, Users, MessageCircle, Settings, UserCog, LayoutDashboard, Vote, Sparkles, Save, X } from 'lucide-react-native';
 import { Image } from 'react-native';
 
 interface Meeting {
@@ -55,6 +55,22 @@ interface ToastmasterMeetingData {
   updated_at: string;
 }
 
+function formatCornerMeetingMeta(m: Meeting): string {
+  const date = new Date(m.meeting_date);
+  const monthDay = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'long' });
+  const parts: string[] = [monthDay, weekday];
+  if (m.meeting_start_time && m.meeting_end_time) {
+    parts.push(`${m.meeting_start_time} – ${m.meeting_end_time}`);
+  } else if (m.meeting_start_time) {
+    parts.push(m.meeting_start_time);
+  }
+  const mode =
+    m.meeting_mode === 'in_person' ? 'In Person' : m.meeting_mode === 'online' ? 'Online' : 'Hybrid';
+  parts.push(mode);
+  return parts.join(' · ');
+}
+
 export default function ToastmasterCorner() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -69,6 +85,10 @@ export default function ToastmasterCorner() {
   const [isExComm, setIsExComm] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [bookingTmodRole, setBookingTmodRole] = useState(false);
+  const [cornerThemeName, setCornerThemeName] = useState('');
+  const [cornerThemeSummary, setCornerThemeSummary] = useState('');
+  const [savingCornerTheme, setSavingCornerTheme] = useState(false);
+  const [editingSavedCornerTheme, setEditingSavedCornerTheme] = useState(false);
 
   const themeIconPulse = useRef(new Animated.Value(1)).current;
 
@@ -148,6 +168,91 @@ export default function ToastmasterCorner() {
     }
     setShowCongratsModal(false);
   }, [TMOD_CONGRATS_SEEN_KEY]);
+
+  useEffect(() => {
+    if (!user?.id || toastmasterOfDay?.assigned_user_id !== user.id) return;
+    const bothSaved = !!(
+      toastmasterMeetingData?.theme_of_the_day && toastmasterMeetingData?.theme_summary
+    );
+    if (bothSaved && !editingSavedCornerTheme) return;
+    setCornerThemeName(toastmasterMeetingData?.theme_of_the_day || '');
+    setCornerThemeSummary(toastmasterMeetingData?.theme_summary || '');
+  }, [
+    user?.id,
+    toastmasterOfDay?.assigned_user_id,
+    toastmasterMeetingData?.id,
+    toastmasterMeetingData?.theme_of_the_day,
+    toastmasterMeetingData?.theme_summary,
+    editingSavedCornerTheme,
+  ]);
+
+  const alertCorner = (title: string, message?: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.alert(message ? `${title}\n\n${message}` : title);
+      return;
+    }
+    Alert.alert(title, message || '');
+  };
+
+  const saveCornerTheme = async () => {
+    if (!isToastmasterOfDay() || !meetingId || !user?.currentClubId || savingCornerTheme) return;
+    const summaryLen = cornerThemeSummary.trim().length;
+    if (summaryLen > 400) {
+      alertCorner('Validation', 'Theme summary cannot exceed 400 characters.');
+      return;
+    }
+    setSavingCornerTheme(true);
+    try {
+      if (toastmasterMeetingData?.id) {
+        const updatedAt = new Date().toISOString();
+        const { error } = await supabase
+          .from('toastmaster_meeting_data')
+          .update({
+            theme_of_the_day: cornerThemeName.trim() || null,
+            theme_summary: cornerThemeSummary.trim() || null,
+            updated_at: updatedAt,
+          })
+          .eq('id', toastmasterMeetingData.id);
+        if (error) {
+          console.error('Error updating theme:', error);
+          alertCorner('Error', 'Failed to save theme. Please try again.');
+          return;
+        }
+        setToastmasterMeetingData({
+          ...toastmasterMeetingData,
+          theme_of_the_day: cornerThemeName.trim() || null,
+          theme_summary: cornerThemeSummary.trim() || null,
+          updated_at: updatedAt,
+        });
+      } else {
+        const { data, error } = await supabase
+          .from('toastmaster_meeting_data')
+          .insert({
+            meeting_id: meetingId,
+            club_id: user.currentClubId,
+            toastmaster_user_id: user.id,
+            theme_of_the_day: cornerThemeName.trim() || null,
+            theme_summary: cornerThemeSummary.trim() || null,
+          })
+          .select()
+          .single();
+        if (error) {
+          console.error('Error creating theme:', error);
+          alertCorner('Error', 'Failed to save theme. Please try again.');
+          return;
+        }
+        if (data) setToastmasterMeetingData(data as ToastmasterMeetingData);
+      }
+      alertCorner('Success', 'Theme saved successfully!');
+      setEditingSavedCornerTheme(false);
+      await loadToastmasterCornerData();
+    } catch (e) {
+      console.error('Error saving theme:', e);
+      alertCorner('Error', 'Failed to save theme. Please try again.');
+    } finally {
+      setSavingCornerTheme(false);
+    }
+  };
 
   const handleBookTmodInline = async () => {
     if (!meetingId || !user?.id) {
@@ -416,6 +521,14 @@ export default function ToastmasterCorner() {
     );
   }
 
+  const showConsolidatedThemeView =
+    Boolean(
+      toastmasterOfDay?.assigned_user_id &&
+        toastmasterOfDay.app_user_profiles &&
+        toastmasterMeetingData?.theme_of_the_day &&
+        toastmasterMeetingData?.theme_summary
+    ) && !(isToastmasterOfDay() && editingSavedCornerTheme);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       {/* Header */}
@@ -423,10 +536,7 @@ export default function ToastmasterCorner() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Star size={20} color="#f59e0b" fill="#f59e0b" />
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Toastmaster Corner</Text>
-        </View>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Toastmaster Corner</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -436,6 +546,147 @@ export default function ToastmasterCorner() {
         contentContainerStyle={styles.contentContainer}
       >
         <View style={styles.contentTop} pointerEvents="box-none">
+        {showConsolidatedThemeView ? (
+          <View
+            style={[
+              styles.consolidatedCornerCard,
+              {
+                backgroundColor: theme.mode === 'dark' ? theme.colors.surface : '#FFFFFF',
+                shadowColor: '#000000',
+              },
+            ]}
+          >
+            {isToastmasterOfDay() && (
+              <View style={styles.consolidatedCardActions}>
+                <TouchableOpacity
+                  style={styles.consolidatedCardActionHit}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/toastmaster-notes',
+                      params: { meetingId: meeting?.id, clubId: clubInfo?.id },
+                    })
+                  }
+                  accessibilityLabel="Open prep space"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <NotebookPen
+                    size={20}
+                    color={theme.mode === 'dark' ? '#A3A3A3' : '#777777'}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.consolidatedCardActionHit}
+                  onPress={() => setEditingSavedCornerTheme(true)}
+                  accessibilityLabel="Edit theme of the day"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Edit3 size={20} color={theme.mode === 'dark' ? '#A3A3A3' : '#777777'} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.consolidatedClubBadge}>
+              <Text
+                style={[
+                  styles.consolidatedClubTitle,
+                  { color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666' },
+                ]}
+                maxFontSizeMultiplier={1.3}
+              >
+                {clubInfo?.name || meeting.meeting_title}
+              </Text>
+            </View>
+
+            <View style={styles.consolidatedProfileStack}>
+              <View
+                style={[
+                  styles.consolidatedAvatarWrap,
+                  {
+                    borderColor: theme.mode === 'dark' ? theme.colors.border : '#E8E8E8',
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.background : '#F4F4F5',
+                  },
+                ]}
+              >
+                {toastmasterOfDay!.app_user_profiles!.avatar_url ? (
+                  <Image
+                    source={{ uri: toastmasterOfDay!.app_user_profiles!.avatar_url }}
+                    style={styles.consolidatedAvatarImage}
+                  />
+                ) : (
+                  <User
+                    size={40}
+                    color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'}
+                  />
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.consolidatedPersonName,
+                  { color: theme.mode === 'dark' ? theme.colors.text : '#111111' },
+                ]}
+                maxFontSizeMultiplier={1.25}
+              >
+                {toastmasterOfDay!.app_user_profiles!.full_name}
+              </Text>
+              <Text
+                style={[
+                  styles.consolidatedPersonRole,
+                  {
+                    color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666',
+                  },
+                ]}
+                maxFontSizeMultiplier={1.2}
+              >
+                Toastmaster of the Day
+              </Text>
+            </View>
+
+            <View style={[styles.consolidatedDivider, { backgroundColor: '#EAEAEA' }]} />
+
+            <Text
+              style={[
+                styles.consolidatedThemeSectionLabel,
+                { color: theme.mode === 'dark' ? '#A3A3A3' : '#8A8FA3' },
+              ]}
+              maxFontSizeMultiplier={1.2}
+            >
+              THEME OF THE DAY
+            </Text>
+            <Text
+              style={[
+                styles.consolidatedThemeTitle,
+                { color: theme.mode === 'dark' ? theme.colors.text : '#111111' },
+              ]}
+              maxFontSizeMultiplier={1.15}
+            >
+              {toastmasterMeetingData!.theme_of_the_day}
+            </Text>
+            <Text
+              style={[
+                styles.consolidatedThemeSummary,
+                {
+                  color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666',
+                },
+              ]}
+              maxFontSizeMultiplier={1.25}
+            >
+              &ldquo;{toastmasterMeetingData!.theme_summary}&rdquo;
+            </Text>
+
+            <View style={[styles.consolidatedBottomDivider, { backgroundColor: '#EAEAEA' }]} />
+
+            <Text
+              style={[
+                styles.consolidatedMeetingMetaBottom,
+                { color: theme.mode === 'dark' ? '#A3A3A3' : '#999999' },
+              ]}
+              maxFontSizeMultiplier={1.2}
+            >
+              {formatCornerMeetingMeta(meeting)}
+            </Text>
+          </View>
+        ) : (
+        <>
         {/* Meeting Card */}
         <View style={[styles.meetingCard, {
           backgroundColor: theme.colors.surface,
@@ -575,67 +826,12 @@ export default function ToastmasterCorner() {
         {/* Theme of the Day Section - Only show when TMOD is assigned */}
         {toastmasterOfDay?.assigned_user_id && (
           <>
-            {toastmasterMeetingData?.theme_of_the_day && toastmasterMeetingData?.theme_summary ? (
-              <View style={[styles.themeDisplayCard, { backgroundColor: '#ffffff' }]}>
-                {/* Decorative Header */}
-                <View style={styles.themeDisplayHeader}>
-                  <Text style={styles.themeHeaderEmoji} maxFontSizeMultiplier={1.3}>🎭</Text>
-                  <Text style={styles.decorativeSparkleSmall} maxFontSizeMultiplier={1.3}>✨</Text>
-                  <Text style={[styles.themeDisplayHeaderText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    THEME OF THE DAY
-                  </Text>
-                  <Text style={styles.themeHeaderEmoji} maxFontSizeMultiplier={1.3}>🎭</Text>
-                  <Text style={styles.decorativeSparkleSmall} maxFontSizeMultiplier={1.3}>✨</Text>
-                </View>
-
-                <View style={styles.themeDisplayDivider} />
-
-                {/* Theme Title */}
-                <Text style={[styles.themeDisplayTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {toastmasterMeetingData.theme_of_the_day}
-                </Text>
-
-                {/* Theme Summary */}
-                <Text style={[styles.themeDisplaySummary, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {toastmasterMeetingData.theme_summary}
-                </Text>
-
-                <View style={styles.themeDisplayDivider} />
-
-                {/* Toastmaster Info at Bottom */}
-                {toastmasterOfDay.app_user_profiles && (
-                  <View style={styles.themeDisplayToastmaster}>
-                    <View style={styles.themeDisplayToastmasterAvatar}>
-                      {toastmasterOfDay.app_user_profiles.avatar_url ? (
-                        <Image
-                          source={{ uri: toastmasterOfDay.app_user_profiles.avatar_url }}
-                          style={styles.themeDisplayAvatarImage}
-                        />
-                      ) : (
-                        <Crown size={24} color="#8b5cf6" />
-                      )}
-                    </View>
-                    <View style={styles.themeDisplayToastmasterInfo}>
-                      <Text style={[styles.themeDisplayToastmasterName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        {toastmasterOfDay.app_user_profiles.full_name}
-                      </Text>
-                      <Text style={[styles.themeDisplayToastmasterRole, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        Toastmaster of the Day
-                      </Text>
-                      {clubInfo?.name && (
-                        <Text style={[styles.themeDisplayClubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                          {clubInfo.name}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                )}
-              </View>
-            ) : (
-              <>
                 {/* Theme Title Box */}
                 <View style={[styles.section, { backgroundColor: '#ffffff' }]}>
-                  {!(isToastmasterOfDay() && !isThemeCompleted()) && (
+                  {!(
+                    isToastmasterOfDay() &&
+                    (!isThemeCompleted() || editingSavedCornerTheme)
+                  ) && (
                     <View style={styles.themeHeaderRow}>
                       <View style={[styles.themeHeaderIcon, { backgroundColor: '#FFF4E6' }]}>
                         <Text style={styles.themeHeaderEmoji} maxFontSizeMultiplier={1.3}>🎭</Text>
@@ -644,28 +840,159 @@ export default function ToastmasterCorner() {
                     </View>
                   )}
 
-                  {toastmasterMeetingData?.theme_of_the_day ? (
+                  {isToastmasterOfDay() && (!isThemeCompleted() || editingSavedCornerTheme) ? (
+                      <View
+                        style={[
+                          styles.cornerThemeFormCard,
+                          {
+                            backgroundColor: theme.colors.surface,
+                          },
+                        ]}
+                      >
+                        <View style={styles.cornerThemeFormHeader}>
+                          <View style={[styles.cornerThemeFormIcon, { backgroundColor: '#f0e7ff' }]}>
+                            <Sparkles size={20} color="#8b5cf6" />
+                          </View>
+                          <View style={styles.cornerThemeFormTitleBlock}>
+                            <Text style={[styles.cornerThemeFormTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                              Meeting Theme
+                            </Text>
+                            <Text style={[styles.cornerThemeFormSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                              Set the theme of the day for your meeting
+                            </Text>
+                          </View>
+                          {editingSavedCornerTheme && (
+                            <TouchableOpacity
+                              onPress={() => setEditingSavedCornerTheme(false)}
+                              style={styles.cornerThemeFormCancel}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Text style={[styles.cornerThemeFormCancelText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                                Cancel
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+
+                        <View style={styles.cornerThemeFormInputSection}>
+                          <View style={styles.cornerThemeFormLabelRow}>
+                            <Text style={[styles.cornerThemeFormLabel, { color: '#6B7280' }]} maxFontSizeMultiplier={1.3}>
+                              THEME NAME
+                            </Text>
+                            {cornerThemeName.length > 0 && (
+                              <TouchableOpacity
+                                style={[styles.cornerThemeFormClear, { backgroundColor: theme.colors.border }]}
+                                onPress={() => setCornerThemeName('')}
+                                accessibilityLabel="Clear theme name"
+                              >
+                                <X size={14} color={theme.colors.text} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          <TextInput
+                            style={[
+                              styles.cornerThemeNameInput,
+                              {
+                                backgroundColor: theme.colors.background,
+                                borderColor: theme.colors.border,
+                                color: theme.colors.text,
+                              },
+                            ]}
+                            placeholder="e.g., Innovation, Leadership, Growth..."
+                            placeholderTextColor={theme.colors.textSecondary}
+                            value={cornerThemeName}
+                            onChangeText={setCornerThemeName}
+                            maxLength={125}
+                          />
+                          <Text style={[styles.cornerThemeCharCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                            {cornerThemeName.length}/125
+                          </Text>
+                        </View>
+
+                        <View style={styles.cornerThemeFormInputSection}>
+                          <View style={styles.cornerThemeFormLabelRow}>
+                            <Text style={[styles.cornerThemeFormLabel, { color: '#6B7280' }]} maxFontSizeMultiplier={1.3}>
+                              THEME SUMMARY
+                            </Text>
+                            {cornerThemeSummary.length > 0 && (
+                              <TouchableOpacity
+                                style={[styles.cornerThemeFormClear, { backgroundColor: theme.colors.border }]}
+                                onPress={() => setCornerThemeSummary('')}
+                                accessibilityLabel="Clear theme summary"
+                              >
+                                <X size={14} color={theme.colors.text} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          <TextInput
+                            style={[
+                              styles.cornerThemeSummaryInput,
+                              {
+                                backgroundColor: theme.colors.background,
+                                borderColor: theme.colors.border,
+                                color: theme.colors.text,
+                              },
+                            ]}
+                            placeholder="Describe the theme and how it relates to today's meeting..."
+                            placeholderTextColor={theme.colors.textSecondary}
+                            value={cornerThemeSummary}
+                            onChangeText={setCornerThemeSummary}
+                            multiline
+                            numberOfLines={8}
+                            textAlignVertical="top"
+                            maxLength={400}
+                          />
+                          <Text
+                            style={[
+                              styles.cornerThemeCharCount,
+                              {
+                                color:
+                                  cornerThemeSummary.length > 400
+                                    ? '#dc2626'
+                                    : theme.colors.textSecondary,
+                              },
+                            ]}
+                            maxFontSizeMultiplier={1.3}
+                          >
+                            {cornerThemeSummary.length}/400
+                          </Text>
+                          <Text style={[styles.cornerThemeCharHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                            Maximum 400 characters
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.cornerThemeSaveBtn,
+                            {
+                              backgroundColor: savingCornerTheme ? theme.colors.border : theme.colors.primary,
+                              opacity: savingCornerTheme ? 0.5 : 1,
+                            },
+                          ]}
+                          onPress={saveCornerTheme}
+                          disabled={savingCornerTheme}
+                        >
+                          <View style={styles.cornerThemeSaveBtnInner}>
+                            {!savingCornerTheme && <Save size={20} color="#FFFFFF" />}
+                            <Text
+                              style={[
+                                styles.cornerThemeSaveBtnText,
+                                {
+                                  color: savingCornerTheme ? theme.colors.textSecondary : '#FFFFFF',
+                                  marginLeft: savingCornerTheme ? 0 : 8,
+                                },
+                              ]}
+                              maxFontSizeMultiplier={1.3}
+                            >
+                              {savingCornerTheme ? 'Saving...' : 'Save Theme'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      </View>
+                  ) : toastmasterMeetingData?.theme_of_the_day ? (
                     <Text style={[styles.themeTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {toastmasterMeetingData.theme_of_the_day}
                     </Text>
-                  ) : isToastmasterOfDay() && !isThemeCompleted() ? (
-                    <View style={styles.tmodInstructionsCard}>
-                      <Text style={[styles.tmodInstructionsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
-                      </Text>
-                      <Text style={[styles.tmodInstructionsBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        Great step in leading the meeting as TMOD. Add your{' '}
-                        <Text style={styles.tmodInstructionsHighlight}>Theme of the Day</Text>
-                        {' '}and a short{' '}
-                        <Text style={styles.tmodInstructionsHighlight}>theme summary</Text>
-                        {' '}by clicking{' '}
-                        <Text style={styles.tmodInstructionsHighlight}>Add Theme</Text>
-                        {' '}to help members understand the context and what to expect.
-                      </Text>
-                      <Text style={[styles.tmodInstructionsBody, { color: theme.colors.textSecondary, marginTop: 12 }]} maxFontSizeMultiplier={1.3}>
-                        You can also add personal notes next to the theme summary to prepare and organize your thoughts. These are visible only to you. Use the quick access button beside Notes to jump to the agenda easily.
-                      </Text>
-                    </View>
                   ) : (
                     <View style={styles.themeComingSoonCard}>
                       <Text style={[styles.themeComingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -702,9 +1029,9 @@ export default function ToastmasterCorner() {
                     </View>
                   )
                 )}
-              </>
-            )}
           </>
+        )}
+        </>
         )}
 
         </View>
@@ -1162,22 +1489,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
   },
   backButton: {
     padding: 8,
-    marginRight: 8,
-  },
-  headerTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
+    width: 40,
   },
   headerTitle: {
-    fontSize: 18,
+    flex: 1,
+    fontSize: 21,
     fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
   headerSpacer: {
     width: 40,
@@ -1736,25 +2060,242 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  tmodInstructionsCard: {
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    backgroundColor: '#ffffff',
+  cornerThemeFormCard: {
     borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  tmodInstructionsTitle: {
-    fontSize: 20,
+  cornerThemeFormHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 8,
+  },
+  cornerThemeFormCancel: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+  },
+  cornerThemeFormCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  cornerThemeFormIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  cornerThemeFormTitleBlock: {
+    flex: 1,
+  },
+  cornerThemeFormTitle: {
+    fontSize: 18,
     fontWeight: '700',
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  cornerThemeFormSubtitle: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  cornerThemeFormInputSection: {
+    marginBottom: 20,
+  },
+  cornerThemeFormLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cornerThemeFormLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  cornerThemeFormClear: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cornerThemeNameInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  cornerThemeSummaryInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    minHeight: 160,
+    lineHeight: 24,
+    textAlignVertical: 'top',
+    marginBottom: 8,
+  },
+  cornerThemeCharCount: {
+    fontSize: 13,
+    textAlign: 'right',
+    fontWeight: '600',
+  },
+  cornerThemeCharHint: {
+    fontSize: 11,
+    textAlign: 'right',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  cornerThemeSaveBtn: {
+    marginTop: 4,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cornerThemeSaveBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cornerThemeSaveBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  consolidatedCornerCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    alignItems: 'center',
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 720,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    elevation: 3,
+  },
+  consolidatedCardActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 4,
+    width: '100%',
+    marginBottom: 4,
+  },
+  consolidatedCardActionHit: {
+    padding: 8,
+  },
+  consolidatedClubBadge: {
+    backgroundColor: '#F1F2F4',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginTop: 2,
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
+  consolidatedClubTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  consolidatedProfileStack: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  consolidatedAvatarWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  consolidatedAvatarImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+  },
+  consolidatedPersonName: {
+    fontSize: 19,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 12,
+    letterSpacing: -0.3,
+  },
+  consolidatedPersonRole: {
+    fontSize: 14,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  consolidatedDivider: {
+    width: '100%',
+    height: 1,
+    marginTop: 16,
     marginBottom: 16,
   },
-  tmodInstructionsBody: {
-    fontSize: 15,
-    lineHeight: 24,
-    textAlign: 'left',
+  consolidatedThemeSectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
-  tmodInstructionsHighlight: {
-    fontWeight: 'bold',
+  consolidatedThemeTitle: {
+    fontSize: 31,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 36,
+    letterSpacing: 0.5,
+    paddingHorizontal: 8,
+  },
+  consolidatedThemeSummary: {
+    fontSize: 15,
+    lineHeight: 26,
+    textAlign: 'left',
+    alignSelf: 'stretch',
+    marginTop: 14,
+    paddingHorizontal: 4,
     fontStyle: 'italic',
+  },
+  consolidatedBottomDivider: {
+    width: '100%',
+    height: 1,
+    marginTop: 22,
+    marginBottom: 20,
+  },
+  consolidatedMeetingMetaBottom: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 16,
+    letterSpacing: 0.3,
+    paddingHorizontal: 8,
   },
   themeComingSoonCard: {
     position: 'relative',
@@ -1771,94 +2312,6 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     lineHeight: 28,
     letterSpacing: -0.3,
-  },
-  themeDisplayCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  themeDisplayHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 20,
-  },
-  themeDisplayHeaderText: {
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 2,
-  },
-  decorativeSparkleSmall: {
-    fontSize: 16,
-  },
-  themeDisplayDivider: {
-    height: 1,
-    backgroundColor: '#e5e7eb',
-    marginVertical: 20,
-  },
-  themeDisplayTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 40,
-  },
-  themeDisplaySummary: {
-    fontSize: 16,
-    lineHeight: 26,
-    textAlign: 'left',
-    marginBottom: 0,
-  },
-  themeDisplayToastmaster: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 16,
-    padding: 16,
-    gap: 16,
-  },
-  themeDisplayToastmasterAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: '#8b5cf6',
-  },
-  themeDisplayAvatarImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-  },
-  themeDisplayToastmasterInfo: {
-    flex: 1,
-  },
-  themeDisplayToastmasterName: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  themeDisplayToastmasterRole: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 2,
-  },
-  themeDisplayClubNumber: {
-    fontSize: 13,
-    fontWeight: '500',
   },
 });
 
