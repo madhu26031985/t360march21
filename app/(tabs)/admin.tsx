@@ -94,13 +94,39 @@ export default function AdminPanel() {
   const [onboardingLoading, setOnboardingLoading] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState<0 | 1 | 2 | 3 | 4>(0);
   const [shouldShowOnboarding, setShouldShowOnboarding] = useState(false);
+  const [openMeetingCount, setOpenMeetingCount] = useState(0);
+
+  const loadOpenMeetingCount = useCallback(async () => {
+    const clubId = user?.currentClubId;
+    if (!clubId) {
+      setOpenMeetingCount(0);
+      return;
+    }
+    try {
+      const { count, error } = await supabase
+        .from('app_club_meeting')
+        .select('id', { count: 'exact', head: true })
+        .eq('club_id', clubId)
+        .eq('meeting_status', 'open');
+      if (error) {
+        console.error('Admin: open meeting count', error);
+        setOpenMeetingCount(0);
+        return;
+      }
+      setOpenMeetingCount(count ?? 0);
+    } catch (e) {
+      console.error('Admin: open meeting count', e);
+      setOpenMeetingCount(0);
+    }
+  }, [user?.currentClubId]);
 
   useFocusEffect(
     useCallback(() => {
       if (isAuthenticated) {
         refreshUserProfile();
       }
-    }, [isAuthenticated, refreshUserProfile])
+      void loadOpenMeetingCount();
+    }, [isAuthenticated, refreshUserProfile, loadOpenMeetingCount])
   );
 
   const loadOnboarding = useCallback(async () => {
@@ -333,7 +359,7 @@ export default function AdminPanel() {
               <View style={styles.quickActionsGrid}>
                 {canSeeAdminFeature('meeting_operations') && (
                   <QuickActionTile
-                    label="Create meetings"
+                    label={openMeetingCount > 0 ? 'Manage meeting' : 'Create meetings'}
                     accentColor="#0a66c2"
                     icon={<CalendarPlus size={18} color="#ffffff" />}
                     onPress={() => router.push('/admin/meeting-management')}

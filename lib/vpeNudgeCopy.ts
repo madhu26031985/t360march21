@@ -31,6 +31,72 @@ export function formatMeetingDateDisplay(isoDate: string): string {
   });
 }
 
+/** Whole calendar days from today (local) to meeting date; 0 = meeting is today. */
+export function daysUntilMeeting(meetingISODate: string, todayISODate: string): number {
+  const parse = (iso: string) => {
+    const [y, m, d] = iso.split('-').map((x) => parseInt(x, 10));
+    if (!y || !m || !d) return NaN;
+    return new Date(y, m - 1, d).getTime();
+  };
+  const tMeet = parse(meetingISODate);
+  const tToday = parse(todayISODate);
+  if (Number.isNaN(tMeet) || Number.isNaN(tToday)) return 0;
+  return Math.round((tMeet - tToday) / 86400000);
+}
+
+/**
+ * Which nudge template (0..6) applies today. Maps 7 days out → index 0 … meeting today → index 6.
+ * More than 7 days until meeting uses index 0 (earliest template).
+ */
+export function todayNudgeIndex(daysUntil: number): number {
+  if (daysUntil > 7) return 0;
+  if (daysUntil <= 1) return 6;
+  return 7 - daysUntil;
+}
+
+/** Indices of nudge slots before today’s slot (what the VPE may have missed sending). */
+export function missedNudgeIndices(daysUntil: number): number[] {
+  const t = todayNudgeIndex(daysUntil);
+  return Array.from({ length: t }, (_, i) => i);
+}
+
+/** Heading for each stored nudge row (matches countdown to meeting). */
+export const NUDGE_HEADING_BY_INDEX = [
+  'Meeting in 7 days',
+  'In 6 days',
+  'In 5 days',
+  'In 4 days',
+  'In 3 days',
+  'In 2 days',
+  'Tomorrow',
+] as const;
+
+/** Heading for the single “today’s hint” card (meeting day vs day before use Today / Tomorrow). */
+export function todayTabHeading(daysUntil: number): string {
+  if (daysUntil <= 0) return 'Today';
+  if (daysUntil === 1) return 'Tomorrow';
+  if (daysUntil === 2) return 'In 2 days';
+  if (daysUntil === 3) return 'In 3 days';
+  if (daysUntil === 4) return 'In 4 days';
+  if (daysUntil === 5) return 'In 5 days';
+  if (daysUntil === 6) return 'In 6 days';
+  return 'Meeting in 7 days';
+}
+
+/** Card title: "Your meeting number - {n} starts in X days" (or today / tomorrow). */
+export function formatMeetingStartsTitle(meetingNo: string, daysUntil: number): string {
+  const no = String(meetingNo ?? '—').trim() || '—';
+  if (daysUntil <= 0) return `Your meeting number - ${no} starts today`;
+  if (daysUntil === 1) return `Your meeting number - ${no} starts tomorrow`;
+  return `Your meeting number - ${no} starts in ${daysUntil} days`;
+}
+
+/** Missed-slot title: same pattern using the countdown that applied to that nudge (slot 0 → 7 days out). */
+export function formatMeetingStartsTitleForMissedSlot(meetingNo: string, slotIndex: number): string {
+  const d = 7 - slotIndex;
+  return formatMeetingStartsTitle(meetingNo, d);
+}
+
 function isBooked(r: VpeNudgeRoleRow): boolean {
   return r.booking_status === 'booked' && !!r.assigned_user_id;
 }

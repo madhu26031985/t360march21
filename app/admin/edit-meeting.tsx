@@ -1,4 +1,16 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Platform, KeyboardAvoidingView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Platform,
+  KeyboardAvoidingView,
+  Modal,
+  Pressable,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -38,6 +50,7 @@ export default function EditMeeting() {
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [activeTab, setActiveTab] = useState<'info' | 'mode' | 'datetime'>('info');
+  const [showUpdateConfirmModal, setShowUpdateConfirmModal] = useState(false);
 
   const [meetingForm, setMeetingForm] = useState<MeetingForm>({
     title: '',
@@ -344,23 +357,13 @@ export default function EditMeeting() {
 
   const confirmUpdateMeeting = () => {
     if (isSaving) return;
+    if (!validateForm()) return;
+    setShowUpdateConfirmModal(true);
+  };
 
-    // RN Web: multi-button Alert often breaks (focus + aria-hidden); native confirm is reliable.
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm('Are you sure you want to update this meeting?')) {
-        void handleUpdateMeeting();
-      }
-      return;
-    }
-
-    Alert.alert(
-      'Confirm update',
-      'Are you sure you want to update this meeting?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Update Meeting', onPress: () => void handleUpdateMeeting() },
-      ]
-    );
+  const commitUpdateMeeting = () => {
+    setShowUpdateConfirmModal(false);
+    void handleUpdateMeeting();
   };
 
   if (isLoading) {
@@ -739,6 +742,53 @@ export default function EditMeeting() {
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      <Modal
+        visible={showUpdateConfirmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isSaving && setShowUpdateConfirmModal(false)}
+      >
+        <View style={styles.updateConfirmOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => !isSaving && setShowUpdateConfirmModal(false)}
+          />
+          <View style={[styles.updateConfirmCard, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.updateConfirmIconWrap, { backgroundColor: '#e3f2fd' }]}>
+              <Save size={32} color={theme.colors.primary} />
+            </View>
+            <Text style={[styles.updateConfirmTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Update meeting?
+            </Text>
+            <Text style={[styles.updateConfirmBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Are you sure you want to update this meeting? Your changes will be saved for all members.
+            </Text>
+            <View style={styles.updateConfirmActions}>
+              <TouchableOpacity
+                style={[styles.updateConfirmCancelBtn, { borderColor: theme.colors.border }]}
+                onPress={() => !isSaving && setShowUpdateConfirmModal(false)}
+                disabled={isSaving}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.updateConfirmCancelText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.updateConfirmOkBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={commitUpdateMeeting}
+                disabled={isSaving}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.updateConfirmOkText} maxFontSizeMultiplier={1.3}>
+                  Update Meeting
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -909,5 +959,73 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 40,
+  },
+  updateConfirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  updateConfirmCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 28,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  updateConfirmIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  updateConfirmTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  updateConfirmBody: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  updateConfirmActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  updateConfirmCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  updateConfirmCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  updateConfirmOkBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  updateConfirmOkText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
