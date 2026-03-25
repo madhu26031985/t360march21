@@ -1465,36 +1465,66 @@ export default function MyJourney() {
                   <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
                   {/* Profile, Speeches, Mentor */}
                   <View style={styles.journeyListCardsContainer}>
-                    {isVPEForCurrentClub && (
-                      <TouchableOpacity
-                        style={[
-                          styles.journeyListCard,
-                          styles.journeyListCardInline,
-                          {
-                            backgroundColor: theme.colors.surface,
-                            borderWidth: 1,
-                            borderColor: theme.colors.border,
-                          },
-                        ]}
-                        onPress={() => router.push('/vpe-nudges')}
-                        activeOpacity={0.7}
-                      >
-                        <View style={[styles.journeyListIconWrap, { backgroundColor: '#25D366' }]}>
-                          <FontAwesome name="whatsapp" size={18} color="#ffffff" />
-                        </View>
-                        <View style={styles.journeyListTextCol}>
-                          <Text style={[styles.journeyListTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                            VPE Nudge
-                          </Text>
-                          <Text
-                            style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]}
-                            maxFontSizeMultiplier={1.2}
-                          >
-                            Nudge members to book the role
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
+                    {isVPEForCurrentClub &&
+                      (currentOpenMeetingId ? (
+                        <TouchableOpacity
+                          style={[
+                            styles.journeyListCard,
+                            styles.journeyListCardInline,
+                            {
+                              backgroundColor: theme.colors.surface,
+                              borderWidth: 1,
+                              borderColor: theme.colors.border,
+                            },
+                          ]}
+                          onPress={() => router.push('/vpe-nudges')}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[styles.journeyListIconWrap, { backgroundColor: '#25D366' }]}>
+                            <FontAwesome name="whatsapp" size={18} color="#ffffff" />
+                          </View>
+                          <View style={styles.journeyListTextCol}>
+                            <Text style={[styles.journeyListTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                              VPE Nudge
+                            </Text>
+                            <Text
+                              style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]}
+                              maxFontSizeMultiplier={1.2}
+                            >
+                              Nudge members to book the role
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[
+                            styles.journeyListCard,
+                            styles.journeyListCardInline,
+                            {
+                              backgroundColor: theme.colors.surface,
+                              borderWidth: 1,
+                              borderColor: theme.colors.border,
+                            },
+                          ]}
+                          onPress={() => router.push('/admin/meeting-management')}
+                          activeOpacity={0.75}
+                        >
+                          <View style={[styles.journeyListIconWrap, { backgroundColor: `${PENDING_ACTION_UI.accent}20` }]}>
+                            <AlertCircle size={18} color={PENDING_ACTION_UI.accent} />
+                          </View>
+                          <View style={styles.journeyListTextCol}>
+                            <Text
+                              style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]}
+                              maxFontSizeMultiplier={1.2}
+                            >
+                              {`${(user?.fullName || '')
+                                .trim()
+                                .split(/\s+/)
+                                .filter(Boolean)[0] || 'VPE'}, members are lining up like it’s a movie first-day-first-show 🎬 Please open the next meeting!`}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
                     <JourneyListCard
                       title="My Profile"
                       description="View and edit your personal information"

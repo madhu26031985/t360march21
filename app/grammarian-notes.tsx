@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -1514,27 +1514,29 @@ export function GrammarianNotesScreen({
   };
 
   const confirmPublishAllToSummary = () => {
-    Alert.alert(
-      'Confirm publish',
-      'Publish all captured data to Grammarian Summary?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Publish', style: 'default', onPress: handlePublishAllToSummary },
-      ],
-      { cancelable: true }
-    );
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const ok = window.confirm('Publish all captured data to Grammarian Summary?');
+      if (ok) handlePublishAllToSummary();
+      return;
+    }
+
+    Alert.alert('Confirm publish', 'Publish all captured data to Grammarian Summary?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Publish', style: 'default', onPress: handlePublishAllToSummary },
+    ]);
   };
 
   const confirmUnpublishAllToSummary = () => {
-    Alert.alert(
-      'Confirm unpublish',
-      'Unpublish captured data from Grammarian Summary?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Unpublish', style: 'destructive', onPress: handleUnpublishAllToSummary },
-      ],
-      { cancelable: true }
-    );
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const ok = window.confirm('Unpublish captured data from Grammarian Summary?');
+      if (ok) handleUnpublishAllToSummary();
+      return;
+    }
+
+    Alert.alert('Confirm unpublish', 'Unpublish captured data from Grammarian Summary?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Unpublish', style: 'destructive', onPress: handleUnpublishAllToSummary },
+    ]);
   };
 
   const handleUnpublishStats = async () => {
@@ -2289,42 +2291,11 @@ export function GrammarianNotesScreen({
               <View style={variant === 'live-inline' ? { padding: 0, gap: 0 } : styles.observationSection}>
                 {variant === 'live-inline' && (
                   <View style={styles.inlineLiveSection}>
-                    {isGrammarianOfDay() &&
-                      (hasGoodUsageCaptured || hasImprovementsCaptured || hasStatsCaptured) && (
-                        <View style={[styles.sectionPublishButtonContainer, { marginTop: 0, paddingTop: 0 }]}>
-                          <TouchableOpacity
-                            style={[
-                              styles.sectionPublishButton,
-                              {
-                                backgroundColor: isAllPublishedToSummary ? '#EF4444' : '#4F46E5',
-                                borderRadius: 14,
-                                opacity: isPublishingAll ? 0.7 : 1,
-                              },
-                            ]}
-                            onPress={() => {
-                              if (isAllPublishedToSummary) confirmUnpublishAllToSummary();
-                              else confirmPublishAllToSummary();
-                            }}
-                            disabled={isPublishingAll}
-                          >
-                            {isPublishingAll ? (
-                              <ActivityIndicator size="small" color="#ffffff" />
-                            ) : (
-                              <Eye size={18} color="#ffffff" />
-                            )}
-                            <Text style={styles.sectionPublishButtonText} maxFontSizeMultiplier={1.3}>
-                              {isAllPublishedToSummary
-                                ? 'Unpublish from Grammarian Summary'
-                                : 'Publish All to Grammarian Summary'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-
                     {wordOfTheDay ? (
                       <View style={styles.inlineStatsSection}>
-                        <Text style={styles.inlineStatsTitle}>Word of the Day</Text>
-                        <Text style={styles.inlineStatsSubtitle}>{wordOfTheDay.word}</Text>
+                        <Text style={[styles.inlineStatsWordLine, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                          Word of the day: {wordOfTheDay.word}
+                        </Text>
 
                         <View style={styles.inlineList}>
                           {wordMemberUsage.length === 0 ? (
@@ -2408,6 +2379,38 @@ export function GrammarianNotesScreen({
                             </Text>
                           </TouchableOpacity>
                         )}
+
+                        {isGrammarianOfDay() &&
+                          (hasGoodUsageCaptured || hasImprovementsCaptured || hasStatsCaptured) && (
+                            <View style={styles.sectionPublishButtonContainer}>
+                              <TouchableOpacity
+                                style={[
+                                  styles.sectionPublishButton,
+                                  {
+                                    backgroundColor: isAllPublishedToSummary ? '#EF4444' : '#4169E1',
+                                    borderRadius: 14,
+                                    opacity: isPublishingAll ? 0.7 : 1,
+                                  },
+                                ]}
+                                onPress={() => {
+                                  if (isAllPublishedToSummary) confirmUnpublishAllToSummary();
+                                  else confirmPublishAllToSummary();
+                                }}
+                                disabled={isPublishingAll}
+                              >
+                                {isPublishingAll ? (
+                                  <ActivityIndicator size="small" color="#ffffff" />
+                                ) : (
+                                  <Eye size={18} color="#ffffff" />
+                                )}
+                                <Text style={styles.sectionPublishButtonText} maxFontSizeMultiplier={1.3}>
+                                  {isAllPublishedToSummary
+                                    ? 'Unpublish from Grammarian Summary'
+                                    : 'Publish All to Grammarian Summary'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
                       </View>
                     ) : (
                       <View style={styles.inlineEmptyState}>
@@ -3240,6 +3243,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     marginBottom: 2,
+  },
+  inlineStatsWordLine: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 10,
+    letterSpacing: -0.2,
   },
   inlineStatsSubtitle: {
     fontSize: 11,

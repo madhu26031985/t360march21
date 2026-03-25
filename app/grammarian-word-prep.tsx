@@ -1,4 +1,15 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useCallback } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -250,28 +261,40 @@ export default function GrammarianWordPrepScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.preMeetingContainer}>
-          <View style={styles.formContainer}>
-            <View style={[styles.fieldCard, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border }]}>
-              <View style={styles.fieldHeader}>
-                <View style={styles.fieldLabelContainer}>
-                  <BookOpen size={18} color="#3b82f6" />
-                  <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>Word</Text>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 92 : 0}
+      >
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
+          <View style={styles.preMeetingContainer}>
+            <View style={styles.formContainer}>
+              <View style={[styles.fieldCard, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border }]}>
+                <View style={styles.fieldHeader}>
+                  <View style={styles.fieldLabelContainer}>
+                    <BookOpen size={18} color="#3b82f6" />
+                    <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>Word</Text>
+                  </View>
+                  <Text style={[styles.charCount, { color: word.length >= 50 ? '#ef4444' : theme.colors.textSecondary }]}>
+                    {word.length}/50
+                  </Text>
                 </View>
-                <Text style={[styles.charCount, { color: word.length >= 50 ? '#ef4444' : theme.colors.textSecondary }]}>
-                  {word.length}/50
-                </Text>
+                <TextInput
+                  style={[styles.fieldInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
+                  placeholder=""
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={word}
+                  onChangeText={(t) => t.length <= 50 && setWord(t)}
+                  maxLength={50}
+                  returnKeyType="next"
+                />
               </View>
-              <TextInput
-                style={[styles.fieldInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
-                placeholder="Enter word of the day"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={word}
-                onChangeText={(t) => t.length <= 50 && setWord(t)}
-                maxLength={50}
-              />
-            </View>
 
             <View style={[styles.fieldCard, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border }]}>
               <View style={styles.fieldHeader}>
@@ -372,9 +395,10 @@ export default function GrammarianWordPrepScreen() {
                 })}
               </Text>
             )}
+            </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal
         visible={showSaveConfirmation}
