@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -118,13 +118,31 @@ interface ClubMember {
   avatar_url: string | null;
 }
 
-export type GrammarianNotesVariant = 'notes' | 'live-only';
+export type GrammarianNotesVariant = 'notes' | 'live-only' | 'live-inline';
 
-export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVariant }) {
+type LiveSubTab = 'good-usage' | 'improvements' | 'stats';
+
+export function GrammarianNotesScreen({
+  variant,
+  liveSubTab,
+  meetingId: meetingIdFromProps,
+}: {
+  variant: GrammarianNotesVariant;
+  liveSubTab?: LiveSubTab;
+  meetingId?: string;
+}) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const params = useLocalSearchParams();
-  const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
+  const meetingId =
+    meetingIdFromProps ??
+    (typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0]);
+  const requestedLiveSubTab =
+    typeof params.subTab === 'string' ? params.subTab : (params.subTab?.[0] as string | undefined);
+
+  const initialLiveMeetingSubTab = requestedLiveSubTab === 'good-usage' || requestedLiveSubTab === 'improvements' || requestedLiveSubTab === 'stats'
+    ? requestedLiveSubTab
+    : 'good-usage';
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [grammarianOfDay, setGrammarianOfDay] = useState<GrammarianOfDay | null>(null);
@@ -140,7 +158,12 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
 
   const [quoteOfTheDay, setQuoteOfTheDay] = useState<QuoteOfTheDayData | null>(null);
 
-  const [liveMeetingSubTab, setLiveMeetingSubTab] = useState<'good-usage' | 'improvements' | 'stats'>('good-usage');
+  const [liveMeetingSubTab, setLiveMeetingSubTab] = useState<LiveSubTab>(initialLiveMeetingSubTab);
+
+  useEffect(() => {
+    if (!liveSubTab) return;
+    setLiveMeetingSubTab(liveSubTab);
+  }, [liveSubTab]);
   const [goodUsageList, setGoodUsageList] = useState<LiveObservation[]>([]);
   const [improvementsList, setImprovementsList] = useState<ImprovementObservation[]>([]);
   const [goodUsageInput, setGoodUsageInput] = useState('');
@@ -160,14 +183,65 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
   const [areGoodUsagePublished, setAreGoodUsagePublished] = useState(false);
   const [areImprovementsPublished, setAreImprovementsPublished] = useState(false);
   const [areStatsPublished, setAreStatsPublished] = useState(false);
+  const [statsInlineLoaded, setStatsInlineLoaded] = useState(false);
+  const [isPublishingAll, setIsPublishingAll] = useState(false);
 
   const autoSaveTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (meetingId) {
-      loadNotesData();
+    if (!meetingId) {
+      // Avoid hanging on "Loading live meeting..." if meetingId is temporarily missing.
+      setIsLoading(false);
+      return;
     }
-  }, [meetingId]);
+    setIsLoading(true);
+    setStatsInlineLoaded(false);
+
+    if (variant === 'live-inline') {
+      // Inline mode: load only what we need for the default tab quickly.
+      // (Good Usage / Opportunity require live observations; Stats requires extra word usage data.)
+      loadLiveInlineCoreData();
+      return;
+    }
+
+    loadNotesData();
+  }, [meetingId, variant]);
+
+  useEffect(() => {
+    if (variant !== 'live-inline') return;
+    if (liveMeetingSubTab !== 'stats') return;
+    if (statsInlineLoaded) return;
+    if (!meetingId || !user?.currentClubId) return;
+
+    let cancelled = false;
+    setIsLoading(true);
+
+    (async () => {
+      try {
+        // Inline Stats UI only shows Word usage, but we still load idiom/quote
+        // so "Publish All" validation and publishing is accurate.
+        const [wordRes, idiomRes, quoteRes] = await Promise.all([
+          loadWordOfTheDayData(),
+          loadIdiomOfTheDayData(),
+          loadQuoteOfTheDayData(),
+        ]);
+
+        setAreStatsPublished(!!(wordRes?.is_published || idiomRes?.is_published || quoteRes?.is_published));
+        await loadMemberUsage(wordRes?.id ?? null, idiomRes?.id ?? null, quoteRes?.id ?? null);
+      } catch (e) {
+        console.error('Error loading inline stats:', e);
+      } finally {
+        if (!cancelled) {
+          setStatsInlineLoaded(true);
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [variant, liveMeetingSubTab, statsInlineLoaded, meetingId, user?.currentClubId]);
 
   useEffect(() => {
     return () => {
@@ -202,6 +276,26 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
     } catch (error) {
       console.error('Error loading notes data:', error);
       Alert.alert('Error', 'Failed to load notes data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadLiveInlineCoreData = async () => {
+    if (!meetingId || !user?.currentClubId) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      await Promise.all([
+        loadMeeting(),
+        loadGrammarianOfDay(),
+        loadLiveObservations(),
+        loadClubMembers(),
+      ]);
+    } catch (error) {
+      console.error('Error loading inline live meeting core:', error);
     } finally {
       setIsLoading(false);
     }
@@ -1148,6 +1242,301 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
     }
   };
 
+  const validatePublishAllToSummary = (): string | null => {
+    const hasGoodUsage = goodUsageList.length > 0;
+    const hasImprovements = improvementsList.length > 0;
+    const hasWordStats = !!wordOfTheDay?.id;
+    const hasIdiomStats = !!idiomOfTheDay?.id;
+    const hasQuoteStats = !!quoteOfTheDay?.id;
+
+    const hasAnyCaptured =
+      hasGoodUsage || hasImprovements || hasWordStats || hasIdiomStats || hasQuoteStats;
+
+    if (!hasAnyCaptured) {
+      return 'No data captured yet. Add Good Usage / Opportunity / Word usage before publishing.';
+    }
+
+    if (hasGoodUsage) {
+      const bad = goodUsageList.find(o => !o.observation?.trim());
+      if (bad) return 'Good Usage has an empty observation. Please fix it before publishing.';
+    }
+
+    if (hasImprovements) {
+      const bad = improvementsList.find(
+        o => !o.incorrect_usage?.trim() || !o.correct_usage?.trim()
+      );
+      if (bad) return 'Opportunity has incomplete incorrect/correct usage. Please fix it before publishing.';
+    }
+
+    const validateMemberUsage = (label: string, list: MemberUsage[], recordId?: string | null): string | null => {
+      if (!recordId) return null;
+      if (list.length === 0) {
+        return `${label} usage is missing. Add at least one member to capture usage before publishing.`;
+      }
+      const bad = list.find(u => {
+        const hasMember =
+          !!u.member_profile ||
+          !!u.member_user_id ||
+          !!u.member_name_manual?.trim();
+        const usageOk = typeof u.usage_count === 'number' && Number.isFinite(u.usage_count) && u.usage_count >= 0;
+        return !hasMember || !usageOk;
+      });
+      if (bad) {
+        return `${label} usage has invalid member or count. Please fix it before publishing.`;
+      }
+      return null;
+    };
+
+    if (hasWordStats) {
+      if (!wordOfTheDay?.word?.trim()) {
+        return 'Word of the Day is missing. Please add the word before publishing.';
+      }
+      const err = validateMemberUsage('Word', wordMemberUsage, wordOfTheDay?.id);
+      if (err) return err;
+    }
+
+    if (hasIdiomStats) {
+      if (!idiomOfTheDay?.idiom?.trim()) {
+        return 'Idiom of the Day is missing. Please add the idiom before publishing.';
+      }
+      const err = validateMemberUsage('Idiom', idiomMemberUsage, idiomOfTheDay?.id);
+      if (err) return err;
+    }
+
+    if (hasQuoteStats) {
+      if (!quoteOfTheDay?.quote?.trim()) {
+        return 'Quote of the Day is missing. Please add the quote before publishing.';
+      }
+      const err = validateMemberUsage('Quote', quoteMemberUsage, quoteOfTheDay?.id);
+      if (err) return err;
+    }
+
+    return null;
+  };
+
+  const hasGoodUsageCaptured = goodUsageList.length > 0;
+  const hasImprovementsCaptured = improvementsList.length > 0;
+  const hasStatsCaptured = !!wordOfTheDay?.id || !!idiomOfTheDay?.id || !!quoteOfTheDay?.id;
+
+  const isAllPublishedToSummary =
+    (!hasGoodUsageCaptured || areGoodUsagePublished) &&
+    (!hasImprovementsCaptured || areImprovementsPublished) &&
+    (!hasStatsCaptured || areStatsPublished);
+
+  const handlePublishAllToSummary = async () => {
+    if (!meetingId || !user?.id) return;
+    if (isPublishingAll) return;
+
+    const validationError = validatePublishAllToSummary();
+    if (validationError) {
+      Alert.alert('Fix before publishing', validationError);
+      return;
+    }
+
+    setIsPublishingAll(true);
+    try {
+      const promises: any[] = [];
+
+      // Publish live observations
+      if (goodUsageList.length > 0) {
+        promises.push(
+          supabase
+            .from('grammarian_live_good_usage')
+            .update({ is_published: true })
+            .eq('meeting_id', meetingId)
+            .eq('grammarian_id', user.id)
+        );
+      }
+
+      if (improvementsList.length > 0) {
+        promises.push(
+          supabase
+            .from('grammarian_live_improvements')
+            .update({ is_published: true })
+            .eq('meeting_id', meetingId)
+            .eq('grammarian_id', user.id)
+        );
+      }
+
+      // Publish stats
+      if (wordOfTheDay?.id) {
+        promises.push(
+          supabase
+            .from('grammarian_word_of_the_day')
+            .update({ is_published: true })
+            .eq('id', wordOfTheDay.id)
+        );
+      }
+      if (idiomOfTheDay?.id) {
+        promises.push(
+          supabase
+            .from('grammarian_idiom_of_the_day')
+            .update({ is_published: true })
+            .eq('id', idiomOfTheDay.id)
+        );
+      }
+      if (quoteOfTheDay?.id) {
+        promises.push(
+          supabase
+            .from('grammarian_quote_of_the_day')
+            .update({ is_published: true })
+            .eq('id', quoteOfTheDay.id)
+        );
+      }
+
+      const results = await Promise.all(promises);
+      if (results.some(r => r.error)) {
+        Alert.alert('Error', 'Failed to publish. Please try again.');
+        return;
+      }
+
+      // Refresh only the relevant bits
+      const refreshPromises: any[] = [];
+      if (goodUsageList.length > 0) refreshPromises.push(loadLiveObservations());
+      refreshPromises.push(loadUsageStats());
+
+      if (wordOfTheDay?.id) refreshPromises.push(loadWordOfTheDayData());
+      if (idiomOfTheDay?.id) refreshPromises.push(loadIdiomOfTheDayData());
+      if (quoteOfTheDay?.id) refreshPromises.push(loadQuoteOfTheDayData());
+
+      if (wordOfTheDay?.id || idiomOfTheDay?.id || quoteOfTheDay?.id) {
+        refreshPromises.push(
+          loadMemberUsage(wordOfTheDay?.id ?? null, idiomOfTheDay?.id ?? null, quoteOfTheDay?.id ?? null)
+        );
+      }
+
+      await Promise.all(refreshPromises);
+
+      setAreGoodUsagePublished(goodUsageList.length > 0);
+      setAreImprovementsPublished(improvementsList.length > 0);
+      setAreStatsPublished(!!(wordOfTheDay?.id || idiomOfTheDay?.id || quoteOfTheDay?.id));
+
+      Alert.alert('Success', 'Published to Grammarian Summary successfully!');
+    } catch (error) {
+      console.error('Error publishing all to summary:', error);
+      Alert.alert('Error', 'An unexpected error occurred while publishing.');
+    } finally {
+      setIsPublishingAll(false);
+    }
+  };
+
+  const handleUnpublishAllToSummary = async () => {
+    if (!meetingId || !user?.id) return;
+    if (isPublishingAll) return;
+
+    const wId = wordOfTheDay?.id ?? null;
+    const iId = idiomOfTheDay?.id ?? null;
+    const qId = quoteOfTheDay?.id ?? null;
+
+    setIsPublishingAll(true);
+    try {
+      const promises: any[] = [];
+
+      // Live observations
+      if (wId || iId || qId || hasGoodUsageCaptured) {
+        // Publishing/unpublishing toggles the same "summary-ready" flags.
+      }
+      if (hasGoodUsageCaptured) {
+        promises.push(
+          supabase
+            .from('grammarian_live_good_usage')
+            .update({ is_published: false })
+            .eq('meeting_id', meetingId)
+            .eq('grammarian_id', user.id)
+        );
+      }
+
+      if (hasImprovementsCaptured) {
+        promises.push(
+          supabase
+            .from('grammarian_live_improvements')
+            .update({ is_published: false })
+            .eq('meeting_id', meetingId)
+            .eq('grammarian_id', user.id)
+        );
+      }
+
+      // Stats
+      if (wId) {
+        promises.push(
+          supabase
+            .from('grammarian_word_of_the_day')
+            .update({ is_published: false })
+            .eq('id', wId)
+        );
+      }
+      if (iId) {
+        promises.push(
+          supabase
+            .from('grammarian_idiom_of_the_day')
+            .update({ is_published: false })
+            .eq('id', iId)
+        );
+      }
+      if (qId) {
+        promises.push(
+          supabase
+            .from('grammarian_quote_of_the_day')
+            .update({ is_published: false })
+            .eq('id', qId)
+        );
+      }
+
+      const results = await Promise.all(promises);
+      if (results.some(r => r.error)) {
+        Alert.alert('Error', 'Failed to unpublish. Please try again.');
+        return;
+      }
+
+      setAreGoodUsagePublished(false);
+      setAreImprovementsPublished(false);
+      setAreStatsPublished(false);
+
+      // Refresh
+      await Promise.all([
+        loadLiveObservations(),
+        loadUsageStats(),
+        loadClubMembers(),
+        loadWordOfTheDayData().catch(() => null),
+        loadIdiomOfTheDayData().catch(() => null),
+        loadQuoteOfTheDayData().catch(() => null),
+      ]);
+
+      await loadMemberUsage(wId, iId, qId);
+
+      Alert.alert('Success', 'Unpublished from Grammarian Summary successfully!');
+    } catch (error) {
+      console.error('Error unpublishing all to summary:', error);
+      Alert.alert('Error', 'An unexpected error occurred while unpublishing.');
+    } finally {
+      setIsPublishingAll(false);
+    }
+  };
+
+  const confirmPublishAllToSummary = () => {
+    Alert.alert(
+      'Confirm publish',
+      'Publish all captured data to Grammarian Summary?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Publish', style: 'default', onPress: handlePublishAllToSummary },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const confirmUnpublishAllToSummary = () => {
+    Alert.alert(
+      'Confirm unpublish',
+      'Unpublish captured data from Grammarian Summary?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Unpublish', style: 'destructive', onPress: handleUnpublishAllToSummary },
+      ],
+      { cancelable: true }
+    );
+  };
+
   const handleUnpublishStats = async () => {
     try {
       const promises = [];
@@ -1183,6 +1572,14 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
   };
 
   if (isLoading) {
+    if (variant === 'live-inline') {
+      return (
+        <View style={styles.inlineLiveSection}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+        </View>
+      );
+    }
+
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
@@ -1196,17 +1593,25 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
 
   if (!meeting) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting not found</Text>
-          <TouchableOpacity
-            style={[styles.backButton, { backgroundColor: theme.colors.primary, marginTop: 16 }]}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backButtonText} maxFontSizeMultiplier={1.3}>Go Back</Text>
-          </TouchableOpacity>
+      variant === 'live-inline' ? (
+        <View style={styles.inlineLiveSection}>
+          <Text style={[styles.inlineEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Meeting not found
+          </Text>
         </View>
-      </SafeAreaView>
+      ) : (
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.loadingContainer}>
+            <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting not found</Text>
+            <TouchableOpacity
+              style={[styles.backButton, { backgroundColor: theme.colors.primary, marginTop: 16 }]}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.backButtonText} maxFontSizeMultiplier={1.3}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      )
     );
   }
 
@@ -1234,17 +1639,23 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-          {variant === 'notes' ? 'Your Prep Space' : 'Live meeting'}
-        </Text>
-        <View style={styles.saveButtonPlaceholder} />
-      </View>
+      {variant !== 'live-inline' && (
+        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            {variant === 'notes' ? 'Your Prep Space' : 'Live meeting'}
+          </Text>
+          <View style={styles.saveButtonPlaceholder} />
+        </View>
+      )}
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={variant !== 'live-inline'}
+      >
         {variant === 'notes' && (
         <View style={[styles.notesSection, { backgroundColor: theme.colors.surface }]}>
           <View style={styles.notesInputSection}>
@@ -1285,192 +1696,422 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
         )}
 
 
-        {variant === 'live-only' && (
+        {(variant === 'live-only' || variant === 'live-inline') && (
           <View style={[styles.liveMeetingContainer, { backgroundColor: theme.colors.background }]}>
-            <View style={styles.liveMeetingTabsContainer}>
-              <View style={[styles.segmentControl, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}>
-                <TouchableOpacity
-                  style={[
-                    styles.segmentTab,
-                    liveMeetingSubTab === 'good-usage' && [styles.segmentTabActive, { backgroundColor: '#2563EB' }],
-                  ]}
-                  onPress={() => setLiveMeetingSubTab('good-usage')}
-                >
-                  <CheckCircle2 size={14} color={liveMeetingSubTab === 'good-usage' ? '#ffffff' : theme.colors.textSecondary} />
-                  <Text style={[
-                    styles.segmentTabText,
-                    { color: liveMeetingSubTab === 'good-usage' ? '#ffffff' : theme.colors.textSecondary,
-                      fontWeight: liveMeetingSubTab === 'good-usage' ? '700' : '500' }
-                  ]} maxFontSizeMultiplier={1.3}>
-                    Good Usage
-                  </Text>
-                </TouchableOpacity>
+            {variant !== 'live-inline' && (
+              <View style={styles.liveMeetingTabsContainer}>
+                <View style={[styles.segmentControl, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}>
+                  <TouchableOpacity
+                    style={[
+                      styles.segmentTab,
+                      liveMeetingSubTab === 'good-usage' && [styles.segmentTabActive, { backgroundColor: '#2563EB' }],
+                    ]}
+                    onPress={() => setLiveMeetingSubTab('good-usage')}
+                  >
+                    <CheckCircle2 size={14} color={liveMeetingSubTab === 'good-usage' ? '#ffffff' : theme.colors.textSecondary} />
+                    <Text style={[
+                      styles.segmentTabText,
+                      { color: liveMeetingSubTab === 'good-usage' ? '#ffffff' : theme.colors.textSecondary,
+                        fontWeight: liveMeetingSubTab === 'good-usage' ? '700' : '500' }
+                    ]} maxFontSizeMultiplier={1.3}>
+                      Good Usage
+                    </Text>
+                  </TouchableOpacity>
 
-                <View style={[styles.segmentDivider, { backgroundColor: '#CBD5E1' }]} />
+                  <View style={[styles.segmentDivider, { backgroundColor: '#CBD5E1' }]} />
 
-                <TouchableOpacity
-                  style={[
-                    styles.segmentTab,
-                    liveMeetingSubTab === 'improvements' && [styles.segmentTabActive, { backgroundColor: '#F59E0B' }],
-                  ]}
-                  onPress={() => setLiveMeetingSubTab('improvements')}
-                >
-                  <AlertTriangle size={14} color={liveMeetingSubTab === 'improvements' ? '#ffffff' : theme.colors.textSecondary} />
-                  <Text style={[
-                    styles.segmentTabText,
-                    { color: liveMeetingSubTab === 'improvements' ? '#ffffff' : theme.colors.textSecondary,
-                      fontWeight: liveMeetingSubTab === 'improvements' ? '700' : '500' }
-                  ]} maxFontSizeMultiplier={1.3}>
-                    Opportunity
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.segmentTab,
+                      liveMeetingSubTab === 'improvements' && [styles.segmentTabActive, { backgroundColor: '#F59E0B' }],
+                    ]}
+                    onPress={() => setLiveMeetingSubTab('improvements')}
+                  >
+                    <AlertTriangle size={14} color={liveMeetingSubTab === 'improvements' ? '#ffffff' : theme.colors.textSecondary} />
+                    <Text style={[
+                      styles.segmentTabText,
+                      { color: liveMeetingSubTab === 'improvements' ? '#ffffff' : theme.colors.textSecondary,
+                        fontWeight: liveMeetingSubTab === 'improvements' ? '700' : '500' }
+                    ]} maxFontSizeMultiplier={1.3}>
+                      Opportunity
+                    </Text>
+                  </TouchableOpacity>
 
-                <View style={[styles.segmentDivider, { backgroundColor: '#CBD5E1' }]} />
+                  <View style={[styles.segmentDivider, { backgroundColor: '#CBD5E1' }]} />
 
-                <TouchableOpacity
-                  style={[
-                    styles.segmentTab,
-                    liveMeetingSubTab === 'stats' && [styles.segmentTabActive, { backgroundColor: '#6B7280' }],
-                  ]}
-                  onPress={() => setLiveMeetingSubTab('stats')}
-                >
-                  <TrendingUp size={14} color={liveMeetingSubTab === 'stats' ? '#ffffff' : theme.colors.textSecondary} />
-                  <Text style={[
-                    styles.segmentTabText,
-                    { color: liveMeetingSubTab === 'stats' ? '#ffffff' : theme.colors.textSecondary,
-                      fontWeight: liveMeetingSubTab === 'stats' ? '700' : '500' }
-                  ]} maxFontSizeMultiplier={1.3}>
-                    Stats
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.segmentTab,
+                      liveMeetingSubTab === 'stats' && [styles.segmentTabActive, { backgroundColor: '#6B7280' }],
+                    ]}
+                    onPress={() => setLiveMeetingSubTab('stats')}
+                  >
+                    <TrendingUp size={14} color={liveMeetingSubTab === 'stats' ? '#ffffff' : theme.colors.textSecondary} />
+                    <Text style={[
+                      styles.segmentTabText,
+                      { color: liveMeetingSubTab === 'stats' ? '#ffffff' : theme.colors.textSecondary,
+                        fontWeight: liveMeetingSubTab === 'stats' ? '700' : '500' }
+                    ]} maxFontSizeMultiplier={1.3}>
+                      Stats
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            )}
 
             {liveMeetingSubTab === 'good-usage' && (
-              <View style={styles.observationSection}>
-                {isGrammarianOfDay() && (
-                  <View style={styles.inputRow}>
-                    <View style={[styles.observationInputWrapper, { backgroundColor: '#ffffff', borderColor: '#E5E7EB' }]}>
-                      <Lightbulb size={16} color={theme.colors.textSecondary} />
+              <>
+                {variant === 'live-inline' ? (
+                <View style={styles.inlineLiveSection}>
+                  {isGrammarianOfDay() && (
+                    <View style={styles.inlineInputRow}>
                       <TextInput
-                        style={[styles.observationInputInner, { color: theme.colors.text }]}
-                        placeholder="Add good usage example…"
+                        style={[styles.inlineInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
+                        placeholder="Add a good usage example..."
                         placeholderTextColor={theme.colors.textSecondary}
                         value={goodUsageInput}
                         onChangeText={setGoodUsageInput}
                         multiline
                         maxFontSizeMultiplier={1.3}
                       />
+                      <TouchableOpacity
+                        style={[styles.inlinePlusButton, { opacity: goodUsageInput.trim() ? 1 : 0.5 }]}
+                        onPress={handleAddGoodUsage}
+                        disabled={!goodUsageInput.trim()}
+                      >
+                        <Plus size={16} color="#ffffff" />
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity
-                      style={[styles.addButton, { backgroundColor: '#2563EB', opacity: goodUsageInput.trim() ? 1 : 0.5 }]}
-                      onPress={handleAddGoodUsage}
-                      disabled={!goodUsageInput.trim()}
-                    >
-                      <Plus size={16} color="#ffffff" />
-                      <Text style={styles.addButtonText} maxFontSizeMultiplier={1.3}>Add</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                  )}
 
-                <View style={styles.observationList}>
-                  {goodUsageList.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <CheckCircle2 size={32} color={theme.colors.textSecondary} />
-                      <Text style={[styles.emptyStateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        No examples yet.
-                      </Text>
-                      <Text style={[styles.emptyStateSubText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        Start adding your first good usage.
-                      </Text>
-                    </View>
-                  ) : (
-                    goodUsageList.map((item, index) => {
-                      const badgeColors = ['#2563EB', '#059669', '#10B981'];
-                      const badgeColor = badgeColors[index % badgeColors.length];
-                      const formattedDate = (() => {
-                        const d = new Date(item.created_at);
-                        const day = d.getDate().toString().padStart(2, '0');
-                        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                        const month = monthNames[d.getMonth()];
-                        const year = d.getFullYear();
-                        let hours = d.getHours();
-                        const minutes = d.getMinutes().toString().padStart(2, '0');
-                        const ampm = hours >= 12 ? 'PM' : 'AM';
-                        hours = hours % 12 || 12;
-                        return `${day} ${month} ${year} • ${hours}:${minutes} ${ampm}`;
-                      })();
-                      return (
-                        <View key={item.id} style={[styles.observationCard, { backgroundColor: '#ffffff', borderColor: '#E5E7EB' }]}>
-                          <View style={styles.observationCardHeader}>
-                            <View style={[styles.observationBadgeCircle, { backgroundColor: badgeColor }]}>
-                              <Text style={styles.observationBadgeText} maxFontSizeMultiplier={1.3}>
-                                #{index + 1}
+                  <View style={styles.inlineList}>
+                    {goodUsageList.length === 0 ? (
+                      <View style={styles.inlineEmptyState}>
+                        <CheckCircle2 size={22} color={theme.colors.textSecondary} />
+                        <Text style={[styles.inlineEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                          No items yet
+                        </Text>
+                      </View>
+                    ) : (
+                      goodUsageList.map((item, index) => {
+                        const formattedDate = (() => {
+                          const d = new Date(item.created_at);
+                          const day = d.getDate().toString().padStart(2, '0');
+                          const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                          const month = monthNames[d.getMonth()];
+                          const year = d.getFullYear();
+                          let hours = d.getHours();
+                          const minutes = d.getMinutes().toString().padStart(2, '0');
+                          const ampm = hours >= 12 ? 'PM' : 'AM';
+                          hours = hours % 12 || 12;
+                          return `${day} ${month} ${year} • ${hours}:${minutes} ${ampm}`;
+                        })();
+
+                        return (
+                          <View key={item.id} style={styles.inlineRow}>
+                            <View style={styles.inlineRowTextCol}>
+                              <View style={styles.inlineRowTop}>
+                                <Text style={[styles.inlineRowIndex, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                  #{index + 1}
+                                </Text>
+                                <Text style={[styles.inlineRowMainText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                  {item.observation}
+                                </Text>
+                              </View>
+                              <Text style={[styles.inlineRowSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                Good usage example
                               </Text>
-                            </View>
-                            <Text style={[styles.observationCardWordTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                              {item.observation}
-                            </Text>
-                          </View>
-                          <View style={styles.observationCategoryRow}>
-                            <MinusCircle size={14} color={theme.colors.textSecondary} />
-                            <Text style={[styles.observationCategoryLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                              Good Usage Example
-                            </Text>
-                          </View>
-                          <View style={styles.observationCardFooter}>
-                            <View style={styles.observationTimestamp}>
-                              <Clock size={14} color={theme.colors.textSecondary} />
-                              <Text style={[styles.observationTimestampText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                              <Text style={[styles.inlineRowTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
                                 {formattedDate}
                               </Text>
                             </View>
+
                             {isGrammarianOfDay() && (
                               <TouchableOpacity
-                                style={styles.deleteButtonNew}
+                                style={styles.inlineTrashButton}
                                 onPress={() => handleDeleteGoodUsage(item.id)}
                               >
-                                <Trash2 size={14} color="#9CA3AF" />
-                                <Text style={[styles.deleteButtonText, { color: '#9CA3AF' }]} maxFontSizeMultiplier={1.3}>Delete</Text>
+                                <Trash2 size={16} color="#9CA3AF" />
                               </TouchableOpacity>
                             )}
                           </View>
-                        </View>
-                      );
-                    })
-                  )}
-                </View>
-
-                {isGrammarianOfDay() && goodUsageList.length > 0 && (
-                  <View style={styles.sectionPublishButtonContainer}>
-                    {areGoodUsagePublished ? (
-                      <TouchableOpacity
-                        style={[styles.sectionUnpublishButton, { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}
-                        onPress={handleUnpublishGoodUsage}
-                      >
-                        <EyeOff size={18} color="#EF4444" />
-                        <Text style={[styles.sectionUnpublishButtonText, { color: '#EF4444' }]} maxFontSizeMultiplier={1.3}>
-                          Unpublish
-                        </Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={[styles.sectionPublishButton, { backgroundColor: '#10B981' }]}
-                        onPress={handlePublishGoodUsage}
-                      >
-                        <Eye size={18} color="#ffffff" />
-                        <Text style={styles.sectionPublishButtonText} maxFontSizeMultiplier={1.3}>
-                          Publish to Summary
-                        </Text>
-                      </TouchableOpacity>
+                        );
+                      })
                     )}
                   </View>
+                </View>
+              ) : (
+                <View style={styles.observationSection}>
+                  {isGrammarianOfDay() && (
+                    <View style={styles.inputRow}>
+                      <View style={[styles.observationInputWrapper, { backgroundColor: '#ffffff', borderColor: '#E5E7EB' }]}>
+                        <Lightbulb size={16} color={theme.colors.textSecondary} />
+                        <TextInput
+                          style={[styles.observationInputInner, { color: theme.colors.text }]}
+                          placeholder="Add good usage example…"
+                          placeholderTextColor={theme.colors.textSecondary}
+                          value={goodUsageInput}
+                          onChangeText={setGoodUsageInput}
+                          multiline
+                          maxFontSizeMultiplier={1.3}
+                        />
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.addButton, { backgroundColor: '#2563EB', opacity: goodUsageInput.trim() ? 1 : 0.5 }]}
+                        onPress={handleAddGoodUsage}
+                        disabled={!goodUsageInput.trim()}
+                      >
+                        <Plus size={16} color="#ffffff" />
+                        <Text style={styles.addButtonText} maxFontSizeMultiplier={1.3}>Add</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  <View style={styles.observationList}>
+                    {goodUsageList.length === 0 ? (
+                      <View style={styles.emptyState}>
+                        <CheckCircle2 size={32} color={theme.colors.textSecondary} />
+                        <Text style={[styles.emptyStateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                          No examples yet.
+                        </Text>
+                        <Text style={[styles.emptyStateSubText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                          Start adding your first good usage.
+                        </Text>
+                      </View>
+                    ) : (
+                      goodUsageList.map((item, index) => {
+                        const badgeColors = ['#2563EB', '#059669', '#10B981'];
+                        const badgeColor = badgeColors[index % badgeColors.length];
+                        const formattedDate = (() => {
+                          const d = new Date(item.created_at);
+                          const day = d.getDate().toString().padStart(2, '0');
+                          const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                          const month = monthNames[d.getMonth()];
+                          const year = d.getFullYear();
+                          let hours = d.getHours();
+                          const minutes = d.getMinutes().toString().padStart(2, '0');
+                          const ampm = hours >= 12 ? 'PM' : 'AM';
+                          hours = hours % 12 || 12;
+                          return `${day} ${month} ${year} • ${hours}:${minutes} ${ampm}`;
+                        })();
+                        return (
+                          <View key={item.id} style={[styles.observationCard, { backgroundColor: '#ffffff', borderColor: '#E5E7EB' }]}>
+                            <View style={styles.observationCardHeader}>
+                              <View style={[styles.observationBadgeCircle, { backgroundColor: badgeColor }]}>
+                                <Text style={styles.observationBadgeText} maxFontSizeMultiplier={1.3}>
+                                  #{index + 1}
+                                </Text>
+                              </View>
+                              <Text style={[styles.observationCardWordTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                {item.observation}
+                              </Text>
+                            </View>
+                            <View style={styles.observationCategoryRow}>
+                              <MinusCircle size={14} color={theme.colors.textSecondary} />
+                              <Text style={[styles.observationCategoryLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                Good Usage Example
+                              </Text>
+                            </View>
+                            <View style={styles.observationCardFooter}>
+                              <View style={styles.observationTimestamp}>
+                                <Clock size={14} color={theme.colors.textSecondary} />
+                                <Text style={[styles.observationTimestampText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                  {formattedDate}
+                                </Text>
+                              </View>
+                              {isGrammarianOfDay() && (
+                                <TouchableOpacity
+                                  style={styles.deleteButtonNew}
+                                  onPress={() => handleDeleteGoodUsage(item.id)}
+                                >
+                                  <Trash2 size={14} color="#9CA3AF" />
+                                  <Text style={[styles.deleteButtonText, { color: '#9CA3AF' }]} maxFontSizeMultiplier={1.3}>Delete</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })
+                    )}
+                  </View>
+
+                  {variant !== 'live-inline' && isGrammarianOfDay() && goodUsageList.length > 0 && (
+                    <View style={styles.sectionPublishButtonContainer}>
+                      {areGoodUsagePublished ? (
+                        <TouchableOpacity
+                          style={[styles.sectionUnpublishButton, { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}
+                          onPress={handleUnpublishGoodUsage}
+                        >
+                          <EyeOff size={18} color="#EF4444" />
+                          <Text style={[styles.sectionUnpublishButtonText, { color: '#EF4444' }]} maxFontSizeMultiplier={1.3}>
+                            Unpublish
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.sectionPublishButton, { backgroundColor: '#10B981' }]}
+                          onPress={handlePublishGoodUsage}
+                        >
+                          <Eye size={18} color="#ffffff" />
+                          <Text style={styles.sectionPublishButtonText} maxFontSizeMultiplier={1.3}>
+                            Publish to Summary
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </View>
                 )}
-              </View>
+              </>
             )}
 
             {liveMeetingSubTab === 'improvements' && (
-              <View style={styles.observationSection}>
+              <View style={variant === 'live-inline' ? { padding: 0, gap: 0 } : styles.observationSection}>
+                {variant === 'live-inline' && (
+                  <View style={styles.inlineLiveSection}>
+                    {isGrammarianOfDay() && (
+                      <View style={styles.inlineImprovementInputContainer}>
+                        <View style={[styles.inlineImprovementFieldCard, { backgroundColor: '#ffffff', borderColor: '#E5E7EB' }]}>
+                          <View style={styles.inlineImprovementFieldHeader}>
+                            <View style={[styles.inlineImprovementFieldIcon, { backgroundColor: '#F1F5F9' }]}>
+                              <X size={14} color="#DC2626" />
+                            </View>
+                            <Text style={[styles.inlineImprovementFieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                              Incorrect
+                            </Text>
+                          </View>
+                          <TextInput
+                            style={[styles.inlineImprovementFieldInput, { backgroundColor: '#ffffff', borderColor: '#E5E7EB' }]}
+                            placeholder="Enter incorrect usage..."
+                            placeholderTextColor={theme.colors.textSecondary}
+                            value={incorrectUsageInput}
+                            onChangeText={setIncorrectUsageInput}
+                            multiline
+                            maxFontSizeMultiplier={1.3}
+                          />
+                        </View>
+
+                        <View style={[styles.inlineImprovementFieldCard, { backgroundColor: '#ffffff', borderColor: '#E5E7EB' }]}>
+                          <View style={styles.inlineImprovementFieldHeader}>
+                            <View style={[styles.inlineImprovementFieldIcon, { backgroundColor: '#F1F5F9' }]}>
+                              <CheckCircle2 size={14} color="#059669" />
+                            </View>
+                            <Text style={[styles.inlineImprovementFieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                              Correct
+                            </Text>
+                          </View>
+                          <TextInput
+                            style={[styles.inlineImprovementFieldInput, { backgroundColor: '#ffffff', borderColor: '#E5E7EB' }]}
+                            placeholder="Enter correct usage..."
+                            placeholderTextColor={theme.colors.textSecondary}
+                            value={correctUsageInput}
+                            onChangeText={setCorrectUsageInput}
+                            multiline
+                            maxFontSizeMultiplier={1.3}
+                          />
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.inlineImprovementSubmitButton,
+                            { opacity: (!incorrectUsageInput.trim() || !correctUsageInput.trim()) ? 0.5 : 1 },
+                          ]}
+                          onPress={handleAddImprovement}
+                          disabled={!incorrectUsageInput.trim() || !correctUsageInput.trim()}
+                        >
+                          <Text style={styles.inlineImprovementSubmitButtonText} maxFontSizeMultiplier={1.3}>
+                            Submit
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    <View style={styles.inlineList}>
+                      {improvementsList.length === 0 ? (
+                        <View style={styles.inlineEmptyState}>
+                          <AlertTriangle size={28} color={theme.colors.textSecondary} />
+                          <Text style={[styles.inlineEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                            No opportunities yet.
+                          </Text>
+                        </View>
+                      ) : (
+                        improvementsList.map((item, index) => {
+                          const formattedDate = (() => {
+                            const d = new Date(item.created_at);
+                            const day = d.getDate().toString().padStart(2, '0');
+                            const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                            const month = monthNames[d.getMonth()];
+                            const year = d.getFullYear();
+                            let hours = d.getHours();
+                            const minutes = d.getMinutes().toString().padStart(2, '0');
+                            const ampm = hours >= 12 ? 'PM' : 'AM';
+                            hours = hours % 12 || 12;
+                            return `${day} ${month} ${year} • ${hours}:${minutes} ${ampm}`;
+                          })();
+
+                          return (
+                            <View key={item.id} style={styles.inlineRow}>
+                              <View style={styles.inlineRowTextCol}>
+                                <View style={styles.inlineRowTop}>
+                                  <Text style={[styles.inlineRowIndex, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                    #{index + 1}
+                                  </Text>
+                                </View>
+                                <Text style={[styles.inlineRowMainText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                  {item.incorrect_usage}
+                                </Text>
+                                <Text style={[styles.inlineRowSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                  {item.correct_usage ? `Correct: ${item.correct_usage}` : 'Correct: —'}
+                                </Text>
+                                <Text style={[styles.inlineRowTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                                  {formattedDate}
+                                </Text>
+                              </View>
+
+                              {isGrammarianOfDay() && (
+                                <TouchableOpacity
+                                  style={styles.inlineTrashButton}
+                                  onPress={() => handleDeleteImprovement(item.id)}
+                                >
+                                  <Trash2 size={16} color="#9CA3AF" />
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          );
+                        })
+                      )}
+                    </View>
+
+                    {variant !== 'live-inline' && isGrammarianOfDay() && improvementsList.length > 0 && (
+                      <View style={styles.sectionPublishButtonContainer}>
+                        {areImprovementsPublished ? (
+                          <TouchableOpacity
+                            style={[styles.sectionUnpublishButton, { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}
+                            onPress={handleUnpublishImprovements}
+                          >
+                            <EyeOff size={18} color="#EF4444" />
+                            <Text style={[styles.sectionUnpublishButtonText, { color: '#EF4444' }]} maxFontSizeMultiplier={1.3}>
+                              Unpublish
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.sectionPublishButton, { backgroundColor: '#10B981' }]}
+                            onPress={handlePublishImprovements}
+                          >
+                            <Eye size={18} color="#ffffff" />
+                            <Text style={styles.sectionPublishButtonText} maxFontSizeMultiplier={1.3}>
+                              Publish to Summary
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {variant !== 'live-inline' && (
+                  <>
                 {isGrammarianOfDay() && (
                   <View style={styles.improvementInputContainer}>
                     <Text style={[styles.improvementSectionHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -1639,11 +2280,148 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
                     )}
                   </View>
                 )}
+                  </>
+                )}
               </View>
             )}
 
             {liveMeetingSubTab === 'stats' && (
-              <View style={styles.observationSection}>
+              <View style={variant === 'live-inline' ? { padding: 0, gap: 0 } : styles.observationSection}>
+                {variant === 'live-inline' && (
+                  <View style={styles.inlineLiveSection}>
+                    {isGrammarianOfDay() &&
+                      (hasGoodUsageCaptured || hasImprovementsCaptured || hasStatsCaptured) && (
+                        <View style={[styles.sectionPublishButtonContainer, { marginTop: 0, paddingTop: 0 }]}>
+                          <TouchableOpacity
+                            style={[
+                              styles.sectionPublishButton,
+                              {
+                                backgroundColor: isAllPublishedToSummary ? '#EF4444' : '#4F46E5',
+                                borderRadius: 14,
+                                opacity: isPublishingAll ? 0.7 : 1,
+                              },
+                            ]}
+                            onPress={() => {
+                              if (isAllPublishedToSummary) confirmUnpublishAllToSummary();
+                              else confirmPublishAllToSummary();
+                            }}
+                            disabled={isPublishingAll}
+                          >
+                            {isPublishingAll ? (
+                              <ActivityIndicator size="small" color="#ffffff" />
+                            ) : (
+                              <Eye size={18} color="#ffffff" />
+                            )}
+                            <Text style={styles.sectionPublishButtonText} maxFontSizeMultiplier={1.3}>
+                              {isAllPublishedToSummary
+                                ? 'Unpublish from Grammarian Summary'
+                                : 'Publish All to Grammarian Summary'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
+                    {wordOfTheDay ? (
+                      <View style={styles.inlineStatsSection}>
+                        <Text style={styles.inlineStatsTitle}>Word of the Day</Text>
+                        <Text style={styles.inlineStatsSubtitle}>{wordOfTheDay.word}</Text>
+
+                        <View style={styles.inlineList}>
+                          {wordMemberUsage.length === 0 ? (
+                            <View style={styles.inlineEmptyState}>
+                              <TrendingUp size={26} color={theme.colors.textSecondary} />
+                              <Text style={[styles.inlineEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                No member added yet.
+                              </Text>
+                              <Text style={[styles.inlineEmptyText, { color: theme.colors.textSecondary, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
+                                Add a member to start tracking usage.
+                              </Text>
+                            </View>
+                          ) : (
+                            wordMemberUsage.map((usage) => (
+                              <View key={usage.id} style={styles.inlineRow}>
+                                <View style={styles.inlineRowTextCol}>
+                                  <Text style={[styles.inlineRowMainText, { fontSize: 12 }]} maxFontSizeMultiplier={1.3}>
+                                    {usage.member_profile?.full_name || usage.member_name_manual || 'Unknown'}
+                                  </Text>
+                                </View>
+
+                                {isGrammarianOfDay() ? (
+                                  <View style={styles.memberInlineCounter}>
+                                    <TouchableOpacity
+                                      style={[styles.inlineCounterBtn, { opacity: usage.usage_count === 0 ? 0.4 : 1 }]}
+                                      onPress={() => updateMemberUsageCount(usage.id, 'word', false)}
+                                      disabled={usage.usage_count === 0 || !isGrammarianOfDay()}
+                                    >
+                                      <Minus size={13} color="#374151" />
+                                    </TouchableOpacity>
+
+                                    <View style={[styles.countBadge, { backgroundColor: '#F1F5F9' }]}>
+                                      <Text style={[styles.countBadgeText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                        {usage.usage_count}
+                                      </Text>
+                                      <Text style={[styles.countBadgeUnit, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                        {' '}times
+                                      </Text>
+                                    </View>
+
+                                    <TouchableOpacity
+                                      style={[styles.inlineCounterBtn, { backgroundColor: '#2563EB' }]}
+                                      onPress={() => updateMemberUsageCount(usage.id, 'word', true)}
+                                    >
+                                      <Plus size={13} color="#ffffff" />
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                      style={styles.removeMemberBtn}
+                                      onPress={() => removeMember(usage.id, 'word')}
+                                    >
+                                      <X size={14} color="#9CA3AF" />
+                                    </TouchableOpacity>
+                                  </View>
+                                ) : (
+                                  <View style={[styles.countBadge, { backgroundColor: '#F1F5F9' }]}>
+                                    <Text style={[styles.countBadgeText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                      {usage.usage_count}
+                                    </Text>
+                                    <Text style={[styles.countBadgeUnit, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                      {' '}times
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
+                            ))
+                          )}
+                        </View>
+
+                        {isGrammarianOfDay() && (
+                          <TouchableOpacity
+                            style={[
+                              styles.addMemberButton,
+                              { backgroundColor: 'transparent', borderColor: '#3B82F6', paddingVertical: 12 },
+                            ]}
+                            onPress={() => setShowMemberPicker('word')}
+                          >
+                            <Plus size={16} color="#3B82F6" />
+                            <Text style={[styles.addMemberText, { color: '#3B82F6' }]} maxFontSizeMultiplier={1.3}>
+                              Add Member
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ) : (
+                      <View style={styles.inlineEmptyState}>
+                        <TrendingUp size={28} color={theme.colors.textSecondary} />
+                        <Text style={[styles.inlineEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                          No usage recorded yet.
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {variant !== 'live-inline' && (
+                  <>
                 <View style={styles.statsPageHeader}>
                   <View style={styles.statsPageHeaderRow}>
                     <BarChart2 size={22} color="#F59E0B" />
@@ -1965,7 +2743,10 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
                   </View>
                 )}
 
-                {isGrammarianOfDay() && (wordOfTheDay || idiomOfTheDay || quoteOfTheDay) && (
+                {/* end of non-inline stats UI */}
+                </>)} 
+
+                {variant !== 'live-inline' && isGrammarianOfDay() && (wordOfTheDay || idiomOfTheDay || quoteOfTheDay) && (
                   <View style={styles.sectionPublishButtonContainer}>
                     {areStatsPublished ? (
                       <TouchableOpacity
@@ -1991,6 +2772,8 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
                   </View>
                 )}
 
+                {/* common publish button rendered at top of inline stats */}
+
               </View>
             )}
           </View>
@@ -1999,7 +2782,7 @@ export function GrammarianNotesScreen({ variant }: { variant: GrammarianNotesVar
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {variant === 'live-only' && (
+      {(variant === 'live-only' || variant === 'live-inline') && (
       <Modal
         visible={!!showMemberPicker}
         transparent
@@ -2312,6 +3095,156 @@ const styles = StyleSheet.create({
   liveMeetingTabText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  // Inline Live meeting design (variant="live-inline") — closer to the web design screenshot
+  inlineLiveSection: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  inlineInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  inlineInput: {
+    flex: 1,
+    minHeight: 20,
+    maxHeight: 80,
+    padding: 0,
+    borderWidth: 0,
+    fontSize: 13,
+  },
+  inlinePlusButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000',
+  },
+  inlineList: {
+    gap: 10,
+  },
+  inlineEmptyState: {
+    borderRadius: 14,
+    paddingVertical: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  inlineEmptyText: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 6,
+  },
+  inlineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    gap: 12,
+  },
+  inlineRowTextCol: {
+    flex: 1,
+  },
+  inlineRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  inlineRowIndex: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  inlineRowMainText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  inlineRowSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  inlineRowTime: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  inlineTrashButton: {
+    paddingTop: 2,
+    paddingHorizontal: 8,
+  },
+  inlineImprovementInputContainer: {
+    gap: 12,
+  },
+  inlineImprovementFieldCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+  },
+  inlineImprovementFieldHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  inlineImprovementFieldIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineImprovementFieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  inlineImprovementFieldInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 56,
+    color: '#111827',
+  },
+  inlineImprovementSubmitButton: {
+    backgroundColor: '#000000',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  inlineImprovementSubmitButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  inlineStatsSection: {
+    gap: 10,
+    marginBottom: 14,
+  },
+  inlineStatsTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  inlineStatsSubtitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6b7280',
   },
   observationSection: {
     padding: 16,

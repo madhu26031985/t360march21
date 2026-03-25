@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useCallback } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -35,8 +35,14 @@ export default function GrammarianIdiomPrepScreen() {
   const [idiomUsage, setIdiomUsage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
 
   const isGrammarianOfDay = () => grammarianOfDay?.assigned_user_id === user?.id;
+
+  const showSavedPopup = () => {
+    setShowSaveConfirmation(true);
+    setTimeout(() => setShowSaveConfirmation(false), 1200);
+  };
 
   const loadGrammarianRole = async () => {
     if (!meetingId) return;
@@ -128,7 +134,7 @@ export default function GrammarianIdiomPrepScreen() {
           Alert.alert('Error', 'Failed to update idiom of the day');
           return;
         }
-        Alert.alert('Success', 'Idiom of the day saved successfully');
+        showSavedPopup();
       } else {
         if (!idiom.trim()) {
           return;
@@ -148,7 +154,7 @@ export default function GrammarianIdiomPrepScreen() {
           Alert.alert('Error', 'Failed to save idiom of the day');
           return;
         }
-        Alert.alert('Success', 'Idiom of the day saved successfully');
+        showSavedPopup();
       }
       await loadIdiom();
     } catch (e) {
@@ -341,6 +347,22 @@ export default function GrammarianIdiomPrepScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={showSaveConfirmation}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSaveConfirmation(false)}
+      >
+        <View style={localStyles.confirmOverlay}>
+          <View style={[localStyles.confirmCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <Text style={[localStyles.confirmTitle, { color: theme.colors.text }]}>Saved</Text>
+            <Text style={[localStyles.confirmBody, { color: theme.colors.textSecondary }]}>
+              Idiom of the Day saved successfully.
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -350,5 +372,32 @@ const localStyles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 10,
+  },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+  },
+  confirmTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  confirmBody: {
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

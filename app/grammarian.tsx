@@ -7,8 +7,10 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
+import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
-import { ArrowLeft, BookOpen, Calendar, Clock, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp } from 'lucide-react-native';
+import { GrammarianNotesScreen } from './grammarian-notes';
+import { ArrowLeft, BookOpen, Calendar, Clock, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp } from 'lucide-react-native';
 
 /** Match Toastmaster / corner bottom dock icon size */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -148,7 +150,19 @@ export default function GrammarianReport() {
   });
   const isInitialMount = useRef(true);
   const notebookPulse = useRef(new Animated.Value(1)).current;
+  const wordOfTheDayPulse = useRef(new Animated.Value(1)).current;
   const [bookingGrammarianRole, setBookingGrammarianRole] = useState(false);
+  const [cornerLiveSubTab, setCornerLiveSubTab] = useState<'good-usage' | 'improvements' | 'stats'>('good-usage');
+
+  const wordOfTheDayDotScale = wordOfTheDayPulse.interpolate({
+    inputRange: [1, 1.08],
+    outputRange: [1, 1.35],
+  });
+
+  const wordOfTheDayDotOpacity = wordOfTheDayPulse.interpolate({
+    inputRange: [1, 1.08],
+    outputRange: [0.7, 1],
+  });
 
   useEffect(() => {
     if (meetingId) {
@@ -930,7 +944,9 @@ export default function GrammarianReport() {
     return Object.values(dailyElements).some(value => value.trim().length > 0);
   };
 
-  const hasWordOfTheDay = dailyElements.word_of_the_day.trim().length > 0;
+  // Pending highlight + dot should stop once the actual Word-of-the-Day record is saved/published.
+  // `dailyElements.word_of_the_day` is separate (used for usage tracking), so it may lag behind after saving.
+  const hasWordOfTheDay = wordOfTheDay.word.trim().length > 0 && wordOfTheDay.is_published;
 
   useEffect(() => {
     const shouldAnimate = isAssignedGrammarian() && !hasWordOfTheDay;
@@ -953,7 +969,32 @@ export default function GrammarianReport() {
       animation.stop();
       notebookPulse.setValue(1);
     };
-  }, [dailyElements.word_of_the_day, assignedGrammarian?.id, user?.id, notebookPulse]);
+  }, [wordOfTheDay.word, wordOfTheDay.is_published, assignedGrammarian?.id, user?.id, notebookPulse]);
+
+  useEffect(() => {
+    const shouldAnimate = isAssignedGrammarian() && !hasWordOfTheDay;
+
+    if (!shouldAnimate) {
+      wordOfTheDayPulse.setValue(1);
+      return;
+    }
+
+    // `useNativeDriver: false` so the pulse works reliably on `--web` (RN Web doesn't fully support native driver).
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(wordOfTheDayPulse, { toValue: 1.04, duration: 350, useNativeDriver: false }),
+        Animated.timing(wordOfTheDayPulse, { toValue: 1.08, duration: 350, useNativeDriver: false }),
+        Animated.timing(wordOfTheDayPulse, { toValue: 1, duration: 350, useNativeDriver: false }),
+      ])
+    );
+
+    animation.start();
+
+    return () => {
+      animation.stop();
+      wordOfTheDayPulse.setValue(1);
+    };
+  }, [wordOfTheDay.word, wordOfTheDay.is_published, assignedGrammarian?.id, user?.id, hasWordOfTheDay, wordOfTheDayPulse]);
 
   useEffect(() => {
     if (isAssignedGrammarian()) {
@@ -1403,35 +1444,7 @@ export default function GrammarianReport() {
               </View>
               {isAssignedGrammarian() && (
                 <View style={styles.toastmasterActionWrapper}>
-                  <Animated.View
-                    style={
-                      !hasWordOfTheDay
-                        ? [
-                            styles.themeNotebookHighlight,
-                            {
-                              transform: [{ scale: notebookPulse }],
-                              shadowColor: '#f97316',
-                            },
-                          ]
-                        : undefined
-                    }
-                  >
-                    <TouchableOpacity
-                      onPress={() => router.push(`/grammarian-notes?meetingId=${meetingId}`)}
-                      style={styles.prepSpaceIconButton}
-                    >
-                      <NotebookPen size={20} color="#f97316" />
-                    </TouchableOpacity>
-                  </Animated.View>
-
-                  {!hasWordOfTheDay && (
-                    <Text
-                      style={styles.toastmasterActionHint}
-                      maxFontSizeMultiplier={1.2}
-                    >
-                      Click here
-                    </Text>
-                  )}
+                  {/* Note icon removed per user request */}
                 </View>
               )}
             </View>
@@ -1482,17 +1495,193 @@ export default function GrammarianReport() {
         <View style={styles.tabContentWrapper}>
         {isAssignedGrammarian() && activeTab === 'corner' ? (
           <>
-            {/* Grammarian role guidance when word not yet added */}
-        {isAssignedGrammarian() && !hasAnyPublishedDailyContent() && (
-          <View style={styles.grammarianRoleCard}>
-            <View style={[styles.grammarianRoleIconWrap, { backgroundColor: theme.colors.primary + '15' }]}>
-              <BookOpen size={32} color={theme.colors.primary} />
+            {/* Pre-meeting shortcuts for assigned Grammarian */}
+            <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface }]}>
+              <Text style={[styles.preMeetingHeader, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Pre meeting!
+              </Text>
+
+              <View style={styles.preMeetingIconsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.preMeetingIconCard,
+                    !hasWordOfTheDay && styles.preMeetingIconCardPending,
+                  ]}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/grammarian-word-prep',
+                      params: { meetingId: meeting?.id as string },
+                    })
+                  }
+                >
+                  <View style={[styles.preMeetingIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                    <BookOpen size={18} color="#2563eb" />
+                  </View>
+
+                  {/* Journey-style pending highlight dot for Word of the day */}
+                  {!hasWordOfTheDay && (
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.preMeetingPendingDot,
+                        {
+                          backgroundColor: '#f97316',
+                          borderColor: '#fdba74',
+                          opacity: wordOfTheDayDotOpacity,
+                          transform: [{ scale: wordOfTheDayDotScale }],
+                        },
+                      ]}
+                    />
+                  )}
+                  <Text style={[styles.preMeetingIconLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Word of the day
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.preMeetingIconCard}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/grammarian-quote-prep',
+                      params: { meetingId: meeting?.id as string },
+                    })
+                  }
+                >
+                  <View style={[styles.preMeetingIconWrap, { backgroundColor: '#F5F3FF' }]}>
+                    <MessageSquareQuote size={18} color="#7c3aed" />
+                  </View>
+                  <Text style={[styles.preMeetingIconLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Quote of the day
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.preMeetingIconCard}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/grammarian-idiom-prep',
+                      params: { meetingId: meeting?.id as string },
+                    })
+                  }
+                >
+                  <View style={[styles.preMeetingIconWrap, { backgroundColor: '#FFFBEB' }]}>
+                    <Lightbulb size={18} color="#f59e0b" />
+                  </View>
+                  <Text style={[styles.preMeetingIconLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Idiom of the day
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <Text style={[styles.grammarianRoleBody, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              {`${assignedGrammarian?.full_name?.trim().split(/\s+/)[0] || 'Grammarian'}, best wishes for your Grammarian role! Add Word, Idiom, and Quote using the Prep bar below. Everyone can read them under Grammarian Summary.`}
-            </Text>
-          </View>
-        )}
+
+            {/* Live meeting tabs (quick open) */}
+            <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface, paddingTop: 14 }]}>
+              <Text style={[styles.preMeetingHeader, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Live meeting
+              </Text>
+
+              <View style={[styles.liveSegmentControl, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.liveSegmentTab,
+                    cornerLiveSubTab === 'good-usage' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
+                  ]}
+                  onPress={() => {
+                    setCornerLiveSubTab('good-usage');
+                  }}
+                >
+                  <CheckCircle2
+                    size={14}
+                    color={cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.liveSegmentTabText,
+                      {
+                        color: cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary,
+                        fontWeight: cornerLiveSubTab === 'good-usage' ? '700' : '600',
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
+                    Good Usage
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={[styles.liveSegmentDivider, { backgroundColor: '#CBD5E1' }]} />
+
+                <TouchableOpacity
+                  style={[
+                    styles.liveSegmentTab,
+                    cornerLiveSubTab === 'improvements' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
+                  ]}
+                  onPress={() => {
+                    setCornerLiveSubTab('improvements');
+                  }}
+                >
+                  <AlertTriangle
+                    size={14}
+                    color={cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.liveSegmentTabText,
+                      {
+                        color: cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary,
+                        fontWeight: cornerLiveSubTab === 'improvements' ? '700' : '600',
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
+                    Opportunity
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={[styles.liveSegmentDivider, { backgroundColor: '#CBD5E1' }]} />
+
+                <TouchableOpacity
+                  style={[
+                    styles.liveSegmentTab,
+                    cornerLiveSubTab === 'stats' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
+                  ]}
+                  onPress={() => {
+                    setCornerLiveSubTab('stats');
+                  }}
+                >
+                  <TrendingUp
+                    size={14}
+                    color={cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.liveSegmentTabText,
+                      {
+                        color: cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary,
+                        fontWeight: cornerLiveSubTab === 'stats' ? '700' : '600',
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
+                    Stats
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Hint removed: users can tap tabs to see Live meeting below. */}
+            </View>
+
+            {/* Inline Live meeting panel */}
+            {isAssignedGrammarian() && (
+              <View style={styles.inlineLiveMeetingPanel}>
+                <GrammarianNotesScreen
+                  variant="live-inline"
+                  liveSubTab={cornerLiveSubTab}
+                  meetingId={meeting?.id}
+                />
+              </View>
+            )}
+
+            {/* Grammarian role guidance removed (requested by user). */}
 
         {/* Daily content placeholder for non-grammarians */}
         {!isAssignedGrammarian() && !hasAnyPublishedDailyContent() && (
@@ -2406,6 +2595,119 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
+  },
+  preMeetingSection: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  preMeetingHeader: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  preMeetingIconsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  preMeetingIconCard: {
+    flex: 1,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  preMeetingIconCardPending: {
+    borderColor: PENDING_ACTION_UI.border,
+    borderWidth: 1.5,
+  },
+  preMeetingIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  preMeetingIconLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  liveSegmentControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    padding: 4,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  liveSegmentTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 50,
+    gap: 5,
+    width: '100%',
+  },
+  liveSegmentTabActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  liveSegmentTabText: {
+    fontSize: 11,
+  },
+  liveSegmentDivider: {
+    width: 1,
+    height: 18,
+    opacity: 0.5,
+  },
+  liveSegmentHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  inlineLiveMeetingPanel: {
+    marginTop: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  preMeetingPendingDot: {
+    position: 'absolute',
+    top: 8,
+    right: 12,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    borderWidth: 2,
   },
   assignedGrammarianCard: {
     backgroundColor: '#f5f3ff',
@@ -3370,7 +3672,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   quickActionsBoxContainer: {
-    borderTopWidth: 1,
+    borderTopWidth: 0,
     paddingVertical: 9,
     paddingHorizontal: 6,
     borderRadius: 16,
