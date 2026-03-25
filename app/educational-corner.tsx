@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   Image,
   Modal,
   ActivityIndicator,
+  TextInput,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,15 +33,22 @@ import {
   Vote,
   Mic,
   CheckSquare,
-  MessageSquare,
+  MessageCircle,
   Clock,
   LayoutDashboard,
   UserCog,
   Settings,
-  Star,
-  Crown,
-  FileBarChart
+  ClipboardCheck,
+  Edit3,
+  Save,
+  User,
+  X,
 } from 'lucide-react-native';
+
+/** Match Toastmaster Corner bottom dock icon size */
+const FOOTER_NAV_ICON_SIZE = 15;
+
+const CORNER_EDUCATIONAL_TITLE_MAX_LEN = 50;
 
 // Type definitions
 interface Meeting {
@@ -53,6 +63,33 @@ interface Meeting {
   meeting_link: string | null;
   meeting_status: string;
   club_name?: string;
+}
+
+function formatTimeForDisplay(t: string): string {
+  const p = t.split(':');
+  if (p.length >= 2) return `${p[0]}:${p[1]}`;
+  return t;
+}
+
+function meetingModeLabel(m: Meeting): string {
+  return m.meeting_mode === 'in_person' ? 'In Person' : m.meeting_mode === 'online' ? 'Online' : 'Hybrid';
+}
+
+/** e.g. "March 31 | Tue | 16:00 - 17:00 | In Person" — matches Toastmaster Corner meta line */
+function formatConsolidatedMeetingMetaSingleLine(m: Meeting): string {
+  const date = new Date(m.meeting_date);
+  const monthDay = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const weekdayShort = date.toLocaleDateString('en-US', { weekday: 'short' });
+  const parts: string[] = [monthDay, weekdayShort];
+  if (m.meeting_start_time && m.meeting_end_time) {
+    parts.push(
+      `${formatTimeForDisplay(m.meeting_start_time)} - ${formatTimeForDisplay(m.meeting_end_time)}`
+    );
+  } else if (m.meeting_start_time) {
+    parts.push(formatTimeForDisplay(m.meeting_start_time));
+  }
+  parts.push(meetingModeLabel(m));
+  return parts.join(' | ');
 }
 
 interface UserProfile {
@@ -85,7 +122,9 @@ export default function EducationalCorner(): JSX.Element {
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
-  
+  const { width: windowWidth } = useWindowDimensions();
+  const consolidatedCardSideMargin = Math.min(56, Math.max(36, Math.round(windowWidth * 0.11)));
+
   // State management
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [educationalSpeaker, setEducationalSpeaker] = useState<EducationalSpeaker | null>(null);
@@ -93,6 +132,9 @@ export default function EducationalCorner(): JSX.Element {
   const [isExComm, setIsExComm] = useState(false);
   const [showCongratsModal, setShowCongratsModal] = useState(false);
   const [bookingEducationalRole, setBookingEducationalRole] = useState(false);
+  const [cornerEducationalTitle, setCornerEducationalTitle] = useState('');
+  const [savingCornerEducational, setSavingCornerEducational] = useState(false);
+  const [editingSavedCornerEducational, setEditingSavedCornerEducational] = useState(false);
 
   // Load data on component mount
   useEffect(() => {
@@ -215,13 +257,13 @@ export default function EducationalCorner(): JSX.Element {
         `)
         .eq('meeting_id', meetingId)
         .eq('role_name', 'Educational Speaker')
-        .eq('booking_status', 'booked') // Ensure it's a booked assignment
+        .eq('role_status', 'Available')
+        .eq('booking_status', 'booked')
         .maybeSingle();
 
       if (roleError && roleError.code !== 'PGRST116') {
         console.error('Error loading educational speaker role assignment:', roleError);
         setEducationalSpeaker(null);
-        setEducationalForm({ title: '', summary: '' });
         return;
       }
 
@@ -242,9 +284,9 @@ export default function EducationalCorner(): JSX.Element {
         if (roleAssignment.assigned_user_id) { // Removed the check for user.id
           const { data: educationalContent, error: contentError } = await supabase
             .from('app_meeting_educational_speaker')
-            .select('speech_title, summary, notes')
+            .select('speech_title, notes')
             .eq('meeting_id', meetingId)
-            .eq('speaker_user_id', roleAssignment.assigned_user_id) // Use assigned_user_id
+            .eq('speaker_user_id', roleAssignment.assigned_user_id)
             .maybeSingle();
 
           if (contentError && contentError.code !== 'PGRST116') {
@@ -253,7 +295,7 @@ export default function EducationalCorner(): JSX.Element {
 
           if (educationalContent) {
             speakerData.speech_title = educationalContent.speech_title;
-            speakerData.summary = educationalContent.summary;
+            speakerData.summary = null;
             speakerData.notes = educationalContent.notes;
           }
         }
@@ -295,23 +337,135 @@ export default function EducationalCorner(): JSX.Element {
   };
 
   /**
-   * Check if current user is the Educational Speaker
+   * Booked Educational Speaker (same idea as Toastmaster Corner: assigned + booked status)
    */
   const isEducationalSpeaker = (): boolean => {
-    return educationalSpeaker?.assigned_user_id === user?.id;
+    const status = educationalSpeaker?.booking_status?.toLowerCase();
+    return (
+      !!user?.id &&
+      educationalSpeaker?.assigned_user_id === user.id &&
+      status === 'booked'
+    );
   };
 
-  /**
-   * Check if Educational Title and Summary are both added
-   */
-  const hasTitleAndSummary = (): boolean => {
-    return !!(educationalSpeaker?.speech_title?.trim() && educationalSpeaker?.summary?.trim());
+  const hasEducationalTitle = (): boolean => {
+    return !!(educationalSpeaker?.speech_title?.trim());
   };
 
   const EDUCATIONAL_CONGRATS_SEEN_KEY = meetingId ? `educationalCongratsSeen_${meetingId}` : null;
 
+  const alertCorner = (title: string, message?: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.alert(message ? `${title}\n\n${message}` : title);
+      return;
+    }
+    Alert.alert(title, message || '');
+  };
+
+  /** Restore draft from last saved title and exit edit mode */
+  const cancelCornerEducationalEdit = () => {
+    setCornerEducationalTitle(
+      (educationalSpeaker?.speech_title || '').slice(0, CORNER_EDUCATIONAL_TITLE_MAX_LEN)
+    );
+    setEditingSavedCornerEducational(false);
+  };
+
+  const clearCornerEducationalTitle = () => {
+    setCornerEducationalTitle('');
+  };
+
+  const saveCornerEducationalTitle = async () => {
+    if (!isEducationalSpeaker() || !meetingId || !user?.currentClubId || savingCornerEducational) return;
+    const name = cornerEducationalTitle.trim().slice(0, CORNER_EDUCATIONAL_TITLE_MAX_LEN);
+    setSavingCornerEducational(true);
+    try {
+      const { data: existing, error: findErr } = await supabase
+        .from('app_meeting_educational_speaker')
+        .select('id')
+        .eq('meeting_id', meetingId)
+        .eq('speaker_user_id', user.id)
+        .maybeSingle();
+
+      if (findErr && findErr.code !== 'PGRST116') {
+        console.error('Error finding educational row:', findErr);
+        alertCorner('Error', 'Failed to save. Please try again.');
+        return;
+      }
+
+      const updatedAt = new Date().toISOString();
+
+      if (!name) {
+        if (!existing?.id) {
+          alertCorner('Validation', 'Please enter an educational title.');
+          return;
+        }
+        const { error } = await supabase
+          .from('app_meeting_educational_speaker')
+          .update({
+            speech_title: null,
+            summary: null,
+            updated_at: updatedAt,
+          })
+          .eq('id', existing.id);
+        if (error) {
+          console.error('Error clearing educational title:', error);
+          alertCorner('Error', 'Failed to save. Please try again.');
+          return;
+        }
+        setEducationalSpeaker((prev) => (prev ? { ...prev, speech_title: null, summary: null } : prev));
+        alertCorner('Success', 'Educational title cleared.');
+        setEditingSavedCornerEducational(false);
+        await loadEducationalSpeaker();
+        return;
+      }
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from('app_meeting_educational_speaker')
+          .update({
+            speech_title: name,
+            summary: null,
+            updated_at: updatedAt,
+          })
+          .eq('id', existing.id);
+        if (error) {
+          console.error('Error updating educational title:', error);
+          alertCorner('Error', 'Failed to save. Please try again.');
+          return;
+        }
+      } else {
+        const { error } = await supabase.from('app_meeting_educational_speaker').insert({
+          meeting_id: meetingId,
+          club_id: user.currentClubId,
+          speaker_user_id: user.id,
+          speech_title: name,
+          summary: null,
+        });
+        if (error) {
+          console.error('Error inserting educational title:', error);
+          alertCorner('Error', 'Failed to save. Please try again.');
+          return;
+        }
+      }
+
+      setEducationalSpeaker((prev) =>
+        prev
+          ? { ...prev, speech_title: name, summary: null }
+          : prev
+      );
+      alertCorner('Success', 'Educational title saved!');
+      setEditingSavedCornerEducational(false);
+      await loadEducationalSpeaker();
+    } catch (e) {
+      console.error('saveCornerEducationalTitle:', e);
+      alertCorner('Error', 'Failed to save. Please try again.');
+    } finally {
+      setSavingCornerEducational(false);
+    }
+  };
+
   useEffect(() => {
-    if (isLoading || !meeting || !isEducationalSpeaker() || hasTitleAndSummary() || !EDUCATIONAL_CONGRATS_SEEN_KEY) return;
+    if (isLoading || !meeting || !isEducationalSpeaker() || hasEducationalTitle() || !EDUCATIONAL_CONGRATS_SEEN_KEY) return;
     let cancelled = false;
     (async () => {
       try {
@@ -322,7 +476,21 @@ export default function EducationalCorner(): JSX.Element {
       }
     })();
     return () => { cancelled = true; };
-  }, [isLoading, meeting, educationalSpeaker?.assigned_user_id, educationalSpeaker?.speech_title, educationalSpeaker?.summary, EDUCATIONAL_CONGRATS_SEEN_KEY]);
+  }, [isLoading, meeting, educationalSpeaker?.assigned_user_id, educationalSpeaker?.speech_title, educationalSpeaker?.booking_status, EDUCATIONAL_CONGRATS_SEEN_KEY]);
+
+  useEffect(() => {
+    if (!user?.id || educationalSpeaker?.assigned_user_id !== user.id) return;
+    const titleSaved = !!(educationalSpeaker?.speech_title?.trim());
+    if (titleSaved && !editingSavedCornerEducational) return;
+    setCornerEducationalTitle(
+      (educationalSpeaker?.speech_title || '').slice(0, CORNER_EDUCATIONAL_TITLE_MAX_LEN)
+    );
+  }, [
+    user?.id,
+    educationalSpeaker?.assigned_user_id,
+    educationalSpeaker?.speech_title,
+    editingSavedCornerEducational,
+  ]);
 
   const dismissCongratsModal = useCallback(() => {
     if (EDUCATIONAL_CONGRATS_SEEN_KEY) {
@@ -331,17 +499,9 @@ export default function EducationalCorner(): JSX.Element {
     setShowCongratsModal(false);
   }, [EDUCATIONAL_CONGRATS_SEEN_KEY]);
 
-  /**
-   * Format meeting mode for display
-   */
-  const formatMeetingMode = (mode: string): string => {
-    switch (mode) {
-      case 'in_person': return 'In Person';
-      case 'online': return 'Online';
-      case 'hybrid': return 'Hybrid';
-      default: return mode;
-    }
-  };
+  const showConsolidatedEducationalCard = Boolean(
+    educationalSpeaker?.assigned_user_id && educationalSpeaker.app_user_profiles
+  );
 
   // Loading state
   if (isLoading) {
@@ -392,447 +552,518 @@ export default function EducationalCorner(): JSX.Element {
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 20, flexGrow: 1 }}
+        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded]}
       >
-        {/* Meeting Card */}
-        <View style={[styles.meetingCard, {
-          backgroundColor: theme.colors.surface,
-          borderWidth: 1,
-          borderColor: theme.colors.border
-        }]}>
-          <View style={styles.meetingCardContent}>
-            <View style={[styles.dateBox, {
-              backgroundColor: theme.colors.primary + '15'
-            }]}>
-              <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).getDate()}
-              </Text>
-              <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.meetingDetails}>
-              <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {meeting.meeting_title}
-              </Text>
-              <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Day: {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
-              </Text>
-              {meeting.meeting_start_time && (
-                <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Time: {meeting.meeting_start_time}
-                  {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
+        {showConsolidatedEducationalCard ? (
+          <View style={styles.contentTop} pointerEvents="box-none">
+            <View
+              style={[
+                styles.consolidatedCornerCard,
+                {
+                  backgroundColor: theme.mode === 'dark' ? theme.colors.surface : '#FFFFFF',
+                  shadowColor: '#000000',
+                  borderColor: theme.mode === 'dark' ? theme.colors.border : '#E8EAED',
+                  marginHorizontal: consolidatedCardSideMargin,
+                },
+              ]}
+            >
+              <View style={styles.consolidatedClubBadge}>
+                <Text
+                  style={[
+                    styles.consolidatedClubTitle,
+                    { color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666' },
+                  ]}
+                  maxFontSizeMultiplier={1.3}
+                >
+                  {meeting.club_name || meeting.meeting_title}
                 </Text>
-              )}
-              <Text style={[styles.meetingCardMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Mode: {meeting.meeting_mode === 'in_person' ? 'In Person' :
-                       meeting.meeting_mode === 'online' ? 'Online' : 'Hybrid'}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.meetingCardDecoration} />
-        </View>
+              </View>
 
-        {/* Educational Speaker Section */}
-        <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-          {educationalSpeaker?.assigned_user_id && educationalSpeaker.app_user_profiles ? (
-            <>
-              <View style={styles.speakerCard}>
-                <View style={styles.speakerInfo}>
-                  <View style={styles.speakerAvatar}>
-                    {educationalSpeaker.app_user_profiles.avatar_url ? (
-                      <Image
-                        source={{ uri: educationalSpeaker.app_user_profiles.avatar_url }}
-                        style={styles.speakerAvatarImage}
-                      />
-                    ) : (
-                      <GraduationCap size={16} color="#ffffff" />
-                    )}
-                  </View>
-                  <View style={styles.speakerDetails}>
-                    <Text style={[styles.speakerName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      {educationalSpeaker.app_user_profiles.full_name}
-                    </Text>
-                    <Text style={[styles.speakerRoleLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Educational speaker
-                    </Text>
-                  </View>
-                  {isEducationalSpeaker() && (
-                    <TouchableOpacity
-                      style={[styles.notesIconButton, { backgroundColor: '#8b5cf6' + '15' }]}
-                      onPress={() => router.push({
-                        pathname: '/educational-speaker-notes',
-                        params: { meetingId: meeting?.id }
-                      })}
-                    >
-                      <NotebookPen size={18} color="#8b5cf6" />
-                    </TouchableOpacity>
+              <View style={styles.consolidatedProfileStack}>
+                <View
+                  style={[
+                    styles.consolidatedAvatarWrap,
+                    {
+                      borderColor: theme.mode === 'dark' ? theme.colors.border : '#E8E8E8',
+                      backgroundColor: theme.mode === 'dark' ? theme.colors.background : '#F4F4F5',
+                    },
+                  ]}
+                >
+                  {educationalSpeaker!.app_user_profiles!.avatar_url ? (
+                    <Image
+                      source={{ uri: educationalSpeaker!.app_user_profiles!.avatar_url }}
+                      style={styles.consolidatedAvatarImage}
+                    />
+                  ) : (
+                    <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
                   )}
                 </View>
-              </View>
-            </>
-          ) : (
-            <View style={styles.noSpeakerCard}>
-              <View style={[styles.noSpeakerIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
-                <GraduationCap size={32} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.noSpeakerText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                The stage is yours — make it count.
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.bookSpeakerButton,
-                  {
-                    backgroundColor: theme.colors.primary,
-                    opacity: bookingEducationalRole ? 0.85 : 1,
-                  },
-                ]}
-                onPress={() => handleBookEducationalSpeakerInline()}
-                disabled={bookingEducationalRole}
-              >
-                {bookingEducationalRole ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
-                    Book Educational Speaker Role
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Educational Speech Content Section - Only show when Educational Speaker is assigned */}
-        {educationalSpeaker?.assigned_user_id && (
-          educationalSpeaker.speech_title && educationalSpeaker.summary ? (
-            <View style={[styles.educationalDisplayCard, { backgroundColor: theme.colors.surface }]}>
-              {/* Header with emoji */}
-              <View style={styles.educationalDisplayHeader}>
-                <Text style={styles.decorativeSparkleSmall} maxFontSizeMultiplier={1.3}>✨</Text>
-                <Text style={[styles.educationalDisplayHeaderText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  EDUCATIONAL SPEECH
+                <Text
+                  style={[
+                    styles.consolidatedPersonName,
+                    { color: theme.mode === 'dark' ? theme.colors.text : '#111111' },
+                  ]}
+                  maxFontSizeMultiplier={1.25}
+                >
+                  {educationalSpeaker!.app_user_profiles!.full_name}
                 </Text>
-                <Text style={styles.educationalHeaderEmoji} maxFontSizeMultiplier={1.3}>🎓</Text>
-                <Text style={styles.decorativeSparkleSmall} maxFontSizeMultiplier={1.3}>✨</Text>
+                <Text
+                  style={[
+                    styles.consolidatedPersonRole,
+                    { color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666' },
+                  ]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  Educational Speaker
+                </Text>
               </View>
 
-              <View style={styles.educationalDisplayDivider} />
+              <View style={[styles.consolidatedDivider, { backgroundColor: '#EAEAEA' }]} />
 
-              {/* Speech Title */}
-              <Text style={[styles.educationalDisplayTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {educationalSpeaker.speech_title}
-              </Text>
-
-              {/* Summary */}
-              <Text style={[styles.educationalDisplaySummary, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {educationalSpeaker.summary}
-              </Text>
-
-              <View style={styles.educationalDisplayDivider} />
-
-              {/* Speaker Info at Bottom */}
-              {educationalSpeaker.app_user_profiles && (
-                <View style={styles.educationalDisplaySpeaker}>
-                  <View style={styles.educationalDisplaySpeakerAvatar}>
-                    {educationalSpeaker.app_user_profiles.avatar_url ? (
-                      <Image
-                        source={{ uri: educationalSpeaker.app_user_profiles.avatar_url }}
-                        style={styles.educationalDisplayAvatarImage}
-                      />
-                    ) : (
-                      <GraduationCap size={24} color="#f97316" />
-                    )}
+              {isEducationalSpeaker() && (!hasEducationalTitle() || editingSavedCornerEducational) ? (
+                <View style={styles.consolidatedThemeFormStretch}>
+                  <View style={styles.cornerEdTitleFormHeader}>
+                    <Text
+                      style={[
+                        styles.themeDaySectionHeading,
+                        styles.cornerEdTitleFormHeadingText,
+                        { color: theme.colors.text },
+                      ]}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      ✨ Educational Title
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.cornerEdTitleCloseHit}
+                      onPress={cancelCornerEducationalEdit}
+                      accessibilityLabel="Cancel editing educational title"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <X size={22} color={theme.mode === 'dark' ? '#A3A3A3' : '#6B7280'} />
+                    </TouchableOpacity>
                   </View>
-                  <View style={styles.educationalDisplaySpeakerInfo}>
-                    <Text style={[styles.educationalDisplaySpeakerName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      {educationalSpeaker.app_user_profiles.full_name}
+                  <View style={styles.cornerThemeFormInputSection}>
+                    <TextInput
+                      style={[
+                        styles.cornerThemeNameInput,
+                        styles.cornerThemeNameInputClean,
+                        {
+                          backgroundColor: theme.colors.background,
+                          borderColor: theme.colors.border,
+                          color: theme.colors.text,
+                        },
+                      ]}
+                      placeholder="Enter title"
+                      placeholderTextColor={theme.colors.textSecondary}
+                      value={cornerEducationalTitle}
+                      onChangeText={(t) =>
+                        setCornerEducationalTitle(t.slice(0, CORNER_EDUCATIONAL_TITLE_MAX_LEN))
+                      }
+                      maxLength={CORNER_EDUCATIONAL_TITLE_MAX_LEN}
+                    />
+                    <View style={styles.cornerThemeInputFooterRow}>
+                      <Text
+                        style={[styles.cornerThemeHelperCaption, { color: theme.colors.textSecondary }]}
+                        maxFontSizeMultiplier={1.25}
+                      >
+                        Enter title (e.g. Leadership, Active listening)
+                      </Text>
+                      <Text style={[styles.cornerThemeCharCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                        {cornerEducationalTitle.length}/{CORNER_EDUCATIONAL_TITLE_MAX_LEN}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.cornerEdTitleActionsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.cornerEdTitleSecondaryBtn,
+                        {
+                          borderColor: theme.colors.border,
+                          backgroundColor: theme.colors.background,
+                          opacity: savingCornerEducational ? 0.5 : 1,
+                        },
+                      ]}
+                      onPress={clearCornerEducationalTitle}
+                      disabled={savingCornerEducational || !cornerEducationalTitle}
+                      accessibilityLabel="Clear educational title"
+                    >
+                      <Text
+                        style={[styles.cornerEdTitleSecondaryBtnText, { color: theme.colors.text }]}
+                        maxFontSizeMultiplier={1.3}
+                      >
+                        Clear
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.cornerEdTitlePrimaryBtn,
+                        {
+                          backgroundColor: theme.colors.primary,
+                          opacity: savingCornerEducational ? 0.5 : 1,
+                        },
+                      ]}
+                      onPress={saveCornerEducationalTitle}
+                      disabled={savingCornerEducational}
+                      accessibilityLabel="Save educational title"
+                    >
+                      <View style={styles.cornerThemeSaveBtnInner}>
+                        {!savingCornerEducational && (
+                          <Save size={14} color="#FFFFFF" />
+                        )}
+                        <Text
+                          style={[
+                            styles.cornerThemeSaveBtnText,
+                            styles.cornerThemeSaveBtnTextCompact,
+                            { color: '#FFFFFF', marginLeft: savingCornerEducational ? 0 : 6 },
+                          ]}
+                          maxFontSizeMultiplier={1.3}
+                        >
+                          {savingCornerEducational ? 'Saving...' : 'Save Title'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : educationalSpeaker?.speech_title?.trim() ? (
+                <>
+                  <View style={styles.consolidatedThemeLabelRow}>
+                    <View style={styles.consolidatedThemeTitleRail} />
+                    <Text
+                      style={[
+                        styles.consolidatedThemeSectionLabel,
+                        styles.consolidatedThemeSectionLabelInLabelRow,
+                        { color: theme.mode === 'dark' ? '#A3A3A3' : '#8A8FA3' },
+                      ]}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      EDUCATIONAL TITLE
                     </Text>
-                    <Text style={[styles.educationalDisplaySpeakerRole, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Educational Speaker
+                    <View style={styles.consolidatedThemeTitleRail}>
+                      {isEducationalSpeaker() ? (
+                        <TouchableOpacity
+                          style={styles.consolidatedThemeEditHit}
+                          onPress={() => setEditingSavedCornerEducational(true)}
+                          accessibilityLabel="Edit educational title"
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Edit3 size={20} color={theme.mode === 'dark' ? '#A3A3A3' : '#777777'} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </View>
+                  <Text
+                    style={[
+                      styles.consolidatedThemeTitle,
+                      { color: theme.mode === 'dark' ? theme.colors.text : '#111111' },
+                    ]}
+                    maxFontSizeMultiplier={1.15}
+                  >
+                    {educationalSpeaker.speech_title}
+                  </Text>
+                </>
+              ) : (
+                <View style={[styles.themeComingSoonInCombined, styles.consolidatedThemeComingSoon]}>
+                  <Text
+                    style={[
+                      styles.themeComingSoonTitle,
+                      styles.consolidatedThemeComingSoonText,
+                      { color: theme.colors.textSecondary },
+                    ]}
+                    maxFontSizeMultiplier={1.25}
+                  >
+                    The Educational Speaker{'\n'}is preparing the session — stay tuned!
+                  </Text>
+                </View>
+              )}
+
+              <View style={[styles.consolidatedBottomDivider, { backgroundColor: '#EAEAEA' }]} />
+
+              <View style={styles.consolidatedMeetingMetaBlock}>
+                <Text
+                  style={[
+                    styles.consolidatedMeetingMetaSingle,
+                    { color: theme.mode === 'dark' ? '#A3A3A3' : '#999999' },
+                  ]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {formatConsolidatedMeetingMetaSingleLine(meeting)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <>
+            <View
+              style={[
+                styles.meetingCard,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                },
+              ]}
+            >
+              <View style={styles.meetingCardContent}>
+                <View style={[styles.dateBox, { backgroundColor: theme.colors.primary + '15' }]}>
+                  <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    {new Date(meeting.meeting_date).getDate()}
+                  </Text>
+                  <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.meetingDetails}>
+                  <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    {meeting.meeting_title}
+                  </Text>
+                  <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    Day: {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
+                  </Text>
+                  {meeting.meeting_start_time && (
+                    <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      Time: {meeting.meeting_start_time}
+                      {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
                     </Text>
-                    {meeting?.club_name && (
-                      <Text style={[styles.educationalDisplayClubName, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        {meeting.club_name}
+                  )}
+                  <Text style={[styles.meetingCardMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    Mode:{' '}
+                    {meeting.meeting_mode === 'in_person'
+                      ? 'In Person'
+                      : meeting.meeting_mode === 'online'
+                        ? 'Online'
+                        : 'Hybrid'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.meetingCardDecoration} />
+            </View>
+
+            <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+              {!educationalSpeaker?.assigned_user_id ? (
+                <View style={styles.noSpeakerCard}>
+                  <View style={[styles.noSpeakerIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
+                    <GraduationCap size={32} color={theme.colors.textSecondary} />
+                  </View>
+                  <Text style={[styles.noSpeakerText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    The stage is yours — make it count.
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.bookSpeakerButton,
+                      {
+                        backgroundColor: theme.colors.primary,
+                        opacity: bookingEducationalRole ? 0.85 : 1,
+                      },
+                    ]}
+                    onPress={() => handleBookEducationalSpeakerInline()}
+                    disabled={bookingEducationalRole}
+                  >
+                    {bookingEducationalRole ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
+                        Book Educational Speaker Role
                       </Text>
                     )}
-                  </View>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.edSpeakerLoadingRow}>
+                  <ActivityIndicator color={theme.colors.primary} />
+                  <Text style={{ color: theme.colors.textSecondary, marginTop: 8 }} maxFontSizeMultiplier={1.3}>
+                    Loading speaker profile…
+                  </Text>
                 </View>
               )}
             </View>
-          ) : (
-            <>
-              {/* Title Box */}
-              <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-                {!(isEducationalSpeaker() && !hasTitleAndSummary()) && (
-                  <View style={styles.sectionHeader}>
-                    <View style={[styles.sectionIcon, { backgroundColor: '#f97316' + '20' }]}>
-                      <GraduationCap size={20} color="#f97316" />
-                    </View>
-                    <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Speech</Text>
-                  </View>
-                )}
-
-                {educationalSpeaker?.speech_title ? (
-                  <Text style={[styles.speechContentTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {educationalSpeaker.speech_title}
-                  </Text>
-                ) : isEducationalSpeaker() && !hasTitleAndSummary() ? (
-                  <View style={styles.educationalInstructionsCard}>
-                    <Text style={[styles.educationalInstructionsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
-                    </Text>
-                    <Text style={[styles.educationalInstructionsBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Great step in leading the educational session. Add your{' '}
-                      <Text style={styles.educationalInstructionsHighlight}>Educational Title</Text>
-                      {' '}and a short{' '}
-                      <Text style={styles.educationalInstructionsHighlight}>summary</Text>
-                      {' '}by opening the Educational Session tab in Your Prep Space to help members understand the context and what to expect.
-                    </Text>
-                    <Text style={[styles.educationalInstructionsBody, { color: theme.colors.textSecondary, marginTop: 12 }]} maxFontSizeMultiplier={1.3}>
-                      You can also add personal notes to prepare and organize your thoughts. These are visible only to you. Use the quick access button to jump to the agenda easily.
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.educationalComingSoonCard}>
-                    <Text style={[styles.educationalComingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Get ready for an insightful knowledge-sharing session by the Educational Speaker — coming soon.
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Summary Box - Only show if there's a title but no summary */}
-              {educationalSpeaker?.speech_title && (
-                educationalSpeaker.summary ? (
-                  <View style={[styles.summarySectionCard, { backgroundColor: theme.colors.surface }]}>
-                    <Text style={[styles.summarySectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      SUMMARY
-                    </Text>
-                    <Text style={[styles.summarySectionText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      {educationalSpeaker.summary}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={[styles.emptyStateSummaryBox, { backgroundColor: theme.colors.surface }]}>
-                    <View style={styles.emptyStateCard}>
-                      <View style={[styles.emptyStateIcon, { backgroundColor: '#FEF3E2' }]}>
-                        <Text style={styles.emptyStateEmoji} maxFontSizeMultiplier={1.3}>📝</Text>
-                      </View>
-                      <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        No Summary Added
-                      </Text>
-                      <Text style={[styles.emptyStateDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        Add a summary to explain the educational topic
-                      </Text>
-                    </View>
-                  </View>
-                )
-              )}
-            </>
-          )
+          </>
         )}
 
-        {/* Footer Navigation - Show when NO Educational Speaker assigned */}
+        {/* Spacer that pushes nav to bottom when content is short (same pattern as Toastmaster Corner) */}
+        <View style={styles.navSpacer} />
+
+        {/* Footer Navigation — same as Toastmaster Corner when no TMOD (no ed speaker booked here) */}
         {!educationalSpeaker?.assigned_user_id && (
           <View style={[styles.footerNavigationInline, {
             backgroundColor: theme.colors.surface,
-            marginTop: 'auto',
+            borderTopColor: theme.colors.border,
+            marginTop: 0,
             marginBottom: 16,
           }]}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                  <FileText size={20} color="#f59e0b" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
-              </TouchableOpacity>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.footerNavigationContent}>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3E7' }]}>
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/toastmaster-corner', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FFF4E6' }]}>
-                  <Star size={20} color="#f59e0b" fill="#f59e0b" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TMOD</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
+                <Bell size={FOOTER_NAV_ICON_SIZE} color="#772432" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Users size={20} color="#ec4899" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#E6EFF4' }]}>
-                  <Calendar size={20} color="#004165" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#F0FDF4' }]}>
-                  <BookOpen size={20} color="#16a34a" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDF4' }]}>
+                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#16a34a" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/general-evaluator-notes', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FFF7ED' }]}>
-                  <Star size={20} color="#ea580c" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#FFF7ED' }]}>
+                <Eye size={FOOTER_NAV_ICON_SIZE} color="#ea580c" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
-                  <NotebookPen size={20} color="#4f46e5" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
+                <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Mic size={20} color="#ec4899" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#FDF4FF' }]}>
+                <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
-                  <CheckSquare size={20} color="#9333ea" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
+                <Mic size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FEFBF0' }]}>
-                  <FileBarChart size={20} color="#C9B84E" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#E6F4FF' }]}>
+                <Clock size={FOOTER_NAV_ICON_SIZE} color="#0369a1" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#E6F4FF' }]}>
-                  <Clock size={20} color="#0369a1" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#FFF1F2' }]}>
+                <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#e11d48" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FFF1F2' }]}>
-                  <MessageSquare size={20} color="#e11d48" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meeting?.id } })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
+                <Mic size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meeting?.id } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#F9E8EB' }]}>
-                  <Bell size={20} color="#772432" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/admin/voting-operations' })}
+            >
+              <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
+                <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#772432" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Vote Ops</Text>
+            </TouchableOpacity>
 
-              {/* ExComm-Only Admin Icons */}
-              {isExComm && (
-                <>
-                  <TouchableOpacity
-                    style={styles.quickActionItem}
-                    onPress={() => router.push('/admin/voting-operations')}
-                  >
-                    <View style={[styles.quickActionIcon, { backgroundColor: '#EDE9FE' }]}>
-                      <Vote size={20} color="#8b5cf6" />
-                    </View>
-                    <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting Ops</Text>
-                  </TouchableOpacity>
+            {isExComm && (
+              <>
+                <TouchableOpacity
+                  style={styles.footerNavItem}
+                  onPress={() => router.push('/admin/club-operations')}
+                >
+                  <View style={[styles.footerNavIcon, { backgroundColor: '#D1FAE5' }]}>
+                    <Settings size={FOOTER_NAV_ICON_SIZE} color="#10b981" />
+                  </View>
+                  <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
+                </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={styles.quickActionItem}
-                    onPress={() => router.push('/admin/meeting-management')}
-                  >
-                    <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                      <LayoutDashboard size={20} color="#3b82f6" />
-                    </View>
-                    <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.footerNavItem}
+                  onPress={() => router.push('/admin/meeting-management')}
+                >
+                  <View style={[styles.footerNavIcon, { backgroundColor: '#DBEAFE' }]}>
+                    <LayoutDashboard size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
+                  </View>
+                  <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
+                </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={styles.quickActionItem}
-                    onPress={() => router.push('/admin/manage-club-users')}
-                  >
-                    <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                      <UserCog size={20} color="#f59e0b" />
-                    </View>
-                    <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Users</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.quickActionItem}
-                    onPress={() => router.push('/admin/club-operations')}
-                  >
-                    <View style={[styles.quickActionIcon, { backgroundColor: '#D1FAE5' }]}>
-                      <Settings size={20} color="#10b981" />
-                    </View>
-                    <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Ops</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.quickActionItem}
-                    onPress={() => router.push('/admin/excomm-corner')}
-                  >
-                    <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                      <Crown size={20} color="#ec4899" />
-                    </View>
-                    <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>ExComm</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </ScrollView>
+                <TouchableOpacity
+                  style={styles.footerNavItem}
+                  onPress={() => router.push('/admin/manage-club-users')}
+                >
+                  <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3C7' }]}>
+                    <UserCog size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+                  </View>
+                  <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Users</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </ScrollView>
           </View>
         )}
 
-        {/* Footer Navigation - Only show when Educational Speaker is assigned */}
+        {/* Footer Navigation — same dock as Toastmaster Corner + Prep (educational speaker notes) */}
         {educationalSpeaker?.assigned_user_id && (
           <View style={[styles.footerNavigationInline, {
             backgroundColor: theme.colors.surface,
-            marginTop: 24,
+            borderTopColor: theme.colors.border,
+            marginTop: 0,
             marginBottom: 16,
           }]}>
             <ScrollView
@@ -845,17 +1076,45 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={20} color="#f59e0b" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
             </TouchableOpacity>
+
+            {isEducationalSpeaker() && (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() =>
+                  router.push({
+                    pathname: '/educational-speaker-notes',
+                    params: { meetingId: meeting?.id },
+                  })
+                }
+                accessibilityLabel="Educational speaker prep space"
+              >
+                <View
+                  style={[
+                    styles.footerNavIcon,
+                    { backgroundColor: theme.mode === 'dark' ? '#374151' : '#F1F5F9' },
+                  ]}
+                >
+                  <NotebookPen
+                    size={FOOTER_NAV_ICON_SIZE}
+                    color={theme.mode === 'dark' ? '#A3A3A3' : '#777777'}
+                  />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Prep
+                </Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={styles.footerNavItem}
               onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                <Bell size={20} color="#772432" />
+                <Bell size={FOOTER_NAV_ICON_SIZE} color="#772432" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
             </TouchableOpacity>
@@ -865,7 +1124,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={20} color="#ec4899" />
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
             </TouchableOpacity>
@@ -875,7 +1134,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                <Calendar size={20} color="#004165" />
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
             </TouchableOpacity>
@@ -885,7 +1144,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDF4' }]}>
-                <BookOpen size={20} color="#16a34a" />
+                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#16a34a" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
             </TouchableOpacity>
@@ -895,7 +1154,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#FFF7ED' }]}>
-                <Eye size={20} color="#ea580c" />
+                <Eye size={FOOTER_NAV_ICON_SIZE} color="#ea580c" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
             </TouchableOpacity>
@@ -905,7 +1164,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
-                <NotebookPen size={20} color="#4f46e5" />
+                <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
             </TouchableOpacity>
@@ -915,27 +1174,27 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#FDF4FF' }]}>
-                <Vote size={20} color="#a855f7" />
+                <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/speeches-delivered' })}
+              onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                <Mic size={20} color="#C9B84E" />
+                <Mic size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/roles-completed' })}
+              onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
-                <CheckSquare size={20} color="#059669" />
+                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#059669" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Roles</Text>
             </TouchableOpacity>
@@ -945,7 +1204,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDFA' }]}>
-                <MessageSquare size={20} color="#0d9488" />
+                <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#0d9488" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
             </TouchableOpacity>
@@ -955,7 +1214,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                <Clock size={20} color="#C9B84E" />
+                <Clock size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
             </TouchableOpacity>
@@ -965,7 +1224,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push('/admin/club-operations')}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#F5F3FF' }]}>
-                <LayoutDashboard size={20} color="#7c3aed" />
+                <LayoutDashboard size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
             </TouchableOpacity>
@@ -975,7 +1234,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push('/admin/manage-club-users')}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#FDF2F8' }]}>
-                <UserCog size={20} color="#db2777" />
+                <UserCog size={FOOTER_NAV_ICON_SIZE} color="#db2777" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Users</Text>
             </TouchableOpacity>
@@ -985,7 +1244,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push('/admin/meeting-operations')}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                <Settings size={20} color="#004165" />
+                <Settings size={FOOTER_NAV_ICON_SIZE} color="#004165" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
             </TouchableOpacity>
@@ -995,7 +1254,7 @@ export default function EducationalCorner(): JSX.Element {
               onPress={() => router.push('/admin/voting-operations')}
             >
               <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                <CheckSquare size={20} color="#772432" />
+                <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#772432" />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Vote Ops</Text>
             </TouchableOpacity>
@@ -1005,7 +1264,7 @@ export default function EducationalCorner(): JSX.Element {
 
       </ScrollView>
 
-      {/* Congrats Educational Speaker modal - shown once per meeting when title/summary not added */}
+      {/* Congrats Educational Speaker modal - shown once per meeting when title not added */}
       <Modal
         visible={showCongratsModal}
         transparent
@@ -1027,10 +1286,8 @@ export default function EducationalCorner(): JSX.Element {
             </Text>
             <Text style={[styles.congratsModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               You're the Educational Speaker, leading a knowledge-sharing session. Add your{' '}
-              <Text style={styles.congratsModalHighlight}>Educational Title</Text>
-              {' '}and{' '}
-              <Text style={styles.congratsModalHighlight}>summary</Text>
-              {' '}to set the stage!
+              <Text style={styles.congratsModalHighlight}>educational title</Text>
+              {' '}(or use Prep below) so members know what to expect.
             </Text>
             <TouchableOpacity
               style={[styles.congratsModalButton, { backgroundColor: theme.colors.primary }]}
@@ -1079,6 +1336,18 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
+    flexDirection: 'column',
+  },
+  contentContainerPadded: {
+    paddingHorizontal: 4,
+  },
+  /** Expands inside ScrollView so the horizontal nav bar sits at the bottom when content is short */
+  navSpacer: {
+    flex: 1,
+    minHeight: 16,
   },
   meetingCard: {
     marginHorizontal: 13,
@@ -1520,7 +1789,9 @@ const styles = StyleSheet.create({
     height: 40,
   },
   footerNavigationInline: {
-    paddingVertical: 16,
+    borderTopWidth: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
     borderRadius: 16,
     marginHorizontal: 16,
     shadowColor: '#000',
@@ -1528,35 +1799,9 @@ const styles = StyleSheet.create({
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 3,
-  },
-  quickActionsBoxContainer: {
-    paddingHorizontal: 8,
-  },
-  quickActionsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-  },
-  quickActionItem: {
-    alignItems: 'center',
-    gap: 6,
-    minWidth: 64,
-  },
-  quickActionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickActionLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   backButtonText: {
     fontSize: 14,
@@ -1566,24 +1811,303 @@ const styles = StyleSheet.create({
   footerNavigationContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 8,
+    gap: 9,
+    paddingHorizontal: 6,
   },
   footerNavItem: {
     alignItems: 'center',
-    minWidth: 60,
+    minWidth: 45,
   },
   footerNavIcon: {
-    width: 40,
-    height: 40,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 3,
+  },
+  footerNavLabel: {
+    fontSize: 8,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  contentTop: {
+    width: '100%',
+  },
+  consolidatedCornerCard: {
+    marginTop: 12,
+    marginBottom: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    alignItems: 'center',
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 720,
+    overflow: 'visible',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.14,
+    shadowRadius: 32,
+    elevation: 12,
+  },
+  consolidatedClubBadge: {
+    marginTop: 2,
+    marginBottom: 20,
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+  },
+  consolidatedClubTitle: {
+    fontSize: 18,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 23,
+  },
+  consolidatedProfileStack: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  consolidatedAvatarWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  consolidatedAvatarImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+  },
+  consolidatedPersonName: {
+    fontSize: 19,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 12,
+    letterSpacing: -0.3,
+  },
+  consolidatedPersonRole: {
+    fontSize: 14,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  consolidatedDivider: {
+    width: '100%',
+    height: 1,
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  consolidatedThemeLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    width: '100%',
+    marginBottom: 4,
+  },
+  consolidatedThemeSectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  consolidatedThemeSectionLabelInLabelRow: {
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'center',
+  },
+  consolidatedThemeTitleRail: {
+    width: 44,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  consolidatedThemeEditHit: {
+    padding: 4,
+  },
+  consolidatedThemeTitle: {
+    fontSize: 31,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 36,
+    letterSpacing: 0.5,
+    paddingHorizontal: 8,
+  },
+  consolidatedBottomDivider: {
+    width: '100%',
+    height: 1,
+    marginTop: 22,
+    marginBottom: 20,
+  },
+  consolidatedThemeFormStretch: {
+    alignSelf: 'stretch',
+    width: '100%',
+    paddingHorizontal: 0,
+  },
+  cornerEdTitleFormHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 10,
+  },
+  cornerEdTitleFormHeadingText: {
+    flex: 1,
+    textAlign: 'left',
+    marginBottom: 0,
+    paddingRight: 8,
+  },
+  cornerEdTitleCloseHit: {
+    padding: 4,
+  },
+  cornerEdTitleActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 4,
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  cornerEdTitleSecondaryBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  cornerEdTitleSecondaryBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  cornerEdTitlePrimaryBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    minHeight: 44,
   },
-  footerNavLabel: {
-    fontSize: 10,
+  themeDaySectionHeading: {
+    fontSize: 17,
     fontWeight: '600',
+    marginBottom: 14,
+    letterSpacing: -0.2,
+  },
+  themeDaySectionHeadingConsolidated: {
     textAlign: 'center',
+    marginBottom: 14,
+  },
+  cornerThemeFormInputSection: {
+    marginBottom: 16,
+  },
+  cornerThemeNameInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  cornerThemeNameInputClean: {
+    borderWidth: 1.5,
+    marginBottom: 0,
+  },
+  cornerThemeInputFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  cornerThemeHelperCaption: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+    marginRight: 12,
+  },
+  cornerThemeCharCount: {
+    fontSize: 13,
+    textAlign: 'right',
+    fontWeight: '600',
+  },
+  cornerThemeSaveBtn: {
+    marginTop: 4,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cornerThemeSaveBtnCompact: {
+    alignSelf: 'center',
+    width: '70%',
+    maxWidth: 260,
+    marginTop: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 17,
+    borderRadius: 10,
+  },
+  cornerThemeSaveBtnTextCompact: {
+    fontSize: 14,
+  },
+  cornerThemeSaveBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cornerThemeSaveBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  consolidatedThemeComingSoon: {
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  consolidatedThemeComingSoonText: {
+    textAlign: 'center',
+  },
+  consolidatedMeetingMetaBlock: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  consolidatedMeetingMetaSingle: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
+    letterSpacing: 0.2,
+  },
+  themeComingSoonInCombined: {
+    backgroundColor: 'transparent',
+    paddingVertical: 20,
+    paddingHorizontal: 0,
+    borderRadius: 0,
+  },
+  themeComingSoonTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    textAlign: 'left',
+    lineHeight: 28,
+    letterSpacing: -0.3,
+  },
+  edSpeakerLoadingRow: {
+    alignItems: 'center',
+    paddingVertical: 24,
   },
 });

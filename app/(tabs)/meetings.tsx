@@ -879,12 +879,11 @@ export default function ClubMeetings() {
         } else {
           const { data: themeData } = await supabase
             .from('toastmaster_meeting_data')
-            .select('theme_of_the_day, theme_summary')
+            .select('theme_of_the_day')
             .eq('meeting_id', mid)
-            .order('created_at', { ascending: false })
-            .limit(1)
+            .eq('toastmaster_user_id', user.id)
             .maybeSingle();
-          const hasTheme = !!(themeData?.theme_of_the_day?.trim() && themeData?.theme_summary?.trim());
+          const hasTheme = !!(themeData?.theme_of_the_day?.trim());
           tmodResult[mid] = !hasTheme;
         }
         const { data: edRoleData } = await supabase
@@ -892,6 +891,7 @@ export default function ClubMeetings() {
           .select('id, assigned_user_id')
           .eq('meeting_id', mid)
           .eq('role_name', 'Educational Speaker')
+          .eq('role_status', 'Available')
           .eq('booking_status', 'booked')
           .limit(1);
         const edRole = Array.isArray(edRoleData) && edRoleData.length > 0 ? edRoleData[0] : null;
@@ -901,11 +901,11 @@ export default function ClubMeetings() {
         } else {
           const { data: contentData } = await supabase
             .from('app_meeting_educational_speaker')
-            .select('speech_title, summary')
+            .select('speech_title')
             .eq('meeting_id', mid)
             .eq('speaker_user_id', user.id)
             .maybeSingle();
-          const hasContent = !!(contentData?.speech_title?.trim() && contentData?.summary?.trim());
+          const hasContent = !!(contentData?.speech_title?.trim());
           edResult[mid] = !hasContent;
         }
         const { data: keynoteRoleData } = await supabase
@@ -922,11 +922,11 @@ export default function ClubMeetings() {
         } else {
           const { data: keynoteContentData } = await supabase
             .from('app_meeting_keynote_speaker')
-            .select('speech_title, summary')
+            .select('speech_title')
             .eq('meeting_id', mid)
             .eq('speaker_user_id', user.id)
             .maybeSingle();
-          const hasKeynoteContent = !!(keynoteContentData?.speech_title?.trim() && keynoteContentData?.summary?.trim());
+          const hasKeynoteContent = !!(keynoteContentData?.speech_title?.trim());
           keynoteResult[mid] = !hasKeynoteContent;
         }
 

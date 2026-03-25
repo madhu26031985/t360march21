@@ -1,35 +1,11 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import {
-  ArrowLeft,
-  Save,
-  StickyNote,
-  Mic,
-  FileText,
-  ClipboardList,
-  X,
-  Bell,
-  UserCheck,
-  Vote,
-  Clock,
-  BookOpen,
-  Award,
-  Settings,
-  UserCog,
-  LayoutDashboard,
-  Calendar,
-  CalendarCheck,
-  MessageSquare,
-  NotebookPen,
-  Shield,
-  Star,
-  GraduationCap
-} from 'lucide-react-native';
+import { ArrowLeft, StickyNote, Mic, X } from 'lucide-react-native';
 
 interface Meeting {
   id: string;
@@ -81,208 +57,40 @@ export default function KeynoteSpeakerNotes() {
   const [openingNotes, setOpeningNotes] = useState('');
   const [midSectionNotes, setMidSectionNotes] = useState('');
   const [closingNotes, setClosingNotes] = useState('');
-  const [keynoteTitle, setKeynoteTitle] = useState('');
-  const [keynoteSummary, setKeynoteSummary] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isExcomm, setIsExcomm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'notes' | 'quick_access' | 'keynote_speech'>('keynote_speech');
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const initialDataLoaded = useRef(false);
 
   useEffect(() => {
     if (meetingId) {
       loadNotesData();
-      checkExcommStatus();
     }
   }, [meetingId]);
 
-  // Auto-save notes after 2 seconds of inactivity
+  // Auto-save effect with debouncing (only for notes tab)
   useEffect(() => {
-    if (!hasUnsavedChanges) return;
-
-    const timeoutId = setTimeout(() => {
-      autoSaveNotes();
-    }, 2000);
-
-    return () => clearTimeout(timeoutId);
-  }, [openingNotes, midSectionNotes, closingNotes, hasUnsavedChanges]);
-
-  const loadNotesData = async () => {
-    if (!meetingId || !user?.currentClubId) {
-      setIsLoading(false);
+    if (!initialDataLoaded.current) {
       return;
     }
 
-    try {
-      await Promise.all([
-        loadMeeting(),
-        loadKeynoteSpeaker(),
-        loadKeynoteNotesData(),
-        checkExcommStatus()
-      ]);
-    } catch (error) {
-      console.error('Error loading notes data:', error);
-      Alert.alert('Error', 'Failed to load notes data');
-    } finally {
-      setIsLoading(false);
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
-  };
 
-  const loadMeeting = async () => {
-    if (!meetingId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_meeting')
-        .select('*')
-        .eq('id', meetingId)
-        .single();
-
-      if (error) {
-        console.error('Error loading meeting:', error);
-        return;
-      }
-
-      setMeeting(data);
-    } catch (error) {
-      console.error('Error loading meeting:', error);
+    if (hasUnsavedChanges) {
+      saveTimeoutRef.current = setTimeout(() => {
+        autoSave();
+      }, 2000);
     }
-  };
 
-  const loadKeynoteSpeaker = async () => {
-    if (!meetingId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_meeting_roles_management')
-        .select(`
-          id,
-          role_name,
-          assigned_user_id,
-          app_user_profiles (
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-        .eq('meeting_id', meetingId)
-        .ilike('role_name', '%keynote speaker%')
-        .eq('role_status', 'Available')
-        .eq('booking_status', 'booked')
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading keynote speaker:', error);
-        return;
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
       }
+    };
+  }, [openingNotes, midSectionNotes, closingNotes, hasUnsavedChanges]);
 
-      setKeynoteSpeaker(data);
-    } catch (error) {
-      console.error('Error loading keynote speaker:', error);
-    }
-  };
-
-  const loadKeynoteNotesData = async () => {
-    if (!meetingId || !user?.id) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_meeting_keynote_speaker')
-        .select('*')
-        .eq('meeting_id', meetingId)
-        .eq('speaker_user_id', user.id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading keynote notes data:', error);
-        return;
-      }
-
-      if (data) {
-        setNotesData(data);
-        setOpeningNotes(data.opening_notes || '');
-        setMidSectionNotes(data.mid_section_notes || '');
-        setClosingNotes(data.closing_notes || '');
-        setKeynoteTitle(data.speech_title || '');
-        setKeynoteSummary(data.summary || '');
-      }
-    } catch (error) {
-      console.error('Error loading keynote notes data:', error);
-    }
-  };
-
-  const isKeynoteSpeaker = () => {
-    return keynoteSpeaker?.assigned_user_id === user?.id;
-  };
-
-  const checkExcommStatus = async () => {
-    if (!user?.id || !user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-
-      if (!error && data) {
-        setIsExcomm(data.role === 'excomm' || data.role === 'club_leader');
-      }
-    } catch (error) {
-      console.error('Error checking excomm status:', error);
-    }
-  };
-
-  const handleOpeningNotesChange = (text: string) => {
-    setOpeningNotes(text);
-    setHasUnsavedChanges(true);
-  };
-
-  const handleMidSectionNotesChange = (text: string) => {
-    setMidSectionNotes(text);
-    setHasUnsavedChanges(true);
-  };
-
-  const handleClosingNotesChange = (text: string) => {
-    setClosingNotes(text);
-    setHasUnsavedChanges(true);
-  };
-
-  const handleKeynoteTitleChange = (text: string) => {
-    setKeynoteTitle(text);
-  };
-
-  const handleKeynoteSummaryChange = (text: string) => {
-    setKeynoteSummary(text);
-  };
-
-  const handleClearKeynoteTitle = () => {
-    setKeynoteTitle('');
-  };
-
-  const handleClearKeynoteSummary = () => {
-    setKeynoteSummary('');
-  };
-
-  const handleClearOpeningNotes = () => {
-    setOpeningNotes('');
-    setHasUnsavedChanges(true);
-  };
-
-  const handleClearMidSectionNotes = () => {
-    setMidSectionNotes('');
-    setHasUnsavedChanges(true);
-  };
-
-  const handleClearClosingNotes = () => {
-    setClosingNotes('');
-    setHasUnsavedChanges(true);
-  };
-
-  const countWords = (text: string): number => {
-    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
-  };
-
-  const autoSaveNotes = async () => {
+  const autoSave = async () => {
     if (!isKeynoteSpeaker()) {
       return;
     }
@@ -342,68 +150,140 @@ export default function KeynoteSpeakerNotes() {
     }
   };
 
-  const saveKeynoteSession = async () => {
-    if (!isKeynoteSpeaker()) {
-      return;
-    }
-
+  const loadNotesData = async () => {
     if (!meetingId || !user?.currentClubId) {
+      setIsLoading(false);
       return;
     }
-
-    setIsSaving(true);
 
     try {
-      if (notesData) {
-        const { error } = await supabase
-          .from('app_meeting_keynote_speaker')
-          .update({
-            speech_title: keynoteTitle.trim() || null,
-            summary: keynoteSummary.trim() || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', notesData.id);
+      await Promise.all([
+        loadMeeting(),
+        loadKeynoteSpeaker(),
+        loadKeynoteNotesData()
+      ]);
+      initialDataLoaded.current = true;
+    } catch (error) {
+      console.error('Error loading notes data:', error);
+      Alert.alert('Error', 'Failed to load notes data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-        if (error) {
-          console.error('Error updating keynote session:', error);
-          Alert.alert('Error', 'Failed to update keynote session');
-          return;
-        }
+  const loadMeeting = async () => {
+    if (!meetingId) return;
 
-        Alert.alert('Success', 'Keynote session saved successfully');
-      } else {
-        const { data, error } = await supabase
-          .from('app_meeting_keynote_speaker')
-          .insert({
-            meeting_id: meetingId,
-            club_id: user.currentClubId,
-            speaker_user_id: user.id,
-            speech_title: keynoteTitle.trim() || null,
-            summary: keynoteSummary.trim() || null,
-          })
-          .select()
-          .single();
+    try {
+      const { data, error } = await supabase
+        .from('app_club_meeting')
+        .select('*')
+        .eq('id', meetingId)
+        .single();
 
-        if (error) {
-          console.error('Error creating keynote session:', error);
-          Alert.alert('Error', 'Failed to save keynote session');
-          return;
-        }
-
-        if (data) {
-          setNotesData(data);
-        }
-
-        Alert.alert('Success', 'Keynote session saved successfully');
+      if (error) {
+        console.error('Error loading meeting:', error);
+        return;
       }
 
-      await loadKeynoteNotesData();
+      setMeeting(data);
     } catch (error) {
-      console.error('Error saving keynote session:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-    } finally {
-      setIsSaving(false);
+      console.error('Error loading meeting:', error);
     }
+  };
+
+  const loadKeynoteSpeaker = async () => {
+    if (!meetingId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('app_meeting_roles_management')
+        .select(`
+          id,
+          role_name,
+          assigned_user_id,
+          app_user_profiles (
+            full_name,
+            email,
+            avatar_url
+          )
+        `)
+        .eq('meeting_id', meetingId)
+        .ilike('role_name', '%keynote%')
+        .eq('role_status', 'Available')
+        .eq('booking_status', 'booked')
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error loading keynote speaker:', error);
+        return;
+      }
+
+      setKeynoteSpeaker(data);
+    } catch (error) {
+      console.error('Error loading keynote speaker:', error);
+    }
+  };
+
+  const loadKeynoteNotesData = async () => {
+    if (!meetingId || !user?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('app_meeting_keynote_speaker')
+        .select('*')
+        .eq('meeting_id', meetingId)
+        .eq('speaker_user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error loading keynote notes data:', error);
+        return;
+      }
+
+      if (data) {
+        setNotesData(data);
+        setOpeningNotes(data.opening_notes || '');
+        setMidSectionNotes(data.mid_section_notes || '');
+        setClosingNotes(data.closing_notes || '');
+      }
+    } catch (error) {
+      console.error('Error loading keynote notes data:', error);
+    }
+  };
+
+  const isKeynoteSpeaker = () => {
+    return keynoteSpeaker?.assigned_user_id === user?.id;
+  };
+
+  const handleOpeningNotesChange = (text: string) => {
+    setOpeningNotes(text);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleMidSectionNotesChange = (text: string) => {
+    setMidSectionNotes(text);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleClosingNotesChange = (text: string) => {
+    setClosingNotes(text);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleClearOpeningNotes = () => {
+    setOpeningNotes('');
+    setHasUnsavedChanges(true);
+  };
+
+  const handleClearMidSectionNotes = () => {
+    setMidSectionNotes('');
+    setHasUnsavedChanges(true);
+  };
+
+  const handleClearClosingNotes = () => {
+    setClosingNotes('');
+    setHasUnsavedChanges(true);
   };
 
   if (isLoading) {
@@ -467,200 +347,18 @@ export default function KeynoteSpeakerNotes() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Tab Switcher */}
-      <View style={[styles.tabContainer, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabContentContainer}
-        >
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              activeTab === 'keynote_speech' && styles.activeTab,
-              { borderBottomColor: theme.colors.primary }
-            ]}
-            onPress={() => setActiveTab('keynote_speech')}
-          >
-            <Mic size={18} color={activeTab === 'keynote_speech' ? theme.colors.primary : theme.colors.textSecondary} />
-            <Text style={[
-              styles.tabText,
-              { color: activeTab === 'keynote_speech' ? theme.colors.primary : theme.colors.textSecondary }
-            ]} maxFontSizeMultiplier={1.3}>
-              Keynote Speech
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              activeTab === 'notes' && styles.activeTab,
-              { borderBottomColor: theme.colors.primary }
-            ]}
-            onPress={() => setActiveTab('notes')}
-          >
-            <StickyNote size={18} color={activeTab === 'notes' ? theme.colors.primary : theme.colors.textSecondary} />
-            <Text style={[
-              styles.tabText,
-              { color: activeTab === 'notes' ? theme.colors.primary : theme.colors.textSecondary }
-            ]} maxFontSizeMultiplier={1.3}>
-              Notes
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              activeTab === 'quick_access' && styles.activeTab,
-              { borderBottomColor: theme.colors.primary }
-            ]}
-            onPress={() => setActiveTab('quick_access')}
-          >
-            <ClipboardList size={18} color={activeTab === 'quick_access' ? theme.colors.primary : theme.colors.textSecondary} />
-            <Text style={[
-              styles.tabText,
-              { color: activeTab === 'quick_access' ? theme.colors.primary : theme.colors.textSecondary }
-            ]} maxFontSizeMultiplier={1.3}>
-              Quick Access
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Keynote Speech Tab */}
-        {activeTab === 'keynote_speech' && (
-          <View style={[styles.keynoteSection, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.keynoteHeader}>
-              <View style={[styles.keynoteIcon, { backgroundColor: '#f59e0b' + '15' }]}>
-                <Mic size={20} color="#f59e0b" />
-              </View>
-              <View style={styles.keynoteTitleContainer}>
-                <Text style={[styles.keynoteTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Keynote Speech
-                </Text>
-                <Text style={[styles.keynoteSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Set the title and summary for your keynote session
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.keynoteInputSection}>
-              <View style={styles.inputLabelRow}>
-                <Text style={[styles.keynoteInputLabel, { color: '#6B7280' }]} maxFontSizeMultiplier={1.3}>
-                  KEYNOTE TITLE
-                </Text>
-                {keynoteTitle.length > 0 && (
-                  <TouchableOpacity
-                    style={[styles.clearButton, { backgroundColor: theme.colors.border }]}
-                    onPress={handleClearKeynoteTitle}
-                  >
-                    <X size={14} color={theme.colors.text} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TextInput
-                style={[styles.keynoteTextInput, {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text
-                }]}
-                placeholder="e.g., Transforming Ideas into Action, Leadership in Modern Era..."
-                placeholderTextColor={theme.colors.textSecondary}
-                value={keynoteTitle}
-                onChangeText={handleKeynoteTitleChange}
-                maxLength={200}
-              />
-              <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {keynoteTitle.length}/200
-              </Text>
-            </View>
-
-            <View style={styles.keynoteInputSection}>
-              <View style={styles.inputLabelRow}>
-                <Text style={[styles.keynoteInputLabel, { color: '#6B7280' }]} maxFontSizeMultiplier={1.3}>
-                  SUMMARY
-                </Text>
-                {keynoteSummary.length > 0 && (
-                  <TouchableOpacity
-                    style={[styles.clearButton, { backgroundColor: theme.colors.border }]}
-                    onPress={handleClearKeynoteSummary}
-                  >
-                    <X size={14} color={theme.colors.text} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TextInput
-                style={[styles.keynoteSummaryInput, {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text
-                }]}
-                placeholder="Describe your keynote session and key messages..."
-                placeholderTextColor={theme.colors.textSecondary}
-                value={keynoteSummary}
-                onChangeText={handleKeynoteSummaryChange}
-                multiline
-                numberOfLines={8}
-                textAlignVertical="top"
-                maxLength={600}
-              />
-              <Text
-                style={[
-                  styles.characterCount,
-                  {
-                    color: keynoteSummary.length > 600
-                      ? '#f59e0b'
-                      : theme.colors.textSecondary
-                  }
-                ]}
-                maxFontSizeMultiplier={1.3}
-              >
-                {keynoteSummary.length}/600
-              </Text>
-              <Text style={[styles.characterHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Maximum 600 characters
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.saveKeynoteButton,
-                {
-                  backgroundColor: theme.colors.primary,
-                  opacity: isSaving ? 0.7 : 1,
-                }
-              ]}
-              onPress={saveKeynoteSession}
-              disabled={isSaving}
-            >
-              <Save size={18} color="#ffffff" />
-              <Text
-                style={[
-                  styles.saveKeynoteButtonText,
-                  { color: '#ffffff' }
-                ]}
-                maxFontSizeMultiplier={1.3}
-              >
-                {isSaving ? 'Saving...' : 'Save Keynote Session'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Personal Notes Tab */}
-        {activeTab === 'notes' && (
           <View style={[styles.notesSection, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.notesHeader}>
-              <View style={[styles.notesIcon, { backgroundColor: '#f59e0b' + '20' }]}>
-                <Mic size={20} color="#f59e0b" />
+              <View style={[styles.notesIcon, { backgroundColor: '#ec4899' + '20' }]}>
+                <Mic size={20} color="#ec4899" />
               </View>
               <View style={styles.notesTitleContainer}>
                 <Text style={[styles.notesTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   Your Prep Space
                 </Text>
                 <Text style={[styles.notesSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Private notes for your keynote presentation
+                  Private notes only. Your keynote title is set in Keynote Speaker Corner.
                 </Text>
               </View>
             </View>
@@ -724,7 +422,7 @@ export default function KeynoteSpeakerNotes() {
                   borderColor: theme.colors.border,
                   color: theme.colors.text
                 }]}
-                placeholder="Main content, key points, core messages..."
+                placeholder="Main content, key points, teaching moments..."
                 placeholderTextColor={theme.colors.textSecondary}
                 value={midSectionNotes}
                 onChangeText={handleMidSectionNotesChange}
@@ -796,248 +494,6 @@ export default function KeynoteSpeakerNotes() {
               </View>
             )}
           </View>
-        )}
-
-        {/* Quick Access Tab */}
-        {activeTab === 'quick_access' && (
-          <View style={[styles.quickAccessSection, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.quickAccessHeader}>
-              <Text style={[styles.quickAccessTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Quick Access
-              </Text>
-              <Text style={[styles.quickAccessSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Navigate to key meeting functions
-              </Text>
-            </View>
-
-            <View style={styles.quickAccessGrid}>
-              {/* Agenda */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/meeting-agenda-view?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <FileText size={22} color="#10b981" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Agenda
-                </Text>
-              </TouchableOpacity>
-
-              {/* Ah Counter */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/ah-counter-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Bell size={22} color="#dc2626" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Ah Counter
-                </Text>
-              </TouchableOpacity>
-
-              {/* Attendance */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/attendance-report?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <UserCheck size={22} color="#3b82f6" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Attendance
-                </Text>
-              </TouchableOpacity>
-
-              {/* Book a Role */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <CalendarCheck size={22} color="#22c55e" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Book a Role
-                </Text>
-              </TouchableOpacity>
-
-              {/* Educational Speaker */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/educational-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <GraduationCap size={22} color="#0891b2" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Educational Speaker
-                </Text>
-              </TouchableOpacity>
-
-              {/* General Evaluator */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/general-evaluator-report?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Award size={22} color="#f59e0b" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  General Evaluator
-                </Text>
-              </TouchableOpacity>
-
-              {/* Grammarian */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/grammarian?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <BookOpen size={22} color="#059669" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Grammarian
-                </Text>
-              </TouchableOpacity>
-
-              {/* Live Voting */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/live-voting?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Vote size={22} color="#8b5cf6" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Live Voting
-                </Text>
-              </TouchableOpacity>
-
-              {/* Prepared Speaker */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/evaluation-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Mic size={22} color="#ec4899" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Prepared Speaker
-                </Text>
-              </TouchableOpacity>
-
-              {/* Roles Completion */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/role-completion-report?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <ClipboardList size={22} color="#6366f1" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Roles Completion
-                </Text>
-              </TouchableOpacity>
-
-              {/* Table Topic Corner */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/table-topic-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <MessageSquare size={22} color="#14b8a6" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Table Topic Corner
-                </Text>
-              </TouchableOpacity>
-
-              {/* Timer */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/timer-report-details?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Clock size={22} color="#9333ea" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Timer
-                </Text>
-              </TouchableOpacity>
-
-            </View>
-
-            {/* ExComm Only Section */}
-            {isExcomm && (
-              <>
-                <View style={styles.excommHeader}>
-                  <View style={[styles.excommBadge, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
-                    <Shield size={16} color={theme.colors.primary} />
-                    <Text style={[styles.excommBadgeText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                      ExComm Only
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.quickAccessGrid}>
-                  {/* Admin Panel */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/club-operations`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <LayoutDashboard size={22} color="#16a34a" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Admin Panel
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Manage Users */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/manage-club-users`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <UserCog size={22} color="#ea580c" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Manage Users
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Meeting Management */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/meeting-management`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <Calendar size={22} color="#2563eb" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Meeting Management
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Voting Ops */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/voting-operations?meetingId=${meetingId}`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <Vote size={22} color="#7c3aed" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Voting Ops
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        )}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -1093,16 +549,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
   content: {
     flex: 1,
+  },
+  keynoteInputSection: {
+    marginBottom: 20,
+  },
+  inputLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  keynoteInputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  clearButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  characterCount: {
+    fontSize: 12,
+    textAlign: 'right',
   },
   notesSection: {
     marginHorizontal: 16,
@@ -1157,25 +630,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  wordCount: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
   notesTextInput: {
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     fontSize: 16,
-    minHeight: 300,
+    minHeight: 140,
     lineHeight: 24,
     textAlignVertical: 'top',
-    marginBottom: 12,
+    marginBottom: 6,
   },
-  notesHint: {
-    fontSize: 13,
-    lineHeight: 18,
+  notesVisibility: {
+    fontSize: 12,
     fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
   },
   unsavedChangesNotice: {
     borderRadius: 8,
@@ -1203,288 +673,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#ffffff',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    paddingHorizontal: 16,
-  },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-    marginRight: 4,
-  },
-  activeTab: {
-    borderBottomWidth: 3,
-  },
-  tabText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  agendaSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  agendaHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  agendaIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  agendaTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  agendaDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 24,
-  },
-  viewAgendaButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  viewAgendaButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 8,
-  },
-  agendaInfo: {
-    borderRadius: 10,
-    padding: 16,
-  },
-  agendaInfoText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  keynoteSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  keynoteHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  keynoteIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  keynoteTitleContainer: {
-    flex: 1,
-  },
-  keynoteTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  keynoteSubtitle: {
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  keynoteInputSection: {
-    marginBottom: 20,
-  },
-  inputLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  keynoteInputLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  clearButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  keynoteTextInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  keynoteSummaryInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    minHeight: 180,
-    marginBottom: 4,
-  },
-  characterCount: {
-    fontSize: 12,
-    fontWeight: '500',
-    textAlign: 'right',
-    marginBottom: 4,
-  },
-  characterHint: {
-    fontSize: 12,
-    textAlign: 'right',
-    fontStyle: 'italic',
-  },
-  saveKeynoteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    marginTop: 12,
-    gap: 8,
-  },
-  saveKeynoteButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  notesVisibility: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 16,
-    marginBottom: 12,
-    fontStyle: 'italic',
-  },
-  quickAccessSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  quickAccessHeader: {
-    marginBottom: 20,
-  },
-  quickAccessTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  quickAccessSubtitle: {
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  quickAccessGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  quickAccessCard: {
-    width: '30%',
-    minWidth: 80,
-    aspectRatio: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  quickAccessIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  quickAccessLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  tabContentContainer: {
-    gap: 4,
-  },
-  excommHeader: {
-    marginTop: 24,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  excommBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-  },
-  excommBadgeText: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
 });

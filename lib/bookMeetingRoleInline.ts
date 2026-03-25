@@ -61,6 +61,29 @@ export async function bookMeetingRoleForCurrentUser(
     }
   }
 
+  if (data.role_classification === 'Key Speakers') {
+    const { data: existingRecord } = await supabase
+      .from('app_meeting_keynote_speaker')
+      .select('id')
+      .eq('meeting_id', data.meeting_id)
+      .eq('speaker_user_id', userId)
+      .maybeSingle();
+
+    if (!existingRecord) {
+      const { error: insertError } = await supabase.from('app_meeting_keynote_speaker').insert({
+        meeting_id: data.meeting_id,
+        club_id: data.club_id,
+        speaker_user_id: userId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      if (insertError) {
+        console.error('bookMeetingRoleForCurrentUser keynote insert:', insertError);
+      }
+    }
+  }
+
   return { ok: true };
 }
 

@@ -1,11 +1,11 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, Modal, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Save, Facebook, Twitter, Linkedin, Instagram, MessageCircle, Youtube, ExternalLink } from 'lucide-react-native';
+import { ArrowLeft, Save, Facebook, Twitter, Linkedin, Instagram, MessageCircle, Youtube, ExternalLink, ChevronDown } from 'lucide-react-native';
 import { Building2, Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
 
 interface ClubSocialMedia {
@@ -49,6 +49,8 @@ export default function SocialMediaManagement() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
+  const [infoBoxExpanded, setInfoBoxExpanded] = useState(false);
+  const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
 
   const socialPlatforms: SocialPlatform[] = [
     {
@@ -204,7 +206,7 @@ export default function SocialMediaManagement() {
     }
   };
 
-  const handleSave = async () => {
+  const performSave = async () => {
     if (!user?.currentClubId) {
       Alert.alert('Error', 'No club selected');
       return;
@@ -219,6 +221,11 @@ export default function SocialMediaManagement() {
       if (url && !validateUrl(url, platform.name)) {
         return;
       }
+    }
+
+    const websiteUrl = socialMedia.website_url;
+    if (websiteUrl && !validateUrl(websiteUrl, 'Website')) {
+      return;
     }
 
     setIsSaving(true);
@@ -289,6 +296,20 @@ export default function SocialMediaManagement() {
     }
   };
 
+  const handleSave = () => {
+    if (!user?.currentClubId) {
+      Alert.alert('Error', 'No club selected');
+      return;
+    }
+    if (isSaving) return;
+    setShowSaveConfirmModal(true);
+  };
+
+  const confirmSave = () => {
+    setShowSaveConfirmModal(false);
+    void performSave();
+  };
+
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
       case 'excomm': return '#8b5cf6';
@@ -345,99 +366,180 @@ export default function SocialMediaManagement() {
           onPress={handleSave}
           disabled={isSaving}
         >
-          <Save size={16} color="#ffffff" />
-          <Text style={styles.saveButtonText} maxFontSizeMultiplier={1.3}>
-            {isSaving ? 'Saving...' : 'Save'}
-          </Text>
+          <Save size={14} color="#ffffff" />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Club Card */}
-        {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.clubHeader}>
-              <View style={styles.clubInfo}>
-                <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {clubInfo.name}
-                </Text>
-                <View style={styles.clubMeta}>
-                  {clubInfo.club_number && (
-                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Club #{clubInfo.club_number}
-                    </Text>
-                  )}
-                  {user?.clubRole && (
-                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
-                      {getRoleIcon(user.clubRole)}
-                      <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
-                    </View>
-                  )}
+        <View style={[styles.managementPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          {/* Club Card */}
+          {clubInfo && (
+            <View style={styles.clubCard}>
+              <View style={styles.clubHeader}>
+                <View style={styles.clubInfo}>
+                  <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    {clubInfo.name}
+                  </Text>
+                  <View style={styles.clubMeta}>
+                    {clubInfo.club_number && (
+                      <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                        Club #{clubInfo.club_number}
+                      </Text>
+                    )}
+                    {user?.clubRole && (
+                      <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
+                        {getRoleIcon(user.clubRole)}
+                        <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
-        )}
+          )}
 
-        <View style={[styles.formsSection, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Social Media Platforms</Text>
+          <View style={[styles.formsSection]}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Social Links</Text>
+            <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Add your club&apos;s public profiles
+            </Text>
           
-          {socialPlatforms.map((platform) => (
-            <View key={platform.key} style={styles.platformField}>
+            {socialPlatforms.map((platform, index) => (
+              <View key={platform.key} style={[styles.platformField, index > 0 && styles.platformFieldWithDivider]}>
+                <View style={styles.platformHeader}>
+                  <View style={[styles.platformIcon, { backgroundColor: platform.color }]}>
+                    {platform.icon}
+                  </View>
+                  <Text style={[styles.platformName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    {platform.name}
+                  </Text>
+                  <Text style={[styles.platformHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    {platform.placeholder.replace('https://', '')}
+                  </Text>
+                </View>
+              
+                <TextInput
+                  style={[styles.urlInput, { 
+                    backgroundColor: theme.colors.background, 
+                    borderColor: '#E5E7EB',
+                    color: theme.colors.text 
+                  }]}
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={socialMedia[platform.key] || ''}
+                  onChangeText={(text) => updateSocialMediaField(platform.key, text)}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            ))}
+
+            <View style={[styles.platformField, styles.platformFieldWithDivider]}>
               <View style={styles.platformHeader}>
-                <View style={[styles.platformIcon, { backgroundColor: platform.color }]}>
-                  {platform.icon}
+                <View style={[styles.platformIcon, { backgroundColor: '#6b7280' }]}>
+                  <ExternalLink size={18} color="#ffffff" />
                 </View>
                 <Text style={[styles.platformName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {platform.name}
+                  Website
+                </Text>
+                <Text style={[styles.platformHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  yourclub.com
                 </Text>
               </View>
-              
+            
               <TextInput
                 style={[styles.urlInput, { 
                   backgroundColor: theme.colors.background, 
-                  borderColor: theme.colors.border,
+                  borderColor: '#E5E7EB',
                   color: theme.colors.text 
                 }]}
-                placeholder={platform.placeholder}
                 placeholderTextColor={theme.colors.textSecondary}
-                value={socialMedia[platform.key] || ''}
-                onChangeText={(text) => updateSocialMediaField(platform.key, text)}
-                keyboardType="url"
+                value={socialMedia.website_url || ''}
+                onChangeText={(text) => updateSocialMediaField('website_url', text)}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
             </View>
-          ))}
 
-          <View style={styles.platformField}>
-            <View style={styles.platformHeader}>
-              <View style={[styles.platformIcon, { backgroundColor: '#6b7280' }]}>
-                <ExternalLink size={20} color="#ffffff" />
+          <View style={[styles.infoBox, { backgroundColor: theme.colors.background, borderColor: '#E5E7EB' }]}>
+            <TouchableOpacity
+              style={styles.infoBoxHeader}
+              onPress={() => setInfoBoxExpanded((v) => !v)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={infoBoxExpanded ? 'Hide social media info' : 'Show social media info'}
+            >
+              <View style={styles.infoBoxHeaderText}>
+                <Text style={[styles.infoTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Social Media Management
+                </Text>
+                <Text style={[styles.infoSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Bring your club&apos;s presence to life 🌐
+                </Text>
               </View>
-              <Text style={[styles.platformName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Website
-              </Text>
-            </View>
-            
-            <TextInput
-              style={[styles.urlInput, { 
-                backgroundColor: theme.colors.background, 
-                borderColor: theme.colors.border,
-                color: theme.colors.text 
-              }]}
-              placeholder="https://yourclub.com"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={socialMedia.website_url || ''}
-              onChangeText={(text) => updateSocialMediaField('website_url', text)}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+              <View style={{ transform: [{ rotate: infoBoxExpanded ? '180deg' : '0deg' }] }}>
+                <ChevronDown size={22} color={theme.colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+
+            {infoBoxExpanded && (
+              <View style={styles.infoBoxExpanded}>
+                <Text style={[styles.infoBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Add all your official social media links in one place—whether it&apos;s Instagram, LinkedIn, Facebook, or YouTube. These links will be seamlessly displayed under the Club tab, making it easy for members to explore, follow, and stay connected.
+                </Text>
+                <Text style={[styles.infoBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Encourage engagement beyond meetings. Help members celebrate moments, stay updated on events, and actively interact with your club&apos;s journey—all from within the app.
+                </Text>
+                <Text style={[styles.infoFooter, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  One place. All your platforms. Stronger member connection.
+                </Text>
+              </View>
+            )}
+          </View>
           </View>
         </View>
 
       </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showSaveConfirmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSaveConfirmModal(false)}
+      >
+        <View style={styles.confirmModalRoot}>
+          <Pressable style={styles.confirmModalBackdrop} onPress={() => setShowSaveConfirmModal(false)} />
+          <View style={[styles.confirmModalCard, { backgroundColor: theme.colors.surface }]} accessibilityRole="dialog">
+            <Text style={[styles.confirmModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Save social links?
+            </Text>
+            <Text style={[styles.confirmModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Your social media links will be updated for this club.
+            </Text>
+            <View style={styles.confirmModalActions}>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmModalButtonSecondary, { borderColor: '#E5E7EB' }]}
+                onPress={() => setShowSaveConfirmModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.confirmModalButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, { backgroundColor: theme.colors.primary }]}
+                onPress={confirmSave}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.confirmModalButtonText, styles.confirmModalButtonTextPrimary]} maxFontSizeMultiplier={1.3}>
+                  Save
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -474,34 +576,30 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   saveButton: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  saveButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 4,
+    justifyContent: 'center',
+    width: 33,
+    height: 33,
+    borderRadius: 9,
   },
   content: {
     flex: 1,
   },
-  clubCard: {
+  managementPanel: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 8,
+    marginBottom: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  clubCard: {
+    marginHorizontal: 0,
+    marginTop: 0,
+    borderRadius: 0,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   clubHeader: {
     flexDirection: 'row',
@@ -545,49 +643,161 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   formsSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
+    marginHorizontal: 0,
+    marginTop: 0,
+    borderRadius: 0,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    marginBottom: 20,
+    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 18,
+    lineHeight: 18,
   },
   platformField: {
-    marginBottom: 24,
+    paddingVertical: 14,
+  },
+  platformFieldWithDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
   platformHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   platformIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   platformName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+  },
+  platformHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 8,
+    flexShrink: 1,
   },
   urlInput: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    fontSize: 14,
+    fontSize: 15,
+    minHeight: 48,
+  },
+  infoBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 6,
+  },
+  infoBoxHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  infoBoxHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  infoBoxExpanded: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  infoSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  infoBody: {
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  infoFooter: {
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  confirmModalRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  confirmModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  confirmModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 14,
+    padding: 20,
+    zIndex: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  confirmModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  confirmModalMessage: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  confirmModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'stretch',
+  },
+  confirmModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  confirmModalButtonSecondary: {
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  confirmModalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmModalButtonTextPrimary: {
+    color: '#ffffff',
   },
 });

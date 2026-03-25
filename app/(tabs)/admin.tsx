@@ -37,12 +37,6 @@ const CLUB_OPERATIONS_SUB_PAGES = [
     accentColor: '#0a66c2',
   },
   {
-    title: 'Member Resources',
-    route: '/admin/member-resources-management' as const,
-    Icon: FileText,
-    accentColor: '#0a66c2',
-  },
-  {
     title: 'Social Media Management',
     route: '/admin/social-media-management' as const,
     Icon: Share2,
@@ -52,6 +46,12 @@ const CLUB_OPERATIONS_SUB_PAGES = [
     title: 'Club Meeting Details',
     route: '/admin/club-meeting-details' as const,
     Icon: Calendar,
+    accentColor: '#0a66c2',
+  },
+  {
+    title: 'Member Resources',
+    route: '/admin/member-resources-management' as const,
+    Icon: FileText,
     accentColor: '#0a66c2',
   },
 ];

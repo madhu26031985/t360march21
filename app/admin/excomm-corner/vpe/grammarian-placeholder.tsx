@@ -208,8 +208,8 @@ export default function GrammarianPlaceholder() {
         setWordData(wordRes.data);
         setWord(wordRes.data.word || '');
         setPartOfSpeech(wordRes.data.part_of_speech || '');
-        setWordMeaning(wordRes.data.meaning || '');
-        setWordUsage(wordRes.data.usage || '');
+        setWordMeaning((wordRes.data.meaning || '').slice(0, 150));
+        setWordUsage((wordRes.data.usage || '').slice(0, 150));
       }
       if (quoteRes.data) {
         setQuoteData(quoteRes.data);
@@ -220,8 +220,8 @@ export default function GrammarianPlaceholder() {
       if (idiomRes.data) {
         setIdiomData(idiomRes.data);
         setIdiom(idiomRes.data.idiom || '');
-        setIdiomMeaning(idiomRes.data.meaning || '');
-        setIdiomUsage(idiomRes.data.usage || '');
+        setIdiomMeaning((idiomRes.data.meaning || '').slice(0, 150));
+        setIdiomUsage((idiomRes.data.usage || '').slice(0, 150));
       }
     } catch (error) {
       console.error('Error loading meeting data:', error);
@@ -552,11 +552,11 @@ export default function GrammarianPlaceholder() {
                 placeholder="Enter the word of the day"
                 placeholderTextColor={theme.colors.textSecondary}
                 value={word}
-                onChangeText={(t) => t.length <= 100 && setWord(t)}
-                maxLength={100}
+                onChangeText={(t) => t.length <= 50 && setWord(t)}
+                maxLength={50}
               />
-              <Text style={[styles.charCount, { color: word.length >= 100 ? theme.colors.error : theme.colors.textSecondary }]}>
-                {word.length}/100
+              <Text style={[styles.charCount, { color: word.length >= 50 ? theme.colors.error : theme.colors.textSecondary }]}>
+                {word.length}/50
               </Text>
             </View>
 
@@ -583,14 +583,14 @@ export default function GrammarianPlaceholder() {
                 placeholder="What does this word mean?"
                 placeholderTextColor={theme.colors.textSecondary}
                 value={wordMeaning}
-                onChangeText={(t) => t.length <= 400 && setWordMeaning(t)}
+                onChangeText={(t) => t.length <= 150 && setWordMeaning(t)}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
-                maxLength={400}
+                maxLength={150}
               />
-              <Text style={[styles.charCount, { color: wordMeaning.length >= 400 ? theme.colors.error : theme.colors.textSecondary }]}>
-                {wordMeaning.length}/400
+              <Text style={[styles.charCount, { color: wordMeaning.length >= 150 ? theme.colors.error : theme.colors.textSecondary }]}>
+                {wordMeaning.length}/150
               </Text>
             </View>
 
@@ -603,14 +603,14 @@ export default function GrammarianPlaceholder() {
                 placeholder="Show how to use this word in a sentence"
                 placeholderTextColor={theme.colors.textSecondary}
                 value={wordUsage}
-                onChangeText={(t) => t.length <= 400 && setWordUsage(t)}
+                onChangeText={(t) => t.length <= 150 && setWordUsage(t)}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
-                maxLength={400}
+                maxLength={150}
               />
-              <Text style={[styles.charCount, { color: wordUsage.length >= 400 ? theme.colors.error : theme.colors.textSecondary }]}>
-                {wordUsage.length}/400
+              <Text style={[styles.charCount, { color: wordUsage.length >= 150 ? theme.colors.error : theme.colors.textSecondary }]}>
+                {wordUsage.length}/150
               </Text>
             </View>
           </View>
@@ -740,14 +740,14 @@ export default function GrammarianPlaceholder() {
                 placeholder="What does this idiom mean?"
                 placeholderTextColor={theme.colors.textSecondary}
                 value={idiomMeaning}
-                onChangeText={(t) => t.length <= 400 && setIdiomMeaning(t)}
+                onChangeText={(t) => t.length <= 150 && setIdiomMeaning(t)}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
-                maxLength={400}
+                maxLength={150}
               />
-              <Text style={[styles.charCount, { color: idiomMeaning.length >= 400 ? theme.colors.error : theme.colors.textSecondary }]}>
-                {idiomMeaning.length}/400
+              <Text style={[styles.charCount, { color: idiomMeaning.length >= 150 ? theme.colors.error : theme.colors.textSecondary }]}>
+                {idiomMeaning.length}/150
               </Text>
             </View>
 
@@ -760,14 +760,14 @@ export default function GrammarianPlaceholder() {
                 placeholder="Show how to use this idiom in a sentence"
                 placeholderTextColor={theme.colors.textSecondary}
                 value={idiomUsage}
-                onChangeText={(t) => t.length <= 400 && setIdiomUsage(t)}
+                onChangeText={(t) => t.length <= 150 && setIdiomUsage(t)}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
-                maxLength={400}
+                maxLength={150}
               />
-              <Text style={[styles.charCount, { color: idiomUsage.length >= 400 ? theme.colors.error : theme.colors.textSecondary }]}>
-                {idiomUsage.length}/400
+              <Text style={[styles.charCount, { color: idiomUsage.length >= 150 ? theme.colors.error : theme.colors.textSecondary }]}>
+                {idiomUsage.length}/150
               </Text>
             </View>
           </View>

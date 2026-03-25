@@ -471,9 +471,18 @@ export default function BookARole() {
         }
       }
 
-      Alert.alert('Success', 'Role booked successfully!');
       setSelectedTab('my_bookings');
       loadMeetingRoles();
+
+      const bookedToastmaster =
+        role.role_name.toLowerCase().includes('toastmaster') &&
+        !role.role_name.toLowerCase().includes('table topics master');
+      if (bookedToastmaster) {
+        router.push(`/toastmaster-corner?meetingId=${role.meeting_id}`);
+        return;
+      }
+
+      Alert.alert('Success', 'Role booked successfully!');
     } catch (error) {
       console.error('Error booking role:', error);
       Alert.alert('Error', 'An unexpected error occurred');

@@ -347,9 +347,6 @@ export default function MyJourney() {
   const [profileFieldsLoaded, setProfileFieldsLoaded] = useState<boolean>(false);
   const [showIncompleteProfileModal, setShowIncompleteProfileModal] = useState<boolean>(false);
   const [showPreparedSpeechDetailsModal, setShowPreparedSpeechDetailsModal] = useState<boolean>(false);
-  const [showGrammarianWotdModal, setShowGrammarianWotdModal] = useState<boolean>(false);
-  const [showToastmasterThemeModal, setShowToastmasterThemeModal] = useState<boolean>(false);
-  const [showEducationalSpeakerModal, setShowEducationalSpeakerModal] = useState<boolean>(false);
   /** Vice President Education for current club (`club_profiles.vpe_id`) */
   const [isVPEForCurrentClub, setIsVPEForCurrentClub] = useState<boolean>(false);
 
@@ -750,12 +747,11 @@ export default function MyJourney() {
         }
         const { data: themeData } = await supabase
           .from('toastmaster_meeting_data')
-          .select('theme_of_the_day, theme_summary')
+          .select('theme_of_the_day')
           .eq('meeting_id', currentOpenMeetingId)
-          .order('created_at', { ascending: false })
-          .limit(1)
+          .eq('toastmaster_user_id', user.id)
           .maybeSingle();
-        const hasTheme = !!(themeData?.theme_of_the_day?.trim() && themeData?.theme_summary?.trim());
+        const hasTheme = !!(themeData?.theme_of_the_day?.trim());
         if (!cancelled) setTmodNeedsThemeAlert(!hasTheme);
       })();
       return () => { cancelled = true; };
@@ -775,6 +771,7 @@ export default function MyJourney() {
           .select('id, assigned_user_id')
           .eq('meeting_id', currentOpenMeetingId)
           .eq('role_name', 'Educational Speaker')
+          .eq('role_status', 'Available')
           .eq('booking_status', 'booked')
           .limit(1);
         const role = Array.isArray(roleData) && roleData.length > 0 ? roleData[0] : null;
@@ -785,11 +782,11 @@ export default function MyJourney() {
         }
         const { data: contentData } = await supabase
           .from('app_meeting_educational_speaker')
-          .select('speech_title, summary')
+          .select('speech_title')
           .eq('meeting_id', currentOpenMeetingId)
           .eq('speaker_user_id', user.id)
           .maybeSingle();
-        const hasContent = !!(contentData?.speech_title?.trim() && contentData?.summary?.trim());
+        const hasContent = !!(contentData?.speech_title?.trim());
         if (!cancelled) setEducationalSpeakerNeedsAlert(!hasContent);
       })();
       return () => { cancelled = true; };
@@ -1167,7 +1164,7 @@ export default function MyJourney() {
     if (educationalSpeakerNeedsAlert) {
       out.push({
         key: 'educational_speech',
-        text: `${name}, please add the educational details.`,
+        text: `${name}, please add your educational title.`,
       });
     }
     if (grammarianNeedsWordOfTheDayAlert) {
@@ -1287,18 +1284,7 @@ export default function MyJourney() {
       Alert.alert('No open meeting', 'There is no current open meeting for Grammarian.');
       return;
     }
-    if (grammarianNeedsWordOfTheDayAlert) {
-      setShowGrammarianWotdModal(true);
-      return;
-    }
     router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
-  }, [currentOpenMeetingId, grammarianNeedsWordOfTheDayAlert]);
-
-  const goToGrammarianFromWotdModal = useCallback(() => {
-    setShowGrammarianWotdModal(false);
-    if (currentOpenMeetingId) {
-      router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
-    }
   }, [currentOpenMeetingId]);
 
   const handleToastmasterPress = useCallback(() => {
@@ -1306,18 +1292,7 @@ export default function MyJourney() {
       Alert.alert('No open meeting', 'There is no current open meeting for Toastmaster.');
       return;
     }
-    if (tmodNeedsThemeAlert) {
-      setShowToastmasterThemeModal(true);
-      return;
-    }
     router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}`);
-  }, [currentOpenMeetingId, tmodNeedsThemeAlert]);
-
-  const goToToastmasterFromThemeModal = useCallback(() => {
-    setShowToastmasterThemeModal(false);
-    if (currentOpenMeetingId) {
-      router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}&showCongrats=1`);
-    }
   }, [currentOpenMeetingId]);
 
   const handleEducationalSpeakerPress = useCallback(() => {
@@ -1325,24 +1300,10 @@ export default function MyJourney() {
       Alert.alert('No open meeting', 'There is no current open meeting for Educational speaker.');
       return;
     }
-    if (educationalSpeakerNeedsAlert) {
-      setShowEducationalSpeakerModal(true);
-      return;
-    }
     router.push({
       pathname: '/educational-corner',
       params: { meetingId: currentOpenMeetingId },
     });
-  }, [currentOpenMeetingId, educationalSpeakerNeedsAlert]);
-
-  const goToEducationalFromModal = useCallback(() => {
-    setShowEducationalSpeakerModal(false);
-    if (currentOpenMeetingId) {
-      router.push({
-        pathname: '/educational-corner',
-        params: { meetingId: currentOpenMeetingId, showCongrats: '1' },
-      });
-    }
   }, [currentOpenMeetingId]);
 
   useEffect(() => {
@@ -2018,153 +1979,6 @@ export default function MyJourney() {
             <TouchableOpacity
               style={styles.incompleteProfileLaterBtn}
               onPress={() => setShowPreparedSpeechDetailsModal(false)}
-              hitSlop={12}
-            >
-              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Not now
-              </Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Grammarian — Word of the Day missing (amber highlight) */}
-      <Modal
-        visible={showGrammarianWotdModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowGrammarianWotdModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.bookRolePromptOverlay}
-          activeOpacity={1}
-          onPress={() => setShowGrammarianWotdModal(false)}
-        >
-          <TouchableOpacity
-            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
-            <View style={[styles.bookRolePromptHeaderRow, styles.preparedSpeechModalHeaderRow]}>
-              <Text
-                style={[styles.bookRolePromptTitle, styles.preparedSpeechModalTitle, { color: theme.colors.text }]}
-                maxFontSizeMultiplier={1.3}
-              >
-                Add Word of the Day
-              </Text>
-            </View>
-            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
-              Add the Word of the Day and supporting details so members can learn and use it during the session.
-            </Text>
-            <TouchableOpacity
-              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 8 }]}
-              onPress={goToGrammarianFromWotdModal}
-            >
-              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
-                Update now
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.incompleteProfileLaterBtn}
-              onPress={() => setShowGrammarianWotdModal(false)}
-              hitSlop={12}
-            >
-              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Not now
-              </Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Toastmaster — Theme of the Day missing (amber highlight) */}
-      <Modal
-        visible={showToastmasterThemeModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowToastmasterThemeModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.bookRolePromptOverlay}
-          activeOpacity={1}
-          onPress={() => setShowToastmasterThemeModal(false)}
-        >
-          <TouchableOpacity
-            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
-            <View style={[styles.bookRolePromptHeaderRow, styles.preparedSpeechModalHeaderRow]}>
-              <Text
-                style={[styles.bookRolePromptTitle, styles.preparedSpeechModalTitle, { color: theme.colors.text }]}
-                maxFontSizeMultiplier={1.3}
-              >
-                Add Theme of the Day
-              </Text>
-            </View>
-            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
-              Add the meeting theme and any welcome details so members know the tone and focus for the day.
-            </Text>
-            <TouchableOpacity
-              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 8 }]}
-              onPress={goToToastmasterFromThemeModal}
-            >
-              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
-                Update now
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.incompleteProfileLaterBtn}
-              onPress={() => setShowToastmasterThemeModal(false)}
-              hitSlop={12}
-            >
-              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Not now
-              </Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Educational speaker — details missing (amber highlight) */}
-      <Modal
-        visible={showEducationalSpeakerModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowEducationalSpeakerModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.bookRolePromptOverlay}
-          activeOpacity={1}
-          onPress={() => setShowEducationalSpeakerModal(false)}
-        >
-          <TouchableOpacity
-            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
-            <View style={[styles.bookRolePromptHeaderRow, styles.preparedSpeechModalHeaderRow]}>
-              <Text
-                style={[styles.bookRolePromptTitle, styles.preparedSpeechModalTitle, { color: theme.colors.text }]}
-                maxFontSizeMultiplier={1.3}
-              >
-                Add educational details
-              </Text>
-            </View>
-            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
-              Add your educational segment title, materials, and notes so the club can prepare and introduce you smoothly.
-            </Text>
-            <TouchableOpacity
-              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 8 }]}
-              onPress={goToEducationalFromModal}
-            >
-              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
-                Update now
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.incompleteProfileLaterBtn}
-              onPress={() => setShowEducationalSpeakerModal(false)}
               hitSlop={12}
             >
               <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>

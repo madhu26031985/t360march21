@@ -7,7 +7,11 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
-import { ArrowLeft, BookOpen, Calendar, Clock, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb } from 'lucide-react-native';
+import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
+import { ArrowLeft, BookOpen, Calendar, Clock, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp } from 'lucide-react-native';
+
+/** Match Toastmaster / corner bottom dock icon size */
+const FOOTER_NAV_ICON_SIZE = 15;
 import { Image } from 'react-native';
 
 interface Meeting {
@@ -111,8 +115,8 @@ export default function GrammarianReport() {
   });
   const [idiomOfTheDay, setIdiomOfTheDay] = useState<IdiomOfTheDay | null>(null);
   const [quoteOfTheDay, setQuoteOfTheDay] = useState<QuoteOfTheDay | null>(null);
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<'corner' | 'summary'>('corner');
+  const [summarySubTab, setSummarySubTab] = useState<'word' | 'idiom' | 'quote' | 'report'>('word');
   const [usageTracking, setUsageTracking] = useState<UsageTracking>({
     word_usage: 0,
     idiom_usage: 0,
@@ -873,7 +877,8 @@ export default function GrammarianReport() {
   };
 
   const updateDailyElement = (field: keyof DailyElements, value: string) => {
-    const maxLength = field === 'quote_of_the_day' ? 200 : 100;
+    const maxLength =
+      field === 'quote_of_the_day' ? 200 : field === 'word_of_the_day' ? 50 : 100;
     if (value.length <= maxLength) {
       setDailyElements(prev => ({ ...prev, [field]: value }));
     }
@@ -1475,11 +1480,8 @@ export default function GrammarianReport() {
             <View style={[styles.grammarianRoleIconWrap, { backgroundColor: theme.colors.primary + '15' }]}>
               <BookOpen size={32} color={theme.colors.primary} />
             </View>
-            <Text style={[styles.grammarianRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              You're the Grammarian!
-            </Text>
-            <Text style={[styles.grammarianRoleBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Tap the Notebook icon beside your name to access Pre-Meeting, Live Meeting, and Notes.{'\n'}Everything you need to excel in your role is right here!
+            <Text style={[styles.grammarianRoleBody, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {`${assignedGrammarian?.full_name?.trim().split(/\s+/)[0] || 'Grammarian'}, best wishes for your Grammarian role! Add Word, Idiom, and Quote using the Prep bar below. Everyone can read them under Grammarian Summary.`}
             </Text>
           </View>
         )}
@@ -1494,305 +1496,13 @@ export default function GrammarianReport() {
               Grammarian Corner is being prepared!
             </Text>
             <Text style={[styles.wordPlaceholderSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              The Grammarian will share the Word, Idiom, or Quote of the Day shortly before the meeting — stay tuned!
+              {assignedGrammarian
+                ? `Open Grammarian Summary to read Word, Idiom, and Quote of the Day when ${assignedGrammarian.full_name.trim().split(/\s+/)[0]} publishes them.`
+                : 'Open Grammarian Summary to read Word, Idiom, and Quote of the Day when they are published.'}
             </Text>
           </View>
         )}
 
-        {/* Daily Elements Navigation */}
-        {(() => {
-          const slides = [];
-          const slideKeys = [];
-
-          if (hasWordOfTheDayContent()) {
-            slideKeys.push('word');
-            slides.push(
-              <View key="word" style={styles.slideContainer}>
-                <View style={styles.wordOfTheDayContainer}>
-                  <View style={styles.wordOfTheDayHeader}>
-                    <View style={styles.wordOfTheDayHeaderContent}>
-                      <Text style={[styles.wordOfTheDayHeaderTitle, { textAlign: 'center' }]} maxFontSizeMultiplier={1.3}>Word of the Day</Text>
-                    </View>
-                  </View>
-                  <View style={[styles.wordOfTheDayContent, { backgroundColor: '#FFF9F0' }]}>
-                    <View>
-                      <View style={styles.wordOfTheDayWordContainer}>
-                        <Text style={[styles.wordOfTheDayWord, { fontSize: 27 }]} maxFontSizeMultiplier={1.3}>{wordOfTheDay.word}</Text>
-                        {wordOfTheDay.part_of_speech && (
-                          <View style={styles.wordOfTheDayPartOfSpeechBadge}>
-                            <Text style={styles.wordOfTheDayPartOfSpeech} maxFontSizeMultiplier={1.3}>
-                              {wordOfTheDay.part_of_speech.toLowerCase()}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      {wordOfTheDay.meaning && (
-                        <View style={styles.wordOfTheDaySection}>
-                          <Text style={styles.wordOfTheDaySectionLabel} maxFontSizeMultiplier={1.3}>MEANING:</Text>
-                          <Text style={[styles.wordOfTheDayText, { color: '#2C2C2C' }]} maxFontSizeMultiplier={1.3}>
-                            {wordOfTheDay.meaning}
-                          </Text>
-                        </View>
-                      )}
-                      {wordOfTheDay.usage && (
-                        <View style={styles.wordOfTheDaySection}>
-                          <Text style={styles.wordOfTheDaySectionLabel} maxFontSizeMultiplier={1.3}>USAGE:</Text>
-                          <Text style={[styles.wordOfTheDayUsageText, { color: '#1A1A1A' }]} maxFontSizeMultiplier={1.3}>
-                            {wordOfTheDay.usage}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.wordOfTheDayFooterSection}>
-                      <View style={styles.wordOfTheDayDivider} />
-                      {assignedGrammarian && (
-                        <View style={styles.wordOfTheDayFooter}>
-                          <View style={styles.wordOfTheDayAvatarContainer}>
-                            {assignedGrammarian.avatar_url ? (
-                              <Image source={{ uri: assignedGrammarian.avatar_url }} style={styles.wordOfTheDayAvatar} />
-                            ) : (
-                              <View style={[styles.wordOfTheDayAvatarPlaceholder, { backgroundColor: '#800000' }]}>
-                                <Text style={styles.wordOfTheDayAvatarText} maxFontSizeMultiplier={1.3}>
-                                  {assignedGrammarian.full_name.charAt(0).toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                          <View style={styles.wordOfTheDayPublisherInfo}>
-                            <Text style={[styles.wordOfTheDayPublisherName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{assignedGrammarian.full_name}</Text>
-                            {clubName && (
-                              <Text style={[styles.wordOfTheDayClubNameFull, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                                {clubName}
-                              </Text>
-                            )}
-                          </View>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </View>
-            );
-          }
-
-          if (idiomOfTheDay && idiomOfTheDay.idiom) {
-            slideKeys.push('idiom');
-            slides.push(
-              <View key="idiom" style={styles.slideContainer}>
-                <View style={styles.wordOfTheDayContainer}>
-                  <View style={[styles.wordOfTheDayHeader, { backgroundColor: '#1E40AF' }]}>
-                    <View style={styles.wordOfTheDayHeaderContent}>
-                      <Text style={[styles.wordOfTheDayHeaderTitle, { textAlign: 'center' }]} maxFontSizeMultiplier={1.3}>Idiom of the Day</Text>
-                    </View>
-                  </View>
-                  <View style={[styles.wordOfTheDayContent, { backgroundColor: '#EFF6FF' }]}>
-                    <View>
-                      <View style={styles.wordOfTheDayWordContainer}>
-                        <Text style={[styles.wordOfTheDayWord, { fontSize: 27 }]} maxFontSizeMultiplier={1.3}>{idiomOfTheDay.idiom}</Text>
-                        <View style={styles.wordOfTheDayPartOfSpeechBadge}>
-                          <Text style={styles.wordOfTheDayPartOfSpeech} maxFontSizeMultiplier={1.3}>
-                            idiom
-                          </Text>
-                        </View>
-                      </View>
-                      {idiomOfTheDay.meaning && (
-                        <View style={styles.wordOfTheDaySection}>
-                          <Text style={styles.wordOfTheDaySectionLabel} maxFontSizeMultiplier={1.3}>MEANING:</Text>
-                          <Text style={[styles.wordOfTheDayText, { color: '#2C2C2C' }]} maxFontSizeMultiplier={1.3}>
-                            {idiomOfTheDay.meaning}
-                          </Text>
-                        </View>
-                      )}
-                      {idiomOfTheDay.usage && (
-                        <View style={styles.wordOfTheDaySection}>
-                          <Text style={styles.wordOfTheDaySectionLabel} maxFontSizeMultiplier={1.3}>USAGE:</Text>
-                          <Text style={[styles.wordOfTheDayUsageText, { color: '#1A1A1A' }]} maxFontSizeMultiplier={1.3}>
-                            {idiomOfTheDay.usage}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.wordOfTheDayFooterSection}>
-                      <View style={styles.wordOfTheDayDivider} />
-                      {assignedGrammarian && (
-                        <View style={styles.wordOfTheDayFooter}>
-                          <View style={styles.wordOfTheDayAvatarContainer}>
-                            {assignedGrammarian.avatar_url ? (
-                              <Image source={{ uri: assignedGrammarian.avatar_url }} style={styles.wordOfTheDayAvatar} />
-                            ) : (
-                              <View style={[styles.wordOfTheDayAvatarPlaceholder, { backgroundColor: '#1E40AF' }]}>
-                                <Text style={styles.wordOfTheDayAvatarText} maxFontSizeMultiplier={1.3}>
-                                  {assignedGrammarian.full_name.charAt(0).toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                          <View style={styles.wordOfTheDayPublisherInfo}>
-                            <Text style={[styles.wordOfTheDayPublisherName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{assignedGrammarian.full_name}</Text>
-                            {clubName && (
-                              <Text style={[styles.wordOfTheDayClubNameFull, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                                {clubName}
-                              </Text>
-                            )}
-                          </View>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </View>
-            );
-          }
-
-          if (quoteOfTheDay && quoteOfTheDay.quote) {
-            slideKeys.push('quote');
-            slides.push(
-              <View key="quote" style={styles.slideContainer}>
-                <View style={styles.wordOfTheDayContainer}>
-                  <View style={[styles.wordOfTheDayHeader, { backgroundColor: '#059669' }]}>
-                    <View style={styles.wordOfTheDayHeaderContent}>
-                      <Text style={[styles.wordOfTheDayHeaderTitle, { textAlign: 'center' }]} maxFontSizeMultiplier={1.3}>Quote of the Day</Text>
-                    </View>
-                  </View>
-                  <View style={[styles.wordOfTheDayContent, { backgroundColor: '#ECFDF5' }]}>
-                    <View>
-                      <View style={styles.wordOfTheDayWordContainer}>
-                        <Text style={[styles.wordOfTheDayWord, { fontSize: 24 }]} maxFontSizeMultiplier={1.3}>{quoteOfTheDay.quote}</Text>
-                        <View style={styles.wordOfTheDayPartOfSpeechBadge}>
-                          <Text style={styles.wordOfTheDayPartOfSpeech} maxFontSizeMultiplier={1.3}>
-                            quote
-                          </Text>
-                        </View>
-                      </View>
-                      {quoteOfTheDay.meaning && (
-                        <View style={styles.wordOfTheDaySection}>
-                          <Text style={styles.wordOfTheDaySectionLabel} maxFontSizeMultiplier={1.3}>MEANING:</Text>
-                          <Text style={[styles.wordOfTheDayText, { color: '#2C2C2C' }]} maxFontSizeMultiplier={1.3}>
-                            {quoteOfTheDay.meaning}
-                          </Text>
-                        </View>
-                      )}
-                      {quoteOfTheDay.usage && (
-                        <View style={styles.wordOfTheDaySection}>
-                          <Text style={styles.wordOfTheDaySectionLabel} maxFontSizeMultiplier={1.3}>USAGE:</Text>
-                          <Text style={[styles.wordOfTheDayUsageText, { color: '#1A1A1A' }]} maxFontSizeMultiplier={1.3}>
-                            {quoteOfTheDay.usage}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.wordOfTheDayFooterSection}>
-                      <View style={styles.wordOfTheDayDivider} />
-                      {assignedGrammarian && (
-                        <View style={styles.wordOfTheDayFooter}>
-                          <View style={styles.wordOfTheDayAvatarContainer}>
-                            {assignedGrammarian.avatar_url ? (
-                              <Image source={{ uri: assignedGrammarian.avatar_url }} style={styles.wordOfTheDayAvatar} />
-                            ) : (
-                              <View style={[styles.wordOfTheDayAvatarPlaceholder, { backgroundColor: '#059669' }]}>
-                                <Text style={styles.wordOfTheDayAvatarText} maxFontSizeMultiplier={1.3}>
-                                  {assignedGrammarian.full_name.charAt(0).toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                          <View style={styles.wordOfTheDayPublisherInfo}>
-                            <Text style={[styles.wordOfTheDayPublisherName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{assignedGrammarian.full_name}</Text>
-                            {clubName && (
-                              <Text style={[styles.wordOfTheDayClubNameFull, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                                {clubName}
-                              </Text>
-                            )}
-                          </View>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </View>
-            );
-          }
-
-          if (slides.length === 0) return null;
-
-          const goToPrevSlide = () => {
-            if (currentSlideIndex > 0) {
-              setCurrentSlideIndex(currentSlideIndex - 1);
-            }
-          };
-
-          const goToNextSlide = () => {
-            if (currentSlideIndex < slides.length - 1) {
-              setCurrentSlideIndex(currentSlideIndex + 1);
-            }
-          };
-
-          return (
-            <View>
-              {/* Tab Navigation */}
-              {slides.length > 1 && (
-                <View style={styles.dailyElementsTabContainer}>
-                  {slideKeys.map((key, index) => {
-                    const isActive = currentSlideIndex === index;
-                    const tabConfig = {
-                      word: { icon: BookOpen, label: 'Word' },
-                      idiom: { icon: Lightbulb, label: 'Idiom' },
-                      quote: { icon: MessageSquare, label: 'Quote' }
-                    }[key];
-
-                    return (
-                      <TouchableOpacity
-                        key={key}
-                        style={[styles.dailyElementsTab, isActive && styles.dailyElementsTabActive]}
-                        onPress={() => setCurrentSlideIndex(index)}
-                      >
-                        {React.createElement(tabConfig.icon, {
-                          size: 20,
-                          color: isActive ? '#1E40AF' : '#6B7280'
-                        })}
-                        <Text
-                          style={[
-                            styles.dailyElementsTabText,
-                            isActive && styles.dailyElementsTabTextActive
-                          ]}
-                          maxFontSizeMultiplier={1.3}
-                        >
-                          {tabConfig.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-
-              {/* Current Slide */}
-              <View style={styles.slideWrapper}>
-                {slides[currentSlideIndex]}
-              </View>
-            </View>
-          );
-        })()}
-
-        {/* Daily Elements Preview */}
-        {hasAnyDailyElements() && (
-          <View style={styles.dailyElementsPreview}>
-            <Text style={[styles.previewTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Daily Elements Set
-            </Text>
-            <View style={styles.previewGrid}>
-              {getDailyElementsPreview().map((element) => (
-                <View key={element.key} style={[styles.previewCard, { backgroundColor: theme.colors.background, borderWidth: 1, borderColor: theme.colors.border }]}>
-                  <Text style={[styles.previewLabel, { color: element.color }]} maxFontSizeMultiplier={1.3}>
-                    {element.label}
-                  </Text>
-                  <Text style={[styles.previewValue, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
-                    {element.value}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
 
         {/* Member Selection and Usage Tracking - Only show if daily elements are set */}
         {isAssignedGrammarian() && hasAnyDailyElements() && (
@@ -1888,64 +1598,103 @@ export default function GrammarianReport() {
         )}
           </>
         ) : (
-          (() => {
-            const hasAnyPublishedData = wordOfTheDay.is_published || idiomOfTheDay?.is_published || quoteOfTheDay?.is_published || hasPublishedLiveObservations;
-            return hasAnyPublishedData ? (
-              <View style={styles.summaryCardContainer}>
-                <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  <View style={styles.summaryCardHeader}>
-                    <View style={styles.summaryCardIconWrap}>
-                      <BookOpen size={22} color="#4f6ef7" />
-                    </View>
-                    <View style={styles.summaryCardTextWrap}>
-                      <Text style={[styles.summaryCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        View Full Grammarian Report
-                      </Text>
-                      <Text style={[styles.summaryCardSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        Detailed language insights, member usage & corrections
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.summaryCardButton}
-                    onPress={() => router.push(`/grammarian-consolidated-report?meetingId=${meetingId}`)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.summaryCardButtonText} maxFontSizeMultiplier={1.3}>
-                      Open Grammarian Report
-                    </Text>
-                    <ChevronRight size={18} color="#ffffff" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.summaryRedirectContainer}>
-                <View style={styles.summaryRedirectContent}>
-                  <View style={[styles.summaryIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
-                    <BookOpen size={32} color={theme.colors.primary} />
-                  </View>
-                  <Text style={[styles.summaryRedirectTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Summary Coming Soon
-                  </Text>
-                  <Text style={[styles.summaryRedirectDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    The Grammarian will share the report at the end of the meeting — stay tuned!
-                  </Text>
-                </View>
-              </View>
-            );
-          })()
+          <GrammarianReportSummarySection
+            theme={theme}
+            styles={styles}
+            summarySubTab={summarySubTab}
+            setSummarySubTab={setSummarySubTab}
+            wordOfTheDay={wordOfTheDay}
+            idiomOfTheDay={idiomOfTheDay}
+            quoteOfTheDay={quoteOfTheDay}
+            assignedGrammarian={assignedGrammarian}
+            clubName={clubName}
+            meetingId={meetingId as string}
+            hasPublishedLiveObservations={hasPublishedLiveObservations}
+          />
         )}
         </View>
 
-        {/* Navigation Quick Actions */}
-        <View style={[styles.quickActionsBoxContainer, { backgroundColor: '#ffffff' }]}>
+        {/* Navigation Quick Actions — Word / Quote / Idiom first; dock matches Toastmaster Corner (footerNav*) */}
+        <View
+          style={[
+            styles.quickActionsBoxContainer,
+            {
+              backgroundColor: theme.colors.surface,
+              borderTopColor: theme.colors.border,
+            },
+          ]}
+        >
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
+            {isAssignedGrammarian() && (
+              <>
+                <TouchableOpacity
+                  style={styles.quickActionItem}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/grammarian-word-prep',
+                      params: { meetingId: meeting?.id as string },
+                    })
+                  }
+                >
+                  <View style={[styles.quickActionIcon, { backgroundColor: '#EFF6FF' }]}>
+                    <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#2563eb" />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Word</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickActionItem}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/grammarian-quote-prep',
+                      params: { meetingId: meeting?.id as string },
+                    })
+                  }
+                >
+                  <View style={[styles.quickActionIcon, { backgroundColor: '#F5F3FF' }]}>
+                    <MessageSquareQuote size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Quote</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickActionItem}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/grammarian-idiom-prep',
+                      params: { meetingId: meeting?.id as string },
+                    })
+                  }
+                >
+                  <View style={[styles.quickActionIcon, { backgroundColor: '#FFFBEB' }]}>
+                    <Lightbulb size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Idiom</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickActionItem}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/grammarian-live-meeting',
+                      params: { meetingId: meeting?.id as string },
+                    })
+                  }
+                >
+                  <View style={[styles.quickActionIcon, { backgroundColor: '#ECFDF5' }]}>
+                    <ThumbsUp size={FOOTER_NAV_ICON_SIZE} color="#059669" />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
             <TouchableOpacity
               style={styles.quickActionItem}
               onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={24} color="#f59e0b" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
             </TouchableOpacity>
@@ -1955,7 +1704,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5E5' }]}>
-                <Bell size={24} color="#dc2626" />
+                <Bell size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
             </TouchableOpacity>
@@ -1965,7 +1714,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={24} color="#ec4899" />
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance Report</Text>
             </TouchableOpacity>
@@ -1975,7 +1724,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Calendar size={24} color="#3b82f6" />
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
             </TouchableOpacity>
@@ -1985,7 +1734,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5D9' }]}>
-                <BookOpen size={24} color="#f97316" />
+                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Corner</Text>
             </TouchableOpacity>
@@ -1995,7 +1744,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/general-evaluator-notes', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <Star size={24} color="#ef4444" />
+                <Star size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>General Evaluator</Text>
             </TouchableOpacity>
@@ -2005,7 +1754,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                <Mic size={24} color="#f59e0b" />
+                <Mic size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote Speaker</Text>
             </TouchableOpacity>
@@ -2015,7 +1764,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
-                <CheckSquare size={24} color="#9333ea" />
+                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live Voting</Text>
             </TouchableOpacity>
@@ -2025,7 +1774,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/quick-overview', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <Eye size={24} color="#3b82f6" />
+                <Eye size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Quick Overview</Text>
             </TouchableOpacity>
@@ -2035,7 +1784,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <FileBarChart size={24} color="#3b82f6" />
+                <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role Completion</Text>
             </TouchableOpacity>
@@ -2045,7 +1794,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FECACA' }]}>
-                <Award size={24} color="#dc2626" />
+                <Award size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speech Evaluation</Text>
             </TouchableOpacity>
@@ -2055,7 +1804,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/meeting-details', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E7F5EF' }]}>
-                <MessageCircle size={24} color="#059669" />
+                <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#059669" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
             </TouchableOpacity>
@@ -2065,7 +1814,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#F0E7FE' }]}>
-                <Timer size={24} color="#7c3aed" />
+                <Timer size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
             </TouchableOpacity>
@@ -2075,7 +1824,7 @@ export default function GrammarianReport() {
               onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting?.id } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <MessageSquare size={24} color="#dc2626" />
+                <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TTM</Text>
             </TouchableOpacity>
@@ -2132,10 +1881,10 @@ export default function GrammarianReport() {
                   placeholderTextColor={theme.colors.textSecondary}
                   value={dailyElements.word_of_the_day}
                   onChangeText={(text) => updateDailyElement('word_of_the_day', text)}
-                  maxLength={100}
+                  maxLength={50}
                 />
                 <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  {dailyElements.word_of_the_day.length}/100 characters
+                  {dailyElements.word_of_the_day.length}/50 characters
                 </Text>
               </View>
 
@@ -3613,38 +3362,42 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   quickActionsBoxContainer: {
+    borderTopWidth: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+    borderRadius: 16,
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 16,
-    padding: 16,
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 4,
+    elevation: 3,
   },
   quickActionsContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 9,
+    paddingHorizontal: 6,
   },
   quickActionItem: {
     alignItems: 'center',
-    minWidth: 70,
+    minWidth: 45,
   },
   quickActionIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 3,
   },
   quickActionLabel: {
-    fontSize: 12,
+    fontSize: 8,
     fontWeight: '600',
     textAlign: 'center',
   },

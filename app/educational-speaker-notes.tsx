@@ -5,30 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import {
-  ArrowLeft,
-  StickyNote,
-  GraduationCap,
-  FileText,
-  ClipboardList,
-  X,
-  Bell,
-  UserCheck,
-  Vote,
-  Clock,
-  BookOpen,
-  Award,
-  Mic,
-  Settings,
-  UserCog,
-  LayoutDashboard,
-  Calendar,
-  CalendarCheck,
-  MessageSquare,
-  NotebookPen,
-  Shield,
-  Save
-} from 'lucide-react-native';
+import { ArrowLeft, StickyNote, GraduationCap, X } from 'lucide-react-native';
 
 interface Meeting {
   id: string;
@@ -80,18 +57,13 @@ export default function EducationalSpeakerNotes() {
   const [openingNotes, setOpeningNotes] = useState('');
   const [midSectionNotes, setMidSectionNotes] = useState('');
   const [closingNotes, setClosingNotes] = useState('');
-  const [educationalTitle, setEducationalTitle] = useState('');
-  const [educationalSummary, setEducationalSummary] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isExcomm, setIsExcomm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'notes' | 'quick_access' | 'educational_session'>('educational_session');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initialDataLoaded = useRef(false);
 
   useEffect(() => {
     if (meetingId) {
       loadNotesData();
-      checkExcommStatus();
     }
   }, [meetingId]);
 
@@ -173,67 +145,6 @@ export default function EducationalSpeakerNotes() {
       await loadEducationalNotesData();
     } catch (error) {
       console.error('Error auto-saving:', error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const saveEducationalSession = async () => {
-    if (!isEducationalSpeaker()) {
-      return;
-    }
-
-    if (!meetingId || !user?.currentClubId) {
-      return;
-    }
-
-    setIsSaving(true);
-
-    try {
-      if (notesData) {
-        const { error } = await supabase
-          .from('app_meeting_educational_speaker')
-          .update({
-            speech_title: educationalTitle.trim() || null,
-            summary: educationalSummary.trim() || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', notesData.id);
-
-        if (error) {
-          console.error('Error saving educational session:', error);
-          Alert.alert('Error', 'Failed to save educational session');
-          return;
-        }
-      } else {
-        const { data, error } = await supabase
-          .from('app_meeting_educational_speaker')
-          .insert({
-            meeting_id: meetingId,
-            club_id: user.currentClubId,
-            speaker_user_id: user.id,
-            speech_title: educationalTitle.trim() || null,
-            summary: educationalSummary.trim() || null,
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.error('Error creating educational session:', error);
-          Alert.alert('Error', 'Failed to save educational session');
-          return;
-        }
-
-        if (data) {
-          setNotesData(data);
-        }
-      }
-
-      await loadEducationalNotesData();
-      Alert.alert('Success', 'Educational session saved successfully');
-    } catch (error) {
-      console.error('Error saving educational session:', error);
-      Alert.alert('Error', 'Failed to save educational session');
     } finally {
       setIsSaving(false);
     }
@@ -335,30 +246,9 @@ export default function EducationalSpeakerNotes() {
         setOpeningNotes(data.opening_notes || '');
         setMidSectionNotes(data.mid_section_notes || '');
         setClosingNotes(data.closing_notes || '');
-        setEducationalTitle(data.speech_title || '');
-        setEducationalSummary(data.summary || '');
       }
     } catch (error) {
       console.error('Error loading educational notes data:', error);
-    }
-  };
-
-  const checkExcommStatus = async () => {
-    if (!user?.id || !user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-
-      if (!error && data) {
-        setIsExcomm(data.role === 'excomm' || data.role === 'club_leader');
-      }
-    } catch (error) {
-      console.error('Error checking excomm status:', error);
     }
   };
 
@@ -379,22 +269,6 @@ export default function EducationalSpeakerNotes() {
   const handleClosingNotesChange = (text: string) => {
     setClosingNotes(text);
     setHasUnsavedChanges(true);
-  };
-
-  const handleEducationalTitleChange = (text: string) => {
-    setEducationalTitle(text);
-  };
-
-  const handleEducationalSummaryChange = (text: string) => {
-    setEducationalSummary(text);
-  };
-
-  const handleClearEducationalTitle = () => {
-    setEducationalTitle('');
-  };
-
-  const handleClearEducationalSummary = () => {
-    setEducationalSummary('');
   };
 
   const handleClearOpeningNotes = () => {
@@ -473,191 +347,7 @@ export default function EducationalSpeakerNotes() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Tab Switcher */}
-      <View style={[styles.tabContainer, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabContentContainer}
-        >
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'educational_session' && styles.activeTab,
-            { borderBottomColor: theme.colors.primary }
-          ]}
-          onPress={() => setActiveTab('educational_session')}
-        >
-          <GraduationCap size={18} color={activeTab === 'educational_session' ? theme.colors.primary : theme.colors.textSecondary} />
-          <Text style={[
-            styles.tabText,
-            { color: activeTab === 'educational_session' ? theme.colors.primary : theme.colors.textSecondary }
-          ]} maxFontSizeMultiplier={1.3}>
-            Educational Session
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'notes' && styles.activeTab,
-            { borderBottomColor: theme.colors.primary }
-          ]}
-          onPress={() => setActiveTab('notes')}
-        >
-          <StickyNote size={18} color={activeTab === 'notes' ? theme.colors.primary : theme.colors.textSecondary} />
-          <Text style={[
-            styles.tabText,
-            { color: activeTab === 'notes' ? theme.colors.primary : theme.colors.textSecondary }
-          ]} maxFontSizeMultiplier={1.3}>
-            Notes
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'quick_access' && styles.activeTab,
-            { borderBottomColor: theme.colors.primary }
-          ]}
-          onPress={() => setActiveTab('quick_access')}
-        >
-          <ClipboardList size={18} color={activeTab === 'quick_access' ? theme.colors.primary : theme.colors.textSecondary} />
-          <Text style={[
-            styles.tabText,
-            { color: activeTab === 'quick_access' ? theme.colors.primary : theme.colors.textSecondary }
-          ]} maxFontSizeMultiplier={1.3}>
-            Quick Access
-          </Text>
-        </TouchableOpacity>
-        </ScrollView>
-      </View>
-
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Educational Session Tab */}
-        {activeTab === 'educational_session' && (
-          <View style={[styles.educationalSection, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.educationalHeader}>
-              <View style={[styles.educationalIcon, { backgroundColor: '#f97316' + '15' }]}>
-                <GraduationCap size={20} color="#f97316" />
-              </View>
-              <View style={styles.educationalTitleContainer}>
-                <Text style={[styles.educationalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Educational Session
-                </Text>
-                <Text style={[styles.educationalSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Set the topic and summary for your educational session
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.educationalInputSection}>
-              <View style={styles.inputLabelRow}>
-                <Text style={[styles.educationalInputLabel, { color: '#6B7280' }]} maxFontSizeMultiplier={1.3}>
-                  EDUCATIONAL TITLE
-                </Text>
-                {educationalTitle.length > 0 && (
-                  <TouchableOpacity
-                    style={[styles.clearButton, { backgroundColor: theme.colors.border }]}
-                    onPress={handleClearEducationalTitle}
-                  >
-                    <X size={14} color={theme.colors.text} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TextInput
-                style={[styles.educationalTextInput, {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text
-                }]}
-                placeholder="e.g., Effective Communication, Leadership Skills..."
-                placeholderTextColor={theme.colors.textSecondary}
-                value={educationalTitle}
-                onChangeText={handleEducationalTitleChange}
-                maxLength={200}
-              />
-              <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {educationalTitle.length}/200
-              </Text>
-            </View>
-
-            <View style={styles.educationalInputSection}>
-              <View style={styles.inputLabelRow}>
-                <Text style={[styles.educationalInputLabel, { color: '#6B7280' }]} maxFontSizeMultiplier={1.3}>
-                  SUMMARY
-                </Text>
-                {educationalSummary.length > 0 && (
-                  <TouchableOpacity
-                    style={[styles.clearButton, { backgroundColor: theme.colors.border }]}
-                    onPress={handleClearEducationalSummary}
-                  >
-                    <X size={14} color={theme.colors.text} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TextInput
-                style={[styles.educationalSummaryInput, {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text
-                }]}
-                placeholder="Describe your educational session and key learning points..."
-                placeholderTextColor={theme.colors.textSecondary}
-                value={educationalSummary}
-                onChangeText={handleEducationalSummaryChange}
-                multiline
-                numberOfLines={8}
-                textAlignVertical="top"
-                maxLength={600}
-              />
-              <Text
-                style={[
-                  styles.characterCount,
-                  {
-                    color: educationalSummary.trim().length < 350 && educationalSummary.trim()
-                      ? '#f59e0b'
-                      : educationalSummary.length > 600
-                      ? '#f59e0b'
-                      : theme.colors.textSecondary
-                  }
-                ]}
-                maxFontSizeMultiplier={1.3}
-              >
-                {educationalSummary.length}/600
-              </Text>
-              <Text style={[styles.characterHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Maximum 600 characters
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.saveEducationalButton,
-                {
-                  backgroundColor: theme.colors.primary,
-                  opacity: isSaving ? 0.7 : 1,
-                }
-              ]}
-              onPress={saveEducationalSession}
-              disabled={isSaving}
-            >
-              <Save size={18} color="#ffffff" />
-              <Text
-                style={[
-                  styles.saveEducationalButtonText,
-                  { color: '#ffffff' }
-                ]}
-                maxFontSizeMultiplier={1.3}
-              >
-                {isSaving ? 'Saving...' : 'Save Educational Session'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Personal Notes Tab */}
-        {activeTab === 'notes' && (
           <View style={[styles.notesSection, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.notesHeader}>
               <View style={[styles.notesIcon, { backgroundColor: '#8b5cf6' + '20' }]}>
@@ -668,7 +358,7 @@ export default function EducationalSpeakerNotes() {
                   Your Prep Space
                 </Text>
                 <Text style={[styles.notesSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Private notes for your educational presentation
+                  Private notes only. Your educational title is set in Educational Corner.
                 </Text>
               </View>
             </View>
@@ -804,248 +494,6 @@ export default function EducationalSpeakerNotes() {
               </View>
             )}
           </View>
-        )}
-
-        {/* Quick Access Tab */}
-        {activeTab === 'quick_access' && (
-          <View style={[styles.quickAccessSection, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.quickAccessHeader}>
-              <Text style={[styles.quickAccessTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Quick Access
-              </Text>
-              <Text style={[styles.quickAccessSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Navigate to key meeting functions
-              </Text>
-            </View>
-
-            <View style={styles.quickAccessGrid}>
-              {/* Agenda */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/meeting-agenda-view?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <FileText size={22} color="#10b981" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Agenda
-                </Text>
-              </TouchableOpacity>
-
-              {/* Ah Counter */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/ah-counter-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Bell size={22} color="#dc2626" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Ah Counter
-                </Text>
-              </TouchableOpacity>
-
-              {/* Attendance */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/attendance-report?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <UserCheck size={22} color="#3b82f6" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Attendance
-                </Text>
-              </TouchableOpacity>
-
-              {/* Book a Role */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <CalendarCheck size={22} color="#22c55e" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Book a Role
-                </Text>
-              </TouchableOpacity>
-
-              {/* Educational Speaker */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/educational-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <GraduationCap size={22} color="#0891b2" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Educational Speaker
-                </Text>
-              </TouchableOpacity>
-
-              {/* General Evaluator */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/general-evaluator-report?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Award size={22} color="#f59e0b" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  General Evaluator
-                </Text>
-              </TouchableOpacity>
-
-              {/* Grammarian */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/grammarian?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <BookOpen size={22} color="#059669" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Grammarian
-                </Text>
-              </TouchableOpacity>
-
-              {/* Live Voting */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/live-voting?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Vote size={22} color="#8b5cf6" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Live Voting
-                </Text>
-              </TouchableOpacity>
-
-              {/* Prepared Speaker */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/evaluation-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Mic size={22} color="#ec4899" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Prepared Speaker
-                </Text>
-              </TouchableOpacity>
-
-              {/* Roles Completion */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/role-completion-report?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <ClipboardList size={22} color="#6366f1" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Roles Completion
-                </Text>
-              </TouchableOpacity>
-
-              {/* Table Topic Corner */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/table-topic-corner?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <MessageSquare size={22} color="#14b8a6" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Table Topic Corner
-                </Text>
-              </TouchableOpacity>
-
-              {/* Timer */}
-              <TouchableOpacity
-                style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/timer-report-details?meetingId=${meetingId}`)}
-              >
-                <View style={styles.quickAccessIconContainer}>
-                  <Clock size={22} color="#9333ea" />
-                </View>
-                <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Timer
-                </Text>
-              </TouchableOpacity>
-
-            </View>
-
-            {/* ExComm Only Section */}
-            {isExcomm && (
-              <>
-                <View style={styles.excommHeader}>
-                  <View style={[styles.excommBadge, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
-                    <Shield size={16} color={theme.colors.primary} />
-                    <Text style={[styles.excommBadgeText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                      ExComm Only
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.quickAccessGrid}>
-                  {/* Admin Panel */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/club-operations`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <LayoutDashboard size={22} color="#16a34a" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Admin Panel
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Manage Users */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/manage-club-users`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <UserCog size={22} color="#ea580c" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Manage Users
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Meeting Management */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/meeting-management`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <Calendar size={22} color="#2563eb" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Meeting Management
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Voting Ops */}
-                  <TouchableOpacity
-                    style={[styles.quickAccessCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                    onPress={() => router.push(`/admin/voting-operations?meetingId=${meetingId}`)}
-                  >
-                    <View style={styles.quickAccessIconContainer}>
-                      <Vote size={22} color="#7c3aed" />
-                    </View>
-                    <Text style={[styles.quickAccessLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Voting Ops
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        )}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -1104,71 +552,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  tabContentContainer: {
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-  tabContainer: {
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-  },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-    marginHorizontal: 4,
-  },
-  activeTab: {
-    borderBottomWidth: 3,
-  },
-  tabText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  educationalSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  educationalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  educationalIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  educationalTitleContainer: {
-    flex: 1,
-  },
-  educationalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  educationalSubtitle: {
-    fontSize: 14,
-    lineHeight: 18,
-  },
   educationalInputSection: {
     marginBottom: 20,
   },
@@ -1190,56 +573,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  educationalTextInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 6,
-  },
   characterCount: {
     fontSize: 12,
     textAlign: 'right',
-  },
-  educationalSummaryInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    minHeight: 180,
-    lineHeight: 24,
-    textAlignVertical: 'top',
-    marginBottom: 6,
-  },
-  characterHint: {
-    fontSize: 12,
-    marginTop: 4,
-    fontStyle: 'italic',
-  },
-  saveEducationalButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    marginTop: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  saveEducationalButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   notesSection: {
     marginHorizontal: 16,
@@ -1329,82 +665,6 @@ const styles = StyleSheet.create({
   lastSavedText: {
     fontSize: 12,
     fontStyle: 'italic',
-  },
-  quickAccessSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  quickAccessHeader: {
-    marginBottom: 24,
-  },
-  quickAccessTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  quickAccessSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  quickAccessGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  quickAccessCard: {
-    width: '30%',
-    aspectRatio: 1,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  quickAccessIconContainer: {
-    marginBottom: 8,
-  },
-  quickAccessLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  excommHeader: {
-    marginTop: 24,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  excommBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-  },
-  excommBadgeText: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
   bottomPadding: {
     height: 40,
