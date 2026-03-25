@@ -115,7 +115,7 @@ export default function GrammarianReport() {
   });
   const [idiomOfTheDay, setIdiomOfTheDay] = useState<IdiomOfTheDay | null>(null);
   const [quoteOfTheDay, setQuoteOfTheDay] = useState<QuoteOfTheDay | null>(null);
-  const [activeTab, setActiveTab] = useState<'corner' | 'summary'>('corner');
+  const [activeTab, setActiveTab] = useState<'corner' | 'summary'>('summary');
   const [summarySubTab, setSummarySubTab] = useState<'word' | 'idiom' | 'quote' | 'report'>('word');
   const [usageTracking, setUsageTracking] = useState<UsageTracking>({
     word_usage: 0,
@@ -955,6 +955,12 @@ export default function GrammarianReport() {
     };
   }, [dailyElements.word_of_the_day, assignedGrammarian?.id, user?.id, notebookPulse]);
 
+  useEffect(() => {
+    if (isAssignedGrammarian()) {
+      setActiveTab('corner');
+    }
+  }, [assignedGrammarian?.id, user?.id]);
+
   const hasFeedbackContent = () => {
     return feedbackForm.excellent_usage.trim().length > 0 ||
            feedbackForm.improper_usage.trim().length > 0 ||
@@ -1434,23 +1440,25 @@ export default function GrammarianReport() {
 
         {/* Tab Navigation */}
         <View style={[styles.tabContainer, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              activeTab === 'corner' && styles.activeTab,
-              activeTab === 'corner' && { borderBottomColor: theme.colors.primary }
-            ]}
-            onPress={() => setActiveTab('corner')}
-          >
-            <Text style={[
-              styles.tabText,
-              { color: theme.colors.textSecondary },
-              activeTab === 'corner' && styles.activeTabText,
-              activeTab === 'corner' && { color: theme.colors.primary }
-            ]} maxFontSizeMultiplier={1.3}>
-              Grammarian Corner
-            </Text>
-          </TouchableOpacity>
+          {isAssignedGrammarian() && (
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                activeTab === 'corner' && styles.activeTab,
+                activeTab === 'corner' && { borderBottomColor: theme.colors.primary }
+              ]}
+              onPress={() => setActiveTab('corner')}
+            >
+              <Text style={[
+                styles.tabText,
+                { color: theme.colors.textSecondary },
+                activeTab === 'corner' && styles.activeTabText,
+                activeTab === 'corner' && { color: theme.colors.primary }
+              ]} maxFontSizeMultiplier={1.3}>
+                Grammarian Corner
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[
               styles.tab,
@@ -1472,7 +1480,7 @@ export default function GrammarianReport() {
 
         {/* Tab Content */}
         <View style={styles.tabContentWrapper}>
-        {activeTab === 'corner' ? (
+        {isAssignedGrammarian() && activeTab === 'corner' ? (
           <>
             {/* Grammarian role guidance when word not yet added */}
         {isAssignedGrammarian() && !hasAnyPublishedDailyContent() && (
