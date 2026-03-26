@@ -10,7 +10,7 @@ import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
 import { GrammarianNotesScreen } from './grammarian-notes';
-import { ArrowLeft, BookOpen, Calendar, Clock, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Calendar, Clock, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info } from 'lucide-react-native';
 
 /** Match Toastmaster / corner bottom dock icon size */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -153,6 +153,7 @@ export default function GrammarianReport() {
   const wordOfTheDayPulse = useRef(new Animated.Value(1)).current;
   const [bookingGrammarianRole, setBookingGrammarianRole] = useState(false);
   const [cornerLiveSubTab, setCornerLiveSubTab] = useState<'good-usage' | 'improvements' | 'stats'>('good-usage');
+  const [showGrammarianInfoModal, setShowGrammarianInfoModal] = useState(false);
 
   const wordOfTheDayDotScale = wordOfTheDayPulse.interpolate({
     inputRange: [1, 1.08],
@@ -163,6 +164,7 @@ export default function GrammarianReport() {
     inputRange: [1, 1.08],
     outputRange: [0.7, 1],
   });
+  const grammarianFirstName = (user?.fullName || '').trim().split(/\s+/).filter(Boolean)[0] || 'there';
 
   useEffect(() => {
     if (meetingId) {
@@ -1286,6 +1288,16 @@ export default function GrammarianReport() {
 
               <TouchableOpacity
                 style={styles.footerNavItem}
+                onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId, initialTab: 'my_bookings' } })}
+              >
+                <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
+                  <RotateCcw size={20} color="#4F46E5" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.footerNavItem}
                 onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
@@ -1379,7 +1391,17 @@ export default function GrammarianReport() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian Report</Text>
-        <View style={styles.headerSpacer} />
+        {isAssignedGrammarian() ? (
+          <TouchableOpacity
+            style={styles.headerInfoButton}
+            onPress={() => setShowGrammarianInfoModal(true)}
+            activeOpacity={0.8}
+          >
+            <Info size={20} color={theme.colors.primary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerSpacer} />
+        )}
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
@@ -1872,6 +1894,18 @@ export default function GrammarianReport() {
                 <TouchableOpacity
                   style={styles.quickActionItem}
                   onPress={() =>
+                    router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id, initialTab: 'my_bookings' } })
+                  }
+                >
+                  <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
+                    <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickActionItem}
+                  onPress={() =>
                     router.push({
                       pathname: '/grammarian-live-meeting',
                       params: { meetingId: meeting?.id as string },
@@ -2266,6 +2300,64 @@ export default function GrammarianReport() {
         </TouchableOpacity>
       </Modal>
 
+      <Modal
+        visible={showGrammarianInfoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGrammarianInfoModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowGrammarianInfoModal(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            style={[styles.grammarianInfoModalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+          >
+            <Text style={[styles.grammarianInfoTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Grammarian Guide
+            </Text>
+            <ScrollView style={styles.grammarianInfoScroll} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.grammarianInfoText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.25}>
+                {`Hello ${grammarianFirstName}, you are the Grammarian of the Day! 🌟
+
+You will see two tabs: Grammarian Corner and Grammarian Summary.
+All other members will be able to view only the Grammarian Summary.
+
+📝 Pre-Meeting
+Add the Word of the Day, Quote, and Idiom
+Once added, they are saved automatically
+All members can view them in the Grammarian Summary
+
+🎤 During the Meeting
+Capture key observations:
+Good usage of language
+Opportunities for improvement
+Stats – track Word of the Day usage
+
+📊 After the Meeting
+Use the Publish button under Stats to share your report
+Once published, all members can view it in the Grammarian Summary
+You can unpublish anytime to make edits
+
+Finally, don’t forget to share the Grammarian Report with all club members.
+
+💬 You’re making a meaningful effort to help everyone improve their language and communication. Your role truly elevates the quality of the meeting—thank you for your contribution!`}
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.grammarianInfoCloseBtn, { backgroundColor: theme.colors.primary }]}
+              onPress={() => setShowGrammarianInfoModal(false)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.grammarianInfoCloseBtnText} maxFontSizeMultiplier={1.2}>Got it</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Member Feedback Modal */}
       <Modal
         visible={showFeedbackModal}
@@ -2455,6 +2547,13 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 40,
+  },
+  headerInfoButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   reportButton: {
     width: 40,
@@ -3207,6 +3306,40 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  grammarianInfoModalCard: {
+    width: '90%',
+    maxWidth: 520,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    maxHeight: '78%',
+  },
+  grammarianInfoTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  grammarianInfoScroll: {
+    maxHeight: 420,
+  },
+  grammarianInfoText: {
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: '500',
+  },
+  grammarianInfoCloseBtn: {
+    marginTop: 14,
+    alignSelf: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  grammarianInfoCloseBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   fullScreenModal: {
     flex: 1,
