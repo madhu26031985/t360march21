@@ -6,7 +6,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
@@ -238,6 +237,8 @@ interface JourneyListCardProps {
   inline?: boolean;
   /** Amber border + pulse + dot (same language as Meeting Actions pending) */
   showPendingHighlight?: boolean;
+  /** Pulse icon only (no border or badge) */
+  animateIconOnly?: boolean;
 }
 
 function JourneyListCard({
@@ -248,27 +249,32 @@ function JourneyListCard({
   onPress,
   inline,
   showPendingHighlight,
+  animateIconOnly,
 }: JourneyListCardProps) {
   const { theme } = useTheme();
   const alertScale = useSharedValue(1);
   const iconPulse = useSharedValue(1);
   useEffect(() => {
-    if (!showPendingHighlight) {
+    if (!showPendingHighlight && !animateIconOnly) {
       alertScale.value = 1;
       iconPulse.value = 1;
       return;
     }
-    alertScale.value = withRepeat(
-      withSequence(withTiming(1.2, { duration: 500 }), withTiming(1, { duration: 500 })),
-      -1,
-      true
-    );
+    if (showPendingHighlight) {
+      alertScale.value = withRepeat(
+        withSequence(withTiming(1.2, { duration: 500 }), withTiming(1, { duration: 500 })),
+        -1,
+        true
+      );
+    } else {
+      alertScale.value = 1;
+    }
     iconPulse.value = withRepeat(
       withSequence(withTiming(1.06, { duration: 600 }), withTiming(1, { duration: 600 })),
       -1,
       true
     );
-  }, [showPendingHighlight]);
+  }, [showPendingHighlight, animateIconOnly]);
   const alertAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: alertScale.value }],
   }));
@@ -346,7 +352,6 @@ export default function MyJourney() {
   const [profileHasAbout, setProfileHasAbout] = useState<boolean>(false);
   const [profileFieldsLoaded, setProfileFieldsLoaded] = useState<boolean>(false);
   const [showIncompleteProfileModal, setShowIncompleteProfileModal] = useState<boolean>(false);
-  const [showPreparedSpeechDetailsModal, setShowPreparedSpeechDetailsModal] = useState<boolean>(false);
   /** Vice President Education for current club (`club_profiles.vpe_id`) */
   const [isVPEForCurrentClub, setIsVPEForCurrentClub] = useState<boolean>(false);
 
@@ -1265,18 +1270,7 @@ export default function MyJourney() {
       Alert.alert('No open meeting', 'There is no current open meeting for prepared speeches.');
       return;
     }
-    if (preparedSpeakerNeedsSpeechDetailsAlert) {
-      setShowPreparedSpeechDetailsModal(true);
-      return;
-    }
     router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
-  }, [currentOpenMeetingId, preparedSpeakerNeedsSpeechDetailsAlert]);
-
-  const goToEvaluationCornerFromSpeechModal = useCallback(() => {
-    setShowPreparedSpeechDetailsModal(false);
-    if (currentOpenMeetingId) {
-      router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
-    }
   }, [currentOpenMeetingId]);
 
   const handleGrammarianPress = useCallback(() => {
@@ -1467,34 +1461,15 @@ export default function MyJourney() {
                   <View style={styles.journeyListCardsContainer}>
                     {isVPEForCurrentClub &&
                       (currentOpenMeetingId ? (
-                        <TouchableOpacity
-                          style={[
-                            styles.journeyListCard,
-                            styles.journeyListCardInline,
-                            {
-                              backgroundColor: theme.colors.surface,
-                              borderWidth: 1,
-                              borderColor: theme.colors.border,
-                            },
-                          ]}
+                        <JourneyListCard
+                          title="VPE Nudge"
+                          description="Nudge members to book the role"
+                          icon={<Text style={styles.vpeBellEmoji}>🔔</Text>}
+                          color="#F59E0B"
                           onPress={() => router.push('/vpe-nudges')}
-                          activeOpacity={0.7}
-                        >
-                          <View style={[styles.journeyListIconWrap, { backgroundColor: '#25D366' }]}>
-                            <FontAwesome name="whatsapp" size={18} color="#ffffff" />
-                          </View>
-                          <View style={styles.journeyListTextCol}>
-                            <Text style={[styles.journeyListTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                              VPE Nudge
-                            </Text>
-                            <Text
-                              style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]}
-                              maxFontSizeMultiplier={1.2}
-                            >
-                              Nudge members to book the role
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
+                          inline
+                          animateIconOnly
+                        />
                       ) : (
                         <TouchableOpacity
                           style={[
@@ -1970,54 +1945,6 @@ export default function MyJourney() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Prepared Speeches — reminder when speech details are missing (amber highlight) */}
-      <Modal
-        visible={showPreparedSpeechDetailsModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowPreparedSpeechDetailsModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.bookRolePromptOverlay}
-          activeOpacity={1}
-          onPress={() => setShowPreparedSpeechDetailsModal(false)}
-        >
-          <TouchableOpacity
-            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
-            <View style={[styles.bookRolePromptHeaderRow, styles.preparedSpeechModalHeaderRow]}>
-              <Text
-                style={[styles.bookRolePromptTitle, styles.preparedSpeechModalTitle, { color: theme.colors.text }]}
-                maxFontSizeMultiplier={1.3}
-              >
-                Add Speech details
-              </Text>
-            </View>
-            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
-              Add your title, pathway, and evaluation form to help evaluators provide accurate, guideline-based feedback.
-            </Text>
-            <TouchableOpacity
-              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 8 }]}
-              onPress={goToEvaluationCornerFromSpeechModal}
-            >
-              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
-                Update now
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.incompleteProfileLaterBtn}
-              onPress={() => setShowPreparedSpeechDetailsModal(false)}
-              hitSlop={12}
-            >
-              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Not now
-              </Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -2056,13 +1983,6 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: '700',
     flex: 1,
-  },
-  /** Prepared speech details modal: title 15% smaller than bookRolePromptTitle (19 × 0.85) */
-  preparedSpeechModalTitle: {
-    fontSize: 16.15,
-  },
-  preparedSpeechModalHeaderRow: {
-    marginBottom: 14,
   },
   bookRolePromptCloseBtn: {
     padding: 4,
@@ -2506,6 +2426,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 14,
     marginTop: 2,
+  },
+  vpeBellEmoji: {
+    fontSize: 18,
   },
 
   statsGridSection: {

@@ -1,14 +1,18 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Linking } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, User, BookOpen, GraduationCap, Target, MessageSquare, CreditCard as Edit, Save, X, ChevronDown, Plus, Info, FileText, Bell, Users, Star, Mic, CheckSquare, FileBarChart, Clock, CheckCircle } from 'lucide-react-native';
+import { ArrowLeft, Calendar, User, BookOpen, GraduationCap, Target, MessageSquare, NotebookPen, Save, X, ChevronDown, Plus, Info, FileText, Bell, Users, Star, Mic, CheckSquare, FileBarChart, Clock, CheckCircle, Link as LinkIcon, Upload } from 'lucide-react-native';
 import { RefreshCw, RotateCcw } from 'lucide-react-native';
 import { Image } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+
+const FOOTER_NAV_ICON_SIZE = 15;
 
 interface Meeting {
   id: string;
@@ -105,7 +109,16 @@ export default function EvaluationCorner() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const [speakerCategoryTab, setSpeakerCategoryTab] = useState<'prepared' | 'ice_breaker'>('prepared');
+  const [bookingRoleId, setBookingRoleId] = useState<string | null>(null);
+  const [savingPathwayRoleId, setSavingPathwayRoleId] = useState<string | null>(null);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignTargetBooking, setAssignTargetBooking] = useState<RoleBooking | null>(null);
+  const [evaluatorSearchQuery, setEvaluatorSearchQuery] = useState('');
+  const [assigningEvaluatorForRoleId, setAssigningEvaluatorForRoleId] = useState<string | null>(null);
+
+  const currentUserRole = (user?.clubRole || user?.role || '').toLowerCase();
+  const isExcomm = currentUserRole === 'excomm';
+  const isMember = currentUserRole === 'member';
 
   const tabs = [
     {
@@ -132,8 +145,118 @@ export default function EvaluationCorner() {
     }, [meetingId])
   );
 
+  const decodeBase64ToBytes = (base64: string): Uint8Array => {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  };
+
   const showPreparedSpeakerInfo = () => {
     setShowInfoModal(true);
+  };
+
+  const upsertAssignedEvaluator = async (booking: RoleBooking, evaluatorId: string | null) => {
+    if (!meetingId || !user?.currentClubId || !user?.id) {
+      Alert.alert('Error', 'Missing required information');
+      return;
+    }
+
+    setAssigningEvaluatorForRoleId(booking.id);
+    try {
+      const { data: existingData, error: checkError } = await supabase
+        .from('app_evaluation_pathway')
+        .select('id')
+        .eq('meeting_id', meetingId)
+        .eq('user_id', booking.user_id)
+        .eq('role_name', booking.role_name)
+        .maybeSingle();
+
+      if (checkError && (checkError as any).code !== 'PGRST116') {
+        console.error('Error checking existing pathway:', checkError);
+        Alert.alert('Error', 'Failed to check existing pathway');
+        return;
+      }
+
+      const base = {
+        meeting_id: meetingId,
+        club_id: user.currentClubId,
+        user_id: booking.user_id,
+        role_name: booking.role_name,
+        assigned_evaluator_id: evaluatorId,
+        updated_by: user.id,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (existingData?.id) {
+        const { error } = await supabase.from('app_evaluation_pathway').update(base).eq('id', existingData.id);
+        if (error) {
+          console.error('Error updating evaluator assignment:', error);
+          Alert.alert('Error', 'Failed to assign evaluator');
+          return;
+        }
+      } else {
+        const { error } = await supabase
+          .from('app_evaluation_pathway')
+          .insert({ ...base, created_at: new Date().toISOString() });
+        if (error) {
+          console.error('Error creating evaluator assignment:', error);
+          Alert.alert('Error', 'Failed to assign evaluator');
+          return;
+        }
+      }
+
+      await loadExistingEvaluationPathways();
+    } catch (e) {
+      console.error('Error assigning evaluator:', e);
+      Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setAssigningEvaluatorForRoleId(null);
+    }
+  };
+
+  const openAssignModal = (booking: RoleBooking) => {
+    setAssignTargetBooking(booking);
+    setEvaluatorSearchQuery('');
+    setAssignModalOpen(true);
+  };
+
+  const handleBookAvailableSlot = async (role: RoleBooking) => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Error', 'Missing required information');
+      return;
+    }
+    if (bookingRoleId) return;
+    setBookingRoleId(role.id);
+    try {
+      const { error } = await supabase
+        .from('app_meeting_roles_management')
+        .update({
+          assigned_user_id: user.id,
+          booking_status: 'booked',
+          booked_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', role.id)
+        .eq('meeting_id', meetingId)
+        .eq('booking_status', 'open');
+
+      if (error) {
+        console.error('Error booking slot:', error);
+        Alert.alert('Error', 'Failed to book this slot. It may have been booked by someone else.');
+        return;
+      }
+
+      await loadRoleBookings();
+      Alert.alert('Booked', `${role.role_name} booked successfully.`);
+    } catch (e) {
+      console.error('Error booking slot:', e);
+      Alert.alert('Error', 'An unexpected error occurred while booking.');
+    } finally {
+      setBookingRoleId(null);
+    }
   };
 
   const loadData = async () => {
@@ -182,7 +305,7 @@ export default function EvaluationCorner() {
     if (!meetingId || !user?.currentClubId) return;
 
     try {
-      // Load all roles with speeches_delivered metric
+      // Load prepared-speaker and evaluator roles for this meeting
       const { data, error } = await supabase
         .from('app_meeting_roles_management')
         .select(`
@@ -202,7 +325,7 @@ export default function EvaluationCorner() {
         `)
         .eq('meeting_id', meetingId)
         .eq('role_status', 'Available')
-        .eq('role_metric', 'speeches_delivered');
+        .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%evaluator%');
 
       if (error) {
         console.error('Error loading role bookings:', error);
@@ -346,22 +469,11 @@ export default function EvaluationCorner() {
   };
 
   const getFilteredBookings = () => {
-    const currentTab = tabs.find(t => t.key === selectedTab);
-    if (!currentTab) return [];
-
-    // Filter by role_metric first
-    let filtered = roleBookings.filter(booking => booking.role_metric === currentTab.metric);
-
-    // Then filter by speaker category (Prepared Speaker vs Ice Breaker)
-    if (speakerCategoryTab === 'prepared') {
-      filtered = filtered.filter(booking =>
-        booking.role_classification === 'Prepared Speaker'
-      );
-    } else if (speakerCategoryTab === 'ice_breaker') {
-      filtered = filtered.filter(booking =>
-        booking.role_classification === 'Ice Breaker'
-      );
-    }
+    let filtered = roleBookings.filter(
+      (booking) =>
+        booking.role_classification === 'Prepared Speaker' ||
+        /prepared\s*speaker/i.test(booking.role_name || '')
+    );
 
     // Sort by role name to maintain sequence (Prepared Speaker 1, 2, 3, etc.)
     return filtered.sort((a, b) => {
@@ -380,22 +492,12 @@ export default function EvaluationCorner() {
   };
 
   const getFilteredAvailableRoles = () => {
-    const currentTab = tabs.find(t => t.key === selectedTab);
-    if (!currentTab) return [];
-
-    // Filter by role_metric first
-    let filtered = availableRoles.filter(role => role.role_metric === currentTab.metric);
-
-    // Then filter by speaker category (Prepared Speaker vs Ice Breaker)
-    if (speakerCategoryTab === 'prepared') {
-      filtered = filtered.filter(role =>
-        role.role_classification === 'Prepared Speaker'
-      );
-    } else if (speakerCategoryTab === 'ice_breaker') {
-      filtered = filtered.filter(role =>
-        role.role_classification === 'Ice Breaker'
-      );
-    }
+    let filtered = availableRoles.filter(
+      (role) =>
+        role.role_classification === 'Prepared Speaker' ||
+        /prepared\s*speaker/i.test(role.role_name || '') ||
+        /evaluator/i.test(role.role_name || '')
+    );
 
     // Sort by role name to maintain sequence
     return filtered.sort((a, b) => {
@@ -414,6 +516,25 @@ export default function EvaluationCorner() {
   const getEvaluationPathwayKey = (userId: string, roleName: string) => {
     return `${userId}_${roleName}`;
   };
+
+  const getSequenceNumber = (roleName: string) => {
+    const match = roleName.match(/(\d+)$/);
+    return match ? parseInt(match[1], 10) : 999;
+  };
+
+  const isEvaluatorRole = (role: RoleBooking) => {
+    const roleName = (role.role_name || '').trim();
+    const classification = (role.role_classification || '').toLowerCase();
+    const isPairedByName = /^evaluator\s*\d+$/i.test(roleName);
+    const isSpeechEvaluatorClass =
+      classification === 'speech evaluvator' ||
+      classification === 'speech_evaluator' ||
+      classification === 'speech evaluator';
+    return isPairedByName || (isSpeechEvaluatorClass && /^evaluator/i.test(roleName));
+  };
+
+  const isPreparedSpeakerRole = (role: RoleBooking) =>
+    role.role_classification === 'Prepared Speaker' || /prepared\s*speaker/i.test(role.role_name || '');
 
   const hasPathwayInfo = (booking: RoleBooking) => {
     const key = getEvaluationPathwayKey(booking.user_id, booking.role_name);
@@ -439,7 +560,90 @@ export default function EvaluationCorner() {
       return;
     }
 
-    router.push(`/pathway-form?meetingId=${meetingId}&roleId=${booking.id}`);
+    setSelectedBooking(booking);
+    setEditForm({
+      speech_title: pathway?.speech_title || '',
+      pathway_name: pathway?.pathway_name || '',
+      level: pathway?.level != null ? String(pathway.level) : '',
+      project_name: pathway?.project_name || '',
+      project_number: pathway?.project_number || '',
+      evaluation_title: pathway?.evaluation_title || '',
+      table_topics_title: pathway?.table_topics_title || '',
+      evaluation_form: pathway?.evaluation_form || '',
+      comments_for_evaluator: pathway?.comments_for_evaluator || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const savePathwayInline = async (booking: RoleBooking, form: typeof editForm) => {
+    if (!meetingId || !user?.currentClubId || !user?.id) {
+      Alert.alert('Error', 'Missing required information');
+      return;
+    }
+    if (savingPathwayRoleId) return;
+
+    setSavingPathwayRoleId(booking.id);
+    try {
+      const saveData: any = {
+        meeting_id: meetingId,
+        club_id: user.currentClubId,
+        user_id: booking.user_id,
+        role_name: booking.role_name,
+        speech_title: form.speech_title.trim() || null,
+        pathway_name: form.pathway_name.trim() || null,
+        level: form.level ? parseInt(form.level, 10) : null,
+        project_name: form.project_name.trim() || null,
+        project_number: form.project_number.trim() || null,
+        evaluation_form: form.evaluation_form.trim() || null,
+        comments_for_evaluator: form.comments_for_evaluator.trim() || null,
+        evaluation_title: form.evaluation_title.trim() || null,
+        table_topics_title: form.table_topics_title.trim() || null,
+        updated_by: user.id,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: existingData, error: checkError } = await supabase
+        .from('app_evaluation_pathway')
+        .select('id')
+        .eq('meeting_id', meetingId)
+        .eq('user_id', booking.user_id)
+        .eq('role_name', booking.role_name)
+        .maybeSingle();
+
+      if (checkError && (checkError as any).code !== 'PGRST116') {
+        console.error('Error checking existing pathway:', checkError);
+        Alert.alert('Error', 'Failed to check existing pathway');
+        return;
+      }
+
+      if (existingData?.id) {
+        const { error } = await supabase
+          .from('app_evaluation_pathway')
+          .update(saveData)
+          .eq('id', existingData.id);
+        if (error) {
+          console.error('Error updating pathway:', error);
+          Alert.alert('Error', 'Failed to update speech details');
+          return;
+        }
+      } else {
+        const { error } = await supabase
+          .from('app_evaluation_pathway')
+          .insert({ ...saveData, created_at: new Date().toISOString() });
+        if (error) {
+          console.error('Error creating pathway:', error);
+          Alert.alert('Error', 'Failed to save speech details');
+          return;
+        }
+      }
+
+      await loadExistingEvaluationPathways();
+    } catch (e) {
+      console.error('Error saving pathway inline:', e);
+      Alert.alert('Error', 'An unexpected error occurred while saving.');
+    } finally {
+      setSavingPathwayRoleId(null);
+    }
   };
 
   const handleSavePathway = async () => {
@@ -679,13 +883,196 @@ export default function EvaluationCorner() {
     );
   };
 
-  const ParticipantCard = ({ booking }: { booking: RoleBooking }) => {
+  const ParticipantCard = ({ booking, isLastCard = false }: { booking: RoleBooking; isLastCard?: boolean }) => {
     const key = getEvaluationPathwayKey(booking.user_id, booking.role_name);
     const pathway = existingEvaluationPathways[key];
     const hasInfo = hasPathwayInfo(booking);
     const currentTab = tabs.find(t => t.key === selectedTab);
     const updatedByUser = pathway ? getUpdatedByUser(pathway) : null;
     const assignedEvaluator = pathway?.assigned_evaluator_id ? userProfiles[pathway.assigned_evaluator_id] : null;
+    const bookingSequence = getSequenceNumber(booking.role_name || '');
+    const pairedEvaluatorOpenRole = availableRoles.find(
+      (role) => isEvaluatorRole(role) && getSequenceNumber(role.role_name || '') === bookingSequence
+    );
+    const pairedEvaluatorBookedRole = roleBookings.find(
+      (role) => isEvaluatorRole(role) && getSequenceNumber(role.role_name || '') === bookingSequence
+    );
+    const pairedEvaluatorBookedName = pairedEvaluatorBookedRole?.app_user_profiles?.full_name || null;
+    const pairedEvaluatorBookedAvatar = pairedEvaluatorBookedRole?.app_user_profiles?.avatar_url || null;
+    const evaluatorDisplayName = pairedEvaluatorOpenRole
+      ? 'Available to book'
+      : assignedEvaluator?.full_name || pairedEvaluatorBookedName || 'TBA';
+    const evaluatorAvatarUrl = assignedEvaluator?.avatar_url || pairedEvaluatorBookedAvatar || null;
+    const isEvaluatorBooked = evaluatorDisplayName !== 'Available to book' && evaluatorDisplayName !== 'TBA';
+    const isSpeechInfoIncomplete = !(
+      pathway?.speech_title?.trim() &&
+      pathway?.pathway_name?.trim() &&
+      pathway?.project_name?.trim() &&
+      pathway?.level &&
+      pathway?.project_number?.trim() &&
+      pathway?.evaluation_form?.trim()
+    );
+
+    const pathwayKey = `${booking.id}:${pathway?.vpe_approval_requested ? '1' : '0'}:${pathway?.is_locked ? '1' : '0'}`;
+    const [inlineForm, setInlineForm] = useState(() => ({
+      speech_title: pathway?.speech_title || '',
+      pathway_name: pathway?.pathway_name || '',
+      level: pathway?.level != null ? String(pathway.level) : '',
+      project_name: pathway?.project_name || '',
+      project_number: pathway?.project_number || '',
+      evaluation_title: pathway?.evaluation_title || '',
+      table_topics_title: pathway?.table_topics_title || '',
+      evaluation_form: pathway?.evaluation_form || '',
+      comments_for_evaluator: pathway?.comments_for_evaluator || '',
+    }));
+    const [evaluationFormType, setEvaluationFormType] = useState<'link' | 'pdf'>(() => {
+      const u = (pathway?.evaluation_form || '').trim();
+      return u.includes('/storage/v1/object/public/evaluation-forms/') ? 'pdf' : 'link';
+    });
+    const [uploadedFileName, setUploadedFileName] = useState<string | null>(() => {
+      const u = (pathway?.evaluation_form || '').trim();
+      if (!u) return null;
+      if (!u.includes('/storage/v1/object/public/evaluation-forms/')) return null;
+      const fn = u.split('/').pop();
+      return fn || 'Uploaded PDF';
+    });
+    const [isUploadingPDF, setIsUploadingPDF] = useState(false);
+    const [detailsOpen, setDetailsOpen] = useState<boolean>(false);
+    const detailsAnim = useRef(new Animated.Value(0)).current;
+    const editIconBlinkAnim = useRef(new Animated.Value(1)).current;
+
+    const toggleDetails = () => {
+      const next = !detailsOpen;
+      setDetailsOpen(next);
+      Animated.timing(detailsAnim, {
+        toValue: next ? 1 : 0,
+        duration: 200,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }).start();
+    };
+
+    useEffect(() => {
+      setInlineForm({
+        speech_title: pathway?.speech_title || '',
+        pathway_name: pathway?.pathway_name || '',
+        level: pathway?.level != null ? String(pathway.level) : '',
+        project_name: pathway?.project_name || '',
+        project_number: pathway?.project_number || '',
+        evaluation_title: pathway?.evaluation_title || '',
+        table_topics_title: pathway?.table_topics_title || '',
+        evaluation_form: pathway?.evaluation_form || '',
+        comments_for_evaluator: pathway?.comments_for_evaluator || '',
+      });
+      const u = (pathway?.evaluation_form || '').trim();
+      const isPdf = u.includes('/storage/v1/object/public/evaluation-forms/');
+      setEvaluationFormType(isPdf ? 'pdf' : 'link');
+      setUploadedFileName(isPdf ? (u.split('/').pop() || 'Uploaded PDF') : null);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pathwayKey]);
+
+    useEffect(() => {
+      let blinkLoop: Animated.CompositeAnimation | null = null;
+      const shouldBlink =
+        isSpeechInfoIncomplete && !pathway?.is_locked && !pathway?.vpe_approval_requested;
+
+      if (shouldBlink) {
+        blinkLoop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(editIconBlinkAnim, {
+              toValue: 0.25,
+              duration: 650,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(editIconBlinkAnim, {
+              toValue: 1,
+              duration: 650,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ])
+        );
+        blinkLoop.start();
+      } else {
+        editIconBlinkAnim.stopAnimation();
+        editIconBlinkAnim.setValue(1);
+      }
+
+      return () => {
+        if (blinkLoop) blinkLoop.stop();
+      };
+    }, [isSpeechInfoIncomplete, pathway?.is_locked, pathway?.vpe_approval_requested, editIconBlinkAnim]);
+
+    const handlePickPDFInline = async () => {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: 'application/pdf',
+          copyToCacheDirectory: true,
+        });
+        if (result.canceled) return;
+        const file = result.assets[0];
+        if (!file?.uri) {
+          Alert.alert('Error', 'Could not read file');
+          return;
+        }
+        if (file.size && file.size > 10 * 1024 * 1024) {
+          Alert.alert('Error', 'File size must be less than 10MB');
+          return;
+        }
+
+        setIsUploadingPDF(true);
+        const fileExt = file.name.split('.').pop() || 'pdf';
+        const fileName = `${user?.currentClubId}/${meetingId}/${booking.id}/${Date.now()}.${fileExt}`;
+
+        let fileBlob: Blob | Uint8Array;
+        if (Platform.OS === 'web') {
+          const response = await fetch(file.uri);
+          fileBlob = await response.blob();
+        } else {
+          const fileInfo = await FileSystem.getInfoAsync(file.uri);
+          if (!fileInfo.exists) {
+            Alert.alert('Error', 'File does not exist');
+            return;
+          }
+          const fileData = await FileSystem.readAsStringAsync(file.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          fileBlob = decodeBase64ToBytes(fileData);
+        }
+
+        const { error } = await supabase.storage
+          .from('evaluation-forms')
+          .upload(fileName, fileBlob, {
+            contentType: 'application/pdf',
+            upsert: false,
+          });
+
+        if (error) {
+          console.error('Upload error:', error);
+          Alert.alert('Error', 'Failed to upload PDF');
+          return;
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from('evaluation-forms')
+          .getPublicUrl(fileName);
+
+        setInlineForm((p) => ({ ...p, evaluation_form: publicUrlData.publicUrl }));
+        setUploadedFileName(file.name);
+        Alert.alert('Success', 'PDF uploaded successfully');
+      } catch (e) {
+        console.error('Error picking PDF:', e);
+        Alert.alert('Error', 'Failed to pick PDF file');
+      } finally {
+        setIsUploadingPDF(false);
+      }
+    };
+
+    const handleRemovePDFInline = () => {
+      setInlineForm((p) => ({ ...p, evaluation_form: '' }));
+      setUploadedFileName(null);
+    };
 
     console.log('🎯 ParticipantCard render for:', booking.app_user_profiles.full_name);
     console.log('   - Key:', key);
@@ -695,11 +1082,13 @@ export default function EvaluationCorner() {
     console.log('   - Assigned evaluator name:', assignedEvaluator?.full_name);
 
     return (
-      <View style={[styles.participantCard, {
-        backgroundColor: theme.colors.surface,
-        borderWidth: 1,
-        borderColor: theme.colors.border
-      }]}>
+      <View
+        style={[
+          styles.participantCard,
+          styles.participantCardNotionItem,
+          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        ]}
+      >
         {/* User Profile Header */}
         <View style={[styles.profileHeader, { backgroundColor: theme.colors.background }]}>
           <View style={styles.profileContent}>
@@ -722,128 +1111,184 @@ export default function EvaluationCorner() {
               </Text>
             </View>
           </View>
+          {/* Toggle Details (only self can edit) */}
+          {!pathway?.is_locked && !pathway?.vpe_approval_requested && (
+            <TouchableOpacity
+              style={styles.detailsToggleBtn}
+              onPress={toggleDetails}
+              activeOpacity={0.8}
+              accessibilityLabel="Edit Speech"
+            >
+              <Animated.View style={{ opacity: editIconBlinkAnim }}>
+                <NotebookPen size={20} color="#1f2937" />
+              </Animated.View>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Speech Information Section */}
-        {hasInfo && pathway && (pathway.speech_title || pathway.pathway_name || pathway.project_name) && (
-          <View style={[styles.speechInfoSection, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.sectionTitleSubsection, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Speech Information
+        <View style={[styles.speechInfoSection, { backgroundColor: theme.colors.surface }]}>
+          <Text style={[styles.sectionTitleSubsection, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Speech Information
+          </Text>
+
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Title:</Text>
+            <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {pathway?.speech_title?.trim() || ''}
             </Text>
+          </View>
 
-            {pathway.speech_title && (
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Title:</Text>
-                <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {pathway.speech_title}
-                </Text>
-              </View>
-            )}
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Pathway:</Text>
+            <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {pathway?.pathway_name?.trim() || ''}
+            </Text>
+          </View>
 
-            {pathway.pathway_name && (
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Pathway:</Text>
-                <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {pathway.pathway_name}
-                </Text>
-              </View>
-            )}
-
-            {pathway.project_name && (
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Project Name:</Text>
-                <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {pathway.project_name}
-                </Text>
-              </View>
-            )}
-
-            {pathway.level && (
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Level:</Text>
-                <View style={styles.infoValueRow}>
-                  <View style={[styles.levelPill, { backgroundColor: '#3b82f6' }]}>
-                    <Text style={styles.levelPillText} maxFontSizeMultiplier={1.3}>
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Project
+            </Text>
+            {(pathway?.project_name?.trim() || pathway?.level || pathway?.project_number) ? (
+              <View style={styles.infoValueRowWrap}>
+                {pathway?.project_name?.trim() ? (
+                  <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    {pathway.project_name}
+                  </Text>
+                ) : (
+                  <Text style={[styles.infoValueMuted, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    
+                  </Text>
+                )}
+                {pathway?.level ? (
+                  <View style={[styles.levelPill, { backgroundColor: '#dbeafe' }]}>
+                    <Text style={[styles.levelPillText, { color: '#1d4ed8' }]} maxFontSizeMultiplier={1.3}>
                       L{pathway.level}
                     </Text>
                   </View>
-                </View>
-              </View>
-            )}
-
-            {pathway.project_number && (
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Project Number:</Text>
-                <View style={styles.infoValueRow}>
-                  <View style={[styles.levelPill, { backgroundColor: '#10b981' }]}>
-                    <Text style={styles.levelPillText} maxFontSizeMultiplier={1.3}>
+                ) : null}
+                {pathway?.project_number ? (
+                  <View style={[styles.levelPill, { backgroundColor: '#dcfce7' }]}>
+                    <Text style={[styles.levelPillText, { color: '#15803d' }]} maxFontSizeMultiplier={1.3}>
                       P{pathway.project_number}
                     </Text>
                   </View>
-                </View>
+                ) : null}
               </View>
+            ) : (
+              <Text style={[styles.infoValueMuted, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                
+              </Text>
             )}
           </View>
-        )}
 
-        {/* Evaluation Information Section */}
-        <View style={[styles.evaluationInfoSection, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.sectionTitleSubsection, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Evaluation Information
-          </Text>
-
-          {/* Evaluation Form */}
-          <View style={styles.evaluationFormRow}>
-            <View style={styles.evaluationFormLabel}>
-              <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Evaluation Form:
-              </Text>
-            </View>
-            {pathway?.evaluation_form ? (
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Evaluation Form:
+            </Text>
+            {pathway?.evaluation_form?.trim() ? (
               <TouchableOpacity
-                style={[styles.openFormButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => handleOpenEvaluationForm(pathway.evaluation_form!)}
+                style={[styles.levelPill, { backgroundColor: '#dbeafe' }]}
+                onPress={() => handleOpenEvaluationForm(pathway.evaluation_form || '')}
+                activeOpacity={0.85}
               >
-                <Text style={[styles.openFormButtonText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.levelPillText, { color: '#1d4ed8' }]} maxFontSizeMultiplier={1.2}>
                   Open
                 </Text>
               </TouchableOpacity>
             ) : (
-              <Text style={[styles.infoValue, { color: theme.colors.textSecondary, fontStyle: 'italic' }]} maxFontSizeMultiplier={1.3}>
-                Not added yet
-              </Text>
+              <View />
+            )}
+          </View>
+        </View>
+
+        {/* Evaluator assignment row */}
+        <View
+          style={[
+            styles.evalRow,
+            isEvaluatorBooked && styles.evalRowBooked,
+            { borderTopWidth: 1, borderTopColor: theme.colors.border },
+          ]}
+        >
+          <View style={styles.evalRowLeft}>
+            {evaluatorDisplayName === 'Available to book' ? (
+              <>
+                <Text style={[styles.availableSlotName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  {`Evaluator ${bookingSequence === 999 ? '' : bookingSequence}`.trim()}
+                </Text>
+                <Text style={[styles.availableSlotSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                  Available to book
+                </Text>
+              </>
+            ) : evaluatorDisplayName === 'TBA' ? (
+              <>
+                <Text style={[styles.availableSlotName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  {`Evaluator ${bookingSequence === 999 ? '' : bookingSequence}`.trim()}
+                </Text>
+                <Text
+                  style={[
+                    styles.availableSlotSubtext,
+                    { color: theme.colors.textSecondary, fontStyle: 'italic' },
+                  ]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  TBA
+                </Text>
+              </>
+            ) : (
+              <View style={styles.evaluatorBookedProfileRow}>
+                <View style={[styles.profileAvatar, { backgroundColor: theme.colors.border }]}>
+                  {evaluatorAvatarUrl ? (
+                    <Image source={{ uri: evaluatorAvatarUrl }} style={styles.profileAvatarImage} />
+                  ) : (
+                    <User size={32} color={theme.colors.textSecondary} />
+                  )}
+                </View>
+                <View style={styles.profileInfo}>
+                  <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                    {evaluatorDisplayName}
+                  </Text>
+                  <Text style={[styles.profileRole, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    {`Evaluator ${bookingSequence === 999 ? '' : bookingSequence}`.trim()}
+                  </Text>
+                </View>
+              </View>
             )}
           </View>
 
-          {/* Evaluator */}
-          <View style={styles.evaluatorRow}>
-            {assignedEvaluator?.avatar_url ? (
-              <Image
-                source={{ uri: assignedEvaluator.avatar_url }}
-                style={styles.evaluatorAvatarSmall}
-              />
-            ) : (
-              <View style={[styles.evaluatorIconSmall, {
-                backgroundColor: pathway?.assigned_evaluator_id ? '#a78bfa30' : theme.colors.border
-              }]}>
-                <User size={18} color={pathway?.assigned_evaluator_id ? '#a78bfa' : theme.colors.textSecondary} />
-              </View>
+          <View style={styles.evalRowActions}>
+            {pairedEvaluatorOpenRole ? (
+              <TouchableOpacity
+                style={[
+                  styles.bookSlotButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingRoleId === pairedEvaluatorOpenRole.id ? 0.7 : 1,
+                  },
+                ]}
+                onPress={() => handleBookAvailableSlot(pairedEvaluatorOpenRole)}
+                activeOpacity={0.85}
+                disabled={bookingRoleId === pairedEvaluatorOpenRole.id}
+              >
+                <Text style={styles.bookSlotButtonText} maxFontSizeMultiplier={1.2}>
+                  {bookingRoleId === pairedEvaluatorOpenRole.id ? 'Booking…' : 'Book'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {isExcomm && !pairedEvaluatorOpenRole && evaluatorDisplayName === 'TBA' && (
+              <TouchableOpacity
+                style={styles.evalActionBtnPrimary}
+                onPress={() => openAssignModal(booking)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.evalActionBtnPrimaryText} maxFontSizeMultiplier={1.2}>Assign</Text>
+              </TouchableOpacity>
             )}
-            <View style={styles.evaluatorInfoInline}>
-              <Text style={[styles.evaluatorLabelSmall, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Evaluator
-              </Text>
-              <Text style={[styles.evaluatorNameInline, {
-                color: pathway?.assigned_evaluator_id ? theme.colors.text : theme.colors.textSecondary,
-                fontStyle: pathway?.assigned_evaluator_id ? 'normal' : 'italic'
-              }]} maxFontSizeMultiplier={1.3}>
-                {pathway?.assigned_evaluator_id && assignedEvaluator
-                  ? assignedEvaluator.full_name
-                  : 'Unassigned'}
-              </Text>
-            </View>
           </View>
         </View>
+
+        
 
         {/* Approval Status Badge */}
         {pathway?.vpe_approval_requested && (
@@ -895,41 +1340,353 @@ export default function EvaluationCorner() {
           </View>
         )}
 
-        {/* Action Buttons */}
-        <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity
-            style={[styles.actionButton, {
-              backgroundColor: pathway?.is_locked
-                ? theme.colors.textSecondary + '40'
-                : theme.colors.primary,
-              opacity: pathway?.is_locked ? 0.6 : 1
-            }]}
-            onPress={() => handleEditPathway(booking)}
-            disabled={pathway?.is_locked === true}
-          >
-            <Text style={[styles.actionButtonText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>
-              {pathway?.is_locked
-                ? 'Locked - No Edits Allowed'
-                : hasInfo ? 'Edit Speech Details' : 'Add Speech Details'}
+        {/* Inline Speech Details Form (only for the booked speaker) */}
+        {/* Collapsible details */}
+        <Animated.View
+          style={[
+            styles.inlineEditSection,
+            detailsOpen
+              ? {
+                  marginTop: 16,
+                  borderWidth: 1,
+                  paddingHorizontal: 18,
+                  paddingVertical: 18,
+                }
+              : {
+                  marginTop: 0,
+                  borderWidth: 0,
+                  paddingHorizontal: 0,
+                  paddingVertical: 0,
+                },
+            {
+              backgroundColor: '#ffffff',
+              borderColor: '#E5E7EB',
+              opacity: detailsAnim,
+              transform: [
+                {
+                  translateY: detailsAnim.interpolate({ inputRange: [0, 1], outputRange: [-5, 0] }),
+                },
+              ],
+              maxHeight: detailsAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 2000] }),
+            },
+          ]}
+          pointerEvents={detailsOpen ? 'auto' : 'none'}
+        >
+          {!pathway?.is_locked && !pathway?.vpe_approval_requested && (
+            <>
+            <Text style={[styles.speechDetailsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+              Speech Details
             </Text>
-          </TouchableOpacity>
 
-          {/* VPE Approval Request Button */}
-          {hasInfo && !pathway?.vpe_approval_requested && !pathway?.is_locked && (
+            <View style={styles.formField}>
+              <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                Speech Title *
+              </Text>
+              <TextInput
+                style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
+                placeholder="Enter speech title"
+                placeholderTextColor={theme.colors.textSecondary}
+                value={inlineForm.speech_title}
+                onChangeText={(t) => setInlineForm((p) => ({ ...p, speech_title: t }))}
+              />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                Pathway Name
+              </Text>
+              <TextInput
+                style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
+                placeholder="Enter pathway name"
+                placeholderTextColor={theme.colors.textSecondary}
+                value={inlineForm.pathway_name}
+                onChangeText={(t) => setInlineForm((p) => ({ ...p, pathway_name: t }))}
+              />
+            </View>
+
+            <View style={[styles.formRow, styles.formRowGap]}>
+              <View style={[styles.formField, { flex: 1 }]}>
+                <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Project Number
+                </Text>
+                <TextInput
+                  style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
+                  placeholder="e.g., 1"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={inlineForm.project_number}
+                  onChangeText={(t) => setInlineForm((p) => ({ ...p, project_number: t.replace(/[^0-9]/g, '').slice(0, 2) }))}
+                  keyboardType="number-pad"
+                />
+              </View>
+              <View style={[styles.formField, { flex: 1 }]}>
+                <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Level Number
+                </Text>
+                <TextInput
+                  style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
+                  placeholder="e.g., 1"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={inlineForm.level}
+                  onChangeText={(t) => setInlineForm((p) => ({ ...p, level: t.replace(/[^0-9]/g, '').slice(0, 2) }))}
+                  keyboardType="number-pad"
+                />
+              </View>
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                Project Name *
+              </Text>
+              <TextInput
+                style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
+                placeholder="Enter project name"
+                placeholderTextColor={theme.colors.textSecondary}
+                value={inlineForm.project_name}
+                onChangeText={(t) => setInlineForm((p) => ({ ...p, project_name: t }))}
+              />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                Evaluation Form *
+              </Text>
+              <View style={[styles.speechSegmentWrap, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.speechSegmentBtn,
+                    evaluationFormType === 'link' && [styles.speechSegmentBtnActive, { borderColor: theme.colors.border }],
+                  ]}
+                  onPress={() => {
+                    setEvaluationFormType('link');
+                    setUploadedFileName(null);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.speechSegmentBtnText,
+                      { color: evaluationFormType === 'link' ? theme.colors.text : theme.colors.textSecondary },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    Link
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.speechSegmentBtn,
+                    evaluationFormType === 'pdf' && [styles.speechSegmentBtnActive, { borderColor: theme.colors.border }],
+                  ]}
+                  onPress={() => {
+                    setEvaluationFormType('pdf');
+                    setInlineForm((p) => ({ ...p, evaluation_form: '' }));
+                    setUploadedFileName(null);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.speechSegmentBtnText,
+                      { color: evaluationFormType === 'pdf' ? theme.colors.text : theme.colors.textSecondary },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    PDF
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {evaluationFormType === 'link' && (
+                <TextInput
+                  style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
+                  placeholder="Enter evaluation form link"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={inlineForm.evaluation_form}
+                  onChangeText={(t) => setInlineForm((p) => ({ ...p, evaluation_form: t }))}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
+              )}
+
+              {evaluationFormType === 'pdf' && (
+                <View style={{ gap: 10 }}>
+                  {!inlineForm.evaluation_form ? (
+                    <TouchableOpacity
+                      style={[styles.uploadButtonInline, styles.speechUploadButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                      onPress={handlePickPDFInline}
+                      activeOpacity={0.85}
+                      disabled={isUploadingPDF}
+                    >
+                      <Upload size={16} color={theme.colors.primary} />
+                      <Text style={[styles.uploadButtonInlineText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                        {isUploadingPDF ? 'Uploading…' : 'Upload PDF'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={[styles.uploadedFileInline, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                      <FileText size={16} color={theme.colors.primary} />
+                      <Text style={[styles.uploadedFileInlineName, { color: theme.colors.text }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                        {uploadedFileName || 'Uploaded PDF'}
+                      </Text>
+                      <TouchableOpacity onPress={handleRemovePDFInline} activeOpacity={0.8}>
+                        <X size={16} color={theme.colors.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+
             <TouchableOpacity
-              style={[styles.approvalButton, {
-                backgroundColor: canRequestVPEApproval(pathway) ? '#10b981' : theme.colors.textSecondary + '40',
-                opacity: canRequestVPEApproval(pathway) ? 1 : 0.6
-              }]}
-              onPress={() => pathway && handleRequestVPEApproval(pathway)}
-              disabled={!canRequestVPEApproval(pathway)}
+              style={[
+                styles.saveInfoButton,
+                {
+                  backgroundColor: '#1D4ED8',
+                  opacity: savingPathwayRoleId === booking.id ? 0.7 : 1,
+                },
+              ]}
+              onPress={() => savePathwayInline(booking, inlineForm)}
+              disabled={savingPathwayRoleId === booking.id}
             >
-              <CheckCircle size={20} color="#ffffff" />
-              <Text style={[styles.approvalButtonText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>
-                Speech completed — requesting VPE approval.
+              <Save size={16} color="#ffffff" />
+              <Text style={styles.saveInfoButtonText} maxFontSizeMultiplier={1.3}>
+                {savingPathwayRoleId === booking.id ? 'Saving...' : 'Save Information'}
               </Text>
             </TouchableOpacity>
+            <Text style={[styles.lastUpdatedMeta, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              {updatedByUser?.full_name
+                ? `Last updated by ${updatedByUser.full_name}${pathway?.updated_at ? ` • ${formatTimeAgo(pathway.updated_at)}` : ''}`
+                : 'Last updated by -'}
+            </Text>
+            </>
           )}
+        </Animated.View>
+
+        
+      </View>
+    );
+  };
+
+  const OpenPreparedSlotCard = ({
+    speakerRole,
+    evaluatorRole,
+    isLastCard = false,
+  }: {
+    speakerRole: RoleBooking;
+    evaluatorRole?: RoleBooking;
+    isLastCard?: boolean;
+  }) => {
+    const pairNumber = getSequenceNumber(speakerRole.role_name);
+    const bookedEvaluatorForPair = roleBookings.find(
+      (role) => isEvaluatorRole(role) && getSequenceNumber(role.role_name || '') === pairNumber
+    );
+    const bookedEvaluatorName = bookedEvaluatorForPair?.app_user_profiles?.full_name || '';
+    const bookedEvaluatorAvatar = bookedEvaluatorForPair?.app_user_profiles?.avatar_url || null;
+    return (
+      <View
+        style={[
+          styles.participantCard,
+          styles.participantCardNotionItem,
+          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        ]}
+      >
+        <View style={[styles.profileHeader, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.profileContent}>
+            <View style={[styles.profileAvatar, { backgroundColor: theme.colors.border }]}>
+              <User size={24} color={theme.colors.textSecondary} />
+            </View>
+            <View style={styles.profileInfo}>
+              <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                Prepared Speaker {pairNumber}
+              </Text>
+              <Text style={[styles.profileRole, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Open role
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={[styles.bookSlotButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => handleBookAvailableSlot(speakerRole)}
+            disabled={bookingRoleId === speakerRole.id}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.bookSlotButtonText} maxFontSizeMultiplier={1.2}>
+              {bookingRoleId === speakerRole.id ? 'Booking…' : 'Book'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.speechInfoSection, { backgroundColor: theme.colors.surface }]}>
+          <Text style={[styles.sectionTitleSubsection, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            Speech Information
+          </Text>
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Title:</Text>
+            <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>{''}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Pathway:</Text>
+            <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>{''}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Project</Text>
+            <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>{''}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Evaluation Form:</Text>
+            <Text style={[styles.infoValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>{''}</Text>
+          </View>
+        </View>
+
+        <View style={[styles.evalRow, { borderTopWidth: 1, borderTopColor: theme.colors.border }]}>
+          <View style={styles.evalRowLeft}>
+            {bookedEvaluatorForPair ? (
+              <View style={styles.evaluatorBookedProfileRow}>
+                <View style={[styles.profileAvatar, { backgroundColor: theme.colors.border }]}>
+                  {bookedEvaluatorAvatar ? (
+                    <Image source={{ uri: bookedEvaluatorAvatar }} style={styles.profileAvatarImage} />
+                  ) : (
+                    <User size={24} color={theme.colors.textSecondary} />
+                  )}
+                </View>
+                <View style={styles.profileInfo}>
+                  <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                    {bookedEvaluatorName}
+                  </Text>
+                  <Text style={[styles.profileRole, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    Evaluator {pairNumber}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <>
+                <Text style={[styles.availableSlotName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Evaluator {pairNumber}
+                </Text>
+                <Text style={[styles.availableSlotSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                  {evaluatorRole ? 'Available to book' : ''}
+                </Text>
+              </>
+            )}
+          </View>
+          {evaluatorRole && !bookedEvaluatorForPair ? (
+            <TouchableOpacity
+              style={[
+                styles.bookSlotButton,
+                {
+                  backgroundColor: theme.colors.primary,
+                  opacity: bookingRoleId === evaluatorRole.id ? 0.7 : 1,
+                },
+              ]}
+              onPress={() => handleBookAvailableSlot(evaluatorRole)}
+              disabled={bookingRoleId === evaluatorRole.id}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.bookSlotButtonText} maxFontSizeMultiplier={1.2}>
+                {bookingRoleId === evaluatorRole.id ? 'Booking…' : 'Book'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     );
@@ -957,6 +1714,15 @@ export default function EvaluationCorner() {
 
   const filteredBookings = getFilteredBookings();
   const filteredAvailableRoles = getFilteredAvailableRoles();
+  const preparedAvailableRoles = filteredAvailableRoles
+    .filter((role) => isPreparedSpeakerRole(role))
+    .sort((a, b) => getSequenceNumber(a.role_name) - getSequenceNumber(b.role_name));
+  const evaluatorAvailableRoleBySeq = new Map(
+    filteredAvailableRoles
+      .filter((role) => isEvaluatorRole(role))
+      .map((role) => [getSequenceNumber(role.role_name), role])
+  );
+  const availablePairCount = preparedAvailableRoles.length;
   const currentTab = tabs.find(t => t.key === selectedTab);
 
   return (
@@ -971,7 +1737,7 @@ export default function EvaluationCorner() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-          {speakerCategoryTab === 'prepared' ? 'Prepared Speaker' : 'Ice Breaker Speaker'}
+          Prepared Speeches
         </Text>
         <TouchableOpacity style={styles.infoButton} onPress={showPreparedSpeakerInfo}>
           <Info size={24} color={theme.colors.primary} />
@@ -979,166 +1745,72 @@ export default function EvaluationCorner() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Meeting Info Card */}
-        <View style={[styles.meetingCard, {
-          backgroundColor: theme.colors.surface,
-          borderWidth: 1,
-          borderColor: theme.colors.border
-        }]}>
-          <View style={styles.meetingCardContent}>
-            <View style={[styles.dateBox, {
-              backgroundColor: theme.colors.primary + '15'
-            }]}>
-              <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).getDate()}
-              </Text>
-              <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.meetingDetails}>
-              <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {meeting.meeting_title}
-              </Text>
-              <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Day: {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
-              </Text>
-              {meeting.meeting_start_time && (
+        <View style={[styles.unifiedNotionBlock, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={[styles.unifiedMeetingSection, { borderBottomColor: theme.colors.border }]}>
+            <View style={styles.meetingCardContent}>
+              <View style={[styles.dateBox, { backgroundColor: theme.colors.primary + '15' }]}>
+                <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {new Date(meeting.meeting_date).getDate()}
+                </Text>
+                <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.meetingDetails}>
+                <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {meeting.meeting_title}
+                </Text>
                 <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Time: {meeting.meeting_start_time}
-                  {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
+                  Day: {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
                 </Text>
-              )}
-              <Text style={[styles.meetingCardMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Mode: {meeting.meeting_mode === 'in_person' ? 'In Person' :
-                       meeting.meeting_mode === 'online' ? 'Online' : 'Hybrid'}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.meetingCardDecoration} />
-        </View>
-
-        {/* Speaker Category Tabs */}
-        <View style={styles.categoryTabsContainer}>
-          <TouchableOpacity
-            style={[
-              styles.categoryTab,
-              speakerCategoryTab === 'prepared' && styles.categoryTabActive,
-              {
-                backgroundColor: speakerCategoryTab === 'prepared' ? theme.colors.primary : theme.colors.surface,
-                borderColor: theme.colors.border,
-              }
-            ]}
-            onPress={() => setSpeakerCategoryTab('prepared')}
-          >
-            <Text
-              style={[
-                styles.categoryTabText,
-                { color: speakerCategoryTab === 'prepared' ? '#ffffff' : theme.colors.text }
-              ]}
-              maxFontSizeMultiplier={1.3}
-            >
-              Prepared Speakers
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.categoryTab,
-              speakerCategoryTab === 'ice_breaker' && styles.categoryTabActive,
-              {
-                backgroundColor: speakerCategoryTab === 'ice_breaker' ? theme.colors.primary : theme.colors.surface,
-                borderColor: theme.colors.border,
-              }
-            ]}
-            onPress={() => setSpeakerCategoryTab('ice_breaker')}
-          >
-            <Text
-              style={[
-                styles.categoryTabText,
-                { color: speakerCategoryTab === 'ice_breaker' ? '#ffffff' : theme.colors.text }
-              ]}
-              maxFontSizeMultiplier={1.3}
-            >
-              Ice Breaker Speakers
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Participants Section */}
-        <View style={styles.participantsSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              {speakerCategoryTab === 'prepared' ? 'Prepared Speakers' : 'Ice Breaker Speakers'} ({filteredBookings.length})
-            </Text>
-          </View>
-
-          {filteredBookings.length > 0 ? (
-            filteredBookings.map((booking) => (
-              <ParticipantCard key={booking.id} booking={booking} />
-            ))
-          ) : (
-            <View style={styles.emptyState}>
-              <View style={[styles.emptyStateIcon, { backgroundColor: theme.colors.surface }]}>
-                <User size={48} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {speakerCategoryTab === 'prepared'
-                  ? 'Your next speech opportunity awaits 🎤🌟'
-                  : 'Your speaking journey begins today 🎤🔥🚀'} 
-              </Text>
-              <TouchableOpacity
-                style={[styles.bookRoleButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
-              >
-                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>Book the Role</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Available Slots Section */}
-          {filteredAvailableRoles.length > 0 && (
-            <View style={styles.availableSlotsSection}>
-              <View style={styles.availableHeader}>
-                <Text style={[styles.availableTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Available Slots ({filteredAvailableRoles.length})
+                {meeting.meeting_start_time && (
+                  <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    Time: {meeting.meeting_start_time}
+                    {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
+                  </Text>
+                )}
+                <Text style={[styles.meetingCardMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Mode: {meeting.meeting_mode === 'in_person' ? 'In Person' : meeting.meeting_mode === 'online' ? 'Online' : 'Hybrid'}
                 </Text>
               </View>
-
-              {filteredAvailableRoles.map((role) => (
-                <View
-                  key={role.id}
-                  style={[
-                    styles.availableSlotCard,
-                    {
-                      backgroundColor: theme.colors.surface,
-                      borderColor: theme.colors.border,
-                    }
-                  ]}
-                >
-                  <View style={styles.availableSlotContent}>
-                    <View style={[styles.availableSlotIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-                      <User size={24} color={theme.colors.primary} />
-                    </View>
-                    <View style={styles.availableSlotInfo}>
-                      <Text style={[styles.availableSlotName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        {role.role_name}
-                      </Text>
-                      <Text style={[styles.availableSlotSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        Available to book
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.bookSlotButton, { backgroundColor: theme.colors.primary }]}
-                      onPress={() => router.push(`/book-a-role?meetingId=${meetingId}`)}
-                    >
-                      <Text style={styles.bookSlotButtonText} maxFontSizeMultiplier={1.3}>Book</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
             </View>
-          )}
+          </View>
+
+          {(filteredBookings.length + preparedAvailableRoles.length) > 0 ? (
+            <View
+              style={[
+                styles.participantsNotionList,
+                {
+                  backgroundColor: theme.colors.surface,
+                },
+              ]}
+            >
+              {filteredBookings.map((booking, idx) => {
+                const totalCards = filteredBookings.length + preparedAvailableRoles.length;
+                return (
+                  <ParticipantCard
+                    key={booking.id}
+                    booking={booking}
+                    isLastCard={idx === totalCards - 1}
+                  />
+                );
+              })}
+              {preparedAvailableRoles.map((speakerRole, idx) => {
+                const pairNumber = getSequenceNumber(speakerRole.role_name);
+                const evaluatorRole = evaluatorAvailableRoleBySeq.get(pairNumber);
+                const globalIdx = filteredBookings.length + idx;
+                const totalCards = filteredBookings.length + preparedAvailableRoles.length;
+                return (
+                  <OpenPreparedSlotCard
+                    key={`open-pair-${pairNumber}-${speakerRole.id}-${evaluatorRole?.id || 'none'}`}
+                    speakerRole={speakerRole}
+                    evaluatorRole={evaluatorRole}
+                    isLastCard={globalIdx === totalCards - 1}
+                  />
+                );
+              })}
+            </View>
+          ) : null}
         </View>
 
         {/* Navigation Quick Actions */}
@@ -1149,7 +1821,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={24} color="#f59e0b" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
             </TouchableOpacity>
@@ -1159,7 +1831,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5E5' }]}>
-                <Bell size={24} color="#dc2626" />
+                <Bell size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
             </TouchableOpacity>
@@ -1169,9 +1841,19 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={24} color="#ec4899" />
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance Report</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickActionItem}
+              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId, initialTab: 'my_bookings' } })}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
+                <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
+              </View>
+              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1179,7 +1861,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Calendar size={24} color="#3b82f6" />
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
             </TouchableOpacity>
@@ -1189,7 +1871,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5D9' }]}>
-                <BookOpen size={24} color="#f97316" />
+                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Corner</Text>
             </TouchableOpacity>
@@ -1199,7 +1881,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/general-evaluator-notes', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <Star size={24} color="#ef4444" />
+                <Star size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>General Evaluator</Text>
             </TouchableOpacity>
@@ -1209,7 +1891,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/grammarian', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#F3E8FF' }]}>
-                <FileText size={24} color="#8b5cf6" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#8b5cf6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
             </TouchableOpacity>
@@ -1219,7 +1901,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                <Mic size={24} color="#f59e0b" />
+                <Mic size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote Speaker</Text>
             </TouchableOpacity>
@@ -1229,7 +1911,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/live-voting', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
-                <CheckSquare size={24} color="#9333ea" />
+                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live Voting</Text>
             </TouchableOpacity>
@@ -1239,7 +1921,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/quick-overview', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <FileText size={24} color="#3b82f6" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Quick Overview</Text>
             </TouchableOpacity>
@@ -1249,7 +1931,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <CheckSquare size={24} color="#3b82f6" />
+                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role Completion</Text>
             </TouchableOpacity>
@@ -1259,7 +1941,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/prepared-speech-evaluations', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FECACA' }]}>
-                <FileBarChart size={24} color="#dc2626" />
+                <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speech Evaluation</Text>
             </TouchableOpacity>
@@ -1269,7 +1951,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#F0E7FE' }]}>
-                <Clock size={24} color="#9333ea" />
+                <Clock size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
             </TouchableOpacity>
@@ -1279,7 +1961,7 @@ export default function EvaluationCorner() {
               onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <MessageSquare size={24} color="#ef4444" />
+                <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Table Topics</Text>
             </TouchableOpacity>
@@ -1288,6 +1970,62 @@ export default function EvaluationCorner() {
       </ScrollView>
 
       {/* Info Modal */}
+      <Modal
+        visible={assignModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAssignModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.assignModalCard, { backgroundColor: '#ffffff', borderColor: '#E5E7EB' }]}>
+            <View style={styles.assignModalHeader}>
+              <Text style={styles.assignModalTitle} maxFontSizeMultiplier={1.2}>
+                Assign evaluator
+              </Text>
+              <TouchableOpacity onPress={() => setAssignModalOpen(false)} activeOpacity={0.8} style={styles.assignModalCloseBtn}>
+                <X size={18} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              value={evaluatorSearchQuery}
+              onChangeText={setEvaluatorSearchQuery}
+              placeholder="Search member"
+              placeholderTextColor="#9CA3AF"
+              style={styles.assignSearchInput}
+              autoCapitalize="none"
+            />
+
+            <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+              {Object.values(userProfiles)
+                .filter((p) => {
+                  const q = evaluatorSearchQuery.trim().toLowerCase();
+                  if (!q) return true;
+                  return p.full_name.toLowerCase().includes(q);
+                })
+                .sort((a, b) => a.full_name.localeCompare(b.full_name))
+                .map((p) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={styles.assignRow}
+                    activeOpacity={0.85}
+                    onPress={async () => {
+                      if (!assignTargetBooking) return;
+                      await upsertAssignedEvaluator(assignTargetBooking, p.id);
+                      setAssignModalOpen(false);
+                      setAssignTargetBooking(null);
+                    }}
+                  >
+                    <Text style={styles.assignRowName} maxFontSizeMultiplier={1.2}>
+                      {p.full_name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <Modal
         visible={showInfoModal}
         transparent
@@ -1298,7 +2036,7 @@ export default function EvaluationCorner() {
           <View style={[styles.infoModalContainer, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.infoModalHeader}>
               <Text style={[styles.infoModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {speakerCategoryTab === 'prepared' ? 'Prepared Speaker 🎤' : 'Ice Breaker Speaker ❄️'}
+                Prepared Speaker 🎤
               </Text>
               <TouchableOpacity
                 style={styles.infoModalCloseButton}
@@ -1313,29 +2051,11 @@ export default function EvaluationCorner() {
               showsVerticalScrollIndicator={false}
             >
               <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                All the best for your speech! 🎤
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Click Add Speech Details and enter your speech title, pathway, level, and project information, then upload your evaluation form. Your VPE will assign an evaluator for your speech.
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Connect with your mentor for guidance and rehearsal, and feel free to reach out to the VPE for any support you may need.
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {speakerCategoryTab === 'prepared'
-                  ? 'Prepared speeches are 5 to 7 minutes, with an additional 30 seconds grace time. This typically means your script should be around 450–550 words.'
-                  : 'Ice Breaker speeches are 4 to 6 minutes, designed to introduce yourself to the club. Share your background, interests, and what brought you to Toastmasters.'}
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                After completing your speech, go to Role Completion and mark your role as complete. Also, check the Timer Report for qualification details. You can also mark your attendance under the Attendance Report.
+                All the best for your speech!
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text, marginBottom: 0 }]} maxFontSizeMultiplier={1.3}>
-                Your evaluator will share feedback on your speech. You can view your final evaluation form under Prepared Speech Evaluation. Please coordinate with your VPE and evaluator to ensure all steps are completed on time.
+                Kindly add your speech details (title, pathway, level, and project) and upload your evaluation form. Your VPE will assign an evaluator, and you may connect with your mentor for guidance and rehearsal.
               </Text>
             </ScrollView>
 
@@ -1390,6 +2110,23 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  unifiedNotionBlock: {
+    marginHorizontal: 13,
+    marginTop: 13,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  unifiedMeetingSection: {
+    padding: 16,
+    borderBottomWidth: 1,
+  },
+  unifiedSectionHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
   },
   meetingCard: {
     marginHorizontal: 13,
@@ -1503,63 +2240,87 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   participantCard: {
-    borderRadius: 16,
-    marginBottom: 20,
+    borderRadius: 14,
+    marginBottom: 10,
+    overflow: 'visible',
+    width: '100%',
+  },
+  participantCardNotionItem: {
+    borderWidth: 1,
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 0,
+    borderRadius: 14,
     overflow: 'hidden',
+  },
+  participantsNotionBox: {
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  participantsNotionList: {
+    overflow: 'hidden',
+    paddingBottom: 10,
   },
   profileHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
+    paddingLeft: 16,
+    paddingRight: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   profileContent: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     flex: 1,
   },
   profileAvatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 12,
     overflow: 'hidden',
   },
   profileAvatarImage: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   profileInfo: {
     flex: 1,
   },
   profileName: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
   },
   profileRole: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
-    marginBottom: 8,
+    marginBottom: 0,
   },
   speechInfoSection: {
-    padding: 20,
+    padding: 16,
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
   sectionTitleSubsection: {
-    fontSize: 11,
-    fontWeight: '400',
-    marginBottom: 16,
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 12,
   },
   infoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: 10,
   },
   infoLabel: {
     fontSize: 14,
@@ -1567,8 +2328,12 @@ const styles = StyleSheet.create({
     width: 120,
   },
   infoValue: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  infoValueMuted: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '500',
     flex: 1,
   },
   infoValueRow: {
@@ -1577,6 +2342,25 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 8,
   },
+  infoValueRowWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    flex: 1,
+    gap: 8,
+  },
+  infoOpenButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoOpenButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   levelPill: {
     paddingHorizontal: 12,
     paddingVertical: 4,
@@ -1584,8 +2368,7 @@ const styles = StyleSheet.create({
   },
   levelPillText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#ffffff',
+    fontWeight: '600',
   },
   evaluatorSection: {
     flexDirection: 'row',
@@ -1804,6 +2587,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  availableSlotPairRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  availableSlotPairInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  availableSlotPairDivider: {
+    height: 1,
+    marginVertical: 10,
+  },
   availableSlotIcon: {
     width: 48,
     height: 48,
@@ -1838,6 +2634,278 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  textInputModal: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    minHeight: 40,
+  },
+  textAreaModal: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    minHeight: 92,
+    lineHeight: 19,
+  },
+  formRowGap: {
+    gap: 12,
+  },
+  saveInfoButton: {
+    marginTop: 12,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 48,
+  },
+  saveInfoButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  inlineEditSection: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  speechDetailsTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  speechFormLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  speechInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    fontSize: 14,
+    minHeight: 50,
+  },
+  speechTextArea: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 14,
+    minHeight: 160,
+    lineHeight: 20,
+  },
+  speechSegmentWrap: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  speechSegmentBtn: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  speechSegmentBtnActive: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  speechSegmentBtnText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  speechUploadButton: {
+    minHeight: 50,
+    borderRadius: 10,
+  },
+  detailsToggleBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    marginRight: 2,
+  },
+  evalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 6,
+  },
+  evalRowBooked: {
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  evalRowLeft: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  evalRowLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  evalRowValue: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  evalRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  evaluatorBookedProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 8,
+  },
+  evalActionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  evalActionBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  evalActionBtnPrimary: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    backgroundColor: '#2563EB',
+  },
+  evalActionBtnPrimaryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  evalTypeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  evalTypeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    flex: 1,
+  },
+  evalTypeBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  uploadButtonInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  uploadButtonInlineText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  uploadedFileInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  uploadedFileInlineName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  readOnlyPill: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  readOnlyPillText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  assignModalCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+  },
+  assignModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  assignModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  assignModalCloseBtn: {
+    padding: 6,
+  },
+  assignSearchInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#111827',
+    marginBottom: 10,
+  },
+  assignRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    marginBottom: 8,
+  },
+  assignRowName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
   },
   infoModalContainer: {
     borderRadius: 20,
@@ -1892,32 +2960,43 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   quickActionsBoxContainer: {
+    borderTopWidth: 0,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
     borderRadius: 16,
-    padding: 16,
-    marginTop: 24,
-    marginBottom: 16,
-    marginHorizontal: 13,
-    borderWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   quickActionsContent: {
-    gap: 16,
-    paddingHorizontal: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 6,
   },
   quickActionItem: {
     alignItems: 'center',
-    gap: 8,
-    minWidth: 80,
+    minWidth: 45,
   },
   quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 3,
   },
   quickActionLabel: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 8,
+    fontWeight: '600',
     textAlign: 'center',
   },
 });

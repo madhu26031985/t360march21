@@ -83,6 +83,7 @@ export default function BookARole() {
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingIdParam = params.meetingId as string;
+  const initialTabParam = params.initialTab as string | undefined;
 
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
@@ -114,6 +115,13 @@ export default function BookARole() {
       }
     }
   }, [meetingIdParam, meetings]);
+
+  useEffect(() => {
+    if (!initialTabParam) return;
+    if (initialTabParam === 'my_bookings' || initialTabParam === 'available' || initialTabParam === 'booked_by_others') {
+      setSelectedTab(initialTabParam);
+    }
+  }, [initialTabParam]);
 
   useEffect(() => {
     if (selectedMeeting) {

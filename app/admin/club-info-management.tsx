@@ -1,14 +1,65 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, Animated, Easing, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, Animated, Easing, PanResponder, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Save, Building2, Crown, User, Shield, Eye, UserCheck, ChevronDown, MapPin, Info } from 'lucide-react-native';
+import { ArrowLeft, Building2, Crown, User, Shield, Eye, UserCheck, ChevronDown, MapPin, Info, Navigation } from 'lucide-react-native';
 import { useWindowDimensions } from 'react-native';
+import moment from 'moment-timezone';
 import CountryPicker from '@/components/CountryPicker';
-import TimezonePicker from '@/components/TimezonePicker';
+
+/** When a country has many IANA zones, pick a stable default (user can override in the picker). */
+const COUNTRY_PREFERRED_TIMEZONE: Partial<Record<string, string>> = {
+  US: 'America/New_York',
+  CA: 'America/Toronto',
+  AU: 'Australia/Sydney',
+  MX: 'America/Mexico_City',
+  BR: 'America/Sao_Paulo',
+  ID: 'Asia/Jakarta',
+  RU: 'Europe/Moscow',
+  CN: 'Asia/Shanghai',
+};
+
+function defaultTimezoneForCountryIsoCode(isoCode: string | null | undefined): string | null {
+  if (!isoCode) return null;
+  const code = isoCode.toUpperCase();
+  try {
+    const zones = moment.tz.zonesForCountry(code);
+    if (!zones?.length) return null;
+    if (zones.length === 1) return zones[0];
+    const preferred = COUNTRY_PREFERRED_TIMEZONE[code];
+    if (preferred && zones.includes(preferred)) return preferred;
+    return [...zones].sort((a, b) => a.localeCompare(b))[0];
+  } catch {
+    return null;
+  }
+}
+
+function timezoneLabelFromValue(timezoneValue: string | null | undefined): string {
+  if (!timezoneValue) return '';
+  try {
+    const offsetMinutes = moment.tz(timezoneValue).utcOffset();
+    const sign = offsetMinutes >= 0 ? '+' : '-';
+    const abs = Math.abs(offsetMinutes);
+    const hh = String(Math.floor(abs / 60)).padStart(2, '0');
+    const mm = String(abs % 60).padStart(2, '0');
+    const gmt = `GMT${sign}${hh}:${mm}`;
+
+    const tzNamePart = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezoneValue,
+      timeZoneName: 'long',
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === 'timeZoneName')?.value;
+
+    const tzName = tzNamePart || timezoneValue;
+    return `(${gmt}) ${tzName}`;
+  } catch {
+    return timezoneValue;
+  }
+}
 
 interface ClubInfoData {
   // Read-only fields from clubs table
@@ -76,6 +127,7 @@ export default function ClubInfoManagement() {
   const [activeTab, setActiveTab] = useState<'info' | 'location' | 'moreInfo'>('info');
   const tabTransition = useRef(new Animated.Value(1)).current;
   const tabOrder: Array<'info' | 'location' | 'moreInfo'> = ['info', 'location', 'moreInfo'];
+  const lastSavedSnapshotRef = useRef<string>('');
 
   const clubTypeOptions = [
     { value: 'community', label: 'Community' },
@@ -231,6 +283,15 @@ export default function ClubInfoManagement() {
     setClubData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleLocationCountryChange = (countryName: string, countryCode: string) => {
+    const tz = defaultTimezoneForCountryIsoCode(countryCode);
+    setClubData((prev) => ({
+      ...prev,
+      country: countryName,
+      time_zone: tz ?? '',
+    }));
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Not set';
     return new Date(dateString).toLocaleDateString();
@@ -269,6 +330,25 @@ export default function ClubInfoManagement() {
     });
   };
 
+  const handleOpenDirections = async () => {
+    const raw = (clubData.google_location_link || '').trim();
+    if (!raw) {
+      Alert.alert('No map link', 'Add a Google Maps or map link above, then try again.');
+      return;
+    }
+    const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert('Cannot open link', 'This link could not be opened on this device.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Cannot open link', 'Check that the map link is a valid URL.');
+    }
+  };
+
   const tabPanResponder = useMemo(
     () =>
       PanResponder.create({
@@ -286,91 +366,93 @@ export default function ClubInfoManagement() {
     [activeTab]
   );
 
-  const handleSave = async () => {
+  const getUpdatePayload = () => ({
+    club_status: clubData.club_status?.trim() || null,
+    club_type: clubData.club_type || null,
+    club_mission: clubData.club_mission?.trim() || null,
+    banner_color: clubData.banner_color || null,
+    city: clubData.city?.trim() || null,
+    country: clubData.country?.trim() || null,
+    region: clubData.region?.trim() || null,
+    district: clubData.district?.trim() || null,
+    division: clubData.division?.trim() || null,
+    area: clubData.area?.trim() || null,
+    time_zone: clubData.time_zone?.trim() || null,
+    address: clubData.address?.trim() || null,
+    pin_code: clubData.pin_code?.trim() || null,
+    google_location_link: clubData.google_location_link?.trim() || null,
+  });
+
+  const persistClubProfile = async () => {
     if (!user?.currentClubId) {
-      Alert.alert('Error', 'No club selected');
       return;
     }
 
-    console.log('Starting save process...');
     setIsSaving(true);
 
     try {
-      // Prepare update data for club_profiles (excluding read-only fields)
-      const updateData = {
-        club_status: clubData.club_status?.trim() || null,
-        club_type: clubData.club_type || null,
-        club_mission: clubData.club_mission?.trim() || null,
-        banner_color: clubData.banner_color || null,
-        city: clubData.city?.trim() || null,
-        country: clubData.country?.trim() || null,
-        region: clubData.region?.trim() || null,
-        district: clubData.district?.trim() || null,
-        division: clubData.division?.trim() || null,
-        area: clubData.area?.trim() || null,
-        time_zone: clubData.time_zone?.trim() || null,
-        address: clubData.address?.trim() || null,
-        pin_code: clubData.pin_code?.trim() || null,
-        google_location_link: clubData.google_location_link?.trim() || null,
+      const payload = {
+        ...getUpdatePayload(),
         updated_at: new Date().toISOString(),
       };
 
-      console.log('Update data prepared:', updateData);
-
-      // Check if club profile exists
       const { data: existingProfile, error: checkError } = await supabase
         .from('club_profiles')
         .select('id')
         .eq('club_id', user.currentClubId)
         .single();
 
-      console.log('Existing profile check:', { existingProfile, checkError });
-
       if (checkError && checkError.code === 'PGRST116') {
-        // Create new club profile
-        console.log('Creating new club profile...');
         const { error: createError } = await supabase
           .from('club_profiles')
           .insert({
             club_id: user.currentClubId,
-            ...updateData,
+            ...payload,
             created_at: new Date().toISOString(),
           });
 
         if (createError) {
           console.error('Error creating club profile:', createError);
-          Alert.alert('Error', 'Failed to save club information');
           return;
         }
-        console.log('Club profile created successfully');
       } else if (checkError) {
         console.error('Error checking club profile:', checkError);
-        Alert.alert('Error', 'Database error occurred');
         return;
       } else {
-        // Update existing club profile
-        console.log('Updating existing club profile...');
         const { error: updateError } = await supabase
           .from('club_profiles')
-          .update(updateData)
+          .update(payload)
           .eq('club_id', user.currentClubId);
 
         if (updateError) {
           console.error('Error updating club profile:', updateError);
-          Alert.alert('Error', 'Failed to save club information');
           return;
         }
-        console.log('Club profile updated successfully');
       }
 
-      Alert.alert('Success', 'Club information saved successfully!');
+      lastSavedSnapshotRef.current = JSON.stringify(getUpdatePayload());
     } catch (error) {
       console.error('Error saving club info:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setIsSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (isLoading || !clubInfo || !user?.currentClubId || isSaving) return;
+    const currentSnapshot = JSON.stringify(getUpdatePayload());
+    if (!lastSavedSnapshotRef.current) {
+      lastSavedSnapshotRef.current = currentSnapshot;
+      return;
+    }
+    if (currentSnapshot === lastSavedSnapshotRef.current) return;
+
+    const timeout = setTimeout(() => {
+      persistClubProfile();
+    }, 700);
+
+    return () => clearTimeout(timeout);
+  }, [clubData, isLoading, clubInfo, user?.currentClubId, isSaving]);
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
@@ -430,16 +512,7 @@ export default function ClubInfoManagement() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info Management</Text>
-        <TouchableOpacity
-          style={[styles.saveButton, { backgroundColor: theme.colors.primary }]}
-          onPress={handleSave}
-          disabled={isSaving}
-        >
-          <Save size={16} color="#ffffff" />
-          <Text style={styles.saveButtonText} maxFontSizeMultiplier={1.3}>
-            {isSaving ? 'Saving...' : 'Save'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerRightSpacer} />
       </View>
 
       <KeyboardAvoidingView
@@ -565,7 +638,7 @@ export default function ClubInfoManagement() {
             {/* Club Name */}
             <View style={styles.formField}>
               <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Name</Text>
-              <View style={[styles.readOnlyField, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+              <View style={[styles.readOnlyField, styles.clubInfoCompactReadOnly, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
                 <Text style={[styles.readOnlyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {clubData.club_name}
                 </Text>
@@ -573,29 +646,53 @@ export default function ClubInfoManagement() {
               <Text style={[styles.fieldNote, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>This field cannot be edited</Text>
             </View>
 
-            <View style={styles.sectionDivider} />
+            <View style={[styles.sectionDivider, styles.clubNameDivider]} />
 
             {/* Club Number and Charter Date */}
-            <View style={[styles.formRow, isCompact && styles.formRowStacked]}>
+            <View style={[styles.formRow, isCompact && styles.formRowStacked, styles.clubInfoCompactRow]}>
               <View style={styles.formField}>
                 <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Number</Text>
-                <View style={[styles.readOnlyField, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                <View style={[styles.readOnlyField, styles.clubInfoCompactReadOnly, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
                   <Text style={[styles.readOnlyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {clubData.club_number || 'Not set'}
                   </Text>
                 </View>
-                <Text style={[styles.fieldNote, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>This field cannot be edited</Text>
               </View>
 
               <View style={styles.formField}>
-                <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Charter Date</Text>
-                <View style={[styles.readOnlyField, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Charter Date</Text>
+                <View style={[styles.readOnlyField, styles.clubInfoCompactReadOnly, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
                   <Text style={[styles.readOnlyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {formatDate(clubData.charter_date)}
                   </Text>
                 </View>
-                <Text style={[styles.fieldNote, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>This field cannot be edited</Text>
               </View>
+            </View>
+            <Text style={[styles.fieldNote, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>This field cannot be edited</Text>
+
+            <View style={styles.sectionDivider} />
+
+            {/* Club Mission */}
+            <View style={styles.formField}>
+              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Mission</Text>
+              <TextInput
+                style={[styles.textAreaInput, styles.clubInfoCompactTextArea, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
+                placeholder="Enter your club's mission statement..."
+                placeholderTextColor={theme.colors.textSecondary}
+                value={clubData.club_mission || ''}
+                onChangeText={(text) => {
+                  if (text.length <= 200) {
+                    updateField('club_mission', text);
+                  }
+                }}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                maxLength={200}
+              />
+              <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                {(clubData.club_mission || '').length} / 200 characters
+              </Text>
             </View>
 
             <View style={styles.sectionDivider} />
@@ -605,7 +702,7 @@ export default function ClubInfoManagement() {
               <View style={styles.formField}>
                 <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Status</Text>
                 <TouchableOpacity
-                  style={[styles.dropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                  style={[styles.dropdown, styles.clubInfoCompactDropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                   onPress={() => setShowClubStatusModal(true)}
                 >
                   <Text style={[styles.dropdownText, { color: clubData.club_status ? theme.colors.text : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
@@ -618,7 +715,7 @@ export default function ClubInfoManagement() {
               <View style={styles.formField}>
                 <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Type</Text>
                 <TouchableOpacity
-                  style={[styles.dropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                  style={[styles.dropdown, styles.clubInfoCompactDropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                   onPress={() => setShowClubTypeModal(true)}
                 >
                   <Text style={[styles.dropdownText, { color: clubData.club_type ? theme.colors.text : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
@@ -631,36 +728,11 @@ export default function ClubInfoManagement() {
 
             <View style={styles.sectionDivider} />
 
-            {/* Club Mission */}
-            <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Mission</Text>
-              <TextInput
-                style={[styles.textAreaInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
-                placeholder="Enter your club's mission statement..."
-                placeholderTextColor={theme.colors.textSecondary}
-                value={clubData.club_mission || ''}
-                onChangeText={(text) => {
-                  if (text.length <= 250) {
-                    updateField('club_mission', text);
-                  }
-                }}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-                maxLength={250}
-              />
-              <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {(clubData.club_mission || '').length}/250 characters
-              </Text>
-            </View>
-
-            <View style={styles.sectionDivider} />
-
             {/* Banner Color Selection */}
             <View style={[styles.formField, styles.lastFormField]}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Banner Color</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Banner Colour</Text>
               <TouchableOpacity
-                style={[styles.colorSelector, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                style={[styles.colorSelector, styles.clubInfoCompactDropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                 onPress={() => setShowBannerColorModal(true)}
               >
                 <View style={styles.colorSelectorContent}>
@@ -674,9 +746,6 @@ export default function ClubInfoManagement() {
                 </View>
                 <ChevronDown size={16} color={theme.colors.textSecondary} />
               </TouchableOpacity>
-              <Text style={styles.bannerHelperText} maxFontSizeMultiplier={1.3}>
-                The selected banner color will be applied to the Club tab in the Member Reports section.
-              </Text>
             </View>
               </View>
             )}
@@ -687,44 +756,12 @@ export default function ClubInfoManagement() {
                 <View style={[styles.locationCard, { borderColor: '#E5E7EB' }]}>
                   <Text style={[styles.locationCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Location</Text>
 
-                  <View style={[styles.formRow, isCompact && styles.formRowStacked, styles.sectionBlock]}>
-                    <View style={styles.formField}>
-                      <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>City</Text>
-                      <TextInput
-                        style={[
-                          styles.locationInput,
-                          { backgroundColor: theme.colors.surface, borderColor: focusedField === 'city' ? theme.colors.primary : '#E5E7EB', color: theme.colors.text }
-                        ]}
-                        placeholder="e.g., Chennai"
-                        placeholderTextColor={theme.colors.textSecondary}
-                        value={clubData.city || ''}
-                        onChangeText={(text) => updateField('city', text)}
-                        onFocus={() => setFocusedField('city')}
-                        onBlur={() => setFocusedField(null)}
-                      />
-                    </View>
-
-                    <View style={styles.formField}>
-                      <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Country</Text>
-                      <CountryPicker
-                        value={clubData.country}
-                        onChange={(countryName) => updateField('country', countryName)}
-                        placeholder="Select country"
-                        textColor={theme.colors.text}
-                        placeholderColor={theme.colors.textSecondary}
-                        borderColor="#E5E7EB"
-                        focusColor={theme.colors.primary}
-                        backgroundColor={theme.colors.surface}
-                      />
-                    </View>
-                  </View>
-
                   <View style={[styles.formField, styles.sectionBlock]}>
-                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Time Zone</Text>
-                    <TimezonePicker
-                      value={clubData.time_zone}
-                      onChange={(timezone) => updateField('time_zone', timezone)}
-                      placeholder="Select timezone"
+                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Country</Text>
+                    <CountryPicker
+                      value={clubData.country}
+                      onChange={handleLocationCountryChange}
+                      placeholder="Select country"
                       textColor={theme.colors.text}
                       placeholderColor={theme.colors.textSecondary}
                       borderColor="#E5E7EB"
@@ -732,64 +769,87 @@ export default function ClubInfoManagement() {
                       backgroundColor={theme.colors.surface}
                     />
                   </View>
-                </View>
-
-                <View style={[styles.locationCard, { borderColor: '#E5E7EB' }]}>
-                  <Text style={[styles.locationCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Address</Text>
 
                   <View style={[styles.formField, styles.sectionBlock]}>
-                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Address</Text>
+                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Time zone</Text>
+                    {clubData.country ? (
+                      <View
+                        style={[
+                          styles.locationInput,
+                          {
+                            backgroundColor: theme.colors.background,
+                            borderColor: '#E5E7EB',
+                            justifyContent: 'center',
+                          },
+                        ]}
+                      >
+                        <Text style={{ color: theme.colors.text }} maxFontSizeMultiplier={1.2}>
+                          {clubData.time_zone
+                            ? timezoneLabelFromValue(clubData.time_zone)
+                            : 'Time zone not available for this country'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.locationTimezonePlaceholder, { backgroundColor: theme.colors.background, borderColor: '#E5E7EB' }]}>
+                        <Text style={[styles.locationTimezonePlaceholderText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                          Select a country to set the time zone.
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={[styles.formField, styles.sectionBlock]}>
+                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>City</Text>
                     <TextInput
                       style={[
-                        styles.locationTextArea,
-                        { backgroundColor: theme.colors.surface, borderColor: focusedField === 'address' ? theme.colors.primary : '#E5E7EB', color: theme.colors.text }
+                        styles.locationInput,
+                        { backgroundColor: theme.colors.surface, borderColor: focusedField === 'city' ? theme.colors.primary : '#E5E7EB', color: theme.colors.text }
                       ]}
-                      placeholder="Enter full address"
+                      placeholder="Type city (e.g., Chennai)"
                       placeholderTextColor={theme.colors.textSecondary}
-                      value={clubData.address || ''}
-                      onChangeText={(text) => updateField('address', text)}
-                      onFocus={() => setFocusedField('address')}
+                      value={clubData.city || ''}
+                      onChangeText={(text) => updateField('city', text)}
+                      onFocus={() => setFocusedField('city')}
                       onBlur={() => setFocusedField(null)}
-                      multiline
-                      numberOfLines={3}
-                      textAlignVertical="top"
                     />
                   </View>
 
-                  <View style={[styles.formRow, isCompact && styles.formRowStacked, styles.sectionBlock]}>
-                    <View style={styles.formField}>
-                      <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>ZIP Code</Text>
-                      <TextInput
-                        style={[
-                          styles.locationInput,
-                          { backgroundColor: theme.colors.surface, borderColor: focusedField === 'pin' ? theme.colors.primary : '#E5E7EB', color: theme.colors.text }
-                        ]}
-                        placeholder="e.g., 600100"
-                        placeholderTextColor={theme.colors.textSecondary}
-                        value={clubData.pin_code || ''}
-                        onChangeText={(text) => updateField('pin_code', text)}
-                        onFocus={() => setFocusedField('pin')}
-                        onBlur={() => setFocusedField(null)}
-                        keyboardType="numeric"
-                      />
-                    </View>
+                  <View style={[styles.formField, styles.sectionBlock]}>
+                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      Location Map Link
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.locationInput,
+                        {
+                          backgroundColor: theme.colors.surface,
+                          borderColor: focusedField === 'maps' ? theme.colors.primary : '#E5E7EB',
+                          color: theme.colors.text,
+                        },
+                      ]}
+                      placeholder="https://maps.google.com/..."
+                      placeholderTextColor={theme.colors.textSecondary}
+                      value={clubData.google_location_link || ''}
+                      onChangeText={(text) => updateField('google_location_link', text)}
+                      onFocus={() => setFocusedField('maps')}
+                      onBlur={() => setFocusedField(null)}
+                      keyboardType="url"
+                      autoCapitalize="none"
+                    />
+                  </View>
 
-                    <View style={styles.formField}>
-                      <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Location Map Link</Text>
-                      <TextInput
-                        style={[
-                          styles.locationInput,
-                          { backgroundColor: theme.colors.surface, borderColor: focusedField === 'maps' ? theme.colors.primary : '#E5E7EB', color: theme.colors.text }
-                        ]}
-                        placeholder="https://maps.google.com/..."
-                        placeholderTextColor={theme.colors.textSecondary}
-                        value={clubData.google_location_link || ''}
-                        onChangeText={(text) => updateField('google_location_link', text)}
-                        onFocus={() => setFocusedField('maps')}
-                        onBlur={() => setFocusedField(null)}
-                        keyboardType="url"
-                        autoCapitalize="none"
-                      />
+                  <View style={styles.sectionBlock}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+                      <TouchableOpacity
+                        style={[styles.directionsBtn, { backgroundColor: theme.colors.primary }]}
+                        onPress={handleOpenDirections}
+                        activeOpacity={0.85}
+                      >
+                        <Navigation size={14} color="#ffffff" />
+                        <Text style={styles.directionsBtnText} maxFontSizeMultiplier={1.15}>
+                          Get Directions
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 </View>
@@ -800,10 +860,10 @@ export default function ClubInfoManagement() {
             {activeTab === 'moreInfo' && (
               <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <View style={[styles.sectionIcon, { backgroundColor: '#f59e0b' + '20' }]}>
-                <Info size={20} color="#f59e0b" />
+              <View style={[styles.sectionIcon, { backgroundColor: '#3b82f6' + '20' }]}>
+                <Info size={20} color="#3b82f6" />
               </View>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Additional Information</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>More Info</Text>
             </View>
 
           {/* Region/State and District */}
@@ -832,7 +892,7 @@ export default function ClubInfoManagement() {
           </View>
 
           {/* Division and Area */}
-          <View style={styles.formRow}>
+          <View style={[styles.formRow, styles.moreInfoSecondRow]}>
             <View style={styles.formField}>
               <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Division</Text>
               <TextInput
@@ -1008,7 +1068,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
   },
   header: {
@@ -1026,24 +1086,15 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '700',
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 16,
   },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  saveButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 4,
+  headerRightSpacer: {
+    width: 40,
+    height: 40,
   },
   content: {
     flex: 1,
@@ -1088,7 +1139,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clubName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     marginBottom: 4,
   },
@@ -1098,7 +1149,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   clubNumber: {
-    fontSize: 13,
+    fontSize: 11,
   },
   roleTag: {
     flexDirection: 'row',
@@ -1108,7 +1159,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   roleText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
     color: '#ffffff',
     marginLeft: 4,
@@ -1143,7 +1194,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
   },
   activeTabText: {
@@ -1163,12 +1214,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
     marginTop: 0,
     borderRadius: 0,
-    padding: 20,
+    padding: 16,
   },
   sectionDivider: {
     height: 1,
     backgroundColor: '#E5E7EB',
-    marginVertical: 18,
+    marginVertical: 12,
+  },
+  clubNameDivider: {
+    marginTop: 5,
+    marginBottom: 6,
   },
   section: {
     marginHorizontal: 0,
@@ -1186,23 +1241,37 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   locationCardTitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '600',
     marginBottom: 16,
     letterSpacing: -0.2,
   },
   locationLabel: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '500',
     marginBottom: 8,
     letterSpacing: 0.1,
+  },
+  locationTimezonePlaceholder: {
+    borderWidth: 1,
+    borderRadius: 12,
+    borderStyle: 'dashed',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  locationTimezonePlaceholderText: {
+    fontSize: 11,
+    fontWeight: '500',
+    lineHeight: 18,
   },
   locationInput: {
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '400',
     minHeight: 48,
   },
@@ -1211,10 +1280,102 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '400',
     minHeight: 96,
     lineHeight: 20,
+  },
+  addressCard: {
+    marginTop: 0,
+  },
+  addressFull: {
+    marginBottom: 16,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'stretch',
+  },
+  addressRowStacked: {
+    flexDirection: 'column',
+  },
+  mapBox: {
+    flex: 1,
+    minWidth: 0,
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  mapPreview: {
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapLinkRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    gap: 6,
+  },
+  mapLinkLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  mapLinkInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    fontSize: 11,
+    fontWeight: '400',
+  },
+  mapFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+  },
+  mapFooterTextCol: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 4,
+  },
+  mapFooterTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  mapFooterSubtitle: {
+    fontSize: 10,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
+  directionsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    flexShrink: 0,
+  },
+  directionsBtnText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  pinBox: {
+    width: 132,
+    flexShrink: 0,
+  },
+  pinBoxFullWidth: {
+    width: '100%',
+    marginTop: 4,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1230,7 +1391,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '700',
     letterSpacing: -0.3,
   },
@@ -1239,6 +1400,12 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 0,
     alignItems: 'flex-start',
+  },
+  clubInfoCompactRow: {
+    marginBottom: 2,
+  },
+  moreInfoSecondRow: {
+    marginTop: 10,
   },
   sectionBlock: {
     marginBottom: 18,
@@ -1255,7 +1422,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   fieldLabel: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
     marginBottom: 10,
     letterSpacing: -0.2,
@@ -1265,7 +1432,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 16,
-    fontSize: 15,
+    fontSize: 13,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1281,7 +1448,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    fontSize: 16,
+    fontSize: 14,
     minHeight: 100,
     lineHeight: 24,
     shadowColor: '#000',
@@ -1308,13 +1475,17 @@ const styles = StyleSheet.create({
     elevation: 1,
     minHeight: 54,
   },
+  clubInfoCompactReadOnly: {
+    minHeight: 49,
+    paddingVertical: 14,
+  },
   readOnlyText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '500',
   },
   fieldNote: {
-    fontSize: 13,
-    marginTop: 8,
+    fontSize: 11,
+    marginTop: 5,
     fontStyle: 'italic',
     letterSpacing: -0.1,
   },
@@ -1336,8 +1507,12 @@ const styles = StyleSheet.create({
     elevation: 2,
     minHeight: 54,
   },
+  clubInfoCompactDropdown: {
+    minHeight: 49,
+    paddingVertical: 14,
+  },
   dropdownText: {
-    fontSize: 15,
+    fontSize: 13,
     flex: 1,
     fontWeight: '500',
     marginRight: 8,
@@ -1364,7 +1539,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     marginBottom: 12,
     textAlign: 'center',
@@ -1379,12 +1554,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   optionText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '400',
     flex: 1,
   },
   characterCount: {
-    fontSize: 13,
+    fontSize: 11,
     textAlign: 'right',
     marginTop: 8,
     marginBottom: 10,
@@ -1409,6 +1584,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  clubInfoCompactTextArea: {
+    minHeight: 90,
+    paddingVertical: 14,
+  },
   colorSelectorContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1423,12 +1602,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   colorSelectorText: {
-    fontSize: 16,
+    fontSize: 14,
     flex: 1,
     fontWeight: '500',
   },
   bannerHelperText: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#6B7280',
     marginTop: 6,
     lineHeight: 16,
@@ -1449,7 +1628,7 @@ const styles = StyleSheet.create({
     elevation: 16,
   },
   modalSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 20,
@@ -1483,12 +1662,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   colorName: {
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: '700',
     letterSpacing: -0.3,
   },
   colorSpecs: {
-    fontSize: 12,
+    fontSize: 10,
     lineHeight: 16,
     fontFamily: 'monospace',
   },
@@ -1511,7 +1690,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   checkmark: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: '#ffffff',
   },

@@ -47,8 +47,11 @@ import {
   Clock,
   Timer,
   ListChecks,
-  Share2
+  Share2,
+  RotateCcw
 } from 'lucide-react-native';
+
+const FOOTER_NAV_ICON_SIZE = 15;
 
 // Type definitions
 interface Meeting {
@@ -1232,7 +1235,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={24} color="#f59e0b" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
             </TouchableOpacity>
@@ -1242,7 +1245,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5E5' }]}>
-                <Bell size={24} color="#dc2626" />
+                <Bell size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
             </TouchableOpacity>
@@ -1252,9 +1255,19 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={24} color="#ec4899" />
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance Report</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickActionItem}
+              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meetingId, initialTab: 'my_bookings' } })}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
+                <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
+              </View>
+              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1262,7 +1275,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Calendar size={24} color="#3b82f6" />
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
             </TouchableOpacity>
@@ -1272,7 +1285,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5D9' }]}>
-                <BookOpen size={24} color="#f97316" />
+                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Corner</Text>
             </TouchableOpacity>
@@ -1282,7 +1295,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/general-evaluator-notes', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <Star size={24} color="#ef4444" />
+                <Star size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>General Evaluator</Text>
             </TouchableOpacity>
@@ -1292,7 +1305,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#F3E8FF' }]}>
-                <FileText size={24} color="#8b5cf6" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#8b5cf6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
             </TouchableOpacity>
@@ -1302,7 +1315,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                <Mic size={24} color="#f59e0b" />
+                <Mic size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote Speaker</Text>
             </TouchableOpacity>
@@ -1312,7 +1325,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
-                <CheckSquare size={24} color="#9333ea" />
+                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live Voting</Text>
             </TouchableOpacity>
@@ -1322,7 +1335,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/quick-overview', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <FileText size={24} color="#3b82f6" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Quick Overview</Text>
             </TouchableOpacity>
@@ -1332,7 +1345,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <CheckSquare size={24} color="#3b82f6" />
+                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role Completion</Text>
             </TouchableOpacity>
@@ -1342,7 +1355,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/prepared-speech-evaluations', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FECACA' }]}>
-                <ClipboardCheck size={24} color="#dc2626" />
+                <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speech Evaluation</Text>
             </TouchableOpacity>
@@ -1352,7 +1365,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E7F5EF' }]}>
-                <FileBarChart size={24} color="#10b981" />
+                <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#10b981" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
             </TouchableOpacity>
@@ -1362,7 +1375,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E0F2FE' }]}>
-                <Timer size={24} color="#0284c7" />
+                <Timer size={FOOTER_NAV_ICON_SIZE} color="#0284c7" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
             </TouchableOpacity>
@@ -1372,7 +1385,7 @@ export default function TableTopicCorner(): JSX.Element {
               onPress={() => router.push({ pathname: '/toastmaster-corner', params: { meetingId: meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#F0E7FE' }]}>
-                <Star size={24} color="#8b5cf6" />
+                <Star size={FOOTER_NAV_ICON_SIZE} color="#8b5cf6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Toastmaster</Text>
             </TouchableOpacity>
@@ -2408,10 +2421,12 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   quickActionsBoxContainer: {
+    borderTopWidth: 0,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
     marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 16,
-    padding: 16,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -2423,22 +2438,24 @@ const styles = StyleSheet.create({
   },
   quickActionsContent: {
     flexDirection: 'row',
-    gap: 16,
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 6,
   },
   quickActionItem: {
     alignItems: 'center',
-    minWidth: 70,
+    minWidth: 45,
   },
   quickActionIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 3,
   },
   quickActionLabel: {
-    fontSize: 12,
+    fontSize: 8,
     fontWeight: '600',
     textAlign: 'center',
   },

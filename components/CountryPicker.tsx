@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import countries from 'i18n-iso-countries';
 import en from 'i18n-iso-countries/langs/en.json';
 import { ChevronDown } from 'lucide-react-native';
@@ -89,12 +89,14 @@ export default function CountryPicker({
           setVisible(false);
           setQuery('');
         }}>
-        <TouchableOpacity
-          style={styles.overlay}
-          onPress={() => {
-            setVisible(false);
-            setQuery('');
-          }}>
+        <View style={styles.overlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              setVisible(false);
+              setQuery('');
+            }}
+          />
           <View style={[styles.sheet, { backgroundColor }]}>
             <Text style={[styles.title, { color: textColor }]}>Select Country</Text>
             <TextInput
@@ -132,7 +134,7 @@ export default function CountryPicker({
               }}
             />
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </>
   );
