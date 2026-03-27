@@ -483,7 +483,7 @@ Welcome to a seamless digital experience! 🚀`;
             resizeMode="contain"
           />
           <Text style={[styles.footerText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Club automation tool</Text>
-          <Text style={[styles.footerSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Version 75 (Beta)</Text>
+          <Text style={[styles.footerSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Version 81</Text>
         </View>
       </ScrollView>
 
