@@ -2,7 +2,7 @@
   "expo": {
     "name": "T360",
     "slug": "toastmaster360-mobile",
-    "version": "78",
+    "version": "80",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "toastmaster360",
@@ -48,8 +48,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.toastmaster360.mobile",
-      "deploymentTarget": "17.1",
-      "buildNumber": "78",
+      "deploymentTarget": "17.5",
+      "buildNumber": "80",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library so you can select a profile picture.",
@@ -67,7 +67,7 @@
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE"
       ],
-      "versionCode": 78
+      "versionCode": 80
     },
     "web": {
       "bundler": "metro",
@@ -94,7 +94,7 @@
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "17.1"
+            "deploymentTarget": "17.5"
           },
           "android": {
             "enableProguardInReleaseBuilds": true,
