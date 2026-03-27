@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, AppState, AppStateStatus } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -660,8 +660,25 @@ export default function MyJourney() {
   useFocusEffect(
     useCallback(() => {
       refreshCurrentOpenMeeting();
+      const id = setInterval(() => {
+        refreshCurrentOpenMeeting();
+      }, 5000);
+      return () => clearInterval(id);
     }, [refreshCurrentOpenMeeting])
   );
+
+  useEffect(() => {
+    const appStateRef = { current: AppState.currentState };
+    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        refreshCurrentOpenMeeting();
+      }
+      appStateRef.current = nextState;
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [refreshCurrentOpenMeeting]);
 
   useEffect(() => {
     if (!user?.currentClubId) return;

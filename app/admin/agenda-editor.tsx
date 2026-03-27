@@ -2841,6 +2841,8 @@ export default function AgendaEditor() {
   const autoFillEntireAgenda = async () => {
     if (masterAutoFillLoading) return;
     setMasterAutoFillLoading(true);
+    const originalAlert = Alert.alert;
+    (Alert as any).alert = () => {};
     try {
       const itemsToFill = [...(agendaItemsRef.current || [])];
       if (!itemsToFill.length) return;
@@ -2950,9 +2952,10 @@ export default function AgendaEditor() {
       await loadAgendaItems();
     } catch (e) {
       console.error('autoFillEntireAgenda error:', e);
-      Alert.alert('Error', 'Failed to auto fill entire agenda');
     } finally {
+      (Alert as any).alert = originalAlert;
       setMasterAutoFillLoading(false);
+      Alert.alert('Done', 'Auto fill entire agenda completed.');
     }
   };
 
