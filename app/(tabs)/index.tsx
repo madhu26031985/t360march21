@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell } from 'lucide-react-native';
+import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell, Timer } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { supabase } from '@/lib/supabase';
@@ -230,7 +230,7 @@ function JourneyPlaceholderTile({ title, icon, color, onPress }: JourneyPlacehol
 
 interface JourneyListCardProps {
   title: string;
-  description: string;
+  description: React.ReactNode;
   icon: React.ReactNode;
   color: string;
   onPress: () => void;
@@ -300,9 +300,13 @@ function JourneyListCard({
         <Text style={[styles.journeyListTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
           {title}
         </Text>
-        <Text style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-          {description}
-        </Text>
+        {typeof description === 'string' ? (
+          <Text style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            {description}
+          </Text>
+        ) : (
+          description
+        )}
       </View>
       {showPendingHighlight && (
         <Animated.View pointerEvents="box-none" style={[styles.journeyListAlertBadge, alertAnimatedStyle]}>
@@ -1139,6 +1143,8 @@ export default function MyJourney() {
   }, [journeyToastmasterAvatarUrls, userBookedToastmaster, userAvatar]);
 
   type PendingMeetingReminderKey =
+    | 'profile_intro'
+    | 'profile_picture'
     | 'book_role'
     | 'toastmaster_theme'
     | 'educational_speech'
@@ -1147,13 +1153,25 @@ export default function MyJourney() {
     | 'vpe_nudge';
 
   const pendingMeetingReminders = useMemo((): { key: PendingMeetingReminderKey; text: string }[] => {
-    if (!currentOpenMeetingId || isCurrentOpenMeetingCompleted) return [];
     const name =
       (user?.fullName || '')
         .trim()
         .split(/\s+/)
         .filter(Boolean)[0] || 'You';
     const out: { key: PendingMeetingReminderKey; text: string }[] = [];
+    if (profileFieldsLoaded && !profileHasAbout) {
+      out.push({
+        key: 'profile_intro',
+        text: `${name}, Update profile intro.`,
+      });
+    }
+    if (profileFieldsLoaded && !userAvatar) {
+      out.push({
+        key: 'profile_picture',
+        text: `${name}, Update Profile picture.`,
+      });
+    }
+    if (!currentOpenMeetingId || isCurrentOpenMeetingCompleted) return out;
     if (showBookRoleAttention) {
       out.push({
         key: 'book_role',
@@ -1200,6 +1218,9 @@ export default function MyJourney() {
     grammarianNeedsWordOfTheDayAlert,
     preparedSpeakerNeedsSpeechDetailsAlert,
     isVPEForCurrentClub,
+    profileFieldsLoaded,
+    profileHasAbout,
+    userAvatar,
     user?.fullName,
   ]);
 
@@ -1228,24 +1249,32 @@ export default function MyJourney() {
 
   const openPendingReminderTarget = useCallback(
     (key: PendingMeetingReminderKey) => {
-      if (!currentOpenMeetingId) return;
       switch (key) {
+        case 'profile_intro':
+        case 'profile_picture':
+          router.push('/profile');
+          break;
         case 'book_role':
+          if (!currentOpenMeetingId) return;
           router.push(`/book-a-role?meetingId=${currentOpenMeetingId}`);
           break;
         case 'toastmaster_theme':
+          if (!currentOpenMeetingId) return;
           router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}&showCongrats=1`);
           break;
         case 'educational_speech':
+          if (!currentOpenMeetingId) return;
           router.push({
             pathname: '/educational-corner',
             params: { meetingId: currentOpenMeetingId, showCongrats: '1' },
           });
           break;
         case 'grammarian_wotd':
+          if (!currentOpenMeetingId) return;
           router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
           break;
         case 'prepared_speech':
+          if (!currentOpenMeetingId) return;
           router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
           break;
         case 'vpe_nudge':
@@ -1319,7 +1348,7 @@ export default function MyJourney() {
 
   if (!isAuthenticated || !user) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.authCheckContainer}>
           <Text style={[styles.authCheckText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
             Please sign in to continue
@@ -1336,7 +1365,7 @@ export default function MyJourney() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <View style={styles.profileHeader}>
@@ -1432,7 +1461,6 @@ export default function MyJourney() {
                   color="#3b82f6"
                   onPress={handleMyProfilePress}
                   inline
-                  showPendingHighlight={showMyProfilePending}
                 />
                 <JourneyListCard
                   title="My Speeches"
@@ -1474,46 +1502,6 @@ export default function MyJourney() {
                   <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
                   {/* Profile, Speeches, Mentor */}
                   <View style={styles.journeyListCardsContainer}>
-                    {pendingMeetingReminders.length > 0 && (
-                      <TouchableOpacity
-                        style={[
-                          styles.actionReminderHeroCard,
-                        ]}
-                        onPress={() => {
-                          const item = pendingMeetingReminders[heroReminderSlide];
-                          if (item) openPendingReminderTarget(item.key);
-                        }}
-                        activeOpacity={0.88}
-                      >
-                        <View style={styles.actionReminderHeroRow}>
-                          <Text style={styles.vpeBellEmoji}>🔔</Text>
-                          <View style={styles.actionReminderHeroTextCol}>
-                            <Animated.View style={heroReminderTextAnimatedStyle}>
-                              <Text
-                                style={[styles.actionReminderHeroMessage, { color: theme.colors.textSecondary }]}
-                                maxFontSizeMultiplier={1.25}
-                              >
-                                {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
-                              </Text>
-                            </Animated.View>
-                          </View>
-                          <ChevronRight size={14} color={theme.colors.textSecondary} />
-                        </View>
-                        {pendingMeetingReminders.length > 1 && (
-                          <View style={styles.actionReminderDots}>
-                            {pendingMeetingReminders.map((r, i) => (
-                              <View
-                                key={r.key}
-                                style={[
-                                  styles.actionReminderDot,
-                                  i === heroReminderSlide ? styles.actionReminderDotActive : styles.actionReminderDotInactive,
-                                ]}
-                              />
-                            ))}
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    )}
                     <JourneyListCard
                       title="My Profile"
                       description="View and edit your personal information"
@@ -1521,7 +1509,6 @@ export default function MyJourney() {
                       color="#3b82f6"
                       onPress={handleMyProfilePress}
                       inline
-                      showPendingHighlight={showMyProfilePending}
                     />
                     <JourneyListCard
                       title="My Speeches"
@@ -1539,6 +1526,34 @@ export default function MyJourney() {
                       onPress={() => router.push('/my-growth-guidance')}
                       inline
                     />
+                    {isVPEForCurrentClub && currentOpenMeetingId && (
+                      <JourneyListCard
+                        title="My Tasks"
+                        description={
+                          <>
+                            {pendingMeetingReminders.length > 0 && (
+                              <Animated.View style={[styles.myTasksAnimatedWrap, heroReminderTextAnimatedStyle]}>
+                                <Text style={[styles.myTasksAnimatedText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                                  {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
+                                </Text>
+                              </Animated.View>
+                            )}
+                          </>
+                        }
+                        icon={<Bell size={18} color="#b7791f" />}
+                        color="#3b82f6"
+                        onPress={() => {
+                          const item = pendingMeetingReminders[heroReminderSlide];
+                          if (item) {
+                            openPendingReminderTarget(item.key);
+                            return;
+                          }
+                          router.push('/vpe-nudges');
+                        }}
+                        animateIconOnly={pendingMeetingReminders.length > 0}
+                        inline
+                      />
+                    )}
                   </View>
                   <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
                   {/* Meeting details */}
@@ -1621,18 +1636,6 @@ export default function MyJourney() {
                   }}
                 />
                 <MeetingActionButton
-                  title="Meeting Agenda"
-                  icon={<FileText size={16} color="#ffffff" />}
-                  color="#10b981"
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting to view agenda.');
-                      return;
-                    }
-                    router.push(`/meeting-agenda-view?meetingId=${currentOpenMeetingId}`);
-                  }}
-                />
-                <MeetingActionButton
                   title="Toastmaster of the day"
                   icon={<MessageSquare size={16} color="#ffffff" />}
                   color="#84cc16"
@@ -1649,36 +1652,25 @@ export default function MyJourney() {
                   onPress={handlePreparedSpeechesPress}
                 />
                 <MeetingActionButton
-                  title="Grammarian"
-                  icon={<BookOpen size={16} color="#ffffff" />}
-                  color="#8b5cf6"
-                  avatarUrls={journeyGrammarianAvatarUrls}
-                  showAlert={grammarianNeedsWordOfTheDayAlert}
-                  onPress={handleGrammarianPress}
+                  title="Speech evalution"
+                  icon={<Mic size={16} color="#ffffff" />}
+                  color="#0a66c2"
+                  onPress={handlePreparedSpeechesPress}
                 />
                 <MeetingActionButton
-                  title="Educational speaker"
-                  icon={<GraduationCap size={16} color="#ffffff" />}
-                  color="#f97316"
-                  avatarUrls={journeyEducationalAvatarUrls}
-                  showAlert={educationalSpeakerNeedsAlert}
-                  onPress={handleEducationalSpeakerPress}
-                />
-                <MeetingActionButton
-                  title="Table Topics Master"
-                  icon={<MessageSquare size={16} color="#ffffff" />}
-                  color="#ea580c"
-                  avatarUrls={journeyTableTopicsMasterAvatarUrls}
+                  title="General Evaluator"
+                  icon={<ClipboardCheck size={16} color="#ffffff" />}
+                  color="#ec4899"
                   onPress={() => {
                     if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for Table Topics.');
+                      Alert.alert('No open meeting', 'There is no current open meeting for General Evaluator.');
                       return;
                     }
-                    router.push({ pathname: '/table-topic-corner', params: { meetingId: currentOpenMeetingId } });
+                    router.push({ pathname: '/general-evaluator-report', params: { meetingId: currentOpenMeetingId } });
                   }}
                 />
                 <MeetingActionButton
-                  title="Table Topics Speaker"
+                  title="Table topic"
                   icon={<Mic size={16} color="#ffffff" />}
                   color="#fb923c"
                   avatarUrls={journeyTableTopicsSpeakerAvatarUrls}
@@ -1690,7 +1682,72 @@ export default function MyJourney() {
                     router.push({ pathname: '/table-topic-corner', params: { meetingId: currentOpenMeetingId } });
                   }}
                 />
+                <MeetingActionButton
+                  title="Educational speaker"
+                  icon={<GraduationCap size={16} color="#ffffff" />}
+                  color="#f97316"
+                  avatarUrls={journeyEducationalAvatarUrls}
+                  showAlert={educationalSpeakerNeedsAlert}
+                  onPress={handleEducationalSpeakerPress}
+                />
+                <MeetingActionButton
+                  title="Timer"
+                  icon={<Timer size={16} color="#ffffff" />}
+                  color="#0a66c2"
+                  onPress={() => {
+                    if (!currentOpenMeetingId) {
+                      Alert.alert('No open meeting', 'There is no current open meeting for Timer.');
+                      return;
+                    }
+                    router.push({ pathname: '/timer-report-details', params: { meetingId: currentOpenMeetingId } });
+                  }}
+                />
+                <MeetingActionButton
+                  title="Ah Counter"
+                  icon={<Bell size={16} color="#ffffff" />}
+                  color="#f59e0b"
+                  onPress={() => {
+                    if (!currentOpenMeetingId) {
+                      Alert.alert('No open meeting', 'There is no current open meeting for Ah Counter.');
+                      return;
+                    }
+                    router.push({ pathname: '/ah-counter-corner', params: { meetingId: currentOpenMeetingId } });
+                  }}
+                />
+                <MeetingActionButton
+                  title="Grammarian"
+                  icon={<BookOpen size={16} color="#ffffff" />}
+                  color="#8b5cf6"
+                  avatarUrls={journeyGrammarianAvatarUrls}
+                  showAlert={grammarianNeedsWordOfTheDayAlert}
+                  onPress={handleGrammarianPress}
+                />
               </View>
+
+              <TouchableOpacity
+                style={[styles.liveVotingHeroCard, { backgroundColor: theme.colors.surface, borderColor: '#93c5fd' }]}
+                onPress={() => {
+                  if (!currentOpenMeetingId) {
+                    Alert.alert('No open meeting', 'There is no current open meeting to view agenda.');
+                    return;
+                  }
+                  router.push(`/meeting-agenda-view?meetingId=${currentOpenMeetingId}`);
+                }}
+                activeOpacity={0.85}
+              >
+                <View style={styles.liveVotingHeroContent}>
+                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: '#0a66c2' }]}>
+                    <FileText size={18} color="#ffffff" />
+                  </View>
+                  <View style={styles.liveVotingHeroTextWrap}>
+                    <View style={styles.liveVotingHeroTitleRow}>
+                      <Text style={[styles.liveVotingHeroTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Agenda</Text>
+                    </View>
+                    <Text style={[styles.liveVotingHeroSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>View current meeting flow</Text>
+                  </View>
+                  <ChevronRight size={20} color={theme.colors.textSecondary} />
+                </View>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.liveVotingHeroCard, { backgroundColor: theme.colors.surface, borderColor: '#93c5fd' }]}
@@ -2281,6 +2338,11 @@ const styles = StyleSheet.create({
   journeyListCardsContainer: {
     width: '100%',
   },
+  journeyNudgeProfileDivider: {
+    height: 1,
+    marginTop: 2,
+    marginBottom: 6,
+  },
   journeyListOuter: {
     paddingHorizontal: 16,
     marginTop: 8,
@@ -2332,6 +2394,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 14,
     marginTop: 2,
+  },
+  myTasksAnimatedWrap: {
+    marginTop: 4,
+  },
+  myTasksAnimatedText: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 14,
   },
   journeySectionHeader: {
     flexDirection: 'row',

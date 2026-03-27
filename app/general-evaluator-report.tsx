@@ -106,6 +106,7 @@ export default function GeneralEvaluatorReport() {
   const [existingEvaluation, setExistingEvaluation] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'categories' | 'feedback'>('categories');
   const [bookingGeRole, setBookingGeRole] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
 
   const evaluationCategories: EvaluationCategory[] = [
     {
@@ -223,6 +224,7 @@ export default function GeneralEvaluatorReport() {
     try {
       await loadMeeting();
       await loadClubInfo();
+      await loadIsVPEClub();
 
       // Load the assigned General Evaluator for this meeting
       const { data: geData, error: geError } = await supabase
@@ -335,6 +337,24 @@ export default function GeneralEvaluatorReport() {
     } catch (error) {
       console.error('Error loading meeting:', error);
     }
+  };
+
+  const loadIsVPEClub = async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setIsVPEClub(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('club_profiles')
+      .select('vpe_id')
+      .eq('club_id', user.currentClubId)
+      .maybeSingle();
+    if (error) {
+      console.error('Error loading club VPE:', error);
+      setIsVPEClub(false);
+      return;
+    }
+    setIsVPEClub(data?.vpe_id === user.id);
   };
 
   const loadExistingEvaluation = async (evaluatorUserId: string) => {
@@ -873,19 +893,45 @@ export default function GeneralEvaluatorReport() {
               <Text style={[styles.guideMessage, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Guide the meeting to excellence ⭐
               </Text>
-              <TouchableOpacity
-                style={[styles.bookRoleButton, { opacity: bookingGeRole ? 0.85 : 1 }]}
-                onPress={() => handleBookGeneralEvaluatorInline()}
-                disabled={bookingGeRole}
-              >
-                {bookingGeRole ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                    Book the GE role
-                  </Text>
-                )}
-              </TouchableOpacity>
+              {isVPEClub ? (
+                <View style={styles.vpeDualButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.bookRoleButton, styles.vpeDualBtn, { opacity: bookingGeRole ? 0.85 : 1 }]}
+                    onPress={() => handleBookGeneralEvaluatorInline()}
+                    disabled={bookingGeRole}
+                  >
+                    {bookingGeRole ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                        Book the GE role
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.vpeDualBtn, styles.assignOutlineBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
+                    onPress={() => router.push({ pathname: '/admin/manage-meeting-roles', params: { meetingId } })}
+                  >
+                    <Text style={[styles.assignOutlineText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                      Assign
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.bookRoleButton, { opacity: bookingGeRole ? 0.85 : 1 }]}
+                  onPress={() => handleBookGeneralEvaluatorInline()}
+                  disabled={bookingGeRole}
+                >
+                  {bookingGeRole ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                      Book the GE role
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
@@ -1527,6 +1573,27 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  vpeDualButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+    marginTop: 5,
+  },
+  vpeDualBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignOutlineBtn: {
+    borderWidth: 2,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+  },
+  assignOutlineText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   tabContainer: {
     flexDirection: 'row',

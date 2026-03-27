@@ -13,13 +13,12 @@ import {
   Platform,
   useWindowDimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
+import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import {
   ArrowLeft,
   GraduationCap,
@@ -43,6 +42,7 @@ import {
   Save,
   User,
   X,
+  Search,
 } from 'lucide-react-native';
 
 /** Match Toastmaster Corner bottom dock icon size */
@@ -113,6 +113,13 @@ interface EducationalSpeaker {
   };
 }
 
+interface ClubMember {
+  id: string;
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
+}
+
 /**
  * Educational Corner Component
  * Displays Educational Speaker assignment and allows adding speech details
@@ -130,8 +137,12 @@ export default function EducationalCorner(): JSX.Element {
   const [educationalSpeaker, setEducationalSpeaker] = useState<EducationalSpeaker | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isExComm, setIsExComm] = useState(false);
-  const [showCongratsModal, setShowCongratsModal] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
   const [bookingEducationalRole, setBookingEducationalRole] = useState(false);
+  const [showAssignEducationalModal, setShowAssignEducationalModal] = useState(false);
+  const [assignEducationalSearch, setAssignEducationalSearch] = useState('');
+  const [assigningEducationalRole, setAssigningEducationalRole] = useState(false);
+  const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [cornerEducationalTitle, setCornerEducationalTitle] = useState('');
   const [savingCornerEducational, setSavingCornerEducational] = useState(false);
   const [editingSavedCornerEducational, setEditingSavedCornerEducational] = useState(false);
@@ -167,6 +178,7 @@ export default function EducationalCorner(): JSX.Element {
         loadMeeting(),
         loadEducationalSpeaker(),
         checkUserRole(),
+        loadClubMembers(),
       ]);
     } catch (error) {
       console.error('Error loading educational corner data:', error);
@@ -175,6 +187,73 @@ export default function EducationalCorner(): JSX.Element {
       setIsLoading(false);
     }
   };
+
+  const loadClubMembers = async (): Promise<void> => {
+    if (!user?.currentClubId) return;
+    try {
+      const { data, error } = await supabase
+        .from('app_club_user_relationship')
+        .select(`
+          app_user_profiles (
+            id,
+            full_name,
+            email,
+            avatar_url
+          )
+        `)
+        .eq('club_id', user.currentClubId)
+        .eq('is_authenticated', true);
+      if (error) {
+        console.error('Error loading club members:', error);
+        return;
+      }
+      const members = (data || []).map((item: any) => ({
+        id: item.app_user_profiles.id,
+        full_name: item.app_user_profiles.full_name,
+        email: item.app_user_profiles.email,
+        avatar_url: item.app_user_profiles.avatar_url,
+      }));
+      members.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setClubMembers(members);
+    } catch (error) {
+      console.error('Error loading club members:', error);
+    }
+  };
+
+  const handleAssignEducationalToMember = async (member: ClubMember): Promise<void> => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to assign this role.');
+      return;
+    }
+    setAssigningEducationalRole(true);
+    try {
+      const roleId = await fetchOpenMeetingRoleId(meetingId, { eqRoleName: 'Educational Speaker' });
+      if (!roleId) {
+        Alert.alert('Error', 'No open Educational Speaker role was found for this meeting.');
+        return;
+      }
+      const result = await bookMeetingRoleForCurrentUser(member.id, roleId);
+      if (result.ok) {
+        setShowAssignEducationalModal(false);
+        setAssignEducationalSearch('');
+        await loadEducationalSpeaker();
+        Alert.alert('Assigned', `${member.full_name} is now the Educational Speaker for this meeting.`);
+      } else {
+        Alert.alert('Could not assign', result.message);
+      }
+    } finally {
+      setAssigningEducationalRole(false);
+    }
+  };
+
+  const filteredMembersForAssign = clubMembers.filter((member) => {
+    const q = assignEducationalSearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      member.full_name.toLowerCase().includes(q) ||
+      member.email.toLowerCase().includes(q)
+    );
+  });
 
   /**
    * Load meeting details
@@ -331,6 +410,18 @@ export default function EducationalCorner(): JSX.Element {
       }
 
       setIsExComm(data?.role === 'excomm');
+
+      const { data: vpeData, error: vpeError } = await supabase
+        .from('club_profiles')
+        .select('vpe_id')
+        .eq('club_id', user.currentClubId)
+        .maybeSingle();
+      if (vpeError) {
+        console.error('Error loading club VPE:', vpeError);
+        setIsVPEClub(false);
+      } else {
+        setIsVPEClub(vpeData?.vpe_id === user.id);
+      }
     } catch (error) {
       console.error('Error loading user role:', error);
     }
@@ -351,8 +442,11 @@ export default function EducationalCorner(): JSX.Element {
   const hasEducationalTitle = (): boolean => {
     return !!(educationalSpeaker?.speech_title?.trim());
   };
+  const canEditEducationalCorner = (): boolean => {
+    return isEducationalSpeaker() || isVPEClub;
+  };
+  const effectiveEducationalSpeakerUserId = educationalSpeaker?.assigned_user_id || user?.id || null;
 
-  const EDUCATIONAL_CONGRATS_SEEN_KEY = meetingId ? `educationalCongratsSeen_${meetingId}` : null;
 
   const alertCorner = (title: string, message?: string) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -375,7 +469,7 @@ export default function EducationalCorner(): JSX.Element {
   };
 
   const saveCornerEducationalTitle = async () => {
-    if (!isEducationalSpeaker() || !meetingId || !user?.currentClubId || savingCornerEducational) return;
+    if (!canEditEducationalCorner() || !meetingId || !user?.currentClubId || savingCornerEducational || !effectiveEducationalSpeakerUserId) return;
     const name = cornerEducationalTitle.trim().slice(0, CORNER_EDUCATIONAL_TITLE_MAX_LEN);
     setSavingCornerEducational(true);
     try {
@@ -383,7 +477,7 @@ export default function EducationalCorner(): JSX.Element {
         .from('app_meeting_educational_speaker')
         .select('id')
         .eq('meeting_id', meetingId)
-        .eq('speaker_user_id', user.id)
+        .eq('speaker_user_id', effectiveEducationalSpeakerUserId)
         .maybeSingle();
 
       if (findErr && findErr.code !== 'PGRST116') {
@@ -437,7 +531,7 @@ export default function EducationalCorner(): JSX.Element {
         const { error } = await supabase.from('app_meeting_educational_speaker').insert({
           meeting_id: meetingId,
           club_id: user.currentClubId,
-          speaker_user_id: user.id,
+          speaker_user_id: effectiveEducationalSpeakerUserId,
           speech_title: name,
           summary: null,
         });
@@ -465,39 +559,20 @@ export default function EducationalCorner(): JSX.Element {
   };
 
   useEffect(() => {
-    if (isLoading || !meeting || !isEducationalSpeaker() || hasEducationalTitle() || !EDUCATIONAL_CONGRATS_SEEN_KEY) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const seen = await AsyncStorage.getItem(EDUCATIONAL_CONGRATS_SEEN_KEY);
-        if (!cancelled && !seen) setShowCongratsModal(true);
-      } catch {
-        if (!cancelled) setShowCongratsModal(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isLoading, meeting, educationalSpeaker?.assigned_user_id, educationalSpeaker?.speech_title, educationalSpeaker?.booking_status, EDUCATIONAL_CONGRATS_SEEN_KEY]);
-
-  useEffect(() => {
-    if (!user?.id || educationalSpeaker?.assigned_user_id !== user.id) return;
+    if (!canEditEducationalCorner() || !effectiveEducationalSpeakerUserId) return;
     const titleSaved = !!(educationalSpeaker?.speech_title?.trim());
     if (titleSaved && !editingSavedCornerEducational) return;
     setCornerEducationalTitle(
       (educationalSpeaker?.speech_title || '').slice(0, CORNER_EDUCATIONAL_TITLE_MAX_LEN)
     );
   }, [
-    user?.id,
+    isVPEClub,
+    effectiveEducationalSpeakerUserId,
     educationalSpeaker?.assigned_user_id,
     educationalSpeaker?.speech_title,
     editingSavedCornerEducational,
   ]);
 
-  const dismissCongratsModal = useCallback(() => {
-    if (EDUCATIONAL_CONGRATS_SEEN_KEY) {
-      AsyncStorage.setItem(EDUCATIONAL_CONGRATS_SEEN_KEY, '1').catch(() => {});
-    }
-    setShowCongratsModal(false);
-  }, [EDUCATIONAL_CONGRATS_SEEN_KEY]);
 
   const showConsolidatedEducationalCard = Boolean(
     educationalSpeaker?.assigned_user_id && educationalSpeaker.app_user_profiles
@@ -620,7 +695,7 @@ export default function EducationalCorner(): JSX.Element {
 
               <View style={[styles.consolidatedDivider, { backgroundColor: '#EAEAEA' }]} />
 
-              {isEducationalSpeaker() && (!hasEducationalTitle() || editingSavedCornerEducational) ? (
+              {canEditEducationalCorner() && (!hasEducationalTitle() || editingSavedCornerEducational) ? (
                 <View style={styles.consolidatedThemeFormStretch}>
                   <View style={styles.cornerEdTitleFormHeader}>
                     <Text
@@ -739,7 +814,7 @@ export default function EducationalCorner(): JSX.Element {
                       EDUCATIONAL TITLE
                     </Text>
                     <View style={styles.consolidatedThemeTitleRail}>
-                      {isEducationalSpeaker() ? (
+                      {canEditEducationalCorner() ? (
                         <TouchableOpacity
                           style={styles.consolidatedThemeEditHit}
                           onPress={() => setEditingSavedCornerEducational(true)}
@@ -795,10 +870,9 @@ export default function EducationalCorner(): JSX.Element {
           <>
             <View
               style={[
-                styles.meetingCard,
+                styles.noAssignmentNotionCard,
                 {
                   backgroundColor: theme.colors.surface,
-                  borderWidth: 1,
                   borderColor: theme.colors.border,
                 },
               ]}
@@ -835,10 +909,7 @@ export default function EducationalCorner(): JSX.Element {
                   </Text>
                 </View>
               </View>
-              <View style={styles.meetingCardDecoration} />
-            </View>
-
-            <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+              <View style={[styles.noAssignmentDivider, { backgroundColor: theme.colors.border }]} />
               {!educationalSpeaker?.assigned_user_id ? (
                 <View style={styles.noSpeakerCard}>
                   <View style={[styles.noSpeakerIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
@@ -847,25 +918,60 @@ export default function EducationalCorner(): JSX.Element {
                   <Text style={[styles.noSpeakerText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                     The stage is yours — make it count.
                   </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.bookSpeakerButton,
-                      {
-                        backgroundColor: theme.colors.primary,
-                        opacity: bookingEducationalRole ? 0.85 : 1,
-                      },
-                    ]}
-                    onPress={() => handleBookEducationalSpeakerInline()}
-                    disabled={bookingEducationalRole}
-                  >
-                    {bookingEducationalRole ? (
-                      <ActivityIndicator color="#ffffff" size="small" />
-                    ) : (
-                      <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
-                        Book Educational Speaker Role
-                      </Text>
-                    )}
-                  </TouchableOpacity>
+                  {isVPEClub ? (
+                    <View style={styles.vpeDualButtonsRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.bookSpeakerButton,
+                          styles.vpeDualBtn,
+                          styles.vpeRoleButtonCompact,
+                          styles.vpeDualBtnEqualHeight,
+                          {
+                            backgroundColor: theme.colors.primary,
+                            opacity: bookingEducationalRole ? 0.85 : 1,
+                          },
+                        ]}
+                        onPress={() => handleBookEducationalSpeakerInline()}
+                        disabled={bookingEducationalRole}
+                      >
+                        {bookingEducationalRole ? (
+                          <ActivityIndicator color="#ffffff" size="small" />
+                        ) : (
+                          <Text style={[styles.bookSpeakerButtonText, styles.vpeRoleButtonText]} maxFontSizeMultiplier={1.3}>
+                            Book Now
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.vpeDualBtn, styles.assignOutlineBtn, styles.vpeRoleButtonCompact, styles.vpeDualBtnEqualHeight, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
+                        onPress={() => setShowAssignEducationalModal(true)}
+                      >
+                        <Text style={[styles.assignOutlineText, styles.vpeRoleButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                          Assign
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.bookSpeakerButton,
+                        {
+                          backgroundColor: theme.colors.primary,
+                          opacity: bookingEducationalRole ? 0.85 : 1,
+                        },
+                      ]}
+                      onPress={() => handleBookEducationalSpeakerInline()}
+                      disabled={bookingEducationalRole}
+                    >
+                      {bookingEducationalRole ? (
+                        <ActivityIndicator color="#ffffff" size="small" />
+                      ) : (
+                        <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
+                          Book Now
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : (
                 <View style={styles.edSpeakerLoadingRow}>
@@ -875,6 +981,7 @@ export default function EducationalCorner(): JSX.Element {
                   </Text>
                 </View>
               )}
+              <View style={styles.meetingCardDecoration} />
             </View>
           </>
         )}
@@ -1054,6 +1161,101 @@ export default function EducationalCorner(): JSX.Element {
                 </TouchableOpacity>
               </>
             )}
+
+        <Modal
+          visible={showAssignEducationalModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setShowAssignEducationalModal(false);
+            setAssignEducationalSearch('');
+          }}
+        >
+          <TouchableOpacity
+            style={styles.educationalAssignOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              setShowAssignEducationalModal(false);
+              setAssignEducationalSearch('');
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.educationalAssignModal, { backgroundColor: theme.colors.surface }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.educationalAssignHeader}>
+                <Text style={[styles.educationalAssignTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Assign Educational Speaker
+                </Text>
+                <TouchableOpacity
+                  style={styles.educationalAssignClose}
+                  onPress={() => {
+                    setShowAssignEducationalModal(false);
+                    setAssignEducationalSearch('');
+                  }}
+                >
+                  <X size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.educationalAssignHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Choose a club member to book the Educational Speaker role.
+              </Text>
+              <View style={[styles.educationalAssignSearchWrap, { backgroundColor: theme.colors.background }]}>
+                <Search size={20} color={theme.colors.textSecondary} />
+                <TextInput
+                  style={[styles.educationalAssignSearchInput, { color: theme.colors.text }]}
+                  placeholder="Search by name or email..."
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={assignEducationalSearch}
+                  onChangeText={setAssignEducationalSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {assignEducationalSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setAssignEducationalSearch('')}>
+                    <X size={20} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <ScrollView style={styles.educationalAssignList} showsVerticalScrollIndicator={false}>
+                {assigningEducationalRole ? (
+                  <View style={styles.educationalAssignEmptyWrap}>
+                    <ActivityIndicator color={theme.colors.primary} />
+                  </View>
+                ) : filteredMembersForAssign.length > 0 ? (
+                  filteredMembersForAssign.map((member) => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[styles.educationalAssignMemberRow, { backgroundColor: theme.colors.background }]}
+                      onPress={() => handleAssignEducationalToMember(member)}
+                      disabled={assigningEducationalRole}
+                    >
+                      <View style={styles.educationalAssignAvatar}>
+                        {member.avatar_url ? (
+                          <Image source={{ uri: member.avatar_url }} style={styles.educationalAssignAvatarImage} />
+                        ) : (
+                          <User size={20} color="#ffffff" />
+                        )}
+                      </View>
+                      <View style={styles.educationalAssignMemberTextWrap}>
+                        <Text style={[styles.educationalAssignMemberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                          {member.full_name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.educationalAssignEmptyWrap}>
+                    <Text style={[styles.educationalAssignEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      No members found
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
           </ScrollView>
           </View>
         )}
@@ -1081,7 +1283,7 @@ export default function EducationalCorner(): JSX.Element {
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
             </TouchableOpacity>
 
-            {isEducationalSpeaker() && (
+            {canEditEducationalCorner() && (
               <TouchableOpacity
                 style={styles.footerNavItem}
                 onPress={() =>
@@ -1264,40 +1466,6 @@ export default function EducationalCorner(): JSX.Element {
 
       </ScrollView>
 
-      {/* Congrats Educational Speaker modal - shown once per meeting when title not added */}
-      <Modal
-        visible={showCongratsModal}
-        transparent
-        animationType="fade"
-        onRequestClose={dismissCongratsModal}
-      >
-        <TouchableOpacity
-          style={styles.congratsModalOverlay}
-          activeOpacity={1}
-          onPress={dismissCongratsModal}
-        >
-          <TouchableOpacity
-            style={[styles.congratsModalContent, { backgroundColor: theme.colors.surface }]}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
-            <Text style={[styles.congratsModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
-            </Text>
-            <Text style={[styles.congratsModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              You're the Educational Speaker, leading a knowledge-sharing session. Add your{' '}
-              <Text style={styles.congratsModalHighlight}>educational title</Text>
-              {' '}(or use Prep below) so members know what to expect.
-            </Text>
-            <TouchableOpacity
-              style={[styles.congratsModalButton, { backgroundColor: theme.colors.primary }]}
-              onPress={dismissCongratsModal}
-            >
-              <Text style={styles.congratsModalButtonText} maxFontSizeMultiplier={1.3}>Got it</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1530,15 +1698,34 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   noSpeakerText: {
-    fontSize: 18,
+    fontSize: 15.3,
     fontWeight: '600',
     marginBottom: 8,
     textAlign: 'center',
+  },
+  noAssignmentNotionCard: {
+    marginHorizontal: 13,
+    marginTop: 13,
+    borderRadius: 13,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  noAssignmentDivider: {
+    height: 1,
+    marginTop: 14,
   },
   bookSpeakerButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
+    marginTop: 28,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1554,6 +1741,124 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     letterSpacing: 0.3,
     textAlign: 'center',
+  },
+  vpeDualButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+    marginTop: 28,
+  },
+  vpeDualBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignOutlineBtn: {
+    borderWidth: 2,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  assignOutlineText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  vpeRoleButtonCompact: {
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+  },
+  vpeDualBtnEqualHeight: {
+    minHeight: 42,
+    marginTop: 0,
+  },
+  vpeRoleButtonText: {
+    fontSize: 12,
+  },
+  educationalAssignOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  educationalAssignModal: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '80%',
+  },
+  educationalAssignHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  educationalAssignTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  educationalAssignClose: {
+    padding: 6,
+  },
+  educationalAssignHint: {
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  educationalAssignSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+    gap: 8,
+  },
+  educationalAssignSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 2,
+  },
+  educationalAssignList: {
+    maxHeight: 360,
+  },
+  educationalAssignMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  educationalAssignAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f97316',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginRight: 10,
+  },
+  educationalAssignAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  educationalAssignMemberTextWrap: {
+    flex: 1,
+  },
+  educationalAssignMemberName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  educationalAssignEmptyWrap: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  educationalAssignEmptyText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   speechContent: {
     marginTop: 16,
@@ -1600,45 +1905,6 @@ const styles = StyleSheet.create({
   educationalInstructionsHighlight: {
     fontWeight: 'bold',
     fontStyle: 'italic',
-  },
-  congratsModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  congratsModalContent: {
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 340,
-  },
-  congratsModalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  congratsModalMessage: {
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  congratsModalHighlight: {
-    fontWeight: 'bold',
-    fontStyle: 'italic',
-  },
-  congratsModalButton: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  congratsModalButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   educationalComingSoonCard: {
     position: 'relative',

@@ -185,6 +185,7 @@ export function GrammarianNotesScreen({
   const [areStatsPublished, setAreStatsPublished] = useState(false);
   const [statsInlineLoaded, setStatsInlineLoaded] = useState(false);
   const [isPublishingAll, setIsPublishingAll] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
 
   const autoSaveTimeout = useRef<NodeJS.Timeout | null>(null);
 
@@ -261,6 +262,7 @@ export function GrammarianNotesScreen({
       const [, , , wordResult, idiomResult, quoteResult] = await Promise.all([
         loadMeeting(),
         loadGrammarianOfDay(),
+        loadIsVPEClub(),
         loadGrammarianNotesData(),
         loadWordOfTheDayData(),
         loadIdiomOfTheDayData(),
@@ -291,6 +293,7 @@ export function GrammarianNotesScreen({
       await Promise.all([
         loadMeeting(),
         loadGrammarianOfDay(),
+        loadIsVPEClub(),
         loadLiveObservations(),
         loadClubMembers(),
       ]);
@@ -355,6 +358,29 @@ export function GrammarianNotesScreen({
     }
   };
 
+  const loadIsVPEClub = async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setIsVPEClub(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('club_profiles')
+        .select('vpe_id')
+        .eq('club_id', user.currentClubId)
+        .maybeSingle();
+      if (error) {
+        console.error('Error loading VPE access:', error);
+        setIsVPEClub(false);
+        return;
+      }
+      setIsVPEClub(data?.vpe_id === user.id);
+    } catch (error) {
+      console.error('Error loading VPE access:', error);
+      setIsVPEClub(false);
+    }
+  };
+
   const loadGrammarianNotesData = async () => {
     if (!meetingId || !user?.id) return;
 
@@ -363,7 +389,7 @@ export function GrammarianNotesScreen({
         .from('grammarian_meeting_notes')
         .select('*')
         .eq('meeting_id', meetingId)
-        .eq('grammarian_user_id', user.id)
+        .eq('grammarian_user_id', effectiveGrammarianUserId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
@@ -388,7 +414,7 @@ export function GrammarianNotesScreen({
         .from('grammarian_word_of_the_day')
         .select('*')
         .eq('meeting_id', meetingId)
-        .eq('grammarian_user_id', user.id)
+        .eq('grammarian_user_id', effectiveGrammarianUserId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
@@ -415,7 +441,7 @@ export function GrammarianNotesScreen({
         .from('grammarian_idiom_of_the_day')
         .select('*')
         .eq('meeting_id', meetingId)
-        .eq('grammarian_user_id', user.id)
+        .eq('grammarian_user_id', effectiveGrammarianUserId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
@@ -442,7 +468,7 @@ export function GrammarianNotesScreen({
         .from('grammarian_quote_of_the_day')
         .select('*')
         .eq('meeting_id', meetingId)
-        .eq('grammarian_user_id', user.id)
+        .eq('grammarian_user_id', effectiveGrammarianUserId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
@@ -470,13 +496,13 @@ export function GrammarianNotesScreen({
           .from('grammarian_live_good_usage')
           .select('*')
           .eq('meeting_id', meetingId)
-          .eq('grammarian_id', user.id)
+          .eq('grammarian_id', effectiveGrammarianUserId)
           .order('sequence_order', { ascending: true }),
         supabase
           .from('grammarian_live_improvements')
           .select('*')
           .eq('meeting_id', meetingId)
-          .eq('grammarian_id', user.id)
+          .eq('grammarian_id', effectiveGrammarianUserId)
           .order('sequence_order', { ascending: true })
       ]);
 
@@ -507,19 +533,19 @@ export function GrammarianNotesScreen({
           .from('grammarian_word_of_the_day')
           .select('usage_count')
           .eq('meeting_id', meetingId)
-          .eq('grammarian_user_id', user.id)
+          .eq('grammarian_user_id', effectiveGrammarianUserId)
           .maybeSingle(),
         supabase
           .from('grammarian_idiom_of_the_day')
           .select('usage_count')
           .eq('meeting_id', meetingId)
-          .eq('grammarian_user_id', user.id)
+          .eq('grammarian_user_id', effectiveGrammarianUserId)
           .maybeSingle(),
         supabase
           .from('grammarian_quote_of_the_day')
           .select('usage_count')
           .eq('meeting_id', meetingId)
-          .eq('grammarian_user_id', user.id)
+          .eq('grammarian_user_id', effectiveGrammarianUserId)
           .maybeSingle()
       ]);
 
@@ -636,9 +662,13 @@ export function GrammarianNotesScreen({
     }
   };
 
-  const isGrammarianOfDay = () => {
+  const isAssignedGrammarian = () => {
     return grammarianOfDay?.assigned_user_id === user?.id;
   };
+  const isGrammarianOfDay = () => {
+    return isAssignedGrammarian() || isVPEClub;
+  };
+  const effectiveGrammarianUserId = grammarianOfDay?.assigned_user_id ?? user?.id ?? null;
 
   const handleNotesChange = (text: string) => {
     if (text.length <= 1000) {
@@ -656,7 +686,7 @@ export function GrammarianNotesScreen({
   };
 
   const autoSaveNotes = async (noteText: string) => {
-    if (!isGrammarianOfDay()) {
+    if (!isAssignedGrammarian()) {
       return;
     }
 
@@ -712,7 +742,7 @@ export function GrammarianNotesScreen({
   };
 
   const handleSaveNotes = async () => {
-    if (!isGrammarianOfDay()) {
+    if (!isAssignedGrammarian()) {
       Alert.alert('Access Denied', 'Only the assigned Grammarian can save personal notes.');
       return;
     }
@@ -796,7 +826,7 @@ export function GrammarianNotesScreen({
         .insert({
           meeting_id: meetingId,
           club_id: user.currentClubId,
-          grammarian_id: user.id,
+          grammarian_id: effectiveGrammarianUserId,
           observation: goodUsageInput.trim(),
           sequence_order: maxSequence + 1,
         });
@@ -861,7 +891,7 @@ export function GrammarianNotesScreen({
         .insert({
           meeting_id: meetingId,
           club_id: user.currentClubId,
-          grammarian_id: user.id,
+          grammarian_id: effectiveGrammarianUserId,
           incorrect_usage: incorrectUsageInput.trim(),
           correct_usage: correctUsageInput.trim(),
           sequence_order: maxSequence + 1,
@@ -924,7 +954,7 @@ export function GrammarianNotesScreen({
         .from(tableName)
         .update({ usage_count: newCount })
         .eq('meeting_id', meetingId)
-        .eq('grammarian_user_id', user.id);
+        .eq('grammarian_user_id', effectiveGrammarianUserId);
 
       if (error) {
         console.error(`Error updating ${type} usage count:`, error);
@@ -1110,7 +1140,7 @@ export function GrammarianNotesScreen({
         .from('grammarian_live_good_usage')
         .update({ is_published: true })
         .eq('meeting_id', meetingId)
-        .eq('grammarian_id', user.id);
+        .eq('grammarian_id', effectiveGrammarianUserId);
 
       if (error) {
         Alert.alert('Error', 'Failed to publish good usage examples');
@@ -1134,7 +1164,7 @@ export function GrammarianNotesScreen({
         .from('grammarian_live_good_usage')
         .update({ is_published: false })
         .eq('meeting_id', meetingId)
-        .eq('grammarian_id', user.id);
+        .eq('grammarian_id', effectiveGrammarianUserId);
 
       if (error) {
         Alert.alert('Error', 'Failed to unpublish good usage examples');
@@ -1163,7 +1193,7 @@ export function GrammarianNotesScreen({
         .from('grammarian_live_improvements')
         .update({ is_published: true })
         .eq('meeting_id', meetingId)
-        .eq('grammarian_id', user.id);
+        .eq('grammarian_id', effectiveGrammarianUserId);
 
       if (error) {
         Alert.alert('Error', 'Failed to publish improvement areas');
@@ -1187,7 +1217,7 @@ export function GrammarianNotesScreen({
         .from('grammarian_live_improvements')
         .update({ is_published: false })
         .eq('meeting_id', meetingId)
-        .eq('grammarian_id', user.id);
+        .eq('grammarian_id', effectiveGrammarianUserId);
 
       if (error) {
         Alert.alert('Error', 'Failed to unpublish improvement areas');
@@ -1344,7 +1374,7 @@ export function GrammarianNotesScreen({
             .from('grammarian_live_good_usage')
             .update({ is_published: true })
             .eq('meeting_id', meetingId)
-            .eq('grammarian_id', user.id)
+            .eq('grammarian_id', effectiveGrammarianUserId)
         );
       }
 
@@ -1354,7 +1384,7 @@ export function GrammarianNotesScreen({
             .from('grammarian_live_improvements')
             .update({ is_published: true })
             .eq('meeting_id', meetingId)
-            .eq('grammarian_id', user.id)
+            .eq('grammarian_id', effectiveGrammarianUserId)
         );
       }
 
@@ -1442,7 +1472,7 @@ export function GrammarianNotesScreen({
             .from('grammarian_live_good_usage')
             .update({ is_published: false })
             .eq('meeting_id', meetingId)
-            .eq('grammarian_id', user.id)
+            .eq('grammarian_id', effectiveGrammarianUserId)
         );
       }
 
@@ -1452,7 +1482,7 @@ export function GrammarianNotesScreen({
             .from('grammarian_live_improvements')
             .update({ is_published: false })
             .eq('meeting_id', meetingId)
-            .eq('grammarian_id', user.id)
+            .eq('grammarian_id', effectiveGrammarianUserId)
         );
       }
 
@@ -1617,7 +1647,7 @@ export function GrammarianNotesScreen({
     );
   }
 
-  if (!isGrammarianOfDay()) {
+  if ((variant === 'notes' && !isAssignedGrammarian()) || (variant !== 'notes' && !isGrammarianOfDay())) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.accessDeniedContainer}>
@@ -1626,7 +1656,7 @@ export function GrammarianNotesScreen({
           <Text style={[styles.accessDeniedMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
             {variant === 'notes'
               ? 'Personal notes are only accessible to the assigned Grammarian.'
-              : 'Live meeting tools are only available to the assigned Grammarian.'}
+              : 'Live meeting tools are available to the assigned Grammarian or the club VPE.'}
           </Text>
           <TouchableOpacity
             style={[styles.backButton, { backgroundColor: theme.colors.primary, marginTop: 24 }]}

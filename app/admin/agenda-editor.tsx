@@ -244,7 +244,6 @@ export default function AgendaEditor() {
   const [sectionFilter, setSectionFilter] = useState<'all' | Set<string>>('all');
   const [sectionFilterModalVisible, setSectionFilterModalVisible] = useState(false);
   const [manageSequenceModalVisible, setManageSequenceModalVisible] = useState(false);
-  const hasAutoShownSequenceModal = useRef(false);
 
   /** Active booking only, latest row — avoids stale/cancelled duplicates. */
   const fetchLatestBookedAssignee = async (
@@ -332,14 +331,6 @@ export default function AgendaEditor() {
       recalculateAllTimes(agendaItems);
     }
   }, [meetingStartTime, loading]);
-
-  // Auto-show Manage sequence modal first time when Edit Agenda opens with sections
-  useEffect(() => {
-    if (agendaItems.length > 0 && !loading && !hasAutoShownSequenceModal.current) {
-      hasAutoShownSequenceModal.current = true;
-      setManageSequenceModalVisible(true);
-    }
-  }, [agendaItems.length, loading]);
 
   useFocusEffect(
     useCallback(() => {

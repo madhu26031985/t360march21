@@ -6,8 +6,8 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
-import { ArrowLeft, Calendar, Clock, MapPin, Building2, Crown, User, Shield, Eye, UserCheck, Plus, Edit3, FileText, NotebookPen, MessageSquare, Bell, FileBarChart, Award, BookOpen, Mic, ClipboardCheck, CheckSquare, Users, MessageCircle, Settings, UserCog, LayoutDashboard, Vote, Save, X } from 'lucide-react-native';
+import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
+import { ArrowLeft, Calendar, Clock, MapPin, Building2, Crown, User, Shield, Eye, UserCheck, Plus, Edit3, FileText, NotebookPen, MessageSquare, Bell, FileBarChart, Award, BookOpen, Mic, ClipboardCheck, CheckSquare, Users, MessageCircle, Settings, UserCog, LayoutDashboard, Vote, Save, X, Search } from 'lucide-react-native';
 import { Image } from 'react-native';
 
 /** Bottom nav: icons + labels scaled to 75% of prior size (25% reduction) */
@@ -45,6 +45,13 @@ interface ToastmasterOfDay {
     email: string;
     avatar_url: string | null;
   };
+}
+
+interface ClubMember {
+  id: string;
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
 }
 
 // NEW INTERFACE for consolidated Toastmaster data
@@ -115,8 +122,13 @@ export default function ToastmasterCorner() {
   const [toastmasterOfDay, setToastmasterOfDay] = useState<ToastmasterOfDay | null>(null);
   const [toastmasterMeetingData, setToastmasterMeetingData] = useState<ToastmasterMeetingData | null>(null); // New state for consolidated data
   const [isExComm, setIsExComm] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [bookingTmodRole, setBookingTmodRole] = useState(false);
+  const [showAssignToastmasterModal, setShowAssignToastmasterModal] = useState(false);
+  const [assignToastmasterSearch, setAssignToastmasterSearch] = useState('');
+  const [assigningToastmasterRole, setAssigningToastmasterRole] = useState(false);
+  const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [cornerThemeName, setCornerThemeName] = useState('');
   const [savingCornerTheme, setSavingCornerTheme] = useState(false);
   const [editingSavedCornerTheme, setEditingSavedCornerTheme] = useState(false);
@@ -133,6 +145,10 @@ export default function ToastmasterCorner() {
   const isThemeCompleted = () => {
     return !!(toastmasterMeetingData?.theme_of_the_day?.trim());
   };
+  const canEditToastmasterTheme = () => {
+    return isToastmasterOfDay() || isVPEClub;
+  };
+  const effectiveToastmasterUserId = toastmasterOfDay?.assigned_user_id || user?.id || null;
 
   useEffect(() => {
     if (meetingId) {
@@ -173,14 +189,15 @@ export default function ToastmasterCorner() {
   }, [TMOD_CONGRATS_SEEN_KEY]);
 
   useEffect(() => {
-    if (!user?.id || toastmasterOfDay?.assigned_user_id !== user.id) return;
+    if (!canEditToastmasterTheme() || !effectiveToastmasterUserId) return;
     const themeSaved = !!(toastmasterMeetingData?.theme_of_the_day?.trim());
     if (themeSaved && !editingSavedCornerTheme) return;
     setCornerThemeName(
       (toastmasterMeetingData?.theme_of_the_day || '').slice(0, CORNER_THEME_MAX_LEN)
     );
   }, [
-    user?.id,
+    isVPEClub,
+    effectiveToastmasterUserId,
     toastmasterOfDay?.assigned_user_id,
     toastmasterMeetingData?.id,
     toastmasterMeetingData?.theme_of_the_day,
@@ -207,7 +224,7 @@ export default function ToastmasterCorner() {
   };
 
   const saveCornerTheme = async () => {
-    if (!isToastmasterOfDay() || !meetingId || !user?.currentClubId || savingCornerTheme) return;
+    if (!canEditToastmasterTheme() || !meetingId || !user?.currentClubId || savingCornerTheme || !effectiveToastmasterUserId) return;
     const name = cornerThemeName.trim().slice(0, CORNER_THEME_MAX_LEN);
     setSavingCornerTheme(true);
     try {
@@ -269,7 +286,7 @@ export default function ToastmasterCorner() {
           .insert({
             meeting_id: meetingId,
             club_id: user.currentClubId,
-            toastmaster_user_id: user.id,
+            toastmaster_user_id: effectiveToastmasterUserId,
             theme_of_the_day: name,
             theme_summary: null,
           })
@@ -354,7 +371,9 @@ export default function ToastmasterCorner() {
         loadMeeting(),
         loadClubInfo(),
         loadToastmasterMeetingData(tmData?.assigned_user_id), // Pass assigned_user_id
-        loadUserRole()
+        loadUserRole(),
+        loadIsVPEClub(),
+        loadClubMembers(),
       ]);
     } catch (error) {
       console.error('Error loading toastmaster corner data:', error);
@@ -363,6 +382,73 @@ export default function ToastmasterCorner() {
       setIsLoading(false);
     }
   };
+
+  const loadClubMembers = async () => {
+    if (!user?.currentClubId) return;
+    try {
+      const { data, error } = await supabase
+        .from('app_club_user_relationship')
+        .select(`
+          app_user_profiles (
+            id,
+            full_name,
+            email,
+            avatar_url
+          )
+        `)
+        .eq('club_id', user.currentClubId)
+        .eq('is_authenticated', true);
+      if (error) {
+        console.error('Error loading club members:', error);
+        return;
+      }
+      const members = (data || []).map((item: any) => ({
+        id: item.app_user_profiles.id,
+        full_name: item.app_user_profiles.full_name,
+        email: item.app_user_profiles.email,
+        avatar_url: item.app_user_profiles.avatar_url,
+      }));
+      members.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setClubMembers(members);
+    } catch (error) {
+      console.error('Error loading club members:', error);
+    }
+  };
+
+  const handleAssignToastmasterToMember = async (member: ClubMember) => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to assign this role.');
+      return;
+    }
+    setAssigningToastmasterRole(true);
+    try {
+      const roleId = await fetchOpenMeetingRoleId(meetingId, { ilikeRoleName: '%toastmaster%' });
+      if (!roleId) {
+        Alert.alert('Error', 'No open Toastmaster role was found for this meeting.');
+        return;
+      }
+      const result = await bookMeetingRoleForCurrentUser(member.id, roleId);
+      if (result.ok) {
+        setShowAssignToastmasterModal(false);
+        setAssignToastmasterSearch('');
+        await loadToastmasterCornerData();
+        Alert.alert('Assigned', `${member.full_name} is now Toastmaster of the Day for this meeting.`);
+      } else {
+        Alert.alert('Could not assign', result.message);
+      }
+    } finally {
+      setAssigningToastmasterRole(false);
+    }
+  };
+
+  const filteredMembersForAssign = clubMembers.filter((member) => {
+    const q = assignToastmasterSearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      member.full_name.toLowerCase().includes(q) ||
+      member.email.toLowerCase().includes(q)
+    );
+  });
 
   const loadMeeting = async () => {
     if (!meetingId) return;
@@ -426,6 +512,24 @@ export default function ToastmasterCorner() {
     } catch (error) {
       console.error('Error loading user role:', error);
     }
+  };
+
+  const loadIsVPEClub = async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setIsVPEClub(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('club_profiles')
+      .select('vpe_id')
+      .eq('club_id', user.currentClubId)
+      .maybeSingle();
+    if (error) {
+      console.error('Error loading club VPE:', error);
+      setIsVPEClub(false);
+      return;
+    }
+    setIsVPEClub(data?.vpe_id === user.id);
   };
 
   /** Theme row for whoever is booked TMOD only. No row / empty theme → new TMOD can enter. */
@@ -645,7 +749,7 @@ export default function ToastmasterCorner() {
 
             <View style={[styles.consolidatedDivider, { backgroundColor: '#EAEAEA' }]} />
 
-            {isToastmasterOfDay() && (!isThemeCompleted() || editingSavedCornerTheme) ? (
+            {canEditToastmasterTheme() && (!isThemeCompleted() || editingSavedCornerTheme) ? (
               <View style={styles.consolidatedThemeFormStretch}>
                 <View style={styles.cornerThemeEditHeader}>
                   <Text
@@ -762,7 +866,7 @@ export default function ToastmasterCorner() {
                     THEME OF THE DAY
                   </Text>
                   <View style={styles.consolidatedThemeTitleRail}>
-                    {isToastmasterOfDay() ? (
+                    {canEditToastmasterTheme() ? (
                       <TouchableOpacity
                         style={styles.consolidatedThemeEditHit}
                         onPress={() => setEditingSavedCornerTheme(true)}
@@ -813,10 +917,9 @@ export default function ToastmasterCorner() {
           <>
             <View
               style={[
-                styles.meetingCard,
+                styles.noAssignmentNotionCard,
                 {
                   backgroundColor: theme.colors.surface,
-                  borderWidth: 1,
                   borderColor: theme.colors.border,
                 },
               ]}
@@ -848,10 +951,7 @@ export default function ToastmasterCorner() {
                   </Text>
                 </View>
               </View>
-              <View style={styles.meetingCardDecoration} />
-            </View>
-
-            <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+              <View style={[styles.noAssignmentDivider, { backgroundColor: theme.colors.border }]} />
               <View style={styles.noToastmasterCard}>
                 <View style={[styles.noToastmasterIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
                   <Crown size={32} color={theme.colors.textSecondary} />
@@ -862,31 +962,160 @@ export default function ToastmasterCorner() {
                 <Text style={[styles.noToastmasterSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   It's time to become — TMOD now. 💫
                 </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.bookRoleButton,
-                    {
-                      backgroundColor: theme.colors.primary,
-                      opacity: bookingTmodRole ? 0.85 : 1,
-                    },
-                  ]}
-                  onPress={() => handleBookTmodInline()}
-                  disabled={bookingTmodRole}
-                >
-                  {bookingTmodRole ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                      Book TMOD Role
-                    </Text>
-                  )}
-                </TouchableOpacity>
+                {isVPEClub ? (
+                  <View style={styles.vpeDualButtonsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.bookRoleButton,
+                        styles.vpeDualBtn,
+                        {
+                          backgroundColor: theme.colors.primary,
+                          opacity: bookingTmodRole ? 0.85 : 1,
+                        },
+                      ]}
+                      onPress={() => handleBookTmodInline()}
+                      disabled={bookingTmodRole}
+                    >
+                      {bookingTmodRole ? (
+                        <ActivityIndicator color="#ffffff" size="small" />
+                      ) : (
+                        <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                          Book TMOD Role
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.vpeDualBtn, styles.assignOutlineBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
+                      onPress={() => setShowAssignToastmasterModal(true)}
+                    >
+                      <Text style={[styles.assignOutlineText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                        Assign
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      styles.bookRoleButton,
+                      {
+                        backgroundColor: theme.colors.primary,
+                        opacity: bookingTmodRole ? 0.85 : 1,
+                      },
+                    ]}
+                    onPress={() => handleBookTmodInline()}
+                    disabled={bookingTmodRole}
+                  >
+                    {bookingTmodRole ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                        Book TMOD Role
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
+              <View style={styles.meetingCardDecoration} />
             </View>
           </>
         )}
 
         </View>
+
+        <Modal
+          visible={showAssignToastmasterModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setShowAssignToastmasterModal(false);
+            setAssignToastmasterSearch('');
+          }}
+        >
+          <TouchableOpacity
+            style={styles.assignOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              setShowAssignToastmasterModal(false);
+              setAssignToastmasterSearch('');
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.assignModal, { backgroundColor: theme.colors.surface }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.assignHeader}>
+                <Text style={[styles.assignTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Assign Toastmaster
+                </Text>
+                <TouchableOpacity
+                  style={styles.assignClose}
+                  onPress={() => {
+                    setShowAssignToastmasterModal(false);
+                    setAssignToastmasterSearch('');
+                  }}
+                >
+                  <X size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.assignHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Choose a club member to book the Toastmaster role for this meeting.
+              </Text>
+              <View style={[styles.assignSearchWrap, { backgroundColor: theme.colors.background }]}>
+                <Search size={20} color={theme.colors.textSecondary} />
+                <TextInput
+                  style={[styles.assignSearchInput, { color: theme.colors.text }]}
+                  placeholder="Search by name or email..."
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={assignToastmasterSearch}
+                  onChangeText={setAssignToastmasterSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {assignToastmasterSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setAssignToastmasterSearch('')}>
+                    <X size={20} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <ScrollView style={styles.assignList} showsVerticalScrollIndicator={false}>
+                {assigningToastmasterRole ? (
+                  <View style={styles.assignEmptyWrap}>
+                    <ActivityIndicator color={theme.colors.primary} />
+                  </View>
+                ) : filteredMembersForAssign.length > 0 ? (
+                  filteredMembersForAssign.map((member) => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[styles.assignMemberRow, { backgroundColor: theme.colors.background }]}
+                      onPress={() => handleAssignToastmasterToMember(member)}
+                      disabled={assigningToastmasterRole}
+                    >
+                      <View style={styles.assignAvatar}>
+                        {member.avatar_url ? (
+                          <Image source={{ uri: member.avatar_url }} style={styles.assignAvatarImage} />
+                        ) : (
+                          <User size={20} color="#ffffff" />
+                        )}
+                      </View>
+                      <View style={styles.assignMemberTextWrap}>
+                        <Text style={[styles.assignMemberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                          {member.full_name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.assignEmptyWrap}>
+                    <Text style={[styles.assignEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      No members found
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
 
         {/* Spacer that pushes nav to bottom when content is short */}
         <View style={styles.navSpacer} />
@@ -1642,6 +1871,130 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 20,
+  },
+  noAssignmentNotionCard: {
+    marginHorizontal: 13,
+    marginTop: 13,
+    borderRadius: 13,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  noAssignmentDivider: {
+    height: 1,
+    marginTop: 14,
+  },
+  vpeDualButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  vpeDualBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignOutlineBtn: {
+    borderWidth: 2,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  assignOutlineText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  assignOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  assignModal: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '80%',
+  },
+  assignHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  assignTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  assignClose: {
+    padding: 6,
+  },
+  assignHint: {
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  assignSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+    gap: 8,
+  },
+  assignSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 2,
+  },
+  assignList: {
+    maxHeight: 360,
+  },
+  assignMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  assignAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#8b5cf6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginRight: 10,
+  },
+  assignAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  assignMemberTextWrap: {
+    flex: 1,
+  },
+  assignMemberName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  assignEmptyWrap: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignEmptyText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   bookRoleButton: {
     paddingHorizontal: 24,

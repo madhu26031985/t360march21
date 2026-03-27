@@ -36,8 +36,11 @@ export default function GrammarianIdiomPrepScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
 
-  const isGrammarianOfDay = () => grammarianOfDay?.assigned_user_id === user?.id;
+  const isAssignedGrammarian = () => grammarianOfDay?.assigned_user_id === user?.id;
+  const canEditIdiomPrep = () => isAssignedGrammarian() || isVPEClub;
+  const effectiveGrammarianUserId = grammarianOfDay?.assigned_user_id || user?.id || null;
 
   const showSavedPopup = () => {
     setShowSaveConfirmation(true);
@@ -61,13 +64,31 @@ export default function GrammarianIdiomPrepScreen() {
     setGrammarianOfDay(data);
   };
 
+  const loadIsVPEClub = async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setIsVPEClub(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('club_profiles')
+      .select('vpe_id')
+      .eq('club_id', user.currentClubId)
+      .maybeSingle();
+    if (error) {
+      console.error('Error loading club VPE:', error);
+      setIsVPEClub(false);
+      return;
+    }
+    setIsVPEClub(data?.vpe_id === user.id);
+  };
+
   const loadIdiom = useCallback(async () => {
-    if (!meetingId || !user?.id) return;
+    if (!meetingId || !effectiveGrammarianUserId) return;
     const { data, error } = await supabase
       .from('grammarian_idiom_of_the_day')
       .select('*')
       .eq('meeting_id', meetingId)
-      .eq('grammarian_user_id', user.id)
+      .eq('grammarian_user_id', effectiveGrammarianUserId)
       .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
@@ -86,7 +107,7 @@ export default function GrammarianIdiomPrepScreen() {
       setIdiomMeaning('');
       setIdiomUsage('');
     }
-  }, [meetingId, user?.id]);
+  }, [meetingId, effectiveGrammarianUserId]);
 
   const loadAll = useCallback(async () => {
     if (!meetingId || !user?.currentClubId) {
@@ -95,6 +116,7 @@ export default function GrammarianIdiomPrepScreen() {
     }
     setIsLoading(true);
     await loadGrammarianRole();
+    await loadIsVPEClub();
     await loadIdiom();
     setIsLoading(false);
   }, [meetingId, user?.currentClubId, loadIdiom]);
@@ -106,8 +128,8 @@ export default function GrammarianIdiomPrepScreen() {
   );
 
   const handleSave = async () => {
-    if (!isGrammarianOfDay()) {
-      Alert.alert('Access Denied', 'Only the assigned Grammarian can save idiom of the day.');
+    if (!canEditIdiomPrep()) {
+      Alert.alert('Access Denied', 'Only the assigned Grammarian or club VPE can save idiom of the day.');
       return;
     }
     if (!meetingId || !user?.currentClubId) {
@@ -142,7 +164,7 @@ export default function GrammarianIdiomPrepScreen() {
         const { error } = await supabase.from('grammarian_idiom_of_the_day').insert({
           meeting_id: meetingId,
           club_id: user.currentClubId,
-          grammarian_user_id: user.id,
+          grammarian_user_id: effectiveGrammarianUserId,
           idiom: idiom.trim(),
           meaning: idiomMeaning.trim() || null,
           usage: idiomUsage.trim() || null,
@@ -166,7 +188,7 @@ export default function GrammarianIdiomPrepScreen() {
   };
 
   const handleClear = async () => {
-    if (!isGrammarianOfDay()) return;
+    if (!canEditIdiomPrep()) return;
     setIdiom('');
     setIdiomMeaning('');
     setIdiomUsage('');
@@ -205,7 +227,7 @@ export default function GrammarianIdiomPrepScreen() {
     );
   }
 
-  if (!isGrammarianOfDay()) {
+  if (!canEditIdiomPrep()) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
@@ -219,7 +241,7 @@ export default function GrammarianIdiomPrepScreen() {
           <AlertCircle size={48} color={theme.colors.textSecondary} />
           <Text style={[styles.accessDeniedTitle, { color: theme.colors.text }]}>Access Restricted</Text>
           <Text style={[styles.accessDeniedMessage, { color: theme.colors.textSecondary }]}>
-            Only the assigned Grammarian can edit Idiom of the Day.
+            Only the assigned Grammarian or club VPE can edit Idiom of the Day.
           </Text>
           <TouchableOpacity
             style={[localStyles.goBackBtn, { backgroundColor: theme.colors.primary, marginTop: 24 }]}

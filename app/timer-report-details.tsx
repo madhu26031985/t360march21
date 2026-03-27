@@ -149,6 +149,7 @@ export default function TimerReportDetails() {
   const [categoryRoles, setCategoryRoles] = useState<CategoryRole[]>([]);
   const [selectedCategoryRoleId, setSelectedCategoryRoleId] = useState<string | null>(null);
   const [roleToAssign, setRoleToAssign] = useState<CategoryRole | null>(null);
+  const [assigningTimerRole, setAssigningTimerRole] = useState(false);
   const [guestAssignNameInput, setGuestAssignNameInput] = useState('');
   const [roleTimingSummary, setRoleTimingSummary] = useState<Record<string, { time: string; qualified: boolean }>>({});
 
@@ -609,6 +610,58 @@ export default function TimerReportDetails() {
     }
   };
 
+  const handleAssignTimerToMember = async (member: ClubMember) => {
+    if (!meetingId || !user?.id) return;
+    if (!canEditTimerCorner) {
+      Alert.alert('Read only', 'Only the assigned Timer or the club VPE can assign this role.');
+      return;
+    }
+    try {
+      const { data: timerRole, error: timerRoleError } = await supabase
+        .from('app_meeting_roles_management')
+        .select('id')
+        .eq('meeting_id', meetingId)
+        .eq('role_name', 'Timer')
+        .limit(1)
+        .maybeSingle();
+
+      if (timerRoleError) {
+        console.error('Error loading Timer role:', timerRoleError);
+        Alert.alert('Error', 'Could not load Timer role. Please try again.');
+        return;
+      }
+
+      if (!timerRole?.id) {
+        Alert.alert('Error', 'Timer role is not set up for this meeting.');
+        return;
+      }
+
+      const { error: assignError } = await supabase
+        .from('app_meeting_roles_management')
+        .update({
+          assigned_user_id: member.id,
+          booking_status: 'booked',
+          completion_notes: null,
+        })
+        .eq('id', timerRole.id);
+
+      if (assignError) {
+        console.error('Error assigning Timer role:', assignError);
+        Alert.alert('Could not assign', 'Failed to assign Timer role. Please try again.');
+        return;
+      }
+
+      setShowSpeakerModal(false);
+      setSpeakerSearchQuery('');
+      setAssigningTimerRole(false);
+      await loadAssignedTimer();
+      Alert.alert('Assigned', `${member.full_name} is now the Timer for this meeting.`);
+    } catch (error) {
+      console.error('Error assigning timer role:', error);
+      Alert.alert('Error', 'Failed to assign Timer role.');
+    }
+  };
+
   const loadSpeakerReport = async () => {
     // Remove the automatic loading of existing report since we now allow multiple entries
     // Just reset the form when speaker changes
@@ -998,6 +1051,7 @@ export default function TimerReportDetails() {
           Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can select speakers.');
           return;
         }
+        setAssigningTimerRole(false);
         setShowSpeakerModal(true);
       }}
     >
@@ -1111,27 +1165,66 @@ export default function TimerReportDetails() {
             <Text style={[styles.noAssignmentSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Every great meeting needs a time hero! 🦸‍♂️ Take charge — book the Timer role.
             </Text>
-            <TouchableOpacity
-              style={[
-                styles.bookRoleButton,
-                {
-                  backgroundColor: theme.colors.primary,
-                  opacity: bookingTimerRole ? 0.85 : 1,
-                },
-              ]}
-              onPress={() => handleBookTimerInline()}
-              disabled={bookingTimerRole}
-            >
-              {bookingTimerRole ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                  Book Timer Role
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isVPEClub ? (
+              <View style={styles.vpeDualButtonsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.bookRoleButton,
+                    styles.vpeDualBtn,
+                    {
+                      backgroundColor: theme.colors.primary,
+                      opacity: bookingTimerRole ? 0.85 : 1,
+                    },
+                  ]}
+                  onPress={() => handleBookTimerInline()}
+                  disabled={bookingTimerRole}
+                >
+                  {bookingTimerRole ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                      Book Timer Role
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.vpeDualBtn, styles.assignOutlineBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
+                  onPress={() => {
+                    setAssigningTimerRole(true);
+                    setRoleToAssign(null);
+                    setGuestAssignNameInput('');
+                    setSpeakerSearchQuery('');
+                    setShowSpeakerModal(true);
+                  }}
+                >
+                  <Text style={[styles.assignOutlineText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                    Assign
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.bookRoleButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingTimerRole ? 0.85 : 1,
+                  },
+                ]}
+                onPress={() => handleBookTimerInline()}
+                disabled={bookingTimerRole}
+              >
+                {bookingTimerRole ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                    Book Timer Role
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
-            <View style={styles.meetingCardDecoration} />
+            <View pointerEvents="none" style={styles.meetingCardDecoration} />
           </View>
           </View>
 
@@ -1505,7 +1598,7 @@ export default function TimerReportDetails() {
               </Text>
             </View>
           </View>
-          <View style={styles.meetingCardDecoration} />
+          <View pointerEvents="none" style={styles.meetingCardDecoration} />
         </View>
 
         {/* Assigned Timer Section */}
@@ -1732,6 +1825,7 @@ export default function TimerReportDetails() {
                             style={[styles.preparedRoleAssignBtn, { backgroundColor: '#2563eb' }]}
                             onPress={() => {
                               if (!canEditTimerCorner) return;
+                              setAssigningTimerRole(false);
                               setRoleToAssign(role);
                               setGuestAssignNameInput('');
                               setShowSpeakerModal(true);
@@ -2383,7 +2477,7 @@ export default function TimerReportDetails() {
           >
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {roleToAssign ? `Assign ${roleToAssign.role_name}` : 'Select Speaker'}
+                {assigningTimerRole ? 'Assign Timer' : roleToAssign ? `Assign ${roleToAssign.role_name}` : 'Select Speaker'}
               </Text>
               <TouchableOpacity
                 style={styles.closeButton}
@@ -2391,6 +2485,7 @@ export default function TimerReportDetails() {
                   setShowSpeakerModal(false);
                   setSpeakerSearchQuery('');
                   setRoleToAssign(null);
+                  setAssigningTimerRole(false);
                   setGuestAssignNameInput('');
                 }}
               >
@@ -2398,7 +2493,7 @@ export default function TimerReportDetails() {
               </TouchableOpacity>
             </View>
 
-            {roleToAssign && (
+            {roleToAssign && !assigningTimerRole && (
               <View style={[styles.guestAssignBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
                 <Text style={[styles.guestAssignLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
                   Guest (not in list)
@@ -2422,7 +2517,7 @@ export default function TimerReportDetails() {
               </View>
             )}
 
-            {roleToAssign && (
+            {roleToAssign && !assigningTimerRole && (
               <View style={[styles.modalDivider, { backgroundColor: theme.colors.border }]} />
             )}
 
@@ -2465,7 +2560,7 @@ export default function TimerReportDetails() {
                         styles.speakerOption,
                         selectedSpeaker?.id === member.id && { backgroundColor: theme.colors.primary + '20' }
                       ]}
-                      onPress={() => handleAssignCategoryRole(member)}
+                      onPress={() => assigningTimerRole ? handleAssignTimerToMember(member) : handleAssignCategoryRole(member)}
                     >
                       <View style={styles.speakerOptionAvatar}>
                         {member.avatar_url ? (
@@ -3380,6 +3475,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  vpeDualButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  vpeDualBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignOutlineBtn: {
+    borderWidth: 2,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  assignOutlineText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   accessDeniedState: {
     alignItems: 'center',

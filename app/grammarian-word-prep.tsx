@@ -50,9 +50,12 @@ export default function GrammarianWordPrepScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
   const lastSavedSnapshotRef = useRef('');
 
-  const isGrammarianOfDay = () => grammarianOfDay?.assigned_user_id === user?.id;
+  const isAssignedGrammarian = () => grammarianOfDay?.assigned_user_id === user?.id;
+  const canEditWordPrep = () => isAssignedGrammarian() || isVPEClub;
+  const effectiveGrammarianUserId = grammarianOfDay?.assigned_user_id || user?.id || null;
   const firstName = (user?.fullName || '').trim().split(/\s+/).filter(Boolean)[0] || 'there';
 
   const showSavedPopup = () => {
@@ -77,13 +80,31 @@ export default function GrammarianWordPrepScreen() {
     setGrammarianOfDay(data);
   };
 
+  const loadIsVPEClub = async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setIsVPEClub(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('club_profiles')
+      .select('vpe_id')
+      .eq('club_id', user.currentClubId)
+      .maybeSingle();
+    if (error) {
+      console.error('Error loading club VPE:', error);
+      setIsVPEClub(false);
+      return;
+    }
+    setIsVPEClub(data?.vpe_id === user.id);
+  };
+
   const loadWord = useCallback(async () => {
-    if (!meetingId || !user?.id) return;
+    if (!meetingId || !effectiveGrammarianUserId) return;
     const { data, error } = await supabase
       .from('grammarian_word_of_the_day')
       .select('*')
       .eq('meeting_id', meetingId)
-      .eq('grammarian_user_id', user.id)
+      .eq('grammarian_user_id', effectiveGrammarianUserId)
       .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
@@ -104,7 +125,7 @@ export default function GrammarianWordPrepScreen() {
       setMeaning('');
       setUsage('');
     }
-  }, [meetingId, user?.id]);
+  }, [meetingId, effectiveGrammarianUserId]);
 
   const loadAll = useCallback(async () => {
     if (!meetingId || !user?.currentClubId) {
@@ -113,6 +134,7 @@ export default function GrammarianWordPrepScreen() {
     }
     setIsLoading(true);
     await loadGrammarianRole();
+    await loadIsVPEClub();
     await loadWord();
     setIsLoading(false);
   }, [meetingId, user?.currentClubId, loadWord]);
@@ -132,8 +154,8 @@ export default function GrammarianWordPrepScreen() {
     });
 
   const handleSaveWord = async (opts?: { silent?: boolean }) => {
-    if (!isGrammarianOfDay()) {
-      Alert.alert('Access Denied', 'Only the assigned Grammarian can save word of the day.');
+    if (!canEditWordPrep()) {
+      Alert.alert('Access Denied', 'Only the assigned Grammarian or club VPE can save word of the day.');
       return;
     }
     if (!meetingId || !user?.currentClubId) {
@@ -169,7 +191,7 @@ export default function GrammarianWordPrepScreen() {
         const { error } = await supabase.from('grammarian_word_of_the_day').insert({
           meeting_id: meetingId,
           club_id: user.currentClubId,
-          grammarian_user_id: user.id,
+          grammarian_user_id: effectiveGrammarianUserId,
           word: word.trim(),
           part_of_speech: partOfSpeech.trim() || null,
           meaning: meaning.trim() || null,
@@ -195,7 +217,7 @@ export default function GrammarianWordPrepScreen() {
   };
 
   useEffect(() => {
-    if (isLoading || !isGrammarianOfDay() || isSaving) return;
+    if (isLoading || !canEditWordPrep() || isSaving) return;
     const nowSnapshot = currentSnapshot();
     if (!lastSavedSnapshotRef.current) {
       lastSavedSnapshotRef.current = nowSnapshot;
@@ -209,7 +231,7 @@ export default function GrammarianWordPrepScreen() {
   }, [word, partOfSpeech, meaning, usage, isLoading, isSaving]);
 
   const handleClearWord = async () => {
-    if (!isGrammarianOfDay()) return;
+    if (!canEditWordPrep()) return;
     setWord('');
     setPartOfSpeech('');
     setMeaning('');
@@ -250,7 +272,7 @@ export default function GrammarianWordPrepScreen() {
     );
   }
 
-  if (!isGrammarianOfDay()) {
+  if (!canEditWordPrep()) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
@@ -264,7 +286,7 @@ export default function GrammarianWordPrepScreen() {
           <AlertCircle size={48} color={theme.colors.textSecondary} />
           <Text style={[styles.accessDeniedTitle, { color: theme.colors.text }]}>Access Restricted</Text>
           <Text style={[styles.accessDeniedMessage, { color: theme.colors.textSecondary }]}>
-            Only the assigned Grammarian can edit Word of the Day.
+            Only the assigned Grammarian or club VPE can edit Word of the Day.
           </Text>
           <TouchableOpacity
             style={[localStyles.goBackBtn, { backgroundColor: theme.colors.primary, marginTop: 24 }]}

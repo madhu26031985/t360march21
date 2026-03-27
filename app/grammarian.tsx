@@ -993,6 +993,9 @@ export default function GrammarianReport() {
   const isAssignedGrammarian = () => {
     return assignedGrammarian && user && assignedGrammarian.id === user.id;
   };
+  const canEditGrammarianCorner = () => {
+    return isAssignedGrammarian() || isVPEClub;
+  };
 
   const hasAnyDailyElements = () => {
     return Object.values(dailyElements).some(value => value.trim().length > 0);
@@ -1003,7 +1006,7 @@ export default function GrammarianReport() {
   const hasWordOfTheDay = wordOfTheDay.word.trim().length > 0 && wordOfTheDay.is_published;
 
   useEffect(() => {
-    const shouldAnimate = isAssignedGrammarian() && !hasWordOfTheDay;
+    const shouldAnimate = canEditGrammarianCorner() && !hasWordOfTheDay;
 
     if (!shouldAnimate) {
       notebookPulse.setValue(1);
@@ -1026,7 +1029,7 @@ export default function GrammarianReport() {
   }, [wordOfTheDay.word, wordOfTheDay.is_published, assignedGrammarian?.id, user?.id, notebookPulse]);
 
   useEffect(() => {
-    const shouldAnimate = isAssignedGrammarian() && !hasWordOfTheDay;
+    const shouldAnimate = canEditGrammarianCorner() && !hasWordOfTheDay;
 
     if (!shouldAnimate) {
       wordOfTheDayPulse.setValue(1);
@@ -1051,10 +1054,10 @@ export default function GrammarianReport() {
   }, [wordOfTheDay.word, wordOfTheDay.is_published, assignedGrammarian?.id, user?.id, hasWordOfTheDay, wordOfTheDayPulse]);
 
   useEffect(() => {
-    if (isAssignedGrammarian()) {
+    if (canEditGrammarianCorner()) {
       setActiveTab('corner');
     }
-  }, [assignedGrammarian?.id, user?.id]);
+  }, [assignedGrammarian?.id, user?.id, isVPEClub]);
 
   const hasFeedbackContent = () => {
     return feedbackForm.excellent_usage.trim().length > 0 ||
@@ -1116,7 +1119,7 @@ export default function GrammarianReport() {
 
   const UsageCard = ({ type, label, color }: { type: keyof UsageTracking; label: string; color: string }) => {
     const count = usageTracking[type] || 0;
-    const canEdit = isAssignedGrammarian();
+    const canEdit = canEditGrammarianCorner();
 
     return (
       <View style={[styles.usageCard, { backgroundColor: theme.colors.surface }]}>
@@ -1277,7 +1280,7 @@ export default function GrammarianReport() {
             <View style={[styles.noAssignmentState, styles.noAssignmentStateInCard]}>
             <BookOpen size={64} color={theme.colors.textSecondary} />
             <Text style={[styles.noAssignmentSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Love good words and great grammar?{'\n'}This role is waiting for you!
+              Love good words and great grammar?
             </Text>
             {isVPEClub ? (
               <View style={styles.noAssignmentButtonsRow}>
@@ -1298,7 +1301,7 @@ export default function GrammarianReport() {
                     <ActivityIndicator color="#ffffff" size="small" />
                   ) : (
                     <Text style={[styles.bookRoleButtonText, styles.vpeRoleButtonText]} maxFontSizeMultiplier={1.3}>
-                      Book Grammarian Role
+                      Book Grammarian
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -1338,7 +1341,7 @@ export default function GrammarianReport() {
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
                   <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                    Book Grammarian Role
+                    Book Grammarian
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1590,7 +1593,7 @@ export default function GrammarianReport() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian Report</Text>
-        {isAssignedGrammarian() ? (
+        {canEditGrammarianCorner() ? (
           <TouchableOpacity
             style={styles.headerInfoButton}
             onPress={() => setShowGrammarianInfoModal(true)}
@@ -1674,7 +1677,7 @@ export default function GrammarianReport() {
 
         {/* Tab Navigation */}
         <View style={[styles.tabContainer, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-          {isAssignedGrammarian() && (
+          {canEditGrammarianCorner() && (
             <TouchableOpacity
               style={[
                 styles.tab,
@@ -1714,7 +1717,7 @@ export default function GrammarianReport() {
 
         {/* Tab Content */}
         <View style={styles.tabContentWrapper}>
-        {isAssignedGrammarian() && activeTab === 'corner' ? (
+        {canEditGrammarianCorner() && activeTab === 'corner' ? (
           <>
             {/* Pre-meeting shortcuts for assigned Grammarian */}
             <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface }]}>
@@ -1892,7 +1895,7 @@ export default function GrammarianReport() {
             </View>
 
             {/* Inline Live meeting panel */}
-            {isAssignedGrammarian() && (
+            {canEditGrammarianCorner() && (
               <View style={styles.inlineLiveMeetingPanel}>
                 <GrammarianNotesScreen
                   variant="live-inline"
@@ -1905,7 +1908,7 @@ export default function GrammarianReport() {
             {/* Grammarian role guidance removed (requested by user). */}
 
         {/* Daily content placeholder for non-grammarians */}
-        {!isAssignedGrammarian() && !hasAnyPublishedDailyContent() && (
+        {!canEditGrammarianCorner() && !hasAnyPublishedDailyContent() && (
           <View style={styles.wordPlaceholderContainer}>
             <View style={[styles.wordPlaceholderIcon, { backgroundColor: theme.colors.primary + '15' }]}>
               <BookOpen size={32} color={theme.colors.primary} />
@@ -1923,7 +1926,7 @@ export default function GrammarianReport() {
 
 
         {/* Member Selection and Usage Tracking - Only show if daily elements are set */}
-        {isAssignedGrammarian() && hasAnyDailyElements() && (
+        {canEditGrammarianCorner() && hasAnyDailyElements() && (
           <>
             {/* Member Selection */}
             <View style={[styles.memberSection, { backgroundColor: theme.colors.surface }]}>
@@ -2043,7 +2046,7 @@ export default function GrammarianReport() {
           ]}
         >
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
-            {isAssignedGrammarian() && (
+            {canEditGrammarianCorner() && (
               <>
                 <TouchableOpacity
                   style={styles.quickActionItem}
@@ -3390,10 +3393,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   noAssignmentSubtext: {
-    fontSize: 16,
+    fontSize: 14,
     marginTop: 12,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
     marginBottom: 24,
   },
   bookRoleButton: {

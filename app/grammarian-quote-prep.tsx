@@ -34,8 +34,11 @@ export default function GrammarianQuotePrepScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
 
-  const isGrammarianOfDay = () => grammarianOfDay?.assigned_user_id === user?.id;
+  const isAssignedGrammarian = () => grammarianOfDay?.assigned_user_id === user?.id;
+  const canEditQuotePrep = () => isAssignedGrammarian() || isVPEClub;
+  const effectiveGrammarianUserId = grammarianOfDay?.assigned_user_id || user?.id || null;
 
   const showSavedPopup = () => {
     setShowSaveConfirmation(true);
@@ -59,13 +62,31 @@ export default function GrammarianQuotePrepScreen() {
     setGrammarianOfDay(data);
   };
 
+  const loadIsVPEClub = async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setIsVPEClub(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('club_profiles')
+      .select('vpe_id')
+      .eq('club_id', user.currentClubId)
+      .maybeSingle();
+    if (error) {
+      console.error('Error loading club VPE:', error);
+      setIsVPEClub(false);
+      return;
+    }
+    setIsVPEClub(data?.vpe_id === user.id);
+  };
+
   const loadQuote = useCallback(async () => {
-    if (!meetingId || !user?.id) return;
+    if (!meetingId || !effectiveGrammarianUserId) return;
     const { data, error } = await supabase
       .from('grammarian_quote_of_the_day')
       .select('*')
       .eq('meeting_id', meetingId)
-      .eq('grammarian_user_id', user.id)
+      .eq('grammarian_user_id', effectiveGrammarianUserId)
       .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
@@ -82,7 +103,7 @@ export default function GrammarianQuotePrepScreen() {
       setQuote('');
       setQuoteMeaning('');
     }
-  }, [meetingId, user?.id]);
+  }, [meetingId, effectiveGrammarianUserId]);
 
   const loadAll = useCallback(async () => {
     if (!meetingId || !user?.currentClubId) {
@@ -91,6 +112,7 @@ export default function GrammarianQuotePrepScreen() {
     }
     setIsLoading(true);
     await loadGrammarianRole();
+    await loadIsVPEClub();
     await loadQuote();
     setIsLoading(false);
   }, [meetingId, user?.currentClubId, loadQuote]);
@@ -102,8 +124,8 @@ export default function GrammarianQuotePrepScreen() {
   );
 
   const handleSave = async () => {
-    if (!isGrammarianOfDay()) {
-      Alert.alert('Access Denied', 'Only the assigned Grammarian can save quote of the day.');
+    if (!canEditQuotePrep()) {
+      Alert.alert('Access Denied', 'Only the assigned Grammarian or club VPE can save quote of the day.');
       return;
     }
     if (!meetingId || !user?.currentClubId) {
@@ -137,7 +159,7 @@ export default function GrammarianQuotePrepScreen() {
         const { error } = await supabase.from('grammarian_quote_of_the_day').insert({
           meeting_id: meetingId,
           club_id: user.currentClubId,
-          grammarian_user_id: user.id,
+          grammarian_user_id: effectiveGrammarianUserId,
           quote: quote.trim(),
           meaning: quoteMeaning.trim() || null,
           is_published: true,
@@ -160,7 +182,7 @@ export default function GrammarianQuotePrepScreen() {
   };
 
   const handleClear = async () => {
-    if (!isGrammarianOfDay()) return;
+    if (!canEditQuotePrep()) return;
     setQuote('');
     setQuoteMeaning('');
     if (quoteOfTheDay) {
@@ -197,7 +219,7 @@ export default function GrammarianQuotePrepScreen() {
     );
   }
 
-  if (!isGrammarianOfDay()) {
+  if (!canEditQuotePrep()) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
@@ -211,7 +233,7 @@ export default function GrammarianQuotePrepScreen() {
           <AlertCircle size={48} color={theme.colors.textSecondary} />
           <Text style={[styles.accessDeniedTitle, { color: theme.colors.text }]}>Access Restricted</Text>
           <Text style={[styles.accessDeniedMessage, { color: theme.colors.textSecondary }]}>
-            Only the assigned Grammarian can edit Quote of the Day.
+            Only the assigned Grammarian or club VPE can edit Quote of the Day.
           </Text>
           <TouchableOpacity
             style={[localStyles.goBackBtn, { backgroundColor: theme.colors.primary, marginTop: 24 }]}

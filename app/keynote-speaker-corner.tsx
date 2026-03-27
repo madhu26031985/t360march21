@@ -128,6 +128,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   const [keynoteSpeaker, setKeynoteSpeaker] = useState<KeynoteSpeaker | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isExComm, setIsExComm] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
   const [showCongratsModal, setShowCongratsModal] = useState(false);
   const [bookingKeynoteRole, setBookingKeynoteRole] = useState(false);
   const [cornerKeynoteTitle, setCornerKeynoteTitle] = useState('');
@@ -329,6 +330,18 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
       }
 
       setIsExComm(data?.role === 'excomm');
+
+      const { data: vpeData, error: vpeError } = await supabase
+        .from('club_profiles')
+        .select('vpe_id')
+        .eq('club_id', user.currentClubId)
+        .maybeSingle();
+      if (vpeError) {
+        console.error('Error loading club VPE:', vpeError);
+        setIsVPEClub(false);
+      } else {
+        setIsVPEClub(vpeData?.vpe_id === user.id);
+      }
     } catch (error) {
       console.error('Error loading user role:', error);
     }
@@ -793,10 +806,9 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
           <>
             <View
               style={[
-                styles.meetingCard,
+                styles.noAssignmentNotionCard,
                 {
                   backgroundColor: theme.colors.surface,
-                  borderWidth: 1,
                   borderColor: theme.colors.border,
                 },
               ]}
@@ -833,10 +845,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                   </Text>
                 </View>
               </View>
-              <View style={styles.meetingCardDecoration} />
-            </View>
-
-            <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
+              <View style={[styles.noAssignmentDivider, { backgroundColor: theme.colors.border }]} />
               {!keynoteSpeaker?.assigned_user_id ? (
                 <View style={styles.noSpeakerCard}>
                   <View style={[styles.noSpeakerIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
@@ -845,25 +854,58 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                   <Text style={[styles.noSpeakerText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                     The stage is yours — make it count.
                   </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.bookSpeakerButton,
-                      {
-                        backgroundColor: theme.colors.primary,
-                        opacity: bookingKeynoteRole ? 0.85 : 1,
-                      },
-                    ]}
-                    onPress={() => handleBookKeynoteSpeakerInline()}
-                    disabled={bookingKeynoteRole}
-                  >
-                    {bookingKeynoteRole ? (
-                      <ActivityIndicator color="#ffffff" size="small" />
-                    ) : (
-                      <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
-                        Book Keynote Speaker Role
-                      </Text>
-                    )}
-                  </TouchableOpacity>
+                  {isVPEClub ? (
+                    <View style={styles.vpeDualButtonsRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.bookSpeakerButton,
+                          styles.vpeDualBtn,
+                          {
+                            backgroundColor: theme.colors.primary,
+                            opacity: bookingKeynoteRole ? 0.85 : 1,
+                          },
+                        ]}
+                        onPress={() => handleBookKeynoteSpeakerInline()}
+                        disabled={bookingKeynoteRole}
+                      >
+                        {bookingKeynoteRole ? (
+                          <ActivityIndicator color="#ffffff" size="small" />
+                        ) : (
+                          <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
+                            Book Keynote Speaker Role
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.vpeDualBtn, styles.assignOutlineBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
+                        onPress={() => router.push({ pathname: '/admin/manage-meeting-roles', params: { meetingId } })}
+                      >
+                        <Text style={[styles.assignOutlineText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                          Assign
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.bookSpeakerButton,
+                        {
+                          backgroundColor: theme.colors.primary,
+                          opacity: bookingKeynoteRole ? 0.85 : 1,
+                        },
+                      ]}
+                      onPress={() => handleBookKeynoteSpeakerInline()}
+                      disabled={bookingKeynoteRole}
+                    >
+                      {bookingKeynoteRole ? (
+                        <ActivityIndicator color="#ffffff" size="small" />
+                      ) : (
+                        <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
+                          Book Keynote Speaker Role
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : (
                 <View style={styles.edSpeakerLoadingRow}>
@@ -873,6 +915,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                   </Text>
                 </View>
               )}
+              <View style={styles.meetingCardDecoration} />
             </View>
           </>
         )}
@@ -1533,6 +1576,24 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textAlign: 'center',
   },
+  noAssignmentNotionCard: {
+    marginHorizontal: 13,
+    marginTop: 13,
+    borderRadius: 13,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  noAssignmentDivider: {
+    height: 1,
+    marginTop: 14,
+  },
   bookSpeakerButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
@@ -1552,6 +1613,26 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     letterSpacing: 0.3,
     textAlign: 'center',
+  },
+  vpeDualButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  vpeDualBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignOutlineBtn: {
+    borderWidth: 2,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  assignOutlineText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   speechContent: {
     marginTop: 16,

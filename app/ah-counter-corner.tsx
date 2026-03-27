@@ -87,6 +87,7 @@ export default function AhCounterCorner() {
   const hasLoadedOnce = useRef<boolean>(false);
   const [reportStats, setReportStats] = useState({ totalSpeakers: 0, completedReports: 0, selectedMembers: 0 });
   const [isExComm, setIsExComm] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const isAssignedAhCounter = !!(assignedAhCounter && user?.id && assignedAhCounter.id === user.id);
   const [isPublished, setIsPublished] = useState(false);
@@ -170,6 +171,7 @@ export default function AhCounterCorner() {
         loadAssignedAhCounter(),
         loadReportStats(),
         loadUserRole(),
+        loadIsVPEClub(),
         loadReportEntries(),
         loadPublishStatus(),
       ]);
@@ -240,6 +242,24 @@ export default function AhCounterCorner() {
     } catch (error) {
       console.error('Error loading Ah Counter:', error);
     }
+  };
+
+  const loadIsVPEClub = async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setIsVPEClub(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('club_profiles')
+      .select('vpe_id')
+      .eq('club_id', user.currentClubId)
+      .maybeSingle();
+    if (error) {
+      console.error('Error loading club VPE:', error);
+      setIsVPEClub(false);
+      return;
+    }
+    setIsVPEClub(data?.vpe_id === user.id);
   };
 
   const loadReportStats = async () => {
@@ -682,25 +702,58 @@ export default function AhCounterCorner() {
             <Text style={[styles.noAssignmentSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               It's time to become — Ah Counter now. 😊
             </Text>
-            <TouchableOpacity
-              style={[
-                styles.bookRoleButton,
-                {
-                  backgroundColor: theme.colors.primary,
-                  opacity: bookingAhCounterRole ? 0.85 : 1,
-                },
-              ]}
-              onPress={() => handleBookAhCounterInline()}
-              disabled={bookingAhCounterRole}
-            >
-              {bookingAhCounterRole ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                  Book Ah Counter Role
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isVPEClub ? (
+              <View style={styles.vpeDualButtonsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.bookRoleButton,
+                    styles.vpeDualBtn,
+                    {
+                      backgroundColor: theme.colors.primary,
+                      opacity: bookingAhCounterRole ? 0.85 : 1,
+                    },
+                  ]}
+                  onPress={() => handleBookAhCounterInline()}
+                  disabled={bookingAhCounterRole}
+                >
+                  {bookingAhCounterRole ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                      Book Ah Counter Role
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.vpeDualBtn, styles.assignOutlineBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
+                  onPress={() => router.push({ pathname: '/admin/manage-meeting-roles', params: { meetingId: meeting?.id } })}
+                >
+                  <Text style={[styles.assignOutlineText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                    Assign
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.bookRoleButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingAhCounterRole ? 0.85 : 1,
+                  },
+                ]}
+                onPress={() => handleBookAhCounterInline()}
+                disabled={bookingAhCounterRole}
+              >
+                {bookingAhCounterRole ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                    Book Ah Counter Role
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
             <View style={styles.meetingCardDecoration} />
           </View>
@@ -1966,6 +2019,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 20,
+  },
+  vpeDualButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  vpeDualBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignOutlineBtn: {
+    borderWidth: 2,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  assignOutlineText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   bookRoleButton: {
     paddingHorizontal: 24,
