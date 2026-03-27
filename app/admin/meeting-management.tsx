@@ -9,6 +9,8 @@ import { ArrowLeft, Plus, Calendar, Clock, MapPin, Users, CreditCard as Edit3, X
 import { RotateCcw } from 'lucide-react-native';
 import { Platform } from 'react-native';
 
+const FOOTER_NAV_ICON_SIZE = 15;
+
 interface Meeting {
   id: string;
   meeting_title: string;
@@ -302,8 +304,8 @@ export default function MeetingManagement() {
     if (!meeting.meeting_date) {
       return {
         text: 'Open',
-        textColor: '#10b981',
-        backgroundColor: '#10b981' + '20',
+        textColor: '#374151',
+        backgroundColor: '#f3f4f6',
       };
     }
 
@@ -315,16 +317,16 @@ export default function MeetingManagement() {
     if (daysToGo > 0) {
       return {
         text: `In ${daysToGo} days`,
-        textColor: '#ca8a04',
-        backgroundColor: '#fef3c7',
+        textColor: '#374151',
+        backgroundColor: '#f3f4f6',
       };
     }
 
     if (daysToGo < 0) {
       return {
         text: 'Completed',
-        textColor: '#16a34a',
-        backgroundColor: '#dcfce7',
+        textColor: '#374151',
+        backgroundColor: '#f3f4f6',
       };
     }
 
@@ -343,16 +345,16 @@ export default function MeetingManagement() {
       if (now > meetingEnd) {
         return {
           text: 'Completed',
-          textColor: '#16a34a',
-          backgroundColor: '#dcfce7',
+          textColor: '#374151',
+          backgroundColor: '#f3f4f6',
         };
       }
     }
 
     return {
       text: 'Today',
-      textColor: '#dc2626',
-      backgroundColor: '#fee2e2',
+      textColor: '#374151',
+      backgroundColor: '#f3f4f6',
     };
   };
 
@@ -413,11 +415,11 @@ export default function MeetingManagement() {
           <>
             <View style={styles.actionButtonContainer}>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: '#f0f9ff' }]}
+                style={[styles.actionButton, { backgroundColor: '#f3f4f6' }]}
                 onPress={() => router.push(`/admin/manage-meeting-roles?meetingId=${meeting.id}`)}
                 activeOpacity={0.7}
               >
-                <Users size={16} color="#3b82f6" />
+                <Users size={16} color={theme.colors.textSecondary} />
               </TouchableOpacity>
               <Text style={[styles.actionButtonLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 Manage Roles
@@ -426,11 +428,11 @@ export default function MeetingManagement() {
 
             <View style={styles.actionButtonContainer}>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: '#f0fdf4' }]}
+                style={[styles.actionButton, { backgroundColor: '#f3f4f6' }]}
                 onPress={() => handleEditMeeting(meeting)}
                 activeOpacity={0.7}
               >
-                <Edit3 size={16} color="#10b981" />
+                <Edit3 size={16} color={theme.colors.textSecondary} />
               </TouchableOpacity>
               <Text style={[styles.actionButtonLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 Edit Meeting
@@ -439,11 +441,11 @@ export default function MeetingManagement() {
 
             <View style={styles.actionButtonContainer}>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: '#fef2f2' }]}
+                style={[styles.actionButton, { backgroundColor: '#f3f4f6' }]}
                 onPress={() => handleCloseMeeting(meeting)}
                 activeOpacity={0.7}
               >
-                <X size={16} color="#ef4444" />
+                <X size={16} color={theme.colors.textSecondary} />
               </TouchableOpacity>
               <Text style={[styles.actionButtonLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 Close Meeting
@@ -453,11 +455,11 @@ export default function MeetingManagement() {
         ) : (
           <View style={styles.actionButtonContainer}>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#f0fdf4' }]}
+              style={[styles.actionButton, { backgroundColor: '#f3f4f6' }]}
               onPress={() => handleReopenMeeting(meeting)}
               activeOpacity={0.7}
             >
-              <RotateCcw size={16} color="#10b981" />
+              <RotateCcw size={16} color={theme.colors.textSecondary} />
             </TouchableOpacity>
             <Text style={[styles.actionButtonLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Reopen
@@ -490,26 +492,10 @@ export default function MeetingManagement() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Open Meetings Limit Warning */}
-        {meetings.filter(m => m.meeting_status === 'open').length >= 2 && (
-          <View style={[styles.warningCard, { backgroundColor: '#fef3c7' }]}>
-            <View style={styles.warningContent}>
-              <Text style={[styles.warningTitle, { color: '#f59e0b' }]} maxFontSizeMultiplier={1.3}>
-                {meetings.filter(m => m.meeting_status === 'open').length === 3 ? 'Maximum Limit Reached' : 'Approaching Limit'}
-              </Text>
-              <Text style={[styles.warningText, { color: '#92400e' }]} maxFontSizeMultiplier={1.3}>
-                {meetings.filter(m => m.meeting_status === 'open').length === 3 
-                  ? 'You have reached the maximum of 3 open meetings. Close a meeting to create a new one.'
-                  : `You have ${meetings.filter(m => m.meeting_status === 'open').length} open meetings. Maximum allowed is 3.`
-                }
-              </Text>
-            </View>
-          </View>
-        )}
-
+        <View style={[styles.managementMasterBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         {/* Club Card */}
         {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.clubCard, { backgroundColor: 'transparent' }]}>
             <View style={styles.clubHeader}>
               <View style={[styles.clubIcon, { backgroundColor: theme.colors.primary + '20' }]}>
                 <Building2 size={20} color={theme.colors.primary} />
@@ -537,19 +523,13 @@ export default function MeetingManagement() {
         )}
 
         {/* Create Meeting Hero */}
-        <View style={[styles.createMeetingHeroWrap, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <View style={[styles.createMeetingHeroWrap, { backgroundColor: 'transparent', borderColor: theme.colors.border }]}>
           <TouchableOpacity
             style={[
               styles.createMeetingHeroButton,
               {
-                backgroundColor:
-                  meetings.filter(m => m.meeting_status === 'open').length >= 3
-                    ? theme.colors.surface
-                    : '#0ea5e9' + '15',
-                borderColor:
-                  meetings.filter(m => m.meeting_status === 'open').length >= 3
-                    ? theme.colors.border
-                    : '#0ea5e9' + '40',
+                backgroundColor: theme.colors.background,
+                borderColor: theme.colors.border,
               },
             ]}
             onPress={handleAddMeeting}
@@ -559,8 +539,8 @@ export default function MeetingManagement() {
             accessibilityHint="Create a new meeting"
           >
             <View style={styles.createMeetingHeroRow}>
-              <View style={[styles.createMeetingHeroIconCircle, { backgroundColor: '#0ea5e9' + '2a' }]}>
-                <Plus size={18} color={theme.colors.primary} />
+              <View style={[styles.createMeetingHeroIconCircle, { backgroundColor: theme.colors.surface }]}>
+                <Plus size={18} color={theme.colors.textSecondary} />
               </View>
               <View style={styles.createMeetingHeroTextCol}>
                 <Text style={[styles.createMeetingHeroTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
@@ -585,25 +565,25 @@ export default function MeetingManagement() {
             style={[
               styles.tab,
               {
-                backgroundColor: selectedTab === 'open' ? '#10b981' : theme.colors.surface,
-                borderColor: selectedTab === 'open' ? '#10b981' : theme.colors.border,
+                backgroundColor: selectedTab === 'open' ? theme.colors.background : theme.colors.surface,
+                borderColor: theme.colors.border,
               }
             ]}
             onPress={() => setSelectedTab('open')}
           >
             <Text style={[
               styles.tabText,
-              { color: selectedTab === 'open' ? '#ffffff' : theme.colors.text }
+              { color: theme.colors.text }
             ]} maxFontSizeMultiplier={1.3}>
               Open Meetings
             </Text>
             <View style={[
               styles.tabCount,
-              { backgroundColor: selectedTab === 'open' ? 'rgba(255, 255, 255, 0.2)' : '#10b981' + '20' }
+              { backgroundColor: theme.colors.border }
             ]}>
               <Text style={[
                 styles.tabCountText,
-                { color: selectedTab === 'open' ? '#ffffff' : '#10b981' }
+                { color: theme.colors.textSecondary }
               ]} maxFontSizeMultiplier={1.3}>
                 {meetings.filter(m => m.meeting_status === 'open').length}
               </Text>
@@ -614,25 +594,25 @@ export default function MeetingManagement() {
             style={[
               styles.tab,
               {
-                backgroundColor: selectedTab === 'closed' ? '#6b7280' : theme.colors.surface,
-                borderColor: selectedTab === 'closed' ? '#6b7280' : theme.colors.border,
+                backgroundColor: selectedTab === 'closed' ? theme.colors.background : theme.colors.surface,
+                borderColor: theme.colors.border,
               }
             ]}
             onPress={() => setSelectedTab('closed')}
           >
             <Text style={[
               styles.tabText,
-              { color: selectedTab === 'closed' ? '#ffffff' : theme.colors.text }
+              { color: theme.colors.text }
             ]} maxFontSizeMultiplier={1.3}>
               Closed Meetings
             </Text>
             <View style={[
               styles.tabCount,
-              { backgroundColor: selectedTab === 'closed' ? 'rgba(255, 255, 255, 0.2)' : '#6b7280' + '20' }
+              { backgroundColor: theme.colors.border }
             ]}>
               <Text style={[
                 styles.tabCountText,
-                { color: selectedTab === 'closed' ? '#ffffff' : '#6b7280' }
+                { color: theme.colors.textSecondary }
               ]} maxFontSizeMultiplier={1.3}>
                 {meetings.filter(m => m.meeting_status === 'close').length}
               </Text>
@@ -665,6 +645,7 @@ export default function MeetingManagement() {
             </View>
           )}
         </View>
+        </View>
 
         <View style={styles.navSpacer} />
 
@@ -675,8 +656,8 @@ export default function MeetingManagement() {
               style={styles.navItem}
               onPress={() => router.push('/(tabs)')}
             >
-              <View style={[styles.navIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Home size={16} color="#3b82f6" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
             </TouchableOpacity>
@@ -685,8 +666,8 @@ export default function MeetingManagement() {
               style={styles.navItem}
               onPress={() => router.push('/(tabs)/club')}
             >
-              <View style={[styles.navIcon, { backgroundColor: '#FEF3E7' }]}>
-                <Users size={16} color="#f59e0b" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
             </TouchableOpacity>
@@ -695,8 +676,8 @@ export default function MeetingManagement() {
               style={styles.navItem}
               onPress={() => router.push('/(tabs)/meetings')}
             >
-              <View style={[styles.navIcon, { backgroundColor: '#E0F2FE' }]}>
-                <Calendar size={16} color="#0ea5e9" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
             </TouchableOpacity>
@@ -705,8 +686,8 @@ export default function MeetingManagement() {
               style={styles.navItem}
               onPress={() => router.push('/(tabs)/settings')}
             >
-              <View style={[styles.navIcon, { backgroundColor: '#F3E8FF' }]}>
-                <Settings size={16} color="#8b5cf6" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
             </TouchableOpacity>
@@ -716,8 +697,8 @@ export default function MeetingManagement() {
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)/admin')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#FFE5E5' }]}>
-                  <Settings size={16} color="#dc2626" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
                 <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
               </TouchableOpacity>
@@ -775,12 +756,12 @@ const styles = StyleSheet.create({
   createMeetingHeroWrap: {
     marginHorizontal: 16,
     marginTop: 12,
-    marginBottom: 14,
-    borderRadius: 16,
-    padding: 1,
+    marginBottom: 10,
+    borderRadius: 12,
+    padding: 0,
   },
   createMeetingHeroButton: {
-    borderRadius: 15,
+    borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 16,
     borderWidth: 1,
@@ -819,19 +800,20 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  managementMasterBox: {
+    marginHorizontal: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
   clubCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
+    marginHorizontal: 0,
+    marginTop: 0,
+    borderRadius: 0,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   clubHeader: {
     flexDirection: 'row',
@@ -877,7 +859,8 @@ const styles = StyleSheet.create({
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 6,
+    paddingBottom: 8,
     gap: 8,
   },
   tab: {
@@ -887,16 +870,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 14,
+    borderWidth: 1,
   },
   tabText: {
     fontSize: 13,
@@ -916,8 +891,8 @@ const styles = StyleSheet.create({
   },
   meetingsSection: {
     paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 32,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
   warningCard: {
     marginHorizontal: 16,
@@ -957,14 +932,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   meetingInfo: {
     marginBottom: 16,
@@ -1034,14 +1003,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   actionButtonLabel: {
     fontSize: 11,

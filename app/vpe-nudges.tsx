@@ -7,8 +7,6 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-  Platform,
-  Share,
   Modal,
   Pressable,
 } from 'react-native';
@@ -38,13 +36,17 @@ const VPE_CARD_SUBTITLE = 'Nudge members to book the role';
 const VPE_DAILY_HINT = `New message daily, powered by live data.
 Sent today? Come back tomorrow.`;
 
-const VPE_INTRO_BLURB = `VPE Nudge enables you to send smart daily reminders to your club based on open and filled roles.
-Consistent nudges encourage members to act early and ensure seamless role booking.
+const VPE_INTRO_BLURB = `VPE Nudge
 
-Each message is intelligently crafted using real-time data, with a focus on key roles like TMOD, General Evaluator, Table Topics Master, Tag Roles, Speakers, and Evaluators.
+Stay ahead with smart, daily reminders tailored to your club.
 
-Get a fresh, data-driven message every day.
-Once today's message is sent, return tomorrow for the next update.`;
+• Get data-driven nudges based on open and filled roles
+• Encourage members to act early and avoid last-minute gaps
+• Focus on key roles — TMOD, General Evaluator, Table Topics Master, Tag Roles, Speakers & Evaluators
+• Receive a fresh, intelligently crafted message every day
+• Built using real-time club data for maximum relevance
+
+⏳ Once today's message is sent, check back tomorrow for the next update.`;
 
 export default function VPENudgesScreen() {
   const { theme } = useTheme();
@@ -171,38 +173,15 @@ export default function VPENudgesScreen() {
   );
 
   /**
-   * Avoid `whatsapp://send?text=` — many platforms mishandle UTF-8 in URL params and show ⯑ for emojis.
-   * System share passes the string as plain text so WhatsApp receives full Unicode (same as Copy).
+   * Open WhatsApp directly with the prefilled text so VPE can send to any contact/group.
    */
   const shareWhatsApp = useCallback(async (text: string) => {
     try {
-      if (Platform.OS === 'ios' || Platform.OS === 'android') {
-        await Share.share(
-          {
-            message: text,
-            title: 'Share to WhatsApp',
-          },
-          { subject: 'Club meeting reminder' }
-        );
-        return;
-      }
-
-      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-        try {
-          await navigator.share({ text });
-          return;
-        } catch (e: unknown) {
-          if (e && typeof e === 'object' && 'name' in e && (e as { name: string }).name === 'AbortError') {
-            return;
-          }
-        }
-      }
-
-      await Linking.openURL(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`);
+      await Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`);
     } catch {
       Alert.alert(
-        'Share',
-        'Could not open sharing. Use Copy and paste into WhatsApp — emojis will show correctly.'
+        'WhatsApp',
+        'Could not open WhatsApp. Use Copy and paste into WhatsApp.'
       );
     }
   }, []);
@@ -271,6 +250,13 @@ export default function VPENudgesScreen() {
               {VPE_INTRO_BLURB}
             </Text>
           </ScrollView>
+          <TouchableOpacity
+            style={[styles.infoModalButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => setShowInfoModal(false)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.infoModalButtonText} maxFontSizeMultiplier={1.2}>Got it</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -278,13 +264,14 @@ export default function VPENudgesScreen() {
 
   const headerInfoButton = (
     <TouchableOpacity
-      style={styles.headerIconBtn}
+      style={[styles.headerInfoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
       onPress={() => setShowInfoModal(true)}
       hitSlop={12}
       accessibilityRole="button"
       accessibilityLabel="About VPE Nudge"
+      activeOpacity={0.8}
     >
-      <Info size={22} color={theme.colors.text} />
+      <Info size={18} color="#6E839F" />
     </TouchableOpacity>
   );
 
@@ -467,6 +454,22 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   headerIconBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  headerInfoButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    shadowColor: '#93A7BF',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 1,
+  },
   headerTitle: { fontSize: 17, fontWeight: '700', flex: 1, textAlign: 'center' },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 32 },
@@ -535,6 +538,20 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 22,
   },
+  infoModalButton: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 16,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoModalButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   vpeMessageCard: {
     borderRadius: 12,
     borderWidth: 1,
@@ -566,7 +583,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   vpeMessageSendBtn: {
-    backgroundColor: '#111111',
+    backgroundColor: '#0a66c2',
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,

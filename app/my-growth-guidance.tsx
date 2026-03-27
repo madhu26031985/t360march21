@@ -9,6 +9,8 @@ import { ArrowLeft, Mail, Phone, CheckCircle2, UserX, Copy, UsersRound, Info, X,
 import { useCallback } from 'react';
 import * as Clipboard from 'expo-clipboard';
 
+const FOOTER_NAV_ICON_SIZE = 15;
+
 interface ContactPerson {
   id: string;
   full_name: string;
@@ -17,12 +19,19 @@ interface ContactPerson {
   avatar_url: string | null;
 }
 
+interface VpeContactInfo {
+  firstName: string;
+  phoneNumber: string | null;
+  clubName: string;
+}
+
 export default function MyGrowthGuidance() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [mentor, setMentor] = useState<ContactPerson | null>(null);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [vpeContact, setVpeContact] = useState<VpeContactInfo | null>(null);
 
   useEffect(() => {
     if (user?.currentClubId && user?.id) {
@@ -74,9 +83,40 @@ export default function MyGrowthGuidance() {
       } else {
         setMentor(null);
       }
+
+      const [{ data: clubProfile }, { data: clubRow }] = await Promise.all([
+        supabase
+          .from('club_profiles')
+          .select('vpe_id')
+          .eq('club_id', user.currentClubId)
+          .maybeSingle(),
+        supabase
+          .from('clubs')
+          .select('name')
+          .eq('id', user.currentClubId)
+          .maybeSingle(),
+      ]);
+
+      const vpeId = (clubProfile as any)?.vpe_id as string | undefined;
+      const clubName = ((clubRow as any)?.name as string | undefined)?.trim() || 'Your Club';
+
+      if (vpeId) {
+        const { data: vpeProfile } = await supabase
+          .from('app_user_profiles')
+          .select('full_name, phone_number')
+          .eq('id', vpeId)
+          .maybeSingle();
+        const fullName = ((vpeProfile as any)?.full_name as string | undefined)?.trim() || 'VPE';
+        const firstName = fullName.split(/\s+/).filter(Boolean)[0] || 'VPE';
+        const phoneNumber = ((vpeProfile as any)?.phone_number as string | undefined)?.trim() || null;
+        setVpeContact({ firstName, phoneNumber, clubName });
+      } else {
+        setVpeContact({ firstName: 'VPE', phoneNumber: null, clubName });
+      }
     } catch (err) {
       console.error('Error loading mentor data:', err);
       setMentor(null);
+      setVpeContact(null);
     } finally {
       setLoading(false);
     }
@@ -101,6 +141,23 @@ export default function MyGrowthGuidance() {
       .slice(0, 2);
   };
 
+  const handleContactVpe = useCallback(async () => {
+    const vpeFirstName = vpeContact?.firstName || 'VPE';
+    const yourFirstName = (user?.fullName || '').trim().split(/\s+/).filter(Boolean)[0] || 'Member';
+    const clubName = vpeContact?.clubName || 'Your Club';
+    const phoneDigits = (vpeContact?.phoneNumber || '').replace(/[^0-9]/g, '') || '';
+
+    router.push({
+      pathname: '/contact-vpe',
+      params: {
+        vpeFirstName,
+        vpePhone: phoneDigits,
+        yourFirstName,
+        clubName,
+      },
+    });
+  }, [vpeContact, user?.fullName]);
+
   const mentorBenefits = [
     'Speech preparation',
     'Evaluations & feedback',
@@ -116,8 +173,12 @@ export default function MyGrowthGuidance() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>My Mentor</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => setShowInfoModal(true)}>
-          <Info size={24} color={theme.colors.primary} />
+        <TouchableOpacity
+          style={[styles.infoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
+          onPress={() => setShowInfoModal(true)}
+          activeOpacity={0.8}
+        >
+          <Info size={18} color="#6E839F" />
         </TouchableOpacity>
       </View>
 
@@ -210,9 +271,15 @@ export default function MyGrowthGuidance() {
               <Text style={[styles.emptyTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Your Toastmasters buddy awaits! 👋
               </Text>
-              <Text style={[styles.emptyDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                A mentor helps you learn faster, speak better, and feel at home. Ping your VPE to get your mentor today! 🤝🌱
-              </Text>
+              <TouchableOpacity
+                style={[styles.emptyCtaButton, { backgroundColor: theme.colors.primary }]}
+                onPress={handleContactVpe}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.emptyCtaButtonText} maxFontSizeMultiplier={1.3}>
+                  Contact VPE
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -225,8 +292,8 @@ export default function MyGrowthGuidance() {
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#E8F4FD' }]}>
-                  <Home size={16} color="#3b82f6" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
                 <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
               </TouchableOpacity>
@@ -235,8 +302,8 @@ export default function MyGrowthGuidance() {
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)/club')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#FEF3E7' }]}>
-                  <Users size={16} color="#f59e0b" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
                 <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
               </TouchableOpacity>
@@ -245,8 +312,8 @@ export default function MyGrowthGuidance() {
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)/meetings')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#E0F2FE' }]}>
-                  <Calendar size={16} color="#0ea5e9" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
                 <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
               </TouchableOpacity>
@@ -255,8 +322,8 @@ export default function MyGrowthGuidance() {
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)/settings')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#F3E8FF' }]}>
-                  <Settings size={16} color="#8b5cf6" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
                 <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
               </TouchableOpacity>
@@ -266,8 +333,8 @@ export default function MyGrowthGuidance() {
                   style={styles.navItem}
                   onPress={() => router.push('/(tabs)/admin')}
                 >
-                  <View style={[styles.navIcon, { backgroundColor: '#FFE5E5' }]}>
-                    <Settings size={16} color="#dc2626" />
+                  <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                    <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                   </View>
                   <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
                 </TouchableOpacity>
@@ -310,23 +377,7 @@ export default function MyGrowthGuidance() {
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Reach out to your VPE and get connected.
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                🛠️ For VPEs:
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Assign mentors in just a few steps:{'\n'}
-                ➡️ Admin Panel{'\n'}
-                ➡️ ExComm Corner{'\n'}
-                ➡️ VPE Corner{'\n'}
-                ➡️ Mentor Assignment
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: theme.colors.text, marginBottom: 0 }]} maxFontSizeMultiplier={1.3}>
-                💡 Your journey deserves the right support — and it starts here.
+                Reach out to your VPE and get connected. Your journey deserves the right support and it starts here.
               </Text>
             </ScrollView>
 
@@ -358,6 +409,22 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     width: 40,
+  },
+  infoButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    shadowColor: '#93A7BF',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 1,
   },
   headerTitle: {
     fontSize: 18,
@@ -497,9 +564,9 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     marginHorizontal: 16,
-    marginTop: 24,
-    borderRadius: 16,
-    padding: 40,
+    marginTop: 20,
+    borderRadius: 14,
+    padding: 34,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -508,10 +575,10 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginTop: 20,
-    marginBottom: 8,
+    fontSize: 17,
+    fontWeight: '500',
+    marginTop: 16,
+    marginBottom: 6,
     textAlign: 'center',
   },
   emptyDescription: {
@@ -519,6 +586,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
     fontWeight: '500',
+  },
+  emptyCtaButton: {
+    marginTop: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  emptyCtaButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
   },
   navigationSection: {
     marginTop: 24,

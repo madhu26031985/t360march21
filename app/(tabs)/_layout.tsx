@@ -1,9 +1,12 @@
 import { Fragment } from 'react';
 import { Tabs } from 'expo-router';
-import { Chrome as Home, Users, Calendar, Settings, User } from 'lucide-react-native';
+import { Chrome as Home, Users, Calendar, Settings } from 'lucide-react-native';
+import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import LiveVotingPopup from '@/components/LiveVotingPopup';
+
+const FOOTER_NAV_ICON_SIZE = 15;
 
 export default function TabLayout() {
   const { user } = useAuth();
@@ -28,31 +31,36 @@ export default function TabLayout() {
           borderTopWidth: 1,
           borderTopColor: '#e5e7eb',
           paddingBottom: tabBarBottomPadding,
-          paddingTop: 4,
-          height: tabBarHeight,
+          paddingTop: 8,
+          height: tabBarHeight + 4,
           shadowColor: '#000',
           shadowOffset: {
             width: 0,
-            height: -1,
+            height: -2,
           },
-          shadowOpacity: 0.05,
-          shadowRadius: 2,
-          elevation: 4,
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+          elevation: 6,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 2,
         },
         tabBarActiveTintColor: '#0a66c2',
         tabBarInactiveTintColor: '#6b7280',
         tabBarLabelStyle: {
-          fontSize: 13,
+          fontSize: 11,
           fontWeight: '600',
-          marginTop: 2,
+          marginTop: 0,
         },
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Journey',
-          tabBarIcon: ({ size, color }) => (
-            <Home size={18} color={color} />
+          title: 'Home',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 4, backgroundColor: 'transparent' }}>
+              <Home size={FOOTER_NAV_ICON_SIZE} color={color} />
+            </View>
           ),
           href: '/(tabs)',
         }}
@@ -61,8 +69,10 @@ export default function TabLayout() {
         name="club"
         options={{
           title: 'Club',
-          tabBarIcon: ({ size, color }) => (
-            <Users size={18} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 4, backgroundColor: 'transparent' }}>
+              <Users size={FOOTER_NAV_ICON_SIZE} color={color} />
+            </View>
           ),
           href: '/(tabs)/club',
         }}
@@ -71,8 +81,10 @@ export default function TabLayout() {
         name="meetings"
         options={{
           title: 'Meetings',
-          tabBarIcon: ({ size, color }) => (
-            <Calendar size={18} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 4, backgroundColor: 'transparent' }}>
+              <Calendar size={FOOTER_NAV_ICON_SIZE} color={color} />
+            </View>
           ),
           href: hasClub ? '/(tabs)/meetings' : null,
         }}
@@ -81,8 +93,10 @@ export default function TabLayout() {
         name="admin"
         options={{
           title: 'Admin',
-          tabBarIcon: ({ size, color }) => (
-            <Settings size={18} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 4, backgroundColor: 'transparent' }}>
+              <Settings size={FOOTER_NAV_ICON_SIZE} color={color} />
+            </View>
           ),
           href: isExComm ? '/(tabs)/admin' : null,
         }}
@@ -91,8 +105,10 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ size, color }) => (
-            <User size={18} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 4, backgroundColor: 'transparent' }}>
+              <Settings size={FOOTER_NAV_ICON_SIZE} color={color} />
+            </View>
           ),
           href: '/(tabs)/settings',
         }}

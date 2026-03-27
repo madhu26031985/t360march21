@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { router } from 'expo-router';
 import { Linking } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -11,6 +11,8 @@ import { ArrowLeft, Plus, Book, FileText, ExternalLink, Trash2, CreditCard as Ed
 import AddSpeechModal from '@/components/AddSpeechModal';
 import EditSpeechModal from '@/components/EditSpeechModal';
 import React from 'react';
+
+const FOOTER_NAV_ICON_SIZE = 15;
 
 interface Speech {
   id: string;
@@ -35,10 +37,50 @@ export default function SpeechRepository() {
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [speechToOpen, setSpeechToOpen] = useState<Speech | null>(null);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const infoIconPulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     loadSpeeches();
   }, []);
+
+  useEffect(() => {
+    let stopTimer: ReturnType<typeof setTimeout> | null = null;
+    let pulseAnimation: Animated.CompositeAnimation | null = null;
+
+    if (!isLoading && speeches.length === 0) {
+      infoIconPulse.setValue(1);
+      pulseAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(infoIconPulse, {
+            toValue: 1.14,
+            duration: 520,
+            useNativeDriver: true,
+          }),
+          Animated.timing(infoIconPulse, {
+            toValue: 1,
+            duration: 520,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      pulseAnimation.start();
+
+      stopTimer = setTimeout(() => {
+        pulseAnimation?.stop();
+        Animated.timing(infoIconPulse, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }).start();
+      }, 5000);
+    }
+
+    return () => {
+      if (stopTimer) clearTimeout(stopTimer);
+      pulseAnimation?.stop();
+      infoIconPulse.setValue(1);
+    };
+  }, [isLoading, speeches.length, infoIconPulse]);
 
   const loadSpeeches = async () => {
     if (!user) {
@@ -305,9 +347,15 @@ export default function SpeechRepository() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>My Speech Repository</Text>
-        <TouchableOpacity style={styles.infoButton} onPress={() => setShowInfoModal(true)}>
-          <Info size={24} color={theme.colors.primary} />
-        </TouchableOpacity>
+        <Animated.View style={[styles.infoButtonPulseWrap, { transform: [{ scale: infoIconPulse }] }]}>
+          <TouchableOpacity
+            style={[styles.infoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
+            onPress={() => setShowInfoModal(true)}
+            activeOpacity={0.8}
+          >
+            <Info size={18} color="#6E839F" />
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
       <ScrollView
@@ -371,8 +419,8 @@ export default function SpeechRepository() {
               style={styles.navItem}
               onPress={() => router.push('/(tabs)')}
             >
-              <View style={[styles.navIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Home size={16} color="#3b82f6" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
             </TouchableOpacity>
@@ -381,8 +429,8 @@ export default function SpeechRepository() {
               style={styles.navItem}
               onPress={() => router.push('/(tabs)/club')}
             >
-              <View style={[styles.navIcon, { backgroundColor: '#FEF3E7' }]}>
-                <Users size={16} color="#f59e0b" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
             </TouchableOpacity>
@@ -391,8 +439,8 @@ export default function SpeechRepository() {
               style={styles.navItem}
               onPress={() => router.push('/(tabs)/meetings')}
             >
-              <View style={[styles.navIcon, { backgroundColor: '#E0F2FE' }]}>
-                <Calendar size={16} color="#0ea5e9" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
             </TouchableOpacity>
@@ -401,8 +449,8 @@ export default function SpeechRepository() {
               style={styles.navItem}
               onPress={() => router.push('/(tabs)/settings')}
             >
-              <View style={[styles.navIcon, { backgroundColor: '#F3E8FF' }]}>
-                <Settings size={16} color="#8b5cf6" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
             </TouchableOpacity>
@@ -412,8 +460,8 @@ export default function SpeechRepository() {
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)/admin')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#FFE5E5' }]}>
-                  <Settings size={16} color="#dc2626" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
                 <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
               </TouchableOpacity>
@@ -447,25 +495,16 @@ export default function SpeechRepository() {
               style={styles.infoModalContent}
               showsVerticalScrollIndicator={false}
             >
-              <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                🎤 My Speech Repository
+              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Stop searching everywhere for your speeches. Everything is now in one place.
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Stop searching everywhere for your speeches. Keep them all in one place 📚 This is your personal speech library, accessible anytime on mobile, where your ideas, drafts, and final scripts live together.
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                You can{'\n'}
-                ✏️ Open and edit speeches anytime{'\n'}
-                🗑️ Delete when no longer needed{'\n'}
-                📅 See source and date for each entry{'\n'}
-                🔗 Store up to 5 speech links{'\n'}
-                📄 Use Google Docs with full access control
+                Capture ideas, write drafts, and store your final scripts-all neatly organized and always accessible on your mobile.
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text, marginBottom: 0 }]} maxFontSizeMultiplier={1.3}>
-                More than a list. It's your ready to use speaking workspace ✨
+                Your personal speech library, ready whenever you are.
               </Text>
             </ScrollView>
 
@@ -604,7 +643,23 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   infoButton: {
-    padding: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    shadowColor: '#93A7BF',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  infoButtonPulseWrap: {
+    borderRadius: 18,
   },
   addButton: {
     width: 40,

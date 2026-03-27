@@ -420,13 +420,11 @@ export default function ManageMeetingRoles() {
             {role && (
               <View style={[
                 styles.statusTag,
-                { backgroundColor: role.booking_status === 'booked' ? '#10b981' + '20' :
-                                 role.booking_status === 'withdrawn' ? '#f59e0b' + '20' : '#6b7280' + '20' }
+                { backgroundColor: '#f3f4f6' }
               ]}>
                 <Text style={[
                   styles.statusText,
-                  { color: role.booking_status === 'booked' ? '#10b981' :
-                           role.booking_status === 'withdrawn' ? '#f59e0b' : '#6b7280' }
+                  { color: '#374151' }
                 ]} maxFontSizeMultiplier={1.3}>
                   {role.booking_status === 'booked' && assignedMember
                     ? `Booked by: ${assignedMember.full_name}`
@@ -444,33 +442,33 @@ export default function ManageMeetingRoles() {
             {selectedTab === 'available' ? (
               <>
                 <TouchableOpacity
-                  style={[styles.deleteRoleButton, { backgroundColor: '#fef2f2', borderColor: '#ef4444' }]}
+                  style={[styles.deleteRoleButton, { backgroundColor: '#f3f4f6', borderColor: '#d1d5db' }]}
                   onPress={handleDelete}
                   activeOpacity={0.7}
                 >
-                  <Trash2 size={18} color="#ef4444" />
+                  <Trash2 size={18} color={theme.colors.textSecondary} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.assignButton, { backgroundColor: theme.colors.primary + '20' }]}
+                  style={[styles.assignButton, { backgroundColor: '#f3f4f6', borderColor: '#d1d5db' }]}
                   onPress={handleCardPress}
                   activeOpacity={0.7}
                 >
                   {isAssigned ? (
-                    <UserRoundCog size={18} color={theme.colors.primary} />
+                    <UserRoundCog size={18} color={theme.colors.textSecondary} />
                   ) : (
-                    <UserPlus size={18} color={theme.colors.primary} />
+                    <UserPlus size={18} color={theme.colors.textSecondary} />
                   )}
                 </TouchableOpacity>
               </>
             ) : (
               <TouchableOpacity
-                style={[styles.restoreButton, { backgroundColor: '#f0fdf4' }]}
+                style={[styles.restoreButton, { backgroundColor: '#f3f4f6', borderColor: '#d1d5db' }]}
                 onPress={handleRestore}
                 activeOpacity={0.7}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Text style={[styles.restoreButtonText, { color: '#10b981' }]} maxFontSizeMultiplier={1.3}>Restore</Text>
+                <Text style={[styles.restoreButtonText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Restore</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -525,8 +523,9 @@ export default function ManageMeetingRoles() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={[styles.rolesMasterBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         {/* Meeting Info Card */}
-        <View style={[styles.meetingCard, { backgroundColor: theme.colors.surface }]}>
+        <View style={[styles.meetingCard, { backgroundColor: 'transparent' }]}>
           <View style={styles.meetingHeader}>
             <View style={[styles.meetingIcon, { backgroundColor: theme.colors.primary + '20' }]}>
               <Building2 size={24} color={theme.colors.primary} />
@@ -574,25 +573,25 @@ export default function ManageMeetingRoles() {
             style={[
               styles.tab,
               {
-                backgroundColor: selectedTab === 'available' ? '#3b82f6' : theme.colors.surface,
-                borderColor: selectedTab === 'available' ? '#3b82f6' : theme.colors.border,
+                backgroundColor: selectedTab === 'available' ? theme.colors.background : theme.colors.surface,
+                borderColor: theme.colors.border,
               }
             ]}
             onPress={() => setSelectedTab('available')}
           >
             <Text style={[
               styles.tabText,
-              { color: selectedTab === 'available' ? '#ffffff' : theme.colors.text }
+              { color: theme.colors.text }
             ]} maxFontSizeMultiplier={1.3}>
               Available Roles
             </Text>
             <View style={[
               styles.tabCount,
-              { backgroundColor: selectedTab === 'available' ? 'rgba(255, 255, 255, 0.2)' : '#3b82f6' + '20' }
+              { backgroundColor: theme.colors.border }
             ]}>
               <Text style={[
                 styles.tabCountText,
-                { color: selectedTab === 'available' ? '#ffffff' : '#3b82f6' }
+                { color: theme.colors.textSecondary }
               ]} maxFontSizeMultiplier={1.3}>
                 {meetingRoles.filter(role => role.role_status === 'Available').length}
               </Text>
@@ -603,25 +602,25 @@ export default function ManageMeetingRoles() {
             style={[
               styles.tab,
               {
-                backgroundColor: selectedTab === 'deleted' ? '#ef4444' : theme.colors.surface,
-                borderColor: selectedTab === 'deleted' ? '#ef4444' : theme.colors.border,
+                backgroundColor: selectedTab === 'deleted' ? theme.colors.background : theme.colors.surface,
+                borderColor: theme.colors.border,
               }
             ]}
             onPress={() => setSelectedTab('deleted')}
           >
             <Text style={[
               styles.tabText,
-              { color: selectedTab === 'deleted' ? '#ffffff' : theme.colors.text }
+              { color: theme.colors.text }
             ]} maxFontSizeMultiplier={1.3}>
               Deleted Roles
             </Text>
             <View style={[
               styles.tabCount,
-              { backgroundColor: selectedTab === 'deleted' ? 'rgba(255, 255, 255, 0.2)' : '#ef4444' + '20' }
+              { backgroundColor: theme.colors.border }
             ]}>
               <Text style={[
                 styles.tabCountText,
-                { color: selectedTab === 'deleted' ? '#ffffff' : '#ef4444' }
+                { color: theme.colors.textSecondary }
               ]} maxFontSizeMultiplier={1.3}>
                 {meetingRoles.filter(role => role.role_status === 'Deleted').length}
               </Text>
@@ -648,8 +647,8 @@ export default function ManageMeetingRoles() {
                       style={[
                         styles.categoryTile,
                         {
-                          backgroundColor: isSelected ? '#3b82f6' : theme.colors.surface,
-                          borderColor: isSelected ? '#3b82f6' : theme.colors.border,
+                          backgroundColor: isSelected ? theme.colors.background : theme.colors.surface,
+                          borderColor: theme.colors.border,
                         }
                       ]}
                       onPress={() => setSelectedClassification(tab.value)}
@@ -658,7 +657,7 @@ export default function ManageMeetingRoles() {
                       <Text style={[
                           styles.categoryLabel,
                           {
-                            color: isSelected ? '#ffffff' : theme.colors.text,
+                            color: theme.colors.text,
                           }
                         ]}
                         numberOfLines={2} maxFontSizeMultiplier={1.3}>
@@ -668,14 +667,14 @@ export default function ManageMeetingRoles() {
                         style={[
                           styles.categoryCount,
                           {
-                            backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.3)' : '#3b82f6' + '20',
+                            backgroundColor: theme.colors.border,
                           }
                         ]}
                       >
                         <Text style={[
                             styles.categoryCountText,
                             {
-                              color: isSelected ? '#ffffff' : '#3b82f6',
+                              color: theme.colors.textSecondary,
                             }
                           ]} maxFontSizeMultiplier={1.3}>
                           {tab.count}
@@ -749,6 +748,7 @@ export default function ManageMeetingRoles() {
             )}
           </View>
         )}
+        </View>
       </ScrollView>
 
       {/* Member Assignment Modal */}
@@ -759,7 +759,7 @@ export default function ManageMeetingRoles() {
         onRequestClose={() => setShowMemberModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.memberModal, { backgroundColor: theme.colors.background }]}>
+          <View style={[styles.memberModal, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 {selectedRoleForAssignment} Assignment
@@ -776,9 +776,9 @@ export default function ManageMeetingRoles() {
             </View>
 
             {/* Search Box */}
-            <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
               <View style={[styles.searchInputContainer, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                <Search size={11} color={theme.colors.textSecondary} />
+                <Search size={13} color={theme.colors.textSecondary} />
                 <TextInput
                   style={[styles.searchInput, { color: theme.colors.text }]}
                   placeholder="Search members by name or email..."
@@ -796,11 +796,11 @@ export default function ManageMeetingRoles() {
             <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
               {/* Unassign Option */}
               <TouchableOpacity
-                style={[styles.memberOption, { backgroundColor: theme.colors.surface }]}
+                style={[styles.memberOption, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                 onPress={() => handleAssignMember(selectedRoleForAssignment!, null)}
               >
-                <View style={[styles.memberOptionAvatar, { backgroundColor: theme.colors.textSecondary }]}>
-                  <User size={14} color="#ffffff" />
+                <View style={[styles.memberOptionAvatar, { backgroundColor: '#e5e7eb' }]}>
+                  <User size={14} color="#6b7280" />
                 </View>
                 <Text style={[styles.memberOptionName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   Unassign role
@@ -810,14 +810,14 @@ export default function ManageMeetingRoles() {
               {filteredMembers.map((member) => (
                 <TouchableOpacity
                   key={member.id}
-                  style={[styles.memberOption, { backgroundColor: theme.colors.surface }]}
+                  style={[styles.memberOption, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                   onPress={() => handleAssignMember(selectedRoleForAssignment!, member.id)}
                 >
                   <View style={styles.memberOptionAvatar}>
                     {member.avatar_url ? (
                       <Image source={{ uri: member.avatar_url }} style={styles.memberOptionAvatarImage} />
                     ) : (
-                      <User size={14} color="#ffffff" />
+                      <User size={14} color="#6b7280" />
                     )}
                   </View>
                   <Text style={[styles.memberOptionName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -948,19 +948,20 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  rolesMasterBox: {
+    marginHorizontal: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
   meetingCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
+    marginHorizontal: 0,
+    marginTop: 0,
+    borderRadius: 0,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   meetingHeader: {
     flexDirection: 'row',
@@ -1034,14 +1035,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 13,
     marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   roleHeader: {
     flexDirection: 'row',
@@ -1080,6 +1075,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 8,
     borderRadius: 6,
+    borderWidth: 1,
   },
   assignButtonText: {
     fontSize: 12,
@@ -1090,6 +1086,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
+    borderWidth: 1,
   },
   restoreButtonText: {
     fontSize: 10,
@@ -1138,7 +1135,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   memberModal: {
-    borderRadius: 14,
+    borderRadius: 16,
+    borderWidth: 1,
     width: '100%',
     maxWidth: 350,
     maxHeight: '63%',
@@ -1146,11 +1144,11 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 7,
+      height: 2,
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
-    elevation: 18,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
 
   infoButton: {
@@ -1219,79 +1217,73 @@ const styles = StyleSheet.create({
     paddingHorizontal: 17,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   modalTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
   },
   closeButton: {
-    padding: 3,
+    padding: 6,
+    borderRadius: 8,
   },
   searchContainer: {
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
   },
   searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    marginBottom: 6,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginBottom: 7,
   },
   searchInput: {
     flex: 1,
-    fontSize: 11,
-    marginLeft: 6,
+    fontSize: 13,
+    marginLeft: 8,
   },
   searchResultsText: {
-    fontSize: 8,
+    fontSize: 11,
     fontWeight: '500',
     textAlign: 'center',
   },
   membersList: {
     flex: 1,
-    paddingHorizontal: 11,
-    paddingTop: 6,
+    paddingHorizontal: 12,
+    paddingTop: 10,
     paddingBottom: 14,
   },
   memberOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
-    padding: 11,
-    marginBottom: 6,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    borderWidth: 1,
   },
   memberOptionAvatar: {
-    width: 35,
-    height: 35,
-    borderRadius: 17.5,
-    backgroundColor: '#3b82f6',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#e5e7eb',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    marginRight: 10,
     overflow: 'hidden',
   },
   memberOptionAvatarImage: {
-    width: 35,
-    height: 35,
-    borderRadius: 17.5,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
   },
   memberOptionName: {
-    fontSize: 12.6,
+    fontSize: 14,
     fontWeight: '600',
     flex: 1,
   },
@@ -1308,7 +1300,8 @@ const styles = StyleSheet.create({
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
     gap: 8,
   },
   tab: {
@@ -1318,16 +1311,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 14,
+    borderWidth: 1,
   },
   tabText: {
     fontSize: 13,
@@ -1348,8 +1333,8 @@ const styles = StyleSheet.create({
   twoColumnContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 32,
+    paddingTop: 10,
+    paddingBottom: 16,
     gap: 12,
     minHeight: 500,
   },
@@ -1371,15 +1356,7 @@ const styles = StyleSheet.create({
     padding: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
   },
   categoryLabel: {
     fontSize: 6.3,

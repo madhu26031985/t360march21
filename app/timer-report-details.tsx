@@ -10,6 +10,31 @@ import { ArrowLeft, Timer, Calendar, User, ChevronDown, Save, Trash2, X, FileTex
 import { Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const FOOTER_NAV_ICON_SIZE = 15;
+
+/** Guest display names stored on role rows (app_meeting_roles_management.completion_notes) */
+const TIMER_GUEST_PREFIX = 'timer_guest:';
+
+function parseTimerGuestName(completionNotes: string | null | undefined): string | null {
+  if (!completionNotes || !completionNotes.startsWith(TIMER_GUEST_PREFIX)) return null;
+  const name = completionNotes.slice(TIMER_GUEST_PREFIX.length).trim();
+  return name.length > 0 ? name : null;
+}
+
+function formatGuestDisplayName(input: string): string {
+  const t = input.trim();
+  if (!t) return '';
+  const titleCaseWord = (w: string) =>
+    w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '';
+  const titleCasePhrase = (s: string) =>
+    s.split(/\s+/).filter(Boolean).map(titleCaseWord).join(' ');
+  if (/^guest\s+/i.test(t)) {
+    const rest = t.replace(/^guest\s+/i, '').trim();
+    return rest ? `Guest ${titleCasePhrase(rest)}` : '';
+  }
+  return `Guest ${titleCasePhrase(t)}`;
+}
+
 interface Meeting {
   id: string;
   meeting_title: string;
@@ -50,6 +75,20 @@ interface TimerReport {
   notes: string | null;
   recorded_by: string;
   recorded_at?: string;
+}
+
+interface CategoryRole {
+  id: string;
+  role_name: string;
+  booking_status: string | null;
+  assigned_user_id: string | null;
+  completion_notes: string | null;
+  app_user_profiles?: {
+    id: string;
+    full_name: string;
+    email: string;
+    avatar_url: string | null;
+  } | null;
 }
 
 export default function TimerReportDetails() {
@@ -101,16 +140,21 @@ export default function TimerReportDetails() {
   const [bookedSpeakers, setBookedSpeakers] = useState<ClubMember[]>([]);
   const [bookingTimerRole, setBookingTimerRole] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [categoryRoles, setCategoryRoles] = useState<CategoryRole[]>([]);
+  const [selectedCategoryRoleId, setSelectedCategoryRoleId] = useState<string | null>(null);
+  const [roleToAssign, setRoleToAssign] = useState<CategoryRole | null>(null);
+  const [guestAssignNameInput, setGuestAssignNameInput] = useState('');
+  const [roleTimingSummary, setRoleTimingSummary] = useState<Record<string, { time: string; qualified: boolean }>>({});
 
   const [stopwatchTime, setStopwatchTime] = useState(0);
   const [stopwatchRunning, setStopwatchRunning] = useState(false);
   const [stopwatchInterval, setStopwatchInterval] = useState<NodeJS.Timeout | null>(null);
 
   const speechCategories = [
-    { value: 'prepared_speaker', label: 'Speeches', color: '#3b82f6', icon: 'message-circle', classifications: ['Prepared Speaker'], roleNames: ['Prepared Speaker 1', 'Prepared Speaker 2', 'Prepared Speaker 3', 'Prepared Speaker 4', 'Prepared Speaker 5'] },
-    { value: 'table_topic_speaker', label: 'Table Topics', color: '#f97316', icon: 'mic', classifications: ['On-the-Spot Speaking'], roleNames: ['Table Topics Speaker 1', 'Table Topics Speaker 2', 'Table Topics Speaker 3', 'Table Topics Speaker 4', 'Table Topics Speaker 5', 'Table Topics Speaker 6', 'Table Topics Speaker 7', 'Table Topics Speaker 8', 'Table Topics Speaker 9', 'Table Topics Speaker 10', 'Table Topics Speaker 11', 'Table Topics Speaker 12'] },
-    { value: 'evaluation', label: 'Evaluators', color: '#10b981', icon: 'message-square', classifications: ['Speech evaluvator', 'Master evaluvator', 'TT _ Evaluvator'], roleNames: ['Evaluator 1', 'Evaluator 2', 'Evaluator 3', 'Evaluator 4', 'Evaluator 5', 'Master Evaluator 1', 'Master Evaluator 2', 'Master Evaluator 3', 'Table Topic Evaluator 1', 'Table Topic Evaluator 2', 'Table Topic Evaluator 3'] },
-    { value: 'educational_session', label: 'Education', color: '#8b5cf6', icon: 'lightbulb', classifications: ['Educational speaker'], roleNames: ['Educational Speaker'] },
+    { value: 'prepared_speaker', label: 'Prepared speakers', color: '#3b82f6', icon: 'message-circle', classifications: ['Prepared Speaker'], roleNames: ['Prepared Speaker 1', 'Prepared Speaker 2', 'Prepared Speaker 3', 'Prepared Speaker 4', 'Prepared Speaker 5'] },
+    { value: 'table_topic_speaker', label: 'Table topic speakers', color: '#f97316', icon: 'mic', classifications: ['On-the-Spot Speaking'], roleNames: ['Table Topics Speaker 1', 'Table Topics Speaker 2', 'Table Topics Speaker 3', 'Table Topics Speaker 4', 'Table Topics Speaker 5', 'Table Topics Speaker 6', 'Table Topics Speaker 7', 'Table Topics Speaker 8', 'Table Topics Speaker 9', 'Table Topics Speaker 10', 'Table Topics Speaker 11', 'Table Topics Speaker 12'] },
+    { value: 'evaluation', label: 'Speech evaluvators', color: '#10b981', icon: 'message-square', classifications: ['Speech evaluvator', 'Master evaluvator', 'TT _ Evaluvator'], roleNames: ['Evaluator 1', 'Evaluator 2', 'Evaluator 3', 'Evaluator 4', 'Evaluator 5', 'Master Evaluator 1', 'Master Evaluator 2', 'Master Evaluator 3', 'Table Topic Evaluator 1', 'Table Topic Evaluator 2', 'Table Topic Evaluator 3'] },
+    { value: 'educational_session', label: 'Educational speaker', color: '#8b5cf6', icon: 'lightbulb', classifications: ['Educational speaker'], roleNames: ['Educational Speaker'] },
   ];
 
   const qualificationOptions = [
@@ -126,12 +170,6 @@ export default function TimerReportDetails() {
       loadData();
     }
   }, [meetingId]);
-
-  useEffect(() => {
-    if (assignedTimer && user && assignedTimer.id === user.id) {
-      setShowHowToModal(true);
-    }
-  }, [assignedTimer, user]);
 
   useEffect(() => {
     if (selectedSpeaker) {
@@ -214,7 +252,8 @@ export default function TimerReportDetails() {
         loadClubMembers(),
         loadAssignedTimer(),
         loadSavedReports(),
-        loadBookedSpeakersForCategory(reportData.speech_category)
+        loadBookedSpeakersForCategory(reportData.speech_category),
+        loadCategoryRolesForCategory(reportData.speech_category),
       ]);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -413,8 +452,127 @@ export default function TimerReportDetails() {
       uniqueSpeakers.sort((a, b) => a.full_name.localeCompare(b.full_name));
 
       setBookedSpeakers(uniqueSpeakers);
+      setSelectedSpeaker((prev) => {
+        if (prev && uniqueSpeakers.some((speaker) => speaker.id === prev.id)) return prev;
+        return uniqueSpeakers.length > 0 ? uniqueSpeakers[0] : null;
+      });
     } catch (error) {
       console.error('Error loading booked speakers:', error);
+    }
+  };
+
+  const loadCategoryRolesForCategory = async (category: string) => {
+    if (!meetingId) return;
+    const selectedCategory = speechCategories.find((c) => c.value === category);
+    if (!selectedCategory || selectedCategory.roleNames.length === 0) {
+      setCategoryRoles([]);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('app_meeting_roles_management')
+        .select(`
+          id,
+          role_name,
+          booking_status,
+          assigned_user_id,
+          completion_notes,
+          app_user_profiles (
+            id,
+            full_name,
+            email,
+            avatar_url
+          )
+        `)
+        .eq('meeting_id', meetingId)
+        .in('role_name', selectedCategory.roleNames)
+        .order('role_name');
+
+      if (error) {
+        console.error('Error loading category roles:', error);
+        return;
+      }
+
+      setCategoryRoles((data || []) as any);
+    } catch (error) {
+      console.error('Error loading category roles:', error);
+    }
+  };
+
+  const handleAssignCategoryRole = async (member: ClubMember) => {
+    if (!isAssignedTimer || !roleToAssign) return;
+    try {
+      const { error } = await supabase
+        .from('app_meeting_roles_management')
+        .update({
+          assigned_user_id: member.id,
+          booking_status: 'booked',
+          completion_notes: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', roleToAssign.id);
+
+      if (error) {
+        console.error('Error assigning category role:', error);
+        Alert.alert('Error', 'Failed to assign speaker to role');
+        return;
+      }
+
+      setSelectedCategoryRoleId(roleToAssign.id);
+      setSelectedSpeaker(member);
+      setShowSpeakerModal(false);
+      setSpeakerSearchQuery('');
+      setRoleToAssign(null);
+      setGuestAssignNameInput('');
+      await Promise.all([
+        loadCategoryRolesForCategory(reportData.speech_category),
+        loadBookedSpeakersForCategory(reportData.speech_category),
+      ]);
+    } catch (error) {
+      console.error('Error assigning category role:', error);
+      Alert.alert('Error', 'Failed to assign speaker to role');
+    }
+  };
+
+  const handleAssignGuestCategoryRole = async () => {
+    if (!isAssignedTimer || !roleToAssign) return;
+    const displayName = formatGuestDisplayName(guestAssignNameInput);
+    if (!displayName) {
+      Alert.alert('Name required', 'Enter a guest name or use the member list above.');
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('app_meeting_roles_management')
+        .update({
+          assigned_user_id: null,
+          booking_status: 'booked',
+          completion_notes: `${TIMER_GUEST_PREFIX}${displayName}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', roleToAssign.id);
+
+      if (error) {
+        console.error('Error assigning guest to role:', error);
+        Alert.alert('Error', 'Failed to assign guest to role');
+        return;
+      }
+
+      setSelectedCategoryRoleId(roleToAssign.id);
+      setSelectedSpeaker(null);
+      setManualNameEntry(true);
+      setManualNameText(displayName);
+      setGuestAssignNameInput('');
+      setShowSpeakerModal(false);
+      setSpeakerSearchQuery('');
+      setRoleToAssign(null);
+      await Promise.all([
+        loadCategoryRolesForCategory(reportData.speech_category),
+        loadBookedSpeakersForCategory(reportData.speech_category),
+      ]);
+    } catch (error) {
+      console.error('Error assigning guest to role:', error);
+      Alert.alert('Error', 'Failed to assign guest to role');
     }
   };
 
@@ -483,6 +641,42 @@ export default function TimerReportDetails() {
     }
   };
 
+  /** Restore time + Q on each role row from persisted timer_reports (state alone was lost on navigation). */
+  useEffect(() => {
+    if (!categoryRoles.length || !user?.id) {
+      setRoleTimingSummary({});
+      return;
+    }
+    const cat = reportData.speech_category;
+    const myReports = savedReports.filter(
+      (r) => r.speech_category === cat && r.recorded_by === user.id
+    );
+    const next: Record<string, { time: string; qualified: boolean }> = {};
+    for (const role of categoryRoles) {
+      const guestName = parseTimerGuestName(role.completion_notes);
+      let candidates: TimerReport[] = [];
+      if (role.assigned_user_id) {
+        candidates = myReports.filter((r) => r.speaker_user_id === role.assigned_user_id);
+      } else if (guestName) {
+        candidates = myReports.filter(
+          (r) => !r.speaker_user_id && r.speaker_name.trim() === guestName.trim()
+        );
+      }
+      if (candidates.length) {
+        const best = [...candidates].sort(
+          (a, b) =>
+            new Date(b.recorded_at || b.updated_at || 0).getTime() -
+            new Date(a.recorded_at || a.updated_at || 0).getTime()
+        )[0];
+        next[role.id] = {
+          time: best.actual_time_display,
+          qualified: !!best.time_qualification,
+        };
+      }
+    }
+    setRoleTimingSummary(next);
+  }, [savedReports, categoryRoles, reportData.speech_category, user?.id]);
+
   const handleDeleteReport = (reportId: string, speakerName: string) => {
     setDeleteConfirm({ id: reportId, speakerName });
   };
@@ -528,9 +722,11 @@ export default function TimerReportDetails() {
     }
     setReportData(prev => ({ ...prev, speech_category: category }));
     setSelectedSpeaker(null);
+    setSelectedCategoryRoleId(null);
     setManualNameEntry(false);
     setManualNameText('');
     loadBookedSpeakersForCategory(category);
+    loadCategoryRolesForCategory(category);
   };
 
   const updateQualification = (qualified: boolean) => {
@@ -640,7 +836,7 @@ export default function TimerReportDetails() {
     }
 
     if (!selectedSpeaker && (!manualNameEntry || !manualNameText.trim())) {
-      Alert.alert('Speaker Required', 'Please select a speaker or enter a guest name');
+      Alert.alert('Speaker Required', 'Please select a speaker');
       return;
     }
 
@@ -723,8 +919,22 @@ export default function TimerReportDetails() {
 
       // Reload saved reports to show the new one
       await loadSavedReports();
+      if (selectedCategoryRoleId) {
+        setRoleTimingSummary((prev) => ({
+          ...prev,
+          [selectedCategoryRoleId]: {
+            time: saveData.actual_time_display,
+            qualified: !!saveData.time_qualification,
+          },
+        }));
+      }
+      setStopwatchRunning(false);
+      setSelectedCategoryRoleId(null);
+      setSelectedSpeaker(null);
+      setManualNameEntry(false);
+      setManualNameText('');
       
-      // Stay on Log Time tab (Summary tab removed)
+      // Stay on Timer Corner tab after save
       setSelectedTab('record');
     } catch (error) {
       console.error('Error saving report:', error);
@@ -734,8 +944,8 @@ export default function TimerReportDetails() {
     }
   };
 
-  // Filter booked speakers based on search query
-  const filteredClubMembers = bookedSpeakers.filter(member => {
+  // Filter members based on search query
+  const filteredClubMembers = clubMembers.filter(member => {
     const query = speakerSearchQuery.toLowerCase().trim();
     if (!query) return true;
     return member.full_name.toLowerCase().includes(query);
@@ -815,8 +1025,12 @@ export default function TimerReportDetails() {
             <ArrowLeft size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer Report</Text>
-          <TouchableOpacity style={styles.headerSpacer} onPress={() => setShowHowToModal(true)}>
-            <HelpCircle size={22} color={theme.colors.textSecondary} />
+          <TouchableOpacity
+            style={[styles.headerInfoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
+            onPress={() => setShowHowToModal(true)}
+            activeOpacity={0.8}
+          >
+            <HelpCircle size={18} color="#6E839F" />
           </TouchableOpacity>
         </View>
 
@@ -901,7 +1115,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3E7' }]}>
-                  <FileText size={20} color="#f59e0b" />
+                  <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
               </TouchableOpacity>
@@ -911,7 +1125,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                  <Bell size={20} color="#772432" />
+                  <Bell size={FOOTER_NAV_ICON_SIZE} color="#772432" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
               </TouchableOpacity>
@@ -921,7 +1135,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Users size={20} color="#ec4899" />
+                  <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
               </TouchableOpacity>
@@ -931,7 +1145,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                  <Calendar size={20} color="#004165" />
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
               </TouchableOpacity>
@@ -941,7 +1155,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDF4' }]}>
-                  <BookOpen size={20} color="#16a34a" />
+                  <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#16a34a" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
               </TouchableOpacity>
@@ -951,7 +1165,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/grammarian', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
-                  <NotebookPen size={20} color="#4f46e5" />
+                  <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#4f46e5" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
               </TouchableOpacity>
@@ -961,7 +1175,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Mic size={20} color="#ec4899" />
+                  <Mic size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote</Text>
               </TouchableOpacity>
@@ -971,7 +1185,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                  <Mic size={20} color="#C9B84E" />
+                  <Mic size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
               </TouchableOpacity>
@@ -981,7 +1195,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDFA' }]}>
-                  <MessageSquare size={20} color="#0d9488" />
+                  <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#0d9488" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
               </TouchableOpacity>
@@ -991,7 +1205,7 @@ export default function TimerReportDetails() {
                 onPress={() => router.push({ pathname: '/toastmaster-corner', params: { meetingId } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FFF4E6' }]}>
-                  <Star size={20} color="#f59e0b" fill="#f59e0b" />
+                  <Star size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" fill="#f59e0b" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TMOD</Text>
               </TouchableOpacity>
@@ -1019,7 +1233,7 @@ export default function TimerReportDetails() {
               <ScrollView style={styles.howToScroll} showsVerticalScrollIndicator={false}>
                 <View style={[styles.howToSectionBadge, { backgroundColor: '#EEF2FF' }]}>
                   <FileText size={14} color='#4F46E5' />
-                  <Text style={[styles.howToSectionBadgeText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>Log Time Tab</Text>
+                  <Text style={[styles.howToSectionBadgeText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>Timer Corner Tab</Text>
                 </View>
                 {[
                   { num: 1, color: '#F59E0B', title: 'Select Category', desc: 'Choose the category. Speech / Table Topics / Evaluation.' },
@@ -1091,6 +1305,120 @@ export default function TimerReportDetails() {
 
   // Check if current user is the assigned Timer
   const isAssignedTimer = assignedTimer && user && assignedTimer.id === user.id;
+  const selectedCategoryMeta = speechCategories.find((c) => c.value === reportData.speech_category);
+  const isRoleSlotFilled = (role: CategoryRole) => {
+    const guestName = parseTimerGuestName(role.completion_notes);
+    if (role.booking_status !== 'booked') return false;
+    if (role.assigned_user_id) return true;
+    return !!guestName;
+  };
+  const categoryOpenRolesCount = categoryRoles.filter((role) => !isRoleSlotFilled(role)).length;
+  const canShowTimeLogger = categoryRoles.length === 0 || !!selectedCategoryRoleId;
+  const hasTimerSpeaker =
+    !!selectedSpeaker || (!!manualNameEntry && !!manualNameText.trim());
+
+  const renderTimeLoggerCard = () => (
+    <View style={[styles.logTimeCard, { backgroundColor: theme.colors.surface }]}>
+      <Text style={[styles.timeLoggerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+        Time Logger
+      </Text>
+      <View style={[styles.inlineStopwatchContainer, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+        <Text style={[styles.inlineStopwatchTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+          Stopwatch
+        </Text>
+        <Text style={[styles.inlineStopwatchTime, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          {formatStopwatchTime(stopwatchTime)}
+        </Text>
+        <View style={styles.inlineStopwatchButtons}>
+          <TouchableOpacity style={[styles.inlineSwBtn, { backgroundColor: '#10b981', opacity: stopwatchRunning ? 0.45 : 1 }]} onPress={startStopwatch} disabled={stopwatchRunning}>
+            <Text style={styles.inlineSwBtnText} maxFontSizeMultiplier={1.3}>Start</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.inlineSwBtn, { backgroundColor: '#ef4444', opacity: !stopwatchRunning ? 0.45 : 1 }]} onPress={stopStopwatch} disabled={!stopwatchRunning}>
+            <Text style={styles.inlineSwBtnText} maxFontSizeMultiplier={1.3}>Stop</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.inlineSwBtn, { backgroundColor: '#f59e0b', opacity: !stopwatchRunning ? 0.45 : 1 }]} onPress={pauseStopwatch} disabled={!stopwatchRunning}>
+            <Text style={styles.inlineSwBtnText} maxFontSizeMultiplier={1.3}>Pause</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.inlineSwBtn, { backgroundColor: '#64748b' }]} onPress={resetStopwatch}>
+            <Text style={styles.inlineSwBtnText} maxFontSizeMultiplier={1.3}>Reset</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={[styles.cardDivider, { backgroundColor: theme.colors.border }]} />
+      <View style={styles.addTimeTitleRow}>
+        <Text style={[styles.addTimeTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Add Time</Text>
+        {stopwatchTime > 0 && (
+          <TouchableOpacity
+            style={[styles.pushStopwatchBtn, { backgroundColor: theme.colors.primary + '18', borderColor: theme.colors.primary }]}
+            onPress={() => {
+              const totalSeconds = Math.floor(stopwatchTime / 1000);
+              const mins = Math.floor(totalSeconds / 60);
+              const secs = totalSeconds % 60;
+              const display = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+              setReportData(prev => ({ ...prev, actual_time_seconds: totalSeconds, actual_time_display: display }));
+              setMinutes(mins);
+              setSeconds(secs);
+            }}
+          >
+            <Timer size={12} color={theme.colors.primary} />
+            <Text style={[styles.pushStopwatchBtnText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>Use {formatStopwatchTime(stopwatchTime)}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <TouchableOpacity
+        style={[styles.timeBoxFull, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+        onPress={() => {
+          if (!hasTimerSpeaker) {
+            Alert.alert('Speaker Required', 'Please select a speaker first');
+            return;
+          }
+          setShowTimePickerModal(true);
+        }}
+      >
+        <View style={styles.timeBoxInner}>
+          <Timer size={16} color={theme.colors.primary} />
+          <Text style={[styles.timeBoxText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>{reportData.actual_time_display}</Text>
+          <ChevronDown size={14} color={theme.colors.textSecondary} />
+        </View>
+        <Text style={[styles.timeBoxHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Tap to edit</Text>
+      </TouchableOpacity>
+      <View style={styles.qualifiedRow}>
+        <Text style={[styles.qualifiedLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Qualified:</Text>
+        <View style={styles.qualifiedBtnsRow}>
+          <TouchableOpacity
+            style={[styles.qualifiedBtnNew, { backgroundColor: reportData.time_qualification === true ? '#3b82f6' : theme.colors.background, borderColor: reportData.time_qualification === true ? '#3b82f6' : theme.colors.border }]}
+            onPress={() => { if (!hasTimerSpeaker) { setShowNameRequiredModal(true); return; } updateQualification(true); }}
+          >
+            <View style={[styles.radioDot, { borderColor: reportData.time_qualification === true ? '#ffffff' : theme.colors.border, backgroundColor: reportData.time_qualification === true ? '#ffffff' : 'transparent' }]}>
+              {reportData.time_qualification === true && <View style={styles.radioDotInner} />}
+            </View>
+            <Text style={[styles.qualifiedBtnNewText, { color: reportData.time_qualification === true ? '#ffffff' : theme.colors.text }]} maxFontSizeMultiplier={1.3}>Yes</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.qualifiedBtnNew, { backgroundColor: reportData.time_qualification === false ? '#3b82f6' : theme.colors.background, borderColor: reportData.time_qualification === false ? '#3b82f6' : theme.colors.border }]}
+            onPress={() => { if (!hasTimerSpeaker) { setShowNameRequiredModal(true); return; } updateQualification(false); }}
+          >
+            <View style={[styles.radioDot, { borderColor: reportData.time_qualification === false ? '#ffffff' : theme.colors.border, backgroundColor: reportData.time_qualification === false ? '#ffffff' : 'transparent' }]}>
+              {reportData.time_qualification === false && <View style={styles.radioDotInner} />}
+            </View>
+            <Text style={[styles.qualifiedBtnNewText, { color: reportData.time_qualification === false ? '#ffffff' : theme.colors.text }]} maxFontSizeMultiplier={1.3}>No</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <TouchableOpacity
+        style={[styles.saveButtonFull, { backgroundColor: hasTimerSpeaker ? theme.colors.primary : '#9ca3af' }]}
+        onPress={() => {
+          if (!isAssignedTimer) { Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can save reports.`); return; }
+          if (!hasTimerSpeaker) { Alert.alert('Speaker Required', 'Please select a speaker'); return; }
+          if (!reportData.speech_category) { Alert.alert('Error', 'Please select a speech category'); return; }
+          setShowConfirmModal(true);
+        }}
+        disabled={isSaving}
+      >
+        <Text style={styles.saveButtonFullText} maxFontSizeMultiplier={1.3}>Save</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -1101,8 +1429,12 @@ export default function TimerReportDetails() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer Report</Text>
-        <TouchableOpacity style={styles.headerSpacer} onPress={() => setShowHowToModal(true)}>
-          <HelpCircle size={22} color={theme.colors.textSecondary} />
+        <TouchableOpacity
+          style={[styles.headerInfoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
+          onPress={() => setShowHowToModal(true)}
+          activeOpacity={0.8}
+        >
+          <HelpCircle size={18} color="#6E839F" />
         </TouchableOpacity>
       </View>
 
@@ -1198,7 +1530,24 @@ export default function TimerReportDetails() {
               styles.tabText,
               { color: selectedTab === 'record' ? '#ffffff' : theme.colors.textSecondary }
             ]} maxFontSizeMultiplier={1.3}>
-              Log Time
+              Timer Corner
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.tab,
+              {
+                backgroundColor: selectedTab === 'reports' ? '#3b82f6' : theme.colors.surface,
+                borderColor: selectedTab === 'reports' ? '#3b82f6' : theme.colors.border,
+              }
+            ]}
+            onPress={() => setSelectedTab('reports')}
+          >
+            <Text style={[
+              styles.tabText,
+              { color: selectedTab === 'reports' ? '#ffffff' : theme.colors.textSecondary }
+            ]} maxFontSizeMultiplier={1.3}>
+              Timer Summary
             </Text>
           </TouchableOpacity>
         </View>
@@ -1206,13 +1555,9 @@ export default function TimerReportDetails() {
         {/* Tab Content */}
         {selectedTab === 'record' ? (
           <>
-            {/* Horizontal Category Pills */}
+            {/* Vertical Category List */}
             <View style={styles.categoryRowContainer}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.categoryRowContent}
-              >
+              <View style={styles.categoryRowContent}>
                 {speechCategories.map((category) => {
                   const isSelected = reportData.speech_category === category.value;
                   return (
@@ -1237,317 +1582,153 @@ export default function TimerReportDetails() {
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
-            </View>
-
-            {/* Log Time Card */}
-            <View style={[styles.logTimeCard, { backgroundColor: theme.colors.surface }]}>
-              {/* Speaker Selection */}
-              <SpeakerSelector />
-              {manualNameEntry && (
-                <TextInput
-                  style={[styles.manualNameInput, {
-                    backgroundColor: theme.colors.background,
-                    borderColor: theme.colors.border,
-                    color: theme.colors.text,
-                    marginTop: 8,
-                  }]}
-                  placeholder="Type guest name..."
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={manualNameText}
-                  onChangeText={setManualNameText}
-                  autoFocus
-                  maxLength={80}
-                />
-              )}
-
-              {/* Inline Stopwatch */}
-              <View style={[styles.inlineStopwatchContainer, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                <Text style={[styles.inlineStopwatchTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Stopwatch Timer
-                </Text>
-                <Text style={[styles.inlineStopwatchTime, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {formatStopwatchTime(stopwatchTime)}
-                </Text>
-                <View style={styles.inlineStopwatchButtons}>
-                  <TouchableOpacity
-                    style={[styles.inlineSwBtn, { backgroundColor: '#10b981', opacity: stopwatchRunning ? 0.45 : 1 }]}
-                    onPress={startStopwatch}
-                    disabled={stopwatchRunning}
-                  >
-                    <Text style={styles.inlineSwBtnText} maxFontSizeMultiplier={1.3}>Start</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.inlineSwBtn, { backgroundColor: '#ef4444', opacity: !stopwatchRunning ? 0.45 : 1 }]}
-                    onPress={stopStopwatch}
-                    disabled={!stopwatchRunning}
-                  >
-                    <Text style={styles.inlineSwBtnText} maxFontSizeMultiplier={1.3}>Stop</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.inlineSwBtn, { backgroundColor: '#f59e0b', opacity: !stopwatchRunning ? 0.45 : 1 }]}
-                    onPress={pauseStopwatch}
-                    disabled={!stopwatchRunning}
-                  >
-                    <Text style={styles.inlineSwBtnText} maxFontSizeMultiplier={1.3}>Pause</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.inlineSwBtn, { backgroundColor: '#64748b' }]}
-                    onPress={resetStopwatch}
-                  >
-                    <Text style={styles.inlineSwBtnText} maxFontSizeMultiplier={1.3}>Reset</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Divider */}
-              <View style={[styles.cardDivider, { backgroundColor: theme.colors.border }]} />
-
-              {/* Add Time title row */}
-              <View style={styles.addTimeTitleRow}>
-                <Text style={[styles.addTimeTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Add Time
-                </Text>
-                {stopwatchTime > 0 && (
-                  <TouchableOpacity
-                    style={[styles.pushStopwatchBtn, { backgroundColor: theme.colors.primary + '18', borderColor: theme.colors.primary }]}
-                    onPress={() => {
-                      const totalSeconds = Math.floor(stopwatchTime / 1000);
-                      const mins = Math.floor(totalSeconds / 60);
-                      const secs = totalSeconds % 60;
-                      const display = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                      setReportData(prev => ({
-                        ...prev,
-                        actual_time_seconds: totalSeconds,
-                        actual_time_display: display,
-                      }));
-                      setMinutes(mins);
-                      setSeconds(secs);
-                    }}
-                  >
-                    <Timer size={12} color={theme.colors.primary} />
-                    <Text style={[styles.pushStopwatchBtnText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                      Use {formatStopwatchTime(stopwatchTime)}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {/* Time Box */}
-              <TouchableOpacity
-                style={[styles.timeBoxFull, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => {
-                  if (!selectedSpeaker && (!manualNameEntry || !manualNameText.trim())) {
-                    Alert.alert('Speaker Required', 'Please select a speaker or enter a guest name first');
-                    return;
-                  }
-                  setShowTimePickerModal(true);
-                }}
-              >
-                <View style={styles.timeBoxInner}>
-                  <Timer size={16} color={theme.colors.primary} />
-                  <Text style={[styles.timeBoxText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                    {reportData.actual_time_display}
-                  </Text>
-                  <ChevronDown size={14} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.timeBoxHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Tap to edit
-                </Text>
-              </TouchableOpacity>
-
-              {/* Qualified Row */}
-              <View style={styles.qualifiedRow}>
-                <Text style={[styles.qualifiedLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Qualified:
-                </Text>
-                <View style={styles.qualifiedBtnsRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.qualifiedBtnNew,
-                      {
-                        backgroundColor: reportData.time_qualification === true ? '#3b82f6' : theme.colors.background,
-                        borderColor: reportData.time_qualification === true ? '#3b82f6' : theme.colors.border,
-                      }
-                    ]}
-                    onPress={() => {
-                      if (!selectedSpeaker && (!manualNameEntry || !manualNameText.trim())) {
-                        setShowNameRequiredModal(true);
-                        return;
-                      }
-                      updateQualification(true);
-                    }}
-                  >
-                    <View style={[
-                      styles.radioDot,
-                      {
-                        borderColor: reportData.time_qualification === true ? '#ffffff' : theme.colors.border,
-                        backgroundColor: reportData.time_qualification === true ? '#ffffff' : 'transparent',
-                      }
-                    ]}>
-                      {reportData.time_qualification === true && <View style={styles.radioDotInner} />}
-                    </View>
-                    <Text style={[styles.qualifiedBtnNewText, { color: reportData.time_qualification === true ? '#ffffff' : theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Yes
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.qualifiedBtnNew,
-                      {
-                        backgroundColor: reportData.time_qualification === false ? '#3b82f6' : theme.colors.background,
-                        borderColor: reportData.time_qualification === false ? '#3b82f6' : theme.colors.border,
-                      }
-                    ]}
-                    onPress={() => {
-                      if (!selectedSpeaker && (!manualNameEntry || !manualNameText.trim())) {
-                        setShowNameRequiredModal(true);
-                        return;
-                      }
-                      updateQualification(false);
-                    }}
-                  >
-                    <View style={[
-                      styles.radioDot,
-                      {
-                        borderColor: reportData.time_qualification === false ? '#ffffff' : theme.colors.border,
-                        backgroundColor: reportData.time_qualification === false ? '#ffffff' : 'transparent',
-                      }
-                    ]}>
-                      {reportData.time_qualification === false && <View style={styles.radioDotInner} />}
-                    </View>
-                    <Text style={[styles.qualifiedBtnNewText, { color: reportData.time_qualification === false ? '#ffffff' : theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      No
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Save Button */}
-              <TouchableOpacity
-                style={[
-                  styles.saveButtonFull,
-                  {
-                    backgroundColor: (selectedSpeaker || (manualNameEntry && manualNameText.trim())) ? theme.colors.primary : '#9ca3af',
-                  }
-                ]}
-                onPress={() => {
-                  if (!isAssignedTimer) {
-                    Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can save reports.`);
-                    return;
-                  }
-                  if (!selectedSpeaker && (!manualNameEntry || !manualNameText.trim())) {
-                    Alert.alert('Speaker Required', 'Please select a speaker or enter a guest name');
-                    return;
-                  }
-                  if (!reportData.speech_category) {
-                    Alert.alert('Error', 'Please select a speech category');
-                    return;
-                  }
-                  setShowConfirmModal(true);
-                }}
-                disabled={isSaving}
-              >
-                <Text style={styles.saveButtonFullText} maxFontSizeMultiplier={1.3}>
-                  Save
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Timer Logged Time Title */}
-            <Text style={[styles.loggedTimeSectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Timer Logged Time
-            </Text>
-
-            {/* All + Filter Tabs */}
-            <View style={styles.allButtonSection}>
-              <TouchableOpacity
-                style={[
-                  styles.allButton,
-                  {
-                    backgroundColor: selectedFilter === 'all' ? theme.colors.primary : theme.colors.surface,
-                    borderColor: selectedFilter === 'all' ? theme.colors.primary : theme.colors.border,
-                  }
-                ]}
-                onPress={() => setSelectedFilter('all')}
-              >
-                <Text style={[
-                  styles.allButtonText,
-                  { color: selectedFilter === 'all' ? '#ffffff' : theme.colors.text }
-                ]} maxFontSizeMultiplier={1.3}>
-                  All
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.categoryPillsSection}>
-              <View style={styles.categoryPillsContainer}>
-                {speechCategories.map((category) => (
-                  <TouchableOpacity
-                    key={category.value}
-                    style={[
-                      styles.categoryPill,
-                      {
-                        backgroundColor: selectedFilter === category.value ? theme.colors.primary : theme.colors.surface,
-                        borderColor: selectedFilter === category.value ? theme.colors.primary : theme.colors.border,
-                      }
-                    ]}
-                    onPress={() => setSelectedFilter(category.value)}
-                  >
-                    <Text style={[
-                      styles.categoryPillText,
-                      { color: selectedFilter === category.value ? '#ffffff' : theme.colors.text }
-                    ]} maxFontSizeMultiplier={1.3}>
-                      {category.label.replace(' Speaker', '').replace(' Session', '')}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
               </View>
             </View>
 
-            {/* Filtered Records */}
-            <View style={[styles.reportsSection, { backgroundColor: theme.colors.surface }]}>
-              {(selectedFilter === 'all' ? savedReports : savedReports.filter(r => r.speech_category === selectedFilter)).length > 0 ? (
-                <View style={styles.reportsList}>
-                  {(selectedFilter === 'all'
-                    ? savedReports
-                    : savedReports.filter(r => r.speech_category === selectedFilter)
-                  ).map((report) => (
-                    <ReportCard key={report.id} report={report} />
-                  ))}
-                </View>
-              ) : (
-                <View style={styles.emptyReportsState}>
-                  <Timer size={48} color={theme.colors.textSecondary} />
-                  <Text style={[styles.emptyReportsText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    No Timer Records
-                  </Text>
-                  <Text style={[styles.emptyReportsSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Timer records will appear here once you save speech timings
-                  </Text>
-                </View>
-              )}
-            </View>
+            {categoryRoles.length > 0 && (
+              <View style={[styles.preparedRolesCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <Text style={[styles.preparedRolesTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {selectedCategoryMeta?.label ?? 'Category'} roles open: {categoryOpenRolesCount}
+                </Text>
+                <View style={styles.preparedRolesList}>
+                  {categoryRoles.map((role) => {
+                    const assignedProfile = role.app_user_profiles;
+                    const guestDisplayName = parseTimerGuestName(role.completion_notes);
+                    const hasMember =
+                      !!role.assigned_user_id && role.booking_status === 'booked' && !!assignedProfile;
+                    const hasGuest =
+                      role.booking_status === 'booked' && !!guestDisplayName && !role.assigned_user_id;
+                    const isSlotFilled = hasMember || hasGuest;
+                    const isExpanded = selectedCategoryRoleId === role.id;
+                    const roleSummary = roleTimingSummary[role.id];
+                    return (
+                      <View key={role.id}>
+                        <View
+                          style={[styles.preparedRoleRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
+                        >
+                        <View style={styles.preparedRoleTextWrap}>
+                          <Text style={[styles.preparedRoleName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                            {role.role_name}
+                          </Text>
+                          {hasMember ? (
+                            <Text style={[styles.preparedRoleAssigned, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                              {assignedProfile!.full_name}
+                            </Text>
+                          ) : hasGuest ? (
+                            <Text style={[styles.preparedRoleAssigned, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                              {guestDisplayName}
+                            </Text>
+                          ) : (
+                            <Text style={[styles.preparedRoleOpen, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                              Open
+                            </Text>
+                          )}
+                          {!!roleSummary && (
+                            <View style={styles.roleSummaryRow}>
+                              <Text style={[styles.roleSummaryTime, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                                {roleSummary.time}
+                              </Text>
+                              <View style={[
+                                styles.roleSummaryQBadge,
+                                { backgroundColor: roleSummary.qualified ? '#dcfce7' : '#fee2e2' }
+                              ]}>
+                                <Text style={[
+                                  styles.roleSummaryQText,
+                                  { color: roleSummary.qualified ? '#16a34a' : '#dc2626' }
+                                ]} maxFontSizeMultiplier={1.2}>
+                                  Q
+                                </Text>
+                              </View>
+                            </View>
+                          )}
+                        </View>
 
-            {/* Timer Review Report Button (below Timer Logged Time) */}
-            <TouchableOpacity
-              style={[styles.timerReviewButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-              onPress={() => router.push(`/timer-review?meetingId=${meetingId}`)}
-            >
-              <View style={[styles.timerReviewIconWrap, { backgroundColor: '#FFF4E6' }]}>
-                <FileBarChart size={20} color="#f59e0b" />
+                        {isSlotFilled ? (
+                          <TouchableOpacity
+                            style={[styles.preparedRoleArrowBtn, { borderColor: theme.colors.border }]}
+                            onPress={() => {
+                              if (isExpanded) {
+                                setSelectedCategoryRoleId(null);
+                                setSelectedSpeaker(null);
+                                setManualNameEntry(false);
+                                setManualNameText('');
+                                return;
+                              }
+                              setSelectedCategoryRoleId(role.id);
+                              if (hasMember && assignedProfile) {
+                                setManualNameEntry(false);
+                                setManualNameText('');
+                                setSelectedSpeaker({
+                                  id: assignedProfile.id,
+                                  full_name: assignedProfile.full_name,
+                                  email: assignedProfile.email,
+                                  avatar_url: assignedProfile.avatar_url,
+                                });
+                              } else if (hasGuest && guestDisplayName) {
+                                setSelectedSpeaker(null);
+                                setManualNameEntry(true);
+                                setManualNameText(guestDisplayName);
+                                setReportData((prev) => ({
+                                  meeting_id: meetingId || '',
+                                  club_id: user?.currentClubId || '',
+                                  speaker_name: guestDisplayName,
+                                  speaker_user_id: null,
+                                  speech_category: prev.speech_category,
+                                  actual_time_seconds: 0,
+                                  actual_time_display: '00:00',
+                                  time_qualification: null,
+                                  target_min_seconds: null,
+                                  target_max_seconds: null,
+                                  notes: null,
+                                  recorded_by: user?.id || '',
+                                }));
+                                setMinutes(0);
+                                setSeconds(0);
+                                setStopwatchTime(0);
+                                setStopwatchRunning(false);
+                              }
+                            }}
+                          >
+                            <ChevronDown
+                              size={16}
+                              color={theme.colors.textSecondary}
+                              style={{ transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }}
+                            />
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.preparedRoleAssignBtn, { backgroundColor: '#2563eb' }]}
+                            onPress={() => {
+                              if (!isAssignedTimer) return;
+                              setRoleToAssign(role);
+                              setGuestAssignNameInput('');
+                              setShowSpeakerModal(true);
+                            }}
+                            disabled={!isAssignedTimer}
+                          >
+                            <Text style={styles.preparedRoleAssignBtnText} maxFontSizeMultiplier={1.2}>Assign</Text>
+                          </TouchableOpacity>
+                        )}
+                        </View>
+                        {isExpanded && (
+                          <View style={styles.inlineLoggerWrap}>
+                            {renderTimeLoggerCard()}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
-              <View style={styles.timerReviewTextWrap}>
-                <Text style={[styles.timerReviewTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Timer Review
-                </Text>
-                <Text style={[styles.timerReviewSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  View report
-                </Text>
-              </View>
-              <ChevronDown size={18} color={theme.colors.textSecondary} style={{ transform: [{ rotate: '-90deg' }] }} />
-            </TouchableOpacity>
+            )}
+
+            {!canShowTimeLogger && (
+              <Text style={[styles.selectRoleHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Select an assigned role (down arrow) to open Time Logger.
+              </Text>
+            )}
+
+            {categoryRoles.length === 0 && canShowTimeLogger && renderTimeLoggerCard()}
 
             {/* Navigation Quick Actions Box */}
             <View style={[styles.quickActionsBoxContainer, { backgroundColor: '#ffffff' }]}>
@@ -1557,7 +1738,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                    <FileText size={24} color="#f59e0b" />
+                    <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
                 </TouchableOpacity>
@@ -1567,7 +1748,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5E5' }]}>
-                    <Bell size={24} color="#dc2626" />
+                    <Bell size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
                 </TouchableOpacity>
@@ -1577,7 +1758,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                    <Users size={24} color="#ec4899" />
+                    <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance Report</Text>
                 </TouchableOpacity>
@@ -1587,7 +1768,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
-                    <Calendar size={24} color="#3b82f6" />
+                    <Calendar size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
                 </TouchableOpacity>
@@ -1597,7 +1778,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5D9' }]}>
-                    <BookOpen size={24} color="#f97316" />
+                    <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Corner</Text>
                 </TouchableOpacity>
@@ -1607,7 +1788,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/general-evaluator-notes', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                    <Star size={24} color="#ef4444" />
+                    <Star size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>General Evaluator</Text>
                 </TouchableOpacity>
@@ -1617,7 +1798,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#F3E8FF' }]}>
-                    <FileText size={24} color="#8b5cf6" />
+                    <FileText size={FOOTER_NAV_ICON_SIZE} color="#8b5cf6" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
                 </TouchableOpacity>
@@ -1627,7 +1808,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                    <Mic size={24} color="#f59e0b" />
+                    <Mic size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote Speaker</Text>
                 </TouchableOpacity>
@@ -1637,7 +1818,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
-                    <CheckSquare size={24} color="#9333ea" />
+                    <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live Voting</Text>
                 </TouchableOpacity>
@@ -1647,7 +1828,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/quick-overview', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                    <FileText size={24} color="#3b82f6" />
+                    <FileText size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Quick Overview</Text>
                 </TouchableOpacity>
@@ -1657,7 +1838,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                    <CheckSquare size={24} color="#3b82f6" />
+                    <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role Completion</Text>
                 </TouchableOpacity>
@@ -1667,7 +1848,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/prepared-speech-evaluations', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#FECACA' }]}>
-                    <ClipboardCheck size={24} color="#dc2626" />
+                    <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speech Evaluation</Text>
                 </TouchableOpacity>
@@ -1677,7 +1858,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#E7F5EF' }]}>
-                    <FileBarChart size={24} color="#10b981" />
+                    <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#10b981" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
                 </TouchableOpacity>
@@ -1687,7 +1868,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/toastmaster-corner', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#F0E7FE' }]}>
-                    <Star size={24} color="#8b5cf6" />
+                    <Star size={FOOTER_NAV_ICON_SIZE} color="#8b5cf6" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Toastmaster</Text>
                 </TouchableOpacity>
@@ -1697,7 +1878,7 @@ export default function TimerReportDetails() {
                   onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meetingId } })}
                 >
                   <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                    <MessageSquare size={24} color="#ef4444" />
+                    <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
                   </View>
                   <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TTM</Text>
                 </TouchableOpacity>
@@ -1707,7 +1888,33 @@ export default function TimerReportDetails() {
           </>
         ) : (
           /* Summary Tab */
-          <View style={styles.reportsTabContent} />
+          <View style={styles.reportsTabContent}>
+            <View style={[styles.reportsSection, { backgroundColor: theme.colors.surface }]}>
+              <Text style={[styles.reportTableHeaderText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Timer Summary
+              </Text>
+              <Text style={[styles.vpeMessageSubtitle, { color: theme.colors.textSecondary, marginTop: 8, marginBottom: 14 }]} maxFontSizeMultiplier={1.2}>
+                View complete meeting timing records and qualified statuses.
+              </Text>
+              <TouchableOpacity
+                style={[styles.timerReviewButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                onPress={() => router.push(`/timer-review?meetingId=${meetingId}`)}
+              >
+                <View style={[styles.timerReviewIconWrap, { backgroundColor: '#FFF4E6' }]}>
+                  <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+                </View>
+                <View style={styles.timerReviewTextWrap}>
+                  <Text style={[styles.timerReviewTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Timer Review
+                  </Text>
+                  <Text style={[styles.timerReviewSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    View report
+                  </Text>
+                </View>
+                <ChevronDown size={18} color={theme.colors.textSecondary} style={{ transform: [{ rotate: '-90deg' }] }} />
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
       </ScrollView>
 
@@ -2133,6 +2340,8 @@ export default function TimerReportDetails() {
           onPress={() => {
             setShowSpeakerModal(false);
             setSpeakerSearchQuery('');
+            setRoleToAssign(null);
+            setGuestAssignNameInput('');
           }}
         >
           <TouchableOpacity
@@ -2141,44 +2350,58 @@ export default function TimerReportDetails() {
             onPress={(e) => e.stopPropagation()}
           >
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Speaker</Text>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                {roleToAssign ? `Assign ${roleToAssign.role_name}` : 'Select Speaker'}
+              </Text>
               <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => {
                   setShowSpeakerModal(false);
                   setSpeakerSearchQuery('');
+                  setRoleToAssign(null);
+                  setGuestAssignNameInput('');
                 }}
               >
                 <X size={20} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            {/* Guest / Manual entry option */}
-            <TouchableOpacity
-              style={[styles.guestEntryOption, { borderColor: theme.colors.border, backgroundColor: manualNameEntry ? '#FFF4E6' : theme.colors.background }]}
-              onPress={() => {
-                setManualNameEntry(true);
-                setSelectedSpeaker(null);
-                setShowSpeakerModal(false);
-                setSpeakerSearchQuery('');
-              }}
-            >
-              <View style={[styles.guestEntryIcon, { backgroundColor: '#FEF3C7' }]}>
-                <User size={16} color="#F59E0B" />
+            {roleToAssign && (
+              <View style={[styles.guestAssignBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+                <Text style={[styles.guestAssignLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                  Guest (not in list)
+                </Text>
+                <TextInput
+                  style={[styles.guestAssignInput, { color: theme.colors.text, borderColor: theme.colors.border }]}
+                  placeholder="e.g. Ram → saved as Guest Ram"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={guestAssignNameInput}
+                  onChangeText={setGuestAssignNameInput}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  style={[styles.guestAssignButton, { backgroundColor: '#2563eb' }]}
+                  onPress={handleAssignGuestCategoryRole}
+                  disabled={!isAssignedTimer}
+                >
+                  <Text style={styles.guestAssignButtonText} maxFontSizeMultiplier={1.2}>Assign guest</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={[styles.guestEntryText, { color: '#92400E' }]} maxFontSizeMultiplier={1.3}>
-                Enter Guest Name Manually
-              </Text>
-            </TouchableOpacity>
+            )}
 
-            {bookedSpeakers.length > 0 && (
+            {roleToAssign && (
               <View style={[styles.modalDivider, { backgroundColor: theme.colors.border }]} />
             )}
 
-            {bookedSpeakers.length === 0 ? (
+            <Text style={[styles.modalMembersHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+              Club members
+            </Text>
+
+            {filteredClubMembers.length === 0 ? (
               <View style={styles.noBookingContainer}>
                 <Text style={[styles.noBookingText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  No booking
+                  No members match your search
                 </Text>
               </View>
             ) : (
@@ -2203,46 +2426,32 @@ export default function TimerReportDetails() {
                 </View>
 
                 <ScrollView style={styles.speakersList} showsVerticalScrollIndicator={false}>
-                  {filteredClubMembers.length > 0 ? (
-                    filteredClubMembers.map((member) => (
-                      <TouchableOpacity
-                        key={member.id}
-                        style={[
-                          styles.speakerOption,
-                          selectedSpeaker?.id === member.id && { backgroundColor: theme.colors.primary + '20' }
-                        ]}
-                        onPress={() => {
-                          setSelectedSpeaker(member);
-                          setManualNameEntry(false);
-                          setManualNameText('');
-                          setShowSpeakerModal(false);
-                          setSpeakerSearchQuery('');
-                        }}
-                      >
-                        <View style={styles.speakerOptionAvatar}>
-                          {member.avatar_url ? (
-                            <Image source={{ uri: member.avatar_url }} style={styles.speakerOptionAvatarImage} />
-                          ) : (
-                            <User size={20} color="#ffffff" />
-                          )}
-                        </View>
-                        <View style={styles.speakerOptionInfo}>
-                          <Text style={[
-                            styles.speakerOptionName,
-                            { color: selectedSpeaker?.id === member.id ? theme.colors.primary : theme.colors.text }
-                          ]} maxFontSizeMultiplier={1.3}>
-                            {member.full_name}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    ))
-                  ) : (
-                    <View style={styles.noResultsContainer}>
-                      <Text style={[styles.noResultsText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        No speakers found
-                      </Text>
-                    </View>
-                  )}
+                  {filteredClubMembers.map((member) => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[
+                        styles.speakerOption,
+                        selectedSpeaker?.id === member.id && { backgroundColor: theme.colors.primary + '20' }
+                      ]}
+                      onPress={() => handleAssignCategoryRole(member)}
+                    >
+                      <View style={styles.speakerOptionAvatar}>
+                        {member.avatar_url ? (
+                          <Image source={{ uri: member.avatar_url }} style={styles.speakerOptionAvatarImage} />
+                        ) : (
+                          <User size={20} color="#ffffff" />
+                        )}
+                      </View>
+                      <View style={styles.speakerOptionInfo}>
+                        <Text style={[
+                          styles.speakerOptionName,
+                          { color: selectedSpeaker?.id === member.id ? theme.colors.primary : theme.colors.text }
+                        ]} maxFontSizeMultiplier={1.3}>
+                          {member.full_name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
                 </ScrollView>
               </>
             )}
@@ -2269,10 +2478,10 @@ export default function TimerReportDetails() {
             </View>
 
             <ScrollView style={styles.howToScroll} showsVerticalScrollIndicator={false}>
-              {/* Log Time Tab Section */}
+              {/* Timer Corner Tab Section */}
               <View style={[styles.howToSectionBadge, { backgroundColor: '#EEF2FF' }]}>
                 <FileText size={14} color='#4F46E5' />
-                <Text style={[styles.howToSectionBadgeText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>Log Time Tab</Text>
+                <Text style={[styles.howToSectionBadgeText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>Timer Corner Tab</Text>
               </View>
 
               {[
@@ -3218,6 +3427,19 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 40,
   },
+  headerInfoButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -3795,21 +4017,110 @@ const styles = StyleSheet.create({
   },
   categoryRowContent: {
     paddingHorizontal: 16,
-    gap: 8,
-    alignItems: 'center',
+    gap: 10,
+    alignItems: 'stretch',
   },
   categoryPillItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 20,
+    borderRadius: 12,
     borderWidth: 1,
+    width: '100%',
   },
   categoryPillItemText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  preparedRolesCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    gap: 10,
+  },
+  preparedRolesTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  preparedRolesList: {
+    gap: 8,
+  },
+  inlineLoggerWrap: {
+    marginTop: 8,
+    marginBottom: 2,
+  },
+  preparedRoleRow: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  preparedRoleTextWrap: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  preparedRoleName: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  preparedRoleAssigned: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  preparedRoleOpen: {
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  roleSummaryRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  roleSummaryTime: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  roleSummaryQBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  roleSummaryQText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  preparedRoleAssignBtn: {
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  preparedRoleAssignBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  preparedRoleArrowBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectRoleHint: {
+    marginTop: 10,
+    marginHorizontal: 18,
+    fontSize: 12,
+    fontWeight: '500',
   },
   logTimeCard: {
     marginHorizontal: 16,
@@ -3822,6 +4133,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 2,
+  },
+  timeLoggerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   timeBoxFull: {
     borderWidth: 1,
@@ -4015,39 +4331,77 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   quickActionsBoxContainer: {
+    borderTopWidth: 0,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+    borderRadius: 16,
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 16,
-    padding: 16,
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 4,
+    elevation: 3,
   },
   quickActionsContent: {
     flexDirection: 'row',
-    gap: 16,
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 6,
   },
   quickActionItem: {
     alignItems: 'center',
-    minWidth: 70,
+    minWidth: 45,
   },
   quickActionIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 3,
   },
   quickActionLabel: {
-    fontSize: 12,
+    fontSize: 8,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  guestAssignBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  guestAssignLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  guestAssignInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+  },
+  guestAssignButton: {
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  guestAssignButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  modalMembersHeading: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   guestEntryOption: {
     flexDirection: 'row',

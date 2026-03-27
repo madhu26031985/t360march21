@@ -1,13 +1,15 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
-import { router } from 'expo-router';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Home, User, Mail, MapPin, Camera, X, Facebook, Twitter, Linkedin, Instagram, Youtube, ChevronRight, Phone, Lock, Info, Users, Calendar, Settings, ArrowLeft } from 'lucide-react-native';
 import { Image, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+
+const FOOTER_NAV_ICON_SIZE = 15;
 
 interface ProfileData {
   full_name: string;
@@ -52,6 +54,9 @@ export default function Profile() {
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
   const [isExComm, setIsExComm] = useState(false);
+  const infoIconBlinkOpacity = useRef(new Animated.Value(1)).current;
+  const infoIconPulseScale = useRef(new Animated.Value(1)).current;
+  const [infoAnimRunKey, setInfoAnimRunKey] = useState(0);
 
   useEffect(() => {
     if (!user?.id) {
@@ -62,6 +67,81 @@ export default function Profile() {
     loadProfile();
     loadUserRole();
   }, [user?.id]);
+
+  useEffect(() => {
+    let stopTimer: ReturnType<typeof setTimeout> | null = null;
+    let blinkAnimation: Animated.CompositeAnimation | null = null;
+    let scaleAnimation: Animated.CompositeAnimation | null = null;
+    const aboutMissing = !profileData['About']?.trim();
+    const avatarMissing = !profileData.avatar_url;
+
+    if (!isLoading && aboutMissing && avatarMissing) {
+      infoIconBlinkOpacity.setValue(1);
+      infoIconPulseScale.setValue(1);
+      blinkAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(infoIconBlinkOpacity, {
+            toValue: 0.25,
+            duration: 360,
+            useNativeDriver: true,
+          }),
+          Animated.timing(infoIconBlinkOpacity, {
+            toValue: 1,
+            duration: 360,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      blinkAnimation.start();
+      scaleAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(infoIconPulseScale, {
+            toValue: 1.08,
+            duration: 360,
+            useNativeDriver: true,
+          }),
+          Animated.timing(infoIconPulseScale, {
+            toValue: 1,
+            duration: 360,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      scaleAnimation.start();
+
+      stopTimer = setTimeout(() => {
+        blinkAnimation?.stop();
+        scaleAnimation?.stop();
+        Animated.timing(infoIconBlinkOpacity, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }).start();
+        Animated.timing(infoIconPulseScale, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }).start();
+      }, 5000);
+    } else {
+      infoIconBlinkOpacity.setValue(1);
+      infoIconPulseScale.setValue(1);
+    }
+
+    return () => {
+      if (stopTimer) clearTimeout(stopTimer);
+      blinkAnimation?.stop();
+      scaleAnimation?.stop();
+      infoIconBlinkOpacity.setValue(1);
+      infoIconPulseScale.setValue(1);
+    };
+  }, [isLoading, profileData.avatar_url, profileData['About'], infoIconBlinkOpacity, infoIconPulseScale, infoAnimRunKey]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setInfoAnimRunKey((k) => k + 1);
+    }, [])
+  );
 
   const loadProfile = async () => {
     if (!user) {
@@ -491,9 +571,15 @@ export default function Profile() {
             <ArrowLeft size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} maxFontSizeMultiplier={1.3}>Edit Profile</Text>
-          <TouchableOpacity style={styles.infoButton} onPress={() => setShowInfoModal(true)}>
-            <Info size={24} color="#3B82F6" />
-          </TouchableOpacity>
+          <Animated.View style={[styles.infoButtonPulseWrap, { opacity: infoIconBlinkOpacity, transform: [{ scale: infoIconPulseScale }] }]}>
+            <TouchableOpacity
+              style={[styles.infoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
+              onPress={() => setShowInfoModal(true)}
+              activeOpacity={0.8}
+            >
+              <Info size={18} color="#6E839F" />
+            </TouchableOpacity>
+          </Animated.View>
         </View>
 
         <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContentContainer}>
@@ -658,40 +744,40 @@ export default function Profile() {
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#E8F4FD' }]}>
-                  <Home size={16} color="#3b82f6" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
-                <Text style={styles.navLabel} maxFontSizeMultiplier={1.3}>Journey</Text>
+                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)/club')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#FEF3E7' }]}>
-                  <Users size={16} color="#f59e0b" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
-                <Text style={styles.navLabel} maxFontSizeMultiplier={1.3}>Club</Text>
+                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)/meetings')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#E0F2FE' }]}>
-                  <Calendar size={16} color="#0ea5e9" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
-                <Text style={styles.navLabel} maxFontSizeMultiplier={1.3}>Meetings</Text>
+                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)/settings')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#F3E8FF' }]}>
-                  <Settings size={16} color="#8b5cf6" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
-                <Text style={styles.navLabel} maxFontSizeMultiplier={1.3}>Settings</Text>
+                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
               </TouchableOpacity>
 
               {isExComm && (
@@ -699,10 +785,10 @@ export default function Profile() {
                   style={styles.navItem}
                   onPress={() => router.push('/(tabs)/admin')}
                 >
-                  <View style={[styles.navIcon, { backgroundColor: '#FFE5E5' }]}>
-                    <Settings size={16} color="#dc2626" />
+                  <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                    <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                   </View>
-                  <Text style={styles.navLabel} maxFontSizeMultiplier={1.3}>Admin</Text>
+                  <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -934,26 +1020,22 @@ export default function Profile() {
                 <X size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
+            <View style={styles.infoHeaderDivider} />
 
             <ScrollView style={styles.infoContent} showsVerticalScrollIndicator={false}>
-              <Text style={styles.infoTitle} maxFontSizeMultiplier={1.3}>Your Story, Your Identity ✨</Text>
+              <Text style={styles.infoTitle} maxFontSizeMultiplier={1.3}>Your story, your identity ✨</Text>
 
               <Text style={styles.infoText} maxFontSizeMultiplier={1.3}>
-                This is where your journey becomes personal and visible to others.
+                Let people know who you are beyond meetings.
               </Text>
 
-              <Text style={styles.infoText} maxFontSizeMultiplier={1.3}>
-                Your profile helps people recognize you, connect with you, and know who you are beyond the meeting room 🤝
-              </Text>
-
-              <Text style={styles.infoSubtitle} maxFontSizeMultiplier={1.3}>Here you can:</Text>
-              <Text style={styles.infoBullet} maxFontSizeMultiplier={1.3}>📸 Update your photo</Text>
-              <Text style={styles.infoBullet} maxFontSizeMultiplier={1.3}>📍 Edit phone number and location</Text>
-              <Text style={styles.infoBullet} maxFontSizeMultiplier={1.3}>📝 Share your story in About</Text>
-              <Text style={styles.infoBullet} maxFontSizeMultiplier={1.3}>🔗 Add social media links</Text>
+              <Text style={styles.infoBullet} maxFontSizeMultiplier={1.3}>📸  Add your photo</Text>
+              <Text style={styles.infoBullet} maxFontSizeMultiplier={1.3}>📍  Update contact & location</Text>
+              <Text style={styles.infoBullet} maxFontSizeMultiplier={1.3}>✍️  Write about yourself</Text>
+              <Text style={styles.infoBullet} maxFontSizeMultiplier={1.3}>🔗  Add social links</Text>
 
               <Text style={styles.infoText} maxFontSizeMultiplier={1.3}>
-                Your About section is your living introduction — no need to repeat your story to every new club 🎤
+                Your About section is your quick intro.
               </Text>
             </ScrollView>
 
@@ -1002,7 +1084,23 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   infoButton: {
-    padding: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    shadowColor: '#93A7BF',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  infoButtonPulseWrap: {
+    borderRadius: 18,
   },
   headerTitle: {
     fontSize: 18,
@@ -1285,6 +1383,11 @@ const styles = StyleSheet.create({
   },
   infoContent: {
     maxHeight: 400,
+  },
+  infoHeaderDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginBottom: 12,
   },
   infoTitle: {
     fontSize: 16,

@@ -351,7 +351,6 @@ export default function MyJourney() {
   /** Profile “About” has non-empty text */
   const [profileHasAbout, setProfileHasAbout] = useState<boolean>(false);
   const [profileFieldsLoaded, setProfileFieldsLoaded] = useState<boolean>(false);
-  const [showIncompleteProfileModal, setShowIncompleteProfileModal] = useState<boolean>(false);
   /** Vice President Education for current club (`club_profiles.vpe_id`) */
   const [isVPEForCurrentClub, setIsVPEForCurrentClub] = useState<boolean>(false);
 
@@ -1144,7 +1143,8 @@ export default function MyJourney() {
     | 'toastmaster_theme'
     | 'educational_speech'
     | 'grammarian_wotd'
-    | 'prepared_speech';
+    | 'prepared_speech'
+    | 'vpe_nudge';
 
   const pendingMeetingReminders = useMemo((): { key: PendingMeetingReminderKey; text: string }[] => {
     if (!currentOpenMeetingId || isCurrentOpenMeetingCompleted) return [];
@@ -1184,6 +1184,12 @@ export default function MyJourney() {
         text: `${name}, please add your speech details.`,
       });
     }
+    if (isVPEForCurrentClub && currentOpenMeetingId) {
+      out.push({
+        key: 'vpe_nudge',
+        text: 'Nudge members to book a role.',
+      });
+    }
     return out;
   }, [
     currentOpenMeetingId,
@@ -1193,6 +1199,7 @@ export default function MyJourney() {
     educationalSpeakerNeedsAlert,
     grammarianNeedsWordOfTheDayAlert,
     preparedSpeakerNeedsSpeechDetailsAlert,
+    isVPEForCurrentClub,
     user?.fullName,
   ]);
 
@@ -1241,6 +1248,9 @@ export default function MyJourney() {
         case 'prepared_speech':
           router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
           break;
+        case 'vpe_nudge':
+          router.push('/vpe-nudges');
+          break;
         default:
           break;
       }
@@ -1253,16 +1263,11 @@ export default function MyJourney() {
   const showHeaderAvatarPending = profileFieldsLoaded && !userAvatar;
 
   const handleMyProfilePress = useCallback(() => {
-    if (showMyProfilePending) {
-      setShowIncompleteProfileModal(true);
-      return;
-    }
     router.push('/profile');
-  }, [showMyProfilePending]);
+  }, []);
 
-  const goToProfileFromIncompleteModal = useCallback(() => {
-    setShowIncompleteProfileModal(false);
-    router.push('/profile');
+  const goToReportsSection = useCallback(() => {
+    router.push({ pathname: '/(tabs)/club', params: { section: 'reports' } });
   }, []);
 
   const handlePreparedSpeechesPress = useCallback(() => {
@@ -1445,6 +1450,16 @@ export default function MyJourney() {
                   onPress={() => router.push('/my-growth-guidance')}
                   inline
                 />
+                <TouchableOpacity
+                  style={styles.journeySectionHeader}
+                  onPress={() => router.push('/(tabs)/club')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.journeySectionHeaderText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    Your Toastmasters Journey
+                  </Text>
+                  <ChevronRight size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
               </View>
             </View>
           </>
@@ -1459,47 +1474,46 @@ export default function MyJourney() {
                   <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
                   {/* Profile, Speeches, Mentor */}
                   <View style={styles.journeyListCardsContainer}>
-                    {isVPEForCurrentClub &&
-                      (currentOpenMeetingId ? (
-                        <JourneyListCard
-                          title="VPE Nudge"
-                          description="Nudge members to book the role"
-                          icon={<Text style={styles.vpeBellEmoji}>🔔</Text>}
-                          color="#F59E0B"
-                          onPress={() => router.push('/vpe-nudges')}
-                          inline
-                          animateIconOnly
-                        />
-                      ) : (
-                        <TouchableOpacity
-                          style={[
-                            styles.journeyListCard,
-                            styles.journeyListCardInline,
-                            {
-                              backgroundColor: theme.colors.surface,
-                              borderWidth: 1,
-                              borderColor: theme.colors.border,
-                            },
-                          ]}
-                          onPress={() => router.push('/admin/meeting-management')}
-                          activeOpacity={0.75}
-                        >
-                          <View style={[styles.journeyListIconWrap, { backgroundColor: `${PENDING_ACTION_UI.accent}20` }]}>
-                            <AlertCircle size={18} color={PENDING_ACTION_UI.accent} />
+                    {pendingMeetingReminders.length > 0 && (
+                      <TouchableOpacity
+                        style={[
+                          styles.actionReminderHeroCard,
+                        ]}
+                        onPress={() => {
+                          const item = pendingMeetingReminders[heroReminderSlide];
+                          if (item) openPendingReminderTarget(item.key);
+                        }}
+                        activeOpacity={0.88}
+                      >
+                        <View style={styles.actionReminderHeroRow}>
+                          <Text style={styles.vpeBellEmoji}>🔔</Text>
+                          <View style={styles.actionReminderHeroTextCol}>
+                            <Animated.View style={heroReminderTextAnimatedStyle}>
+                              <Text
+                                style={[styles.actionReminderHeroMessage, { color: theme.colors.textSecondary }]}
+                                maxFontSizeMultiplier={1.25}
+                              >
+                                {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
+                              </Text>
+                            </Animated.View>
                           </View>
-                          <View style={styles.journeyListTextCol}>
-                            <Text
-                              style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]}
-                              maxFontSizeMultiplier={1.2}
-                            >
-                              {`${(user?.fullName || '')
-                                .trim()
-                                .split(/\s+/)
-                                .filter(Boolean)[0] || 'VPE'}, members are lining up like it’s a movie first-day-first-show 🎬 Please open the next meeting!`}
-                            </Text>
+                          <ChevronRight size={14} color={theme.colors.textSecondary} />
+                        </View>
+                        {pendingMeetingReminders.length > 1 && (
+                          <View style={styles.actionReminderDots}>
+                            {pendingMeetingReminders.map((r, i) => (
+                              <View
+                                key={r.key}
+                                style={[
+                                  styles.actionReminderDot,
+                                  i === heroReminderSlide ? styles.actionReminderDotActive : styles.actionReminderDotInactive,
+                                ]}
+                              />
+                            ))}
                           </View>
-                        </TouchableOpacity>
-                      ))}
+                        )}
+                      </TouchableOpacity>
+                    )}
                     <JourneyListCard
                       title="My Profile"
                       description="View and edit your personal information"
@@ -1525,41 +1539,6 @@ export default function MyJourney() {
                       onPress={() => router.push('/my-growth-guidance')}
                       inline
                     />
-                  </View>
-                  <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
-                  {/* Stats - clean Apple-style 2x2 grid */}
-                  <View style={styles.masterStatsGrid}>
-                    <View style={styles.masterStatsRow}>
-                      <View style={styles.masterStatsCell}>
-                        <Text style={[styles.masterStatsNumber, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                          {meetingAttendedCount}
-                        </Text>
-                        <Text style={[styles.masterStatsLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Meeting attended</Text>
-                      </View>
-                      <View style={[styles.masterStatsVDivider, { backgroundColor: theme.colors.border }]} />
-                      <View style={styles.masterStatsCell}>
-                        <Text style={[styles.masterStatsNumber, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                          {speechesGivenCount}
-                        </Text>
-                        <Text style={[styles.masterStatsLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Speeches Given</Text>
-                      </View>
-                    </View>
-                    <View style={[styles.masterStatsHDivider, { backgroundColor: theme.colors.border }]} />
-                    <View style={styles.masterStatsRow}>
-                      <View style={styles.masterStatsCell}>
-                        <Text style={[styles.masterStatsNumber, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                          {rolesCompletedCount}
-                        </Text>
-                        <Text style={[styles.masterStatsLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Roles completed</Text>
-                      </View>
-                      <View style={[styles.masterStatsVDivider, { backgroundColor: theme.colors.border }]} />
-                      <View style={styles.masterStatsCell}>
-                        <Text style={[styles.masterStatsNumber, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                          {evaluationsGivenCount}
-                        </Text>
-                        <Text style={[styles.masterStatsLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Evaluation given</Text>
-                      </View>
-                    </View>
                   </View>
                   <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
                   {/* Meeting details */}
@@ -1753,52 +1732,52 @@ export default function MyJourney() {
                 </View>
               </TouchableOpacity>
 
-              {pendingMeetingReminders.length > 0 && (
-                <TouchableOpacity
-                  style={[
-                    styles.actionReminderHeroCard,
-                    {
-                      backgroundColor: theme.colors.surface,
-                      borderColor: theme.colors.border,
-                    },
-                  ]}
-                  onPress={() => {
-                    const item = pendingMeetingReminders[heroReminderSlide];
-                    if (item) openPendingReminderTarget(item.key);
-                  }}
-                  activeOpacity={0.88}
-                >
-                  <View style={styles.actionReminderHeroRow}>
-                    <View style={styles.actionReminderHeroIconWrap}>
-                      <Bell size={16} color={PENDING_ACTION_UI.accent} strokeWidth={2} />
-                    </View>
-                    <View style={styles.actionReminderHeroTextCol}>
-                      <Animated.View style={heroReminderTextAnimatedStyle}>
-                        <Text
-                          style={[styles.actionReminderHeroMessage, { color: theme.colors.textSecondary }]}
-                          maxFontSizeMultiplier={1.25}
-                        >
-                          {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
-                        </Text>
-                      </Animated.View>
-                    </View>
-                    <ChevronRight size={14} color={theme.colors.textSecondary} />
-                  </View>
-                  {pendingMeetingReminders.length > 1 && (
-                    <View style={styles.actionReminderDots}>
-                      {pendingMeetingReminders.map((r, i) => (
-                        <View
-                          key={r.key}
-                          style={[
-                            styles.actionReminderDot,
-                            i === heroReminderSlide ? styles.actionReminderDotActive : styles.actionReminderDotInactive,
-                          ]}
-                        />
-                      ))}
-                    </View>
-                  )}
-                </TouchableOpacity>
-              )}
+              <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
+              <TouchableOpacity
+                style={styles.journeySectionHeader}
+                onPress={() => router.push('/(tabs)/club')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.journeySectionHeaderText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Your Toastmasters Journey
+                </Text>
+                <ChevronRight size={18} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+              {/* Stats - clean Apple-style 2x2 grid */}
+              <View style={styles.masterStatsGrid}>
+                <View style={styles.masterStatsRow}>
+                  <TouchableOpacity style={styles.masterStatsCell} onPress={goToReportsSection} activeOpacity={0.75}>
+                    <Text style={[styles.masterStatsNumber, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                      {meetingAttendedCount}
+                    </Text>
+                    <Text style={[styles.masterStatsLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Meeting attended</Text>
+                  </TouchableOpacity>
+                  <View style={[styles.masterStatsVDivider, { backgroundColor: theme.colors.border }]} />
+                  <TouchableOpacity style={styles.masterStatsCell} onPress={goToReportsSection} activeOpacity={0.75}>
+                    <Text style={[styles.masterStatsNumber, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                      {speechesGivenCount}
+                    </Text>
+                    <Text style={[styles.masterStatsLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Speeches Given</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.masterStatsHDivider, { backgroundColor: theme.colors.border }]} />
+                <View style={styles.masterStatsRow}>
+                  <TouchableOpacity style={styles.masterStatsCell} onPress={goToReportsSection} activeOpacity={0.75}>
+                    <Text style={[styles.masterStatsNumber, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                      {rolesCompletedCount}
+                    </Text>
+                    <Text style={[styles.masterStatsLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Roles completed</Text>
+                  </TouchableOpacity>
+                  <View style={[styles.masterStatsVDivider, { backgroundColor: theme.colors.border }]} />
+                  <TouchableOpacity style={styles.masterStatsCell} onPress={goToReportsSection} activeOpacity={0.75}>
+                    <Text style={[styles.masterStatsNumber, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                      {evaluationsGivenCount}
+                    </Text>
+                    <Text style={[styles.masterStatsLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Evaluation given</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
             </View>
           </>
         )}
@@ -1868,78 +1847,6 @@ export default function MyJourney() {
               }}
             >
               <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>Book a role</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Incomplete profile — opens when user taps My Profile while photo or About is missing */}
-      <Modal
-        visible={showIncompleteProfileModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowIncompleteProfileModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.bookRolePromptOverlay}
-          activeOpacity={1}
-          onPress={() => setShowIncompleteProfileModal(false)}
-        >
-          <TouchableOpacity
-            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
-            <View style={styles.bookRolePromptHeaderRow}>
-              <Text style={[styles.bookRolePromptTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Finish your profile
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowIncompleteProfileModal(false)}
-                style={styles.bookRolePromptCloseBtn}
-                hitSlop={12}
-              >
-                <X size={20} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary, marginBottom: 12 }]} maxFontSizeMultiplier={1.3}>
-              A complete profile helps your club recognize and connect with you.
-            </Text>
-            <View style={[styles.bookRolePromptDivider, { backgroundColor: theme.colors.border }]} />
-            <View style={styles.incompleteProfileBulletBlock}>
-              {!userAvatar && (
-                <View style={styles.incompleteProfileBulletRow}>
-                  <View style={[styles.incompleteProfileDot, { backgroundColor: PENDING_ACTION_UI.accent }]} />
-                  <Text style={[styles.incompleteProfileBulletText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Add a profile picture (tap Change Photo on Edit Profile).
-                  </Text>
-                </View>
-              )}
-              {!profileHasAbout && (
-                <View style={styles.incompleteProfileBulletRow}>
-                  <View style={[styles.incompleteProfileDot, { backgroundColor: PENDING_ACTION_UI.accent }]} />
-                  <Text style={[styles.incompleteProfileBulletText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Fill in your About section so others know your story.
-                  </Text>
-                </View>
-              )}
-            </View>
-            <TouchableOpacity
-              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text, marginTop: 16 }]}
-              onPress={goToProfileFromIncompleteModal}
-            >
-              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>
-                Go to Edit Profile
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.incompleteProfileLaterBtn}
-              onPress={() => setShowIncompleteProfileModal(false)}
-              hitSlop={12}
-            >
-              <Text style={[styles.incompleteProfileLaterText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Not now
-              </Text>
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -2099,9 +2006,8 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 0.5,
@@ -2427,6 +2333,17 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     marginTop: 2,
   },
+  journeySectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    marginTop: 2,
+  },
+  journeySectionHeaderText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
   vpeBellEmoji: {
     fontSize: 18,
   },
@@ -2580,16 +2497,12 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   actionReminderHeroCard: {
-    marginTop: 6,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
+    marginTop: 2,
+    marginBottom: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
   },
   actionReminderHeroRow: {
     flexDirection: 'row',
