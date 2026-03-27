@@ -6,11 +6,11 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
+import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
 import { GrammarianNotesScreen } from './grammarian-notes';
-import { ArrowLeft, BookOpen, Calendar, Clock, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info } from 'lucide-react-native';
 
 /** Match Toastmaster / corner bottom dock icon size */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -152,6 +152,10 @@ export default function GrammarianReport() {
   const notebookPulse = useRef(new Animated.Value(1)).current;
   const wordOfTheDayPulse = useRef(new Animated.Value(1)).current;
   const [bookingGrammarianRole, setBookingGrammarianRole] = useState(false);
+  const [isVPEClub, setIsVPEClub] = useState(false);
+  const [showAssignGrammarianModal, setShowAssignGrammarianModal] = useState(false);
+  const [assignGrammarianSearch, setAssignGrammarianSearch] = useState('');
+  const [assigningGrammarianRole, setAssigningGrammarianRole] = useState(false);
   const [cornerLiveSubTab, setCornerLiveSubTab] = useState<'good-usage' | 'improvements' | 'stats'>('good-usage');
   const [showGrammarianInfoModal, setShowGrammarianInfoModal] = useState(false);
 
@@ -207,7 +211,8 @@ export default function GrammarianReport() {
         loadMeeting(),
         loadAssignedGrammarian(),
         loadClubMembers(),
-        loadClubName()
+        loadClubName(),
+        loadIsVPEClub(),
       ]);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -238,6 +243,50 @@ export default function GrammarianReport() {
     } finally {
       setBookingGrammarianRole(false);
     }
+  };
+
+  const handleAssignGrammarianToMember = async (member: ClubMember) => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to assign this role.');
+      return;
+    }
+    setAssigningGrammarianRole(true);
+    try {
+      const roleId = await fetchOpenMeetingRoleId(meetingId, { ilikeRoleName: '%grammarian%' });
+      if (!roleId) {
+        Alert.alert('Error', 'No open Grammarian role was found for this meeting.');
+        return;
+      }
+      const result = await bookMeetingRoleForCurrentUser(member.id, roleId);
+      if (result.ok) {
+        setShowAssignGrammarianModal(false);
+        setAssignGrammarianSearch('');
+        await loadData();
+        Alert.alert('Assigned', `${member.full_name} is now the Grammarian for this meeting.`);
+      } else {
+        Alert.alert('Could not assign', result.message);
+      }
+    } finally {
+      setAssigningGrammarianRole(false);
+    }
+  };
+
+  const loadIsVPEClub = async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setIsVPEClub(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('club_profiles')
+      .select('vpe_id')
+      .eq('club_id', user.currentClubId)
+      .maybeSingle();
+    if (error) {
+      console.error('Error loading club VPE:', error);
+      setIsVPEClub(false);
+      return;
+    }
+    setIsVPEClub(data?.vpe_id === user.id);
   };
 
   const loadMeeting = async () => {
@@ -280,9 +329,9 @@ export default function GrammarianReport() {
         .ilike('role_name', '%grammarian%')
         .eq('booking_status', 'booked')
         .not('assigned_user_id', 'is', null)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('Error loading assigned Grammarian:', error);
         return;
       }
@@ -307,6 +356,9 @@ export default function GrammarianReport() {
         await loadIdiomOfTheDay();
         await loadQuoteOfTheDay();
         await loadPublishedLiveObservations();
+      } else {
+        // Explicitly clear when no grammarian is assigned.
+        setAssignedGrammarian(null);
       }
     } catch (error) {
       console.error('Error loading assigned Grammarian:', error);
@@ -1111,6 +1163,15 @@ export default function GrammarianReport() {
     );
   });
 
+  const filteredMembersForAssign = clubMembers.filter((member) => {
+    const q = assignGrammarianSearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      member.full_name.toLowerCase().includes(q) ||
+      member.email.toLowerCase().includes(q)
+    );
+  });
+
   const MemberSelector = () => (
     <TouchableOpacity
       style={[styles.memberSelector, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
@@ -1178,12 +1239,7 @@ export default function GrammarianReport() {
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
           <View style={styles.tabContentWrapper}>
-          {/* Meeting Info Card */}
-          <View style={[styles.meetingCard, {
-            backgroundColor: theme.colors.surface,
-            borderWidth: 1,
-            borderColor: theme.colors.border
-          }]}>
+          <View style={[styles.noAssignmentNotionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={styles.meetingCardContent}>
               <View style={[styles.dateBox, {
                 backgroundColor: theme.colors.primary + '15'
@@ -1214,170 +1270,313 @@ export default function GrammarianReport() {
                 </Text>
               </View>
             </View>
-            <View style={styles.meetingCardDecoration} />
-          </View>
 
-          {/* No Grammarian Assigned State */}
-          <View style={styles.noAssignmentState}>
+            <View style={[styles.noAssignmentDivider, { backgroundColor: theme.colors.border }]} />
+
+            {/* No Grammarian Assigned State */}
+            <View style={[styles.noAssignmentState, styles.noAssignmentStateInCard]}>
             <BookOpen size={64} color={theme.colors.textSecondary} />
             <Text style={[styles.noAssignmentSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Love good words and great grammar?{'\n'}This role is waiting for you!
             </Text>
-            <TouchableOpacity
-              style={[
-                styles.bookRoleButton,
-                {
-                  backgroundColor: theme.colors.primary,
-                  opacity: bookingGrammarianRole ? 0.85 : 1,
-                },
-              ]}
-              onPress={() => handleBookGrammarianInline()}
-              disabled={bookingGrammarianRole}
-            >
-              {bookingGrammarianRole ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                  Book Grammarian Role
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isVPEClub ? (
+              <View style={styles.noAssignmentButtonsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.bookRoleButton,
+                    styles.bookRoleButtonInRow,
+                    styles.vpeRoleButtonCompact,
+                    {
+                      backgroundColor: theme.colors.primary,
+                      opacity: bookingGrammarianRole ? 0.85 : 1,
+                    },
+                  ]}
+                  onPress={() => handleBookGrammarianInline()}
+                  disabled={bookingGrammarianRole || assigningGrammarianRole}
+                >
+                  {bookingGrammarianRole ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={[styles.bookRoleButtonText, styles.vpeRoleButtonText]} maxFontSizeMultiplier={1.3}>
+                      Book Grammarian Role
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.bookRoleButton,
+                    styles.bookRoleButtonInRow,
+                    styles.vpeRoleButtonCompact,
+                    {
+                      borderWidth: 2,
+                      borderColor: theme.colors.primary,
+                      backgroundColor: theme.colors.surface,
+                      opacity: assigningGrammarianRole ? 0.85 : 1,
+                    },
+                  ]}
+                  onPress={() => setShowAssignGrammarianModal(true)}
+                  disabled={bookingGrammarianRole || assigningGrammarianRole}
+                >
+                  <Text style={[styles.bookRoleButtonTextOutline, styles.vpeRoleButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                    Assign
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.bookRoleButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingGrammarianRole ? 0.85 : 1,
+                  },
+                ]}
+                onPress={() => handleBookGrammarianInline()}
+                disabled={bookingGrammarianRole}
+              >
+                {bookingGrammarianRole ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                    Book Grammarian Role
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+            </View>
+            <View style={styles.meetingCardDecoration} />
           </View>
           </View>
 
-          {/* Footer Navigation */}
-          <View style={[styles.footerNavigationInline, {
-            backgroundColor: theme.colors.surface,
-            marginTop: 24,
-            marginBottom: 16,
-          }]}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.footerNavigationContent}
-            >
+          {/* Navigation Quick Actions — same dock sizing as assigned Grammarian Report (FOOTER_NAV_ICON_SIZE, quickAction*) */}
+          <View
+            style={[
+              styles.quickActionsBoxContainer,
+              {
+                backgroundColor: theme.colors.surface,
+                borderTopColor: theme.colors.border,
+                marginTop: 8,
+              },
+            ]}
+          >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3E7' }]}>
-                  <FileText size={20} color="#f59e0b" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
+                  <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                  <Bell size={20} color="#772432" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5E5' }]}>
+                  <Bell size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Users size={20} color="#ec4899" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
+                  <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId, initialTab: 'my_bookings' } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
-                  <RotateCcw size={20} color="#4F46E5" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
+                  <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                  <Calendar size={20} color="#004165" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDF4' }]}>
-                  <BookOpen size={20} color="#16a34a" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5D9' }]}>
+                  <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FFF7ED' }]}>
-                  <Eye size={20} color="#ea580c" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
+                  <Star size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/live-voting', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FDF4FF' }]}>
-                  <CheckSquare size={20} color="#a855f7" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
+                  <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                  <Mic size={20} color="#C9B84E" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#E7F5EF' }]}>
+                  <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#059669" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
-                  <CheckSquare size={20} color="#059669" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
+                  <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Roles</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Roles</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDFA' }]}>
-                  <MessageSquare size={20} color="#0d9488" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
+                  <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.footerNavItem}
+                style={styles.quickActionItem}
                 onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                  <Clock size={20} color="#C9B84E" />
+                <View style={[styles.quickActionIcon, { backgroundColor: '#F0E7FE' }]}>
+                  <Timer size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
         </ScrollView>
+
+        <Modal
+          visible={showAssignGrammarianModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setShowAssignGrammarianModal(false);
+            setAssignGrammarianSearch('');
+          }}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              setShowAssignGrammarianModal(false);
+              setAssignGrammarianSearch('');
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.memberModal, { backgroundColor: theme.colors.surface }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Assign Grammarian
+                </Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => {
+                    setShowAssignGrammarianModal(false);
+                    setAssignGrammarianSearch('');
+                  }}
+                >
+                  <X size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.assignModalHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Choose a club member to book the Grammarian role for this meeting.
+              </Text>
+              <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
+                <Search size={20} color={theme.colors.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: theme.colors.text }]}
+                  placeholder="Search by name or email..."
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={assignGrammarianSearch}
+                  onChangeText={setAssignGrammarianSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {assignGrammarianSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setAssignGrammarianSearch('')}>
+                    <X size={20} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
+                {assigningGrammarianRole ? (
+                  <View style={styles.noResultsContainer}>
+                    <ActivityIndicator color={theme.colors.primary} />
+                  </View>
+                ) : filteredMembersForAssign.length > 0 ? (
+                  filteredMembersForAssign.map((member) => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[styles.memberOption, { backgroundColor: theme.colors.background }]}
+                      onPress={() => handleAssignGrammarianToMember(member)}
+                      disabled={assigningGrammarianRole}
+                    >
+                      <View style={styles.memberOptionAvatar}>
+                        {member.avatar_url ? (
+                          <Image source={{ uri: member.avatar_url }} style={styles.memberOptionAvatarImage} />
+                        ) : (
+                          <User size={20} color="#ffffff" />
+                        )}
+                      </View>
+                      <View style={styles.memberOptionInfo}>
+                        <Text style={[styles.memberOptionName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                          {member.full_name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.noResultsContainer}>
+                    <Text style={[styles.noResultsText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      No members found
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -1833,7 +2032,7 @@ export default function GrammarianReport() {
         )}
         </View>
 
-        {/* Navigation Quick Actions — Word / Quote / Idiom first; dock matches Toastmaster Corner (footerNav*) */}
+        {/* Navigation Quick Actions — Word / Quote / Idiom first; same dock as unassigned (quickAction*) */}
         <View
           style={[
             styles.quickActionsBoxContainer,
@@ -2579,36 +2778,26 @@ const styles = StyleSheet.create({
   tabContentWrapper: {
     flex: 1,
   },
-  footerNavigationInline: {
-    marginHorizontal: 16,
-    borderRadius: 16,
-    paddingVertical: 16,
+  noAssignmentNotionCard: {
+    marginHorizontal: 13,
+    marginTop: 13,
+    borderRadius: 13,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowRadius: 4,
     elevation: 3,
   },
-  footerNavigationContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  footerNavItem: {
-    alignItems: 'center',
-    gap: 6,
-    minWidth: 64,
-  },
-  footerNavIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footerNavLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
+  noAssignmentDivider: {
+    height: 1,
+    marginTop: 14,
   },
   meetingCard: {
     marginHorizontal: 13,
@@ -3190,6 +3379,10 @@ const styles = StyleSheet.create({
     paddingVertical: 80,
     paddingHorizontal: 32,
   },
+  noAssignmentStateInCard: {
+    paddingVertical: 54,
+    paddingHorizontal: 16,
+  },
   noAssignmentTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -3208,10 +3401,40 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
   },
+  bookRoleButtonInRow: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vpeRoleButtonCompact: {
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  noAssignmentButtonsRow: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    gap: 10,
+    width: '100%',
+  },
   bookRoleButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  bookRoleButtonTextOutline: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  vpeRoleButtonText: {
+    fontSize: 12,
+  },
+  assignModalHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 4,
+    marginBottom: 12,
   },
   comingSoonContainer: {
     alignItems: 'center',

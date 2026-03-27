@@ -115,6 +115,9 @@ export default function EvaluationCorner() {
   const [assignTargetBooking, setAssignTargetBooking] = useState<RoleBooking | null>(null);
   const [evaluatorSearchQuery, setEvaluatorSearchQuery] = useState('');
   const [assigningEvaluatorForRoleId, setAssigningEvaluatorForRoleId] = useState<string | null>(null);
+  const [pendingFocusBookingId, setPendingFocusBookingId] = useState<string | null>(null);
+  const mainScrollRef = useRef<ScrollView | null>(null);
+  const bookingCardYById = useRef<Record<string, number>>({});
 
   const currentUserRole = (user?.clubRole || user?.role || '').toLowerCase();
   const isExcomm = currentUserRole === 'excomm';
@@ -144,6 +147,20 @@ export default function EvaluationCorner() {
       }
     }, [meetingId])
   );
+
+  useEffect(() => {
+    if (!pendingFocusBookingId || savingPathwayRoleId) return;
+    const targetY = bookingCardYById.current[pendingFocusBookingId];
+    if (typeof targetY !== 'number') return;
+    const timer = setTimeout(() => {
+      mainScrollRef.current?.scrollTo({
+        y: Math.max(targetY - 8, 0),
+        animated: true,
+      });
+      setPendingFocusBookingId(null);
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [pendingFocusBookingId, savingPathwayRoleId, roleBookings.length, availableRoles.length]);
 
   const decodeBase64ToBytes = (base64: string): Uint8Array => {
     const binaryString = atob(base64);
@@ -937,6 +954,7 @@ export default function EvaluationCorner() {
       return fn || 'Uploaded PDF';
     });
     const [isUploadingPDF, setIsUploadingPDF] = useState(false);
+    const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState<boolean>(false);
     const detailsAnim = useRef(new Animated.Value(0)).current;
     const editIconBlinkAnim = useRef(new Animated.Value(1)).current;
@@ -1545,7 +1563,7 @@ export default function EvaluationCorner() {
                   opacity: savingPathwayRoleId === booking.id ? 0.7 : 1,
                 },
               ]}
-              onPress={() => savePathwayInline(booking, inlineForm)}
+              onPress={() => setShowSaveConfirmModal(true)}
               disabled={savingPathwayRoleId === booking.id}
             >
               <Save size={16} color="#ffffff" />
@@ -1561,6 +1579,72 @@ export default function EvaluationCorner() {
             </>
           )}
         </Animated.View>
+
+        <Modal
+          visible={showSaveConfirmModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowSaveConfirmModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.saveConfirmModalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Text style={[styles.saveConfirmModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Confirm Speech Details
+              </Text>
+              <Text style={[styles.saveConfirmModalSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Please verify before saving.
+              </Text>
+
+              <View style={styles.saveConfirmRows}>
+                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  <Text style={{ fontWeight: '700' }}>Speech Title:</Text> {inlineForm.speech_title.trim() || '-'}
+                </Text>
+                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  <Text style={{ fontWeight: '700' }}>Pathway:</Text> {inlineForm.pathway_name.trim() || '-'}
+                </Text>
+                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  <Text style={{ fontWeight: '700' }}>Project Number:</Text> {inlineForm.project_number.trim() || '-'}
+                </Text>
+                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  <Text style={{ fontWeight: '700' }}>Level:</Text> {inlineForm.level.trim() || '-'}
+                </Text>
+                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  <Text style={{ fontWeight: '700' }}>Project Name:</Text> {inlineForm.project_name.trim() || '-'}
+                </Text>
+                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  <Text style={{ fontWeight: '700' }}>Evaluation Form:</Text>{' '}
+                  {inlineForm.evaluation_form.trim() ? (evaluationFormType === 'pdf' ? 'PDF uploaded' : inlineForm.evaluation_form.trim()) : '-'}
+                </Text>
+              </View>
+
+              <View style={styles.saveConfirmActions}>
+                <TouchableOpacity
+                  style={[styles.saveConfirmEditBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
+                  onPress={() => setShowSaveConfirmModal(false)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.saveConfirmEditBtnText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                    Edit
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.saveConfirmSaveBtn, { backgroundColor: '#1D4ED8', opacity: savingPathwayRoleId === booking.id ? 0.7 : 1 }]}
+                  onPress={async () => {
+                    setPendingFocusBookingId(booking.id);
+                    await savePathwayInline(booking, inlineForm);
+                    setShowSaveConfirmModal(false);
+                  }}
+                  disabled={savingPathwayRoleId === booking.id}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.saveConfirmSaveBtnText} maxFontSizeMultiplier={1.2}>
+                    {savingPathwayRoleId === booking.id ? 'Saving...' : 'Confirm & Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         
       </View>
@@ -1744,7 +1828,7 @@ export default function EvaluationCorner() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={mainScrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.unifiedNotionBlock, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={[styles.unifiedMeetingSection, { borderBottomColor: theme.colors.border }]}>
             <View style={styles.meetingCardContent}>
@@ -1788,11 +1872,17 @@ export default function EvaluationCorner() {
               {filteredBookings.map((booking, idx) => {
                 const totalCards = filteredBookings.length + preparedAvailableRoles.length;
                 return (
-                  <ParticipantCard
+                  <View
                     key={booking.id}
-                    booking={booking}
-                    isLastCard={idx === totalCards - 1}
-                  />
+                    onLayout={(e) => {
+                      bookingCardYById.current[booking.id] = e.nativeEvent.layout.y;
+                    }}
+                  >
+                    <ParticipantCard
+                      booking={booking}
+                      isLastCard={idx === totalCards - 1}
+                    />
+                  </View>
                 );
               })}
               {preparedAvailableRoles.map((speakerRole, idx) => {
@@ -2998,5 +3088,57 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  saveConfirmModalCard: {
+    width: '92%',
+    maxWidth: 460,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+  },
+  saveConfirmModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  saveConfirmModalSubtitle: {
+    fontSize: 13,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  saveConfirmRows: {
+    gap: 6,
+  },
+  saveConfirmRow: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  saveConfirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  saveConfirmEditBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveConfirmEditBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  saveConfirmSaveBtn: {
+    flex: 1.2,
+    borderRadius: 10,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveConfirmSaveBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
   },
 });

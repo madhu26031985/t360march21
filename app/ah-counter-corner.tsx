@@ -635,10 +635,8 @@ export default function AhCounterCorner() {
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.noBookingContentContainer}>
           <View style={styles.noBookingContentTop}>
-          {/* Meeting Info Card */}
-          <View style={[styles.meetingCardSimple, {
+          <View style={[styles.noAssignmentNotionCard, {
             backgroundColor: theme.colors.surface,
-            borderWidth: 1,
             borderColor: theme.colors.border
           }]}>
             <View style={styles.meetingCardContent}>
@@ -671,11 +669,10 @@ export default function AhCounterCorner() {
                 </Text>
               </View>
             </View>
-            <View style={styles.meetingCardDecoration} />
-          </View>
+            <View style={[styles.noAssignmentDivider, { backgroundColor: theme.colors.border }]} />
 
           {/* No Ah Counter Assigned State */}
-          <View style={styles.noAssignmentState}>
+          <View style={[styles.noAssignmentState, styles.noAssignmentStateInCard]}>
             <View style={[styles.noAssignmentIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
               <ClipboardList size={32} color={theme.colors.textSecondary} />
             </View>
@@ -704,6 +701,8 @@ export default function AhCounterCorner() {
                 </Text>
               )}
             </TouchableOpacity>
+          </View>
+            <View style={styles.meetingCardDecoration} />
           </View>
           </View>
 
@@ -1922,6 +1921,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 40,
     paddingHorizontal: 32,
+  },
+  noAssignmentNotionCard: {
+    marginHorizontal: 13,
+    marginTop: 13,
+    borderRadius: 13,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  noAssignmentDivider: {
+    height: 1,
+    marginTop: 14,
+  },
+  noAssignmentStateInCard: {
+    paddingVertical: 52,
+    paddingHorizontal: 16,
   },
   noAssignmentIcon: {
     width: 80,

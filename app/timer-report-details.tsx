@@ -35,6 +35,12 @@ function formatGuestDisplayName(input: string): string {
   return `Guest ${titleCasePhrase(t)}`;
 }
 
+/** Sort roles by trailing slot number (1–12) instead of lexicographic order (1, 10, 11, 2…). */
+function slotNumberFromRoleName(roleName: string): number {
+  const m = roleName.match(/(\d+)\s*$/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
 interface Meeting {
   id: string;
   meeting_title: string;
@@ -149,11 +155,16 @@ export default function TimerReportDetails() {
   const [stopwatchTime, setStopwatchTime] = useState(0);
   const [stopwatchRunning, setStopwatchRunning] = useState(false);
   const [stopwatchInterval, setStopwatchInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isVPEClub, setIsVPEClub] = useState(false);
+
+  const isMeetingTimer = !!(assignedTimer && user && assignedTimer.id === user.id);
+  const canEditTimerCorner = isMeetingTimer || isVPEClub;
+  const effectiveTab = canEditTimerCorner ? selectedTab : 'reports';
 
   const speechCategories = [
     { value: 'prepared_speaker', label: 'Prepared speakers', color: '#3b82f6', icon: 'message-circle', classifications: ['Prepared Speaker'], roleNames: ['Prepared Speaker 1', 'Prepared Speaker 2', 'Prepared Speaker 3', 'Prepared Speaker 4', 'Prepared Speaker 5'] },
     { value: 'table_topic_speaker', label: 'Table topic speakers', color: '#f97316', icon: 'mic', classifications: ['On-the-Spot Speaking'], roleNames: ['Table Topics Speaker 1', 'Table Topics Speaker 2', 'Table Topics Speaker 3', 'Table Topics Speaker 4', 'Table Topics Speaker 5', 'Table Topics Speaker 6', 'Table Topics Speaker 7', 'Table Topics Speaker 8', 'Table Topics Speaker 9', 'Table Topics Speaker 10', 'Table Topics Speaker 11', 'Table Topics Speaker 12'] },
-    { value: 'evaluation', label: 'Speech evaluvators', color: '#10b981', icon: 'message-square', classifications: ['Speech evaluvator', 'Master evaluvator', 'TT _ Evaluvator'], roleNames: ['Evaluator 1', 'Evaluator 2', 'Evaluator 3', 'Evaluator 4', 'Evaluator 5', 'Master Evaluator 1', 'Master Evaluator 2', 'Master Evaluator 3', 'Table Topic Evaluator 1', 'Table Topic Evaluator 2', 'Table Topic Evaluator 3'] },
+    { value: 'evaluation', label: 'Speech evaluvators', color: '#10b981', icon: 'message-square', classifications: ['Speech evaluvator'], roleNames: ['Evaluator 1', 'Evaluator 2', 'Evaluator 3', 'Evaluator 4', 'Evaluator 5'] },
     { value: 'educational_session', label: 'Educational speaker', color: '#8b5cf6', icon: 'lightbulb', classifications: ['Educational speaker'], roleNames: ['Educational Speaker'] },
   ];
 
@@ -201,32 +212,32 @@ export default function TimerReportDetails() {
   }, [stopwatchRunning]);
 
   const startStopwatch = () => {
-    if (!isAssignedTimer) {
-      Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can use the stopwatch controls.`);
+    if (!canEditTimerCorner) {
+      Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can use the stopwatch controls.');
       return;
     }
     setStopwatchRunning(true);
   };
 
   const pauseStopwatch = () => {
-    if (!isAssignedTimer) {
-      Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can use the stopwatch controls.`);
+    if (!canEditTimerCorner) {
+      Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can use the stopwatch controls.');
       return;
     }
     setStopwatchRunning(false);
   };
 
   const stopStopwatch = () => {
-    if (!isAssignedTimer) {
-      Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can use the stopwatch controls.`);
+    if (!canEditTimerCorner) {
+      Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can use the stopwatch controls.');
       return;
     }
     setStopwatchRunning(false);
   };
 
   const resetStopwatch = () => {
-    if (!isAssignedTimer) {
-      Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can use the stopwatch controls.`);
+    if (!canEditTimerCorner) {
+      Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can use the stopwatch controls.');
       return;
     }
     setStopwatchRunning(false);
@@ -240,6 +251,24 @@ export default function TimerReportDetails() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const loadIsVPEClub = async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setIsVPEClub(false);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('club_profiles')
+      .select('vpe_id')
+      .eq('club_id', user.currentClubId)
+      .maybeSingle();
+    if (error) {
+      console.error('Error loading club VPE:', error);
+      setIsVPEClub(false);
+      return;
+    }
+    setIsVPEClub(data?.vpe_id === user.id);
+  };
+
   const loadData = async () => {
     if (!meetingId || !user?.currentClubId) {
       setIsLoading(false);
@@ -251,6 +280,7 @@ export default function TimerReportDetails() {
         loadMeeting(),
         loadClubMembers(),
         loadAssignedTimer(),
+        loadIsVPEClub(),
         loadSavedReports(),
         loadBookedSpeakersForCategory(reportData.speech_category),
         loadCategoryRolesForCategory(reportData.speech_category),
@@ -485,22 +515,25 @@ export default function TimerReportDetails() {
           )
         `)
         .eq('meeting_id', meetingId)
-        .in('role_name', selectedCategory.roleNames)
-        .order('role_name');
+        .in('role_name', selectedCategory.roleNames);
 
       if (error) {
         console.error('Error loading category roles:', error);
         return;
       }
 
-      setCategoryRoles((data || []) as any);
+      const rows = (data || []) as CategoryRole[];
+      rows.sort(
+        (a, b) => slotNumberFromRoleName(a.role_name) - slotNumberFromRoleName(b.role_name)
+      );
+      setCategoryRoles(rows);
     } catch (error) {
       console.error('Error loading category roles:', error);
     }
   };
 
   const handleAssignCategoryRole = async (member: ClubMember) => {
-    if (!isAssignedTimer || !roleToAssign) return;
+    if (!canEditTimerCorner || !roleToAssign) return;
     try {
       const { error } = await supabase
         .from('app_meeting_roles_management')
@@ -535,7 +568,7 @@ export default function TimerReportDetails() {
   };
 
   const handleAssignGuestCategoryRole = async () => {
-    if (!isAssignedTimer || !roleToAssign) return;
+    if (!canEditTimerCorner || !roleToAssign) return;
     const displayName = formatGuestDisplayName(guestAssignNameInput);
     if (!displayName) {
       Alert.alert('Name required', 'Enter a guest name or use the member list above.');
@@ -716,8 +749,8 @@ export default function TimerReportDetails() {
   };
 
   const updateCategory = (category: string) => {
-    if (!isAssignedTimer) {
-      Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can edit this report.`);
+    if (!canEditTimerCorner) {
+      Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can edit Timer Corner.');
       return;
     }
     setReportData(prev => ({ ...prev, speech_category: category }));
@@ -730,8 +763,8 @@ export default function TimerReportDetails() {
   };
 
   const updateQualification = (qualified: boolean) => {
-    if (!isAssignedTimer) {
-      Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can edit this report.`);
+    if (!canEditTimerCorner) {
+      Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can edit Timer Corner.');
       return;
     }
     setReportData(prev => ({ ...prev, time_qualification: qualified }));
@@ -815,7 +848,7 @@ export default function TimerReportDetails() {
         </View>
 
         <View style={styles.reportTableActions}>
-          {isAssignedTimer && (
+          {canEditTimerCorner && (
             <TouchableOpacity
               style={styles.reportTableActionButton}
               onPress={() => handleDeleteReport(report.id!, report.speaker_name)}
@@ -830,8 +863,8 @@ export default function TimerReportDetails() {
   };
 
   const handleSaveReport = async () => {
-    if (!isAssignedTimer) {
-      Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can save reports.`);
+    if (!canEditTimerCorner) {
+      Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can save timer reports.');
       return;
     }
 
@@ -961,8 +994,8 @@ export default function TimerReportDetails() {
         }
       ]}
       onPress={() => {
-        if (!isAssignedTimer) {
-          Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can select speakers.`);
+        if (!canEditTimerCorner) {
+          Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can select speakers.');
           return;
         }
         setShowSpeakerModal(true);
@@ -1036,10 +1069,8 @@ export default function TimerReportDetails() {
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.noBookingContentContainer}>
           <View style={styles.noBookingContentTop}>
-          {/* Meeting Info Card */}
-          <View style={[styles.meetingCard, {
+          <View style={[styles.noAssignmentNotionCard, {
             backgroundColor: theme.colors.surface,
-            borderWidth: 1,
             borderColor: theme.colors.border
           }]}>
             <View style={styles.meetingCardContent}>
@@ -1072,11 +1103,10 @@ export default function TimerReportDetails() {
                 </Text>
               </View>
             </View>
-            <View style={styles.meetingCardDecoration} />
-          </View>
+            <View style={[styles.noAssignmentDivider, { backgroundColor: theme.colors.border }]} />
 
           {/* No Timer Assigned State */}
-          <View style={styles.noAssignmentState}>
+          <View style={[styles.noAssignmentState, styles.noAssignmentStateInCard]}>
             <Timer size={64} color={theme.colors.textSecondary} />
             <Text style={[styles.noAssignmentSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Every great meeting needs a time hero! 🦸‍♂️ Take charge — book the Timer role.
@@ -1100,6 +1130,8 @@ export default function TimerReportDetails() {
                 </Text>
               )}
             </TouchableOpacity>
+          </View>
+            <View style={styles.meetingCardDecoration} />
           </View>
           </View>
 
@@ -1303,8 +1335,6 @@ export default function TimerReportDetails() {
     );
   }
 
-  // Check if current user is the assigned Timer
-  const isAssignedTimer = assignedTimer && user && assignedTimer.id === user.id;
   const selectedCategoryMeta = speechCategories.find((c) => c.value === reportData.speech_category);
   const isRoleSlotFilled = (role: CategoryRole) => {
     const guestName = parseTimerGuestName(role.completion_notes);
@@ -1408,7 +1438,7 @@ export default function TimerReportDetails() {
       <TouchableOpacity
         style={[styles.saveButtonFull, { backgroundColor: hasTimerSpeaker ? theme.colors.primary : '#9ca3af' }]}
         onPress={() => {
-          if (!isAssignedTimer) { Alert.alert('Read Only', `Only ${assignedTimer?.full_name || 'the assigned Timer'} can save reports.`); return; }
+          if (!canEditTimerCorner) { Alert.alert('Read Only', 'Only the assigned Timer or the club VPE can save timer reports.'); return; }
           if (!hasTimerSpeaker) { Alert.alert('Speaker Required', 'Please select a speaker'); return; }
           if (!reportData.speech_category) { Alert.alert('Error', 'Please select a speech category'); return; }
           setShowConfirmModal(true);
@@ -1499,7 +1529,7 @@ export default function TimerReportDetails() {
                   </Text>
                 </View>
               </View>
-              {isAssignedTimer && (
+              {canEditTimerCorner && (
                 <TouchableOpacity
                   style={styles.prepSpaceIconButton}
                   onPress={() => router.push(`/timer-notes?meetingId=${meetingId}`)}
@@ -1513,39 +1543,41 @@ export default function TimerReportDetails() {
 
         {/* Tabs */}
         <View style={styles.tabsContainer}>
+          {canEditTimerCorner && (
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                {
+                  backgroundColor: effectiveTab === 'record' ? '#3b82f6' : theme.colors.surface,
+                  borderColor: effectiveTab === 'record' ? '#3b82f6' : theme.colors.border,
+                }
+              ]}
+              onPress={() => {
+                setSelectedTab('record');
+                resetForm();
+              }}
+            >
+              <Text style={[
+                styles.tabText,
+                { color: effectiveTab === 'record' ? '#ffffff' : theme.colors.textSecondary }
+              ]} maxFontSizeMultiplier={1.3}>
+                Timer Corner
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[
               styles.tab,
               {
-                backgroundColor: selectedTab === 'record' ? '#3b82f6' : theme.colors.surface,
-                borderColor: selectedTab === 'record' ? '#3b82f6' : theme.colors.border,
-              }
-            ]}
-            onPress={() => {
-              setSelectedTab('record');
-              resetForm();
-            }}
-          >
-            <Text style={[
-              styles.tabText,
-              { color: selectedTab === 'record' ? '#ffffff' : theme.colors.textSecondary }
-            ]} maxFontSizeMultiplier={1.3}>
-              Timer Corner
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              {
-                backgroundColor: selectedTab === 'reports' ? '#3b82f6' : theme.colors.surface,
-                borderColor: selectedTab === 'reports' ? '#3b82f6' : theme.colors.border,
+                backgroundColor: effectiveTab === 'reports' ? '#3b82f6' : theme.colors.surface,
+                borderColor: effectiveTab === 'reports' ? '#3b82f6' : theme.colors.border,
               }
             ]}
             onPress={() => setSelectedTab('reports')}
           >
             <Text style={[
               styles.tabText,
-              { color: selectedTab === 'reports' ? '#ffffff' : theme.colors.textSecondary }
+              { color: effectiveTab === 'reports' ? '#ffffff' : theme.colors.textSecondary }
             ]} maxFontSizeMultiplier={1.3}>
               Timer Summary
             </Text>
@@ -1553,7 +1585,7 @@ export default function TimerReportDetails() {
         </View>
 
         {/* Tab Content */}
-        {selectedTab === 'record' ? (
+        {effectiveTab === 'record' ? (
           <>
             {/* Vertical Category List */}
             <View style={styles.categoryRowContainer}>
@@ -1699,12 +1731,12 @@ export default function TimerReportDetails() {
                           <TouchableOpacity
                             style={[styles.preparedRoleAssignBtn, { backgroundColor: '#2563eb' }]}
                             onPress={() => {
-                              if (!isAssignedTimer) return;
+                              if (!canEditTimerCorner) return;
                               setRoleToAssign(role);
                               setGuestAssignNameInput('');
                               setShowSpeakerModal(true);
                             }}
-                            disabled={!isAssignedTimer}
+                            disabled={!canEditTimerCorner}
                           >
                             <Text style={styles.preparedRoleAssignBtnText} maxFontSizeMultiplier={1.2}>Assign</Text>
                           </TouchableOpacity>
@@ -2383,7 +2415,7 @@ export default function TimerReportDetails() {
                 <TouchableOpacity
                   style={[styles.guestAssignButton, { backgroundColor: '#2563eb' }]}
                   onPress={handleAssignGuestCategoryRole}
-                  disabled={!isAssignedTimer}
+                  disabled={!canEditTimerCorner}
                 >
                   <Text style={styles.guestAssignButtonText} maxFontSizeMultiplier={1.2}>Assign guest</Text>
                 </TouchableOpacity>
@@ -3300,6 +3332,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 80,
     paddingHorizontal: 32,
+  },
+  noAssignmentNotionCard: {
+    marginHorizontal: 13,
+    marginTop: 13,
+    borderRadius: 13,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  noAssignmentDivider: {
+    height: 1,
+    marginTop: 14,
+  },
+  noAssignmentStateInCard: {
+    paddingVertical: 54,
+    paddingHorizontal: 16,
   },
   noAssignmentTitle: {
     fontSize: 20,

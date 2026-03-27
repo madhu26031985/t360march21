@@ -4,9 +4,8 @@ import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseUrl } from '@/lib/supabase';
 import { ArrowLeft, Plus, Mail, User, Crown, Shield, Eye, UserCheck, Clock, Send, Trash2, CircleCheck as CheckCircle, X, Building2 } from 'lucide-react-native';
-import Constants from 'expo-constants';
 
 interface InviteForm {
   email: string;
@@ -277,8 +276,9 @@ export default function InviteNewUser() {
       // User doesn't exist - send invitation via edge function
       console.log('Sending invitation to new user...');
       
-      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
-      const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey;
+      const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
       
       if (!supabaseUrl || !supabaseAnonKey) {
         Alert.alert('Error', 'Configuration error. Please try again later.');
@@ -290,7 +290,8 @@ export default function InviteNewUser() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${accessToken || supabaseAnonKey}`,
         },
         body: JSON.stringify({
           email: email,
