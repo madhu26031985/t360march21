@@ -47,21 +47,21 @@ export default function GrammarianIdiomPrepScreen() {
     setTimeout(() => setShowSaveConfirmation(false), 1200);
   };
 
-  const loadGrammarianRole = async () => {
+  const loadGrammarianRole = async (): Promise<string | null> => {
     if (!meetingId) return;
     const { data, error } = await supabase
       .from('app_meeting_roles_management')
       .select('id, assigned_user_id')
       .eq('meeting_id', meetingId)
       .ilike('role_name', '%grammarian%')
-      .eq('role_status', 'Available')
       .eq('booking_status', 'booked')
       .maybeSingle();
     if (error && error.code !== 'PGRST116') {
       console.error('Error loading grammarian role:', error);
-      return;
+      return null;
     }
     setGrammarianOfDay(data);
+    return data?.assigned_user_id || null;
   };
 
   const loadIsVPEClub = async () => {
@@ -82,13 +82,14 @@ export default function GrammarianIdiomPrepScreen() {
     setIsVPEClub(data?.vpe_id === user.id);
   };
 
-  const loadIdiom = useCallback(async () => {
-    if (!meetingId || !effectiveGrammarianUserId) return;
+  const loadIdiom = useCallback(async (targetGrammarianUserId?: string | null) => {
+    const grammarianUserId = targetGrammarianUserId ?? effectiveGrammarianUserId;
+    if (!meetingId || !grammarianUserId) return;
     const { data, error } = await supabase
       .from('grammarian_idiom_of_the_day')
       .select('*')
       .eq('meeting_id', meetingId)
-      .eq('grammarian_user_id', effectiveGrammarianUserId)
+      .eq('grammarian_user_id', grammarianUserId)
       .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
@@ -115,11 +116,11 @@ export default function GrammarianIdiomPrepScreen() {
       return;
     }
     setIsLoading(true);
-    await loadGrammarianRole();
+    const assignedGrammarianUserId = await loadGrammarianRole();
     await loadIsVPEClub();
-    await loadIdiom();
+    await loadIdiom(assignedGrammarianUserId || user?.id || null);
     setIsLoading(false);
-  }, [meetingId, user?.currentClubId, loadIdiom]);
+  }, [meetingId, user?.currentClubId, user?.id, loadIdiom]);
 
   useFocusEffect(
     useCallback(() => {

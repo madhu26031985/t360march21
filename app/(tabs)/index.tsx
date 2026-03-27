@@ -1,5 +1,4 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -349,14 +348,13 @@ export default function MyJourney() {
   const [journeyPreparedSpeakerAvatarUrls, setJourneyPreparedSpeakerAvatarUrls] = useState<string[]>([]);
   const [journeyTableTopicsMasterAvatarUrls, setJourneyTableTopicsMasterAvatarUrls] = useState<string[]>([]);
   const [journeyTableTopicsSpeakerAvatarUrls, setJourneyTableTopicsSpeakerAvatarUrls] = useState<string[]>([]);
-  const [showBookRolePrompt, setShowBookRolePrompt] = useState<boolean>(false);
   const [showBookRoleAttention, setShowBookRoleAttention] = useState<boolean>(false);
-  const bookRolePromptHandledThisSession = useRef<boolean>(false);
   /** Profile “About” has non-empty text */
   const [profileHasAbout, setProfileHasAbout] = useState<boolean>(false);
   const [profileFieldsLoaded, setProfileFieldsLoaded] = useState<boolean>(false);
   /** Vice President Education for current club (`club_profiles.vpe_id`) */
   const [isVPEForCurrentClub, setIsVPEForCurrentClub] = useState<boolean>(false);
+  const [showNoTasksModal, setShowNoTasksModal] = useState<boolean>(false);
 
   const voteNowScale = useSharedValue(1);
   const heroReminderFade = useSharedValue(1);
@@ -592,9 +590,33 @@ export default function MyJourney() {
     };
   }, [user?.id, user?.currentClubId]);
 
-  useEffect(() => {
-    const loadCurrentOpenMeeting = async () => {
-      if (!user?.currentClubId) {
+  const refreshCurrentOpenMeeting = useCallback(async () => {
+    if (!user?.currentClubId) {
+      setCurrentOpenMeetingId(null);
+      setCurrentOpenMeetingTitle(null);
+      setCurrentOpenMeetingDate(null);
+      setCurrentOpenMeetingStartTime(null);
+      setCurrentOpenMeetingEndTime(null);
+      setCurrentOpenMeetingMode(null);
+      return;
+    }
+
+    try {
+      const fourHoursAgo = new Date();
+      fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
+      const cutoffDate = fourHoursAgo.toISOString().split('T')[0];
+
+      const { data, error } = await supabase
+        .from('app_club_meeting')
+        .select('id, meeting_title, meeting_date, meeting_start_time, meeting_end_time, meeting_mode')
+        .eq('club_id', user.currentClubId)
+        .eq('meeting_status', 'open')
+        .gte('meeting_date', cutoffDate)
+        .order('meeting_date', { ascending: true })
+        .limit(5);
+
+      if (error) {
+        console.error('Error loading current open meeting:', error);
         setCurrentOpenMeetingId(null);
         setCurrentOpenMeetingTitle(null);
         setCurrentOpenMeetingDate(null);
@@ -604,60 +626,65 @@ export default function MyJourney() {
         return;
       }
 
-      try {
-        const fourHoursAgo = new Date();
-        fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
-        const cutoffDate = fourHoursAgo.toISOString().split('T')[0];
+      const now = new Date();
+      const openMeetingsWithinWindow = (data || []).filter((meeting) => {
+        const meetingEndDateTime = new Date(
+          `${meeting.meeting_date}T${meeting.meeting_end_time || '23:59:59'}`
+        );
+        const hoursSinceMeetingEnd = (now.getTime() - meetingEndDateTime.getTime()) / (1000 * 60 * 60);
+        return hoursSinceMeetingEnd < 4;
+      });
 
-        const { data, error } = await supabase
-          .from('app_club_meeting')
-          .select('id, meeting_title, meeting_date, meeting_start_time, meeting_end_time, meeting_mode')
-          .eq('club_id', user.currentClubId)
-          .eq('meeting_status', 'open')
-          .gte('meeting_date', cutoffDate)
-          .order('meeting_date', { ascending: true })
-          .limit(5);
-
-        if (error) {
-          console.error('Error loading current open meeting:', error);
-          setCurrentOpenMeetingId(null);
-          setCurrentOpenMeetingTitle(null);
-          setCurrentOpenMeetingDate(null);
-          setCurrentOpenMeetingStartTime(null);
-          setCurrentOpenMeetingEndTime(null);
-          setCurrentOpenMeetingMode(null);
-          return;
-        }
-
-        const now = new Date();
-        const openMeetingsWithinWindow = (data || []).filter((meeting) => {
-          const meetingEndDateTime = new Date(
-            `${meeting.meeting_date}T${meeting.meeting_end_time || '23:59:59'}`
-          );
-          const hoursSinceMeetingEnd = (now.getTime() - meetingEndDateTime.getTime()) / (1000 * 60 * 60);
-          return hoursSinceMeetingEnd < 4;
-        });
-
-        const active = openMeetingsWithinWindow[0];
-        setCurrentOpenMeetingId(active?.id || null);
-        setCurrentOpenMeetingTitle(active?.meeting_title || null);
-        setCurrentOpenMeetingDate(active?.meeting_date || null);
-        setCurrentOpenMeetingStartTime(active?.meeting_start_time || null);
-        setCurrentOpenMeetingEndTime(active?.meeting_end_time || null);
-        setCurrentOpenMeetingMode(active?.meeting_mode || null);
-      } catch (e) {
-        console.error('Exception loading current open meeting:', e);
-        setCurrentOpenMeetingId(null);
-        setCurrentOpenMeetingTitle(null);
-        setCurrentOpenMeetingDate(null);
-        setCurrentOpenMeetingStartTime(null);
-        setCurrentOpenMeetingEndTime(null);
-        setCurrentOpenMeetingMode(null);
-      }
-    };
-
-    loadCurrentOpenMeeting();
+      const active = openMeetingsWithinWindow[0];
+      setCurrentOpenMeetingId(active?.id || null);
+      setCurrentOpenMeetingTitle(active?.meeting_title || null);
+      setCurrentOpenMeetingDate(active?.meeting_date || null);
+      setCurrentOpenMeetingStartTime(active?.meeting_start_time || null);
+      setCurrentOpenMeetingEndTime(active?.meeting_end_time || null);
+      setCurrentOpenMeetingMode(active?.meeting_mode || null);
+    } catch (e) {
+      console.error('Exception loading current open meeting:', e);
+      setCurrentOpenMeetingId(null);
+      setCurrentOpenMeetingTitle(null);
+      setCurrentOpenMeetingDate(null);
+      setCurrentOpenMeetingStartTime(null);
+      setCurrentOpenMeetingEndTime(null);
+      setCurrentOpenMeetingMode(null);
+    }
   }, [user?.currentClubId]);
+
+  useEffect(() => {
+    refreshCurrentOpenMeeting();
+  }, [refreshCurrentOpenMeeting]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshCurrentOpenMeeting();
+    }, [refreshCurrentOpenMeeting])
+  );
+
+  useEffect(() => {
+    if (!user?.currentClubId) return;
+    const meetingChannel = supabase
+      .channel(`journey-open-meeting-${user.currentClubId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_club_meeting',
+          filter: `club_id=eq.${user.currentClubId}`,
+        },
+        () => {
+          refreshCurrentOpenMeeting();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(meetingChannel);
+    };
+  }, [user?.currentClubId, refreshCurrentOpenMeeting]);
 
   const refreshPollStatus = useCallback(async () => {
     if (!user?.currentClubId || !user?.id) {
@@ -1086,55 +1113,6 @@ export default function MyJourney() {
     }, [currentOpenMeetingId, user?.id, user?.currentClubId, user?.clubRole, user?.role, isCurrentOpenMeetingCompleted])
   );
 
-  const BOOK_ROLE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!currentOpenMeetingId || !user?.id || !user?.currentClubId) {
-        setShowBookRolePrompt(false);
-        return;
-      }
-      const role = (user.clubRole || user.role || '').toLowerCase();
-      if (role === 'guest') {
-        setShowBookRolePrompt(false);
-        return;
-      }
-      let cancelled = false;
-      (async () => {
-        try {
-          const lastShownRaw = await AsyncStorage.getItem('bookRolePromptLastShown');
-          const lastShown = lastShownRaw ? parseInt(lastShownRaw, 10) : 0;
-          if (cancelled || (lastShown > 0 && Date.now() - lastShown < BOOK_ROLE_COOLDOWN_MS)) return;
-
-          const { count, error } = await supabase
-            .from('app_meeting_roles_management')
-            .select('id', { count: 'exact', head: true })
-            .eq('club_id', user.currentClubId)
-            .eq('meeting_id', currentOpenMeetingId)
-            .eq('assigned_user_id', user.id)
-            .eq('booking_status', 'booked');
-          if (cancelled || error || (count ?? 0) > 0) return;
-
-          bookRolePromptHandledThisSession.current = true;
-          setShowBookRolePrompt(true);
-        } catch {
-          if (!cancelled) setShowBookRolePrompt(false);
-        }
-      })();
-      return () => { cancelled = true; };
-    }, [currentOpenMeetingId, user?.id, user?.currentClubId, user?.clubRole, user?.role])
-  );
-
-  const dismissBookRolePrompt = useCallback(async () => {
-    bookRolePromptHandledThisSession.current = true;
-    setShowBookRolePrompt(false);
-    try {
-      await AsyncStorage.setItem('bookRolePromptLastShown', String(Date.now()));
-    } catch {
-      // Ignore storage errors
-    }
-  }, []);
-
   /** TMOD tile: show booked member’s photo for everyone; fallback to session avatar if you’re TM but DB has no URL */
   const journeyToastmasterDisplayAvatarUrls = useMemo(() => {
     if (journeyToastmasterAvatarUrls.length > 0) return journeyToastmasterAvatarUrls;
@@ -1223,6 +1201,15 @@ export default function MyJourney() {
     userAvatar,
     user?.fullName,
   ]);
+
+  const userFirstName = useMemo(
+    () =>
+      (user?.fullName || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)[0] || 'You',
+    [user?.fullName]
+  );
 
   const pendingRemindersKey = pendingMeetingReminders.map((r) => r.key).join('|');
 
@@ -1535,34 +1522,34 @@ export default function MyJourney() {
                       onPress={() => router.push('/my-growth-guidance')}
                       inline
                     />
-                    {isVPEForCurrentClub && currentOpenMeetingId && (
-                      <JourneyListCard
-                        title="My Tasks"
-                        description={
-                          <>
-                            {pendingMeetingReminders.length > 0 && (
-                              <Animated.View style={[styles.myTasksAnimatedWrap, heroReminderTextAnimatedStyle]}>
-                                <Text style={[styles.myTasksAnimatedText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
-                                  {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
-                                </Text>
-                              </Animated.View>
-                            )}
-                          </>
+                    <JourneyListCard
+                      title="My Tasks"
+                      description={
+                        pendingMeetingReminders.length > 0 ? (
+                          <Animated.View style={[styles.myTasksAnimatedWrap, heroReminderTextAnimatedStyle]}>
+                            <Text style={[styles.myTasksAnimatedText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                              {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
+                            </Text>
+                          </Animated.View>
+                        ) : (
+                          <Text style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                            All set, champ! No tasks pending.
+                          </Text>
+                        )
+                      }
+                      icon={<Bell size={18} color="#b7791f" />}
+                      color="#3b82f6"
+                      onPress={() => {
+                        const item = pendingMeetingReminders[heroReminderSlide];
+                        if (item) {
+                          openPendingReminderTarget(item.key);
+                          return;
                         }
-                        icon={<Bell size={18} color="#b7791f" />}
-                        color="#3b82f6"
-                        onPress={() => {
-                          const item = pendingMeetingReminders[heroReminderSlide];
-                          if (item) {
-                            openPendingReminderTarget(item.key);
-                            return;
-                          }
-                          router.push('/vpe-nudges');
-                        }}
-                        animateIconOnly={pendingMeetingReminders.length > 0}
-                        inline
-                      />
-                    )}
+                        setShowNoTasksModal(true);
+                      }}
+                      animateIconOnly={pendingMeetingReminders.length > 0}
+                      inline
+                    />
                   </View>
                   <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
                   {/* Meeting details */}
@@ -1849,70 +1836,31 @@ export default function MyJourney() {
         )}
       </ScrollView>
 
-      {/* Book Role prompt - for Visiting TM, ExComm, Member (not Guest) who haven't booked any role */}
       <Modal
-        visible={showBookRolePrompt}
+        visible={showNoTasksModal}
         transparent
         animationType="fade"
-        onRequestClose={dismissBookRolePrompt}
+        onRequestClose={() => setShowNoTasksModal(false)}
       >
         <TouchableOpacity
-          style={styles.bookRolePromptOverlay}
+          style={styles.noTasksOverlay}
           activeOpacity={1}
-          onPress={dismissBookRolePrompt}
+          onPress={() => setShowNoTasksModal(false)}
         >
           <TouchableOpacity
-            style={[styles.bookRolePromptContent, { backgroundColor: theme.colors.surface }]}
+            style={[styles.noTasksContent, { backgroundColor: theme.colors.surface }]}
             activeOpacity={1}
             onPress={() => {}}
           >
-            <View style={styles.bookRolePromptHeaderRow}>
-              <Text style={[styles.bookRolePromptTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Ready to shine?
-              </Text>
-              <TouchableOpacity onPress={dismissBookRolePrompt} style={styles.bookRolePromptCloseBtn} hitSlop={12}>
-                <X size={20} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.bookRolePromptSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Your next opportunity is here.
+            <Text style={[styles.noTasksTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {`${userFirstName}, You’ve nailed it, champ—no pending tasks!`}
             </Text>
-            <View style={[styles.bookRolePromptDivider, { backgroundColor: theme.colors.border }]} />
-            <View style={styles.bookRolePromptMeetingRow}>
-              {(meetingMonth != null && meetingDayNum != null) && (
-                <View style={[styles.bookRolePromptDateBox, { backgroundColor: theme.colors.border }]}>
-                  <Text style={[styles.bookRolePromptDateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {meetingMonth}
-                  </Text>
-                  <Text style={[styles.bookRolePromptDateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {meetingDayNum}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.bookRolePromptMeetingInfo}>
-                <Text style={[styles.bookRolePromptMeetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {currentOpenMeetingTitle || 'Meeting'}
-                </Text>
-                {daysToGo !== null && (
-                  <View style={[styles.bookRolePromptMeetingStatus, { marginTop: 2 }]}>
-                    <View style={[styles.bookRolePromptStatusDot, { backgroundColor: daysToGo <= 1 ? '#22c55e' : '#94a3b8', marginRight: 6 }]} />
-                    <Text style={[styles.bookRolePromptMeetingStatusText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      {daysToGo === 0 ? 'Today' : daysToGo === 1 ? 'Tomorrow' : `In ${daysToGo} days`}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
             <TouchableOpacity
-              style={[styles.bookRolePromptButton, { backgroundColor: theme.colors.text }]}
-              onPress={() => {
-                dismissBookRolePrompt();
-                if (currentOpenMeetingId) {
-                  router.push({ pathname: '/book-a-role', params: { meetingId: currentOpenMeetingId } });
-                }
-              }}
+              style={[styles.noTasksButton, { backgroundColor: theme.colors.primary }]}
+              onPress={() => setShowNoTasksModal(false)}
+              activeOpacity={0.85}
             >
-              <Text style={styles.bookRolePromptButtonText} maxFontSizeMultiplier={1.3}>Book a role</Text>
+              <Text style={styles.noTasksButtonText} maxFontSizeMultiplier={1.2}>Got it</Text>
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -1926,96 +1874,36 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  bookRolePromptOverlay: {
+  noTasksOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 24,
   },
-  bookRolePromptContent: {
-    borderRadius: 17,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    padding: 20,
+  noTasksContent: {
     width: '100%',
-    maxWidth: 289,
+    maxWidth: 360,
+    borderRadius: 14,
+    padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 8,
   },
-  bookRolePromptHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  bookRolePromptTitle: {
-    fontSize: 19,
-    fontWeight: '700',
-    flex: 1,
-  },
-  bookRolePromptCloseBtn: {
-    padding: 4,
-  },
-  bookRolePromptSubtitle: {
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  bookRolePromptDivider: {
-    height: 1,
-    marginBottom: 12,
-  },
-  bookRolePromptMeetingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 18,
-  },
-  bookRolePromptDateBox: {
-    width: 38,
-    height: 42,
-    borderRadius: 8,
-    marginRight: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bookRolePromptDateMonth: {
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  bookRolePromptDateDay: {
+  noTasksTitle: {
     fontSize: 16,
     fontWeight: '700',
+    lineHeight: 24,
   },
-  bookRolePromptMeetingInfo: {
-    flex: 1,
-  },
-  bookRolePromptMeetingTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  bookRolePromptMeetingStatus: {
-    flexDirection: 'row',
+  noTasksButton: {
+    marginTop: 16,
+    borderRadius: 10,
+    paddingVertical: 11,
     alignItems: 'center',
   },
-  bookRolePromptStatusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  bookRolePromptMeetingStatusText: {
-    fontSize: 13,
-  },
-  bookRolePromptButton: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  bookRolePromptButtonText: {
+  noTasksButtonText: {
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '700',

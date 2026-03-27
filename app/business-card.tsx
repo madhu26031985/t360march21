@@ -75,7 +75,7 @@ export default function BusinessCardScreen() {
   const cardStyle = useMemo(
     () => ({
       width: cardWidth,
-      aspectRatio: 3.5 / 2, // standard business card ratio
+      maxWidth: 420,
     }),
     [cardWidth]
   );
@@ -119,13 +119,13 @@ export default function BusinessCardScreen() {
           <Text style={[styles.aboutLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
             About
           </Text>
-          <Text style={[styles.aboutText, { color: theme.colors.text }]} numberOfLines={4} maxFontSizeMultiplier={1.2}>
+          <Text style={[styles.aboutText, { color: theme.colors.text }]} numberOfLines={5} maxFontSizeMultiplier={1.2}>
             {about || `${firstName} has not updated the profile intro yet.`}
           </Text>
 
           <View style={[styles.divider, styles.bottomDivider, { backgroundColor: theme.colors.border }]} />
 
-          <Text style={[styles.bottomClubName, { color: theme.colors.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+          <Text style={[styles.bottomClubName, { color: theme.colors.textSecondary }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>
             {clubName || 'Toastmasters Club'}
           </Text>
         </View>
@@ -166,6 +166,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     padding: 16,
+    minHeight: 300,
     justifyContent: 'flex-start',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

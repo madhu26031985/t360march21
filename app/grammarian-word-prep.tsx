@@ -11,12 +11,12 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, BookOpen, Lightbulb, MessageSquareQuote, AlertCircle, X, Info } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Lightbulb, MessageSquareQuote, AlertCircle, X, Info, Save } from 'lucide-react-native';
 import { grammarianDailyPrepStyles as styles } from '@/components/grammarian/grammarianDailyPrepStyles';
 
 interface GrammarianOfDay {
@@ -51,7 +51,6 @@ export default function GrammarianWordPrepScreen() {
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [isVPEClub, setIsVPEClub] = useState(false);
-  const lastSavedSnapshotRef = useRef('');
 
   const isAssignedGrammarian = () => grammarianOfDay?.assigned_user_id === user?.id;
   const canEditWordPrep = () => isAssignedGrammarian() || isVPEClub;
@@ -63,21 +62,21 @@ export default function GrammarianWordPrepScreen() {
     setTimeout(() => setShowSaveConfirmation(false), 1200);
   };
 
-  const loadGrammarianRole = async () => {
+  const loadGrammarianRole = async (): Promise<string | null> => {
     if (!meetingId) return;
     const { data, error } = await supabase
       .from('app_meeting_roles_management')
       .select('id, assigned_user_id')
       .eq('meeting_id', meetingId)
       .ilike('role_name', '%grammarian%')
-      .eq('role_status', 'Available')
       .eq('booking_status', 'booked')
       .maybeSingle();
     if (error && error.code !== 'PGRST116') {
       console.error('Error loading grammarian role:', error);
-      return;
+      return null;
     }
     setGrammarianOfDay(data);
+    return data?.assigned_user_id || null;
   };
 
   const loadIsVPEClub = async () => {
@@ -98,13 +97,14 @@ export default function GrammarianWordPrepScreen() {
     setIsVPEClub(data?.vpe_id === user.id);
   };
 
-  const loadWord = useCallback(async () => {
-    if (!meetingId || !effectiveGrammarianUserId) return;
+  const loadWord = useCallback(async (targetGrammarianUserId?: string | null) => {
+    const grammarianUserId = targetGrammarianUserId ?? effectiveGrammarianUserId;
+    if (!meetingId || !grammarianUserId) return;
     const { data, error } = await supabase
       .from('grammarian_word_of_the_day')
       .select('*')
       .eq('meeting_id', meetingId)
-      .eq('grammarian_user_id', effectiveGrammarianUserId)
+      .eq('grammarian_user_id', grammarianUserId)
       .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
@@ -133,11 +133,11 @@ export default function GrammarianWordPrepScreen() {
       return;
     }
     setIsLoading(true);
-    await loadGrammarianRole();
+    const assignedGrammarianUserId = await loadGrammarianRole();
     await loadIsVPEClub();
-    await loadWord();
+    await loadWord(assignedGrammarianUserId || user?.id || null);
     setIsLoading(false);
-  }, [meetingId, user?.currentClubId, loadWord]);
+  }, [meetingId, user?.currentClubId, user?.id, loadWord]);
 
   useFocusEffect(
     useCallback(() => {
@@ -145,15 +145,7 @@ export default function GrammarianWordPrepScreen() {
     }, [loadAll])
   );
 
-  const currentSnapshot = () =>
-    JSON.stringify({
-      word: word.trim(),
-      part_of_speech: partOfSpeech.trim(),
-      meaning: meaning.trim(),
-      usage: usage.trim(),
-    });
-
-  const handleSaveWord = async (opts?: { silent?: boolean }) => {
+  const handleSaveWord = async () => {
     if (!canEditWordPrep()) {
       Alert.alert('Access Denied', 'Only the assigned Grammarian or club VPE can save word of the day.');
       return;
@@ -183,7 +175,7 @@ export default function GrammarianWordPrepScreen() {
           Alert.alert('Error', 'Failed to update word of the day');
           return;
         }
-        if (!opts?.silent) showSavedPopup();
+        showSavedPopup();
       } else {
         if (!word.trim()) {
           return;
@@ -204,9 +196,8 @@ export default function GrammarianWordPrepScreen() {
           Alert.alert('Error', 'Failed to save word of the day');
           return;
         }
-        if (!opts?.silent) showSavedPopup();
+        showSavedPopup();
       }
-      lastSavedSnapshotRef.current = currentSnapshot();
       await loadWord();
     } catch (e) {
       console.error('Error saving word of the day:', e);
@@ -215,20 +206,6 @@ export default function GrammarianWordPrepScreen() {
       setIsSaving(false);
     }
   };
-
-  useEffect(() => {
-    if (isLoading || !canEditWordPrep() || isSaving) return;
-    const nowSnapshot = currentSnapshot();
-    if (!lastSavedSnapshotRef.current) {
-      lastSavedSnapshotRef.current = nowSnapshot;
-      return;
-    }
-    if (nowSnapshot === lastSavedSnapshotRef.current) return;
-    const timer = setTimeout(() => {
-      handleSaveWord({ silent: true });
-    }, 700);
-    return () => clearTimeout(timer);
-  }, [word, partOfSpeech, meaning, usage, isLoading, isSaving]);
 
   const handleClearWord = async () => {
     if (!canEditWordPrep()) return;
@@ -426,21 +403,28 @@ export default function GrammarianWordPrepScreen() {
                   <Text style={[styles.clearButtonText, { color: theme.colors.textSecondary }]}>Clear</Text>
                 </TouchableOpacity>
               ) : null}
+              <TouchableOpacity
+                style={[styles.saveDraftButton, { backgroundColor: isSaving ? '#9ca3af' : theme.colors.primary, flex: 1 }]}
+                onPress={handleSaveWord}
+                disabled={isSaving}
+              >
+                <Save size={18} color="#ffffff" />
+                <Text style={styles.saveDraftButtonText}>{isSaving ? 'Saving...' : 'Save'}</Text>
+              </TouchableOpacity>
             </View>
 
-            {(wordOfTheDay || isSaving) && (
+            {wordOfTheDay && (
               <Text style={[styles.lastSaved, { color: theme.colors.textSecondary }]}>
-                {isSaving
-                  ? 'Auto-saving...'
-                  : `Last saved: ${new Date(wordOfTheDay!.updated_at).toLocaleString('en-US', {
-                      month: '2-digit',
-                      day: '2-digit',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                      hour12: true,
-                    })}`}
+                Last saved:{' '}
+                {new Date(wordOfTheDay.updated_at).toLocaleString('en-US', {
+                  month: '2-digit',
+                  day: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: true,
+                })}
               </Text>
             )}
             </View>
@@ -474,7 +458,7 @@ export default function GrammarianWordPrepScreen() {
           <View style={[localStyles.confirmCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Text style={[localStyles.confirmTitle, { color: theme.colors.text }]}>How this works</Text>
             <Text style={[localStyles.confirmBody, { color: theme.colors.textSecondary }]}>
-              {`Hello ${firstName}, you are the Grammarian of the Day!\n\nOnce you add the Word of the Day, it will be saved automatically. All members will be able to view it in the Grammarian Summary.`}
+              {`Hello ${firstName}, you are the Grammarian of the Day!\n\nAfter entering the Word of the Day details, tap Save to publish your updates. All members will be able to view it in the Grammarian Summary.`}
             </Text>
             <TouchableOpacity
               style={[localStyles.infoOkBtn, { backgroundColor: theme.colors.primary }]}

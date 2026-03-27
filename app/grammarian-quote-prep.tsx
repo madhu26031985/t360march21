@@ -45,21 +45,21 @@ export default function GrammarianQuotePrepScreen() {
     setTimeout(() => setShowSaveConfirmation(false), 1200);
   };
 
-  const loadGrammarianRole = async () => {
+  const loadGrammarianRole = async (): Promise<string | null> => {
     if (!meetingId) return;
     const { data, error } = await supabase
       .from('app_meeting_roles_management')
       .select('id, assigned_user_id')
       .eq('meeting_id', meetingId)
       .ilike('role_name', '%grammarian%')
-      .eq('role_status', 'Available')
       .eq('booking_status', 'booked')
       .maybeSingle();
     if (error && error.code !== 'PGRST116') {
       console.error('Error loading grammarian role:', error);
-      return;
+      return null;
     }
     setGrammarianOfDay(data);
+    return data?.assigned_user_id || null;
   };
 
   const loadIsVPEClub = async () => {
@@ -80,13 +80,14 @@ export default function GrammarianQuotePrepScreen() {
     setIsVPEClub(data?.vpe_id === user.id);
   };
 
-  const loadQuote = useCallback(async () => {
-    if (!meetingId || !effectiveGrammarianUserId) return;
+  const loadQuote = useCallback(async (targetGrammarianUserId?: string | null) => {
+    const grammarianUserId = targetGrammarianUserId ?? effectiveGrammarianUserId;
+    if (!meetingId || !grammarianUserId) return;
     const { data, error } = await supabase
       .from('grammarian_quote_of_the_day')
       .select('*')
       .eq('meeting_id', meetingId)
-      .eq('grammarian_user_id', effectiveGrammarianUserId)
+      .eq('grammarian_user_id', grammarianUserId)
       .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
@@ -111,11 +112,11 @@ export default function GrammarianQuotePrepScreen() {
       return;
     }
     setIsLoading(true);
-    await loadGrammarianRole();
+    const assignedGrammarianUserId = await loadGrammarianRole();
     await loadIsVPEClub();
-    await loadQuote();
+    await loadQuote(assignedGrammarianUserId || user?.id || null);
     setIsLoading(false);
-  }, [meetingId, user?.currentClubId, loadQuote]);
+  }, [meetingId, user?.currentClubId, user?.id, loadQuote]);
 
   useFocusEffect(
     useCallback(() => {

@@ -4,7 +4,6 @@ import { Chrome as Home, Users, Calendar, Settings } from 'lucide-react-native';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import LiveVotingPopup from '@/components/LiveVotingPopup';
 
 const FOOTER_NAV_ICON_SIZE = 15;
 
@@ -114,7 +113,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
-    <LiveVotingPopup />
     </Fragment>
   );
 }
