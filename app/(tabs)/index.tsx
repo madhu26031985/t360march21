@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell, Timer } from 'lucide-react-native';
+import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell, Timer, CreditCard } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { supabase } from '@/lib/supabase';
@@ -1369,33 +1369,42 @@ export default function MyJourney() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <View style={styles.profileHeader}>
-          <Animated.View
-            style={[
-              styles.profileAvatarOuter,
-              showHeaderAvatarPending && styles.profileAvatarOuterPending,
-              showHeaderAvatarPending && headerAvatarRingAnimatedStyle,
-            ]}
-          >
-            <View style={styles.profileAvatar}>
-              {userAvatar ? (
-                <Image
-                  source={{ uri: userAvatar }}
-                  style={styles.profileAvatarImage}
-                  onError={() => setUserAvatar(null)}
-                />
-              ) : (
-                <User size={20} color="#ffffff" />
-              )}
+          <View style={styles.profileHeaderLeft}>
+            <Animated.View
+              style={[
+                styles.profileAvatarOuter,
+                showHeaderAvatarPending && styles.profileAvatarOuterPending,
+                showHeaderAvatarPending && headerAvatarRingAnimatedStyle,
+              ]}
+            >
+              <View style={styles.profileAvatar}>
+                {userAvatar ? (
+                  <Image
+                    source={{ uri: userAvatar }}
+                    style={styles.profileAvatarImage}
+                    onError={() => setUserAvatar(null)}
+                  />
+                ) : (
+                  <User size={20} color="#ffffff" />
+                )}
+              </View>
+            </Animated.View>
+            <View style={styles.profileInfo}>
+              <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                {user.fullName}
+              </Text>
+              <Text style={[styles.profileSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Welcome back
+              </Text>
             </View>
-          </Animated.View>
-          <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              {user.fullName}
-            </Text>
-            <Text style={[styles.profileSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Welcome back
-            </Text>
           </View>
+          <TouchableOpacity
+            style={[styles.businessCardButton, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
+            onPress={() => router.push('/business-card')}
+            activeOpacity={0.8}
+          >
+            <CreditCard size={18} color="#3730A3" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -2072,6 +2081,12 @@ const styles = StyleSheet.create({
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  profileHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
   },
   profileAvatarOuter: {
@@ -2109,6 +2124,15 @@ const styles = StyleSheet.create({
   profileSubtitle: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  businessCardButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    marginLeft: 10,
   },
   content: {
     flex: 1,
