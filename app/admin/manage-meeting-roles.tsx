@@ -269,6 +269,142 @@ export default function ManageMeetingRoles() {
 
 
   const handleAssignMember = useCallback(async (roleName: string, memberId: string | null) => {
+    const parsePreparedOrIceSlot = (name: string): { kind: 'prepared' | 'ice'; slot: number } | null => {
+      const value = (name || '').trim().toLowerCase();
+      const preparedMatch = value.match(/^prepared\s*speaker\s*(\d+)$/i);
+      if (preparedMatch) {
+        const slot = Number(preparedMatch[1]);
+        if (slot >= 1 && slot <= 5) return { kind: 'prepared', slot };
+        return null;
+      }
+      const iceMatch = value.match(/^ice\s*breaker\s*(\d+)$/i);
+      if (iceMatch) {
+        const slot = Number(iceMatch[1]);
+        if (slot >= 1 && slot <= 5) return { kind: 'ice', slot };
+        return null;
+      }
+      return null;
+    };
+
+    const hasSpeechDetails = (row: any) =>
+      !!(
+        (row?.speech_title || '').trim() ||
+        (row?.pathway_name || '').trim() ||
+        (row?.project_name || '').trim() ||
+        (row?.project_number || '').trim() ||
+        row?.level != null ||
+        (row?.evaluation_form || '').trim() ||
+        (row?.comments_for_evaluator || '').trim()
+      );
+
+    const transferSpeechDetailsForAdminSlotMove = async (
+      newRoleName: string,
+      targetMeetingId: string,
+      targetUserId: string
+    ) => {
+      const targetSlot = parsePreparedOrIceSlot(newRoleName);
+      if (!targetSlot) return;
+
+      try {
+        const { data: targetRow, error: targetErr } = await supabase
+          .from('app_evaluation_pathway')
+          .select(`
+            id,
+            speech_title,
+            pathway_name,
+            level,
+            project_name,
+            project_number,
+            evaluation_form,
+            comments_for_evaluator
+          `)
+          .eq('meeting_id', targetMeetingId)
+          .eq('user_id', targetUserId)
+          .eq('role_name', newRoleName)
+          .maybeSingle();
+
+        if (targetErr) {
+          console.error('Error checking target pathway row:', targetErr);
+          return;
+        }
+
+        const { data: candidates, error: sourceErr } = await supabase
+          .from('app_evaluation_pathway')
+          .select(`
+            id,
+            role_name,
+            speech_title,
+            pathway_name,
+            level,
+            project_name,
+            project_number,
+            evaluation_form,
+            comments_for_evaluator,
+            evaluation_title,
+            table_topics_title,
+            updated_at
+          `)
+          .eq('meeting_id', targetMeetingId)
+          .eq('user_id', targetUserId)
+          .or('role_name.ilike.Prepared Speaker %,role_name.ilike.Ice Breaker %')
+          .neq('role_name', newRoleName)
+          .order('updated_at', { ascending: false });
+
+        if (sourceErr) {
+          console.error('Error loading source pathway rows:', sourceErr);
+          return;
+        }
+        if (!candidates?.length) return;
+
+        const scopedCandidates = candidates.filter((item: any) => !!parsePreparedOrIceSlot(item.role_name));
+        if (!scopedCandidates.length) return;
+
+        const source = scopedCandidates.find(hasSpeechDetails) || scopedCandidates[0];
+        if (!source?.id) return;
+
+        if (targetRow?.id) {
+          if (hasSpeechDetails(targetRow)) return;
+
+          const { error: mergeErr } = await supabase
+            .from('app_evaluation_pathway')
+            .update({
+              speech_title: source.speech_title,
+              pathway_name: source.pathway_name,
+              level: source.level,
+              project_name: source.project_name,
+              project_number: source.project_number,
+              evaluation_form: source.evaluation_form,
+              comments_for_evaluator: source.comments_for_evaluator,
+              evaluation_title: source.evaluation_title,
+              table_topics_title: source.table_topics_title,
+              updated_at: new Date().toISOString(),
+              updated_by: targetUserId,
+            })
+            .eq('id', targetRow.id);
+
+          if (mergeErr) {
+            console.error('Error merging speech details to target slot:', mergeErr);
+          }
+          return;
+        }
+
+        const { error: moveErr } = await supabase
+          .from('app_evaluation_pathway')
+          .update({
+            role_name: newRoleName,
+            updated_at: new Date().toISOString(),
+            updated_by: targetUserId,
+          })
+          .eq('id', source.id);
+
+        if (moveErr) {
+          console.error('Error moving speech details to new slot:', moveErr);
+        }
+      } catch (transferError) {
+        console.error('Error in admin slot transfer flow:', transferError);
+      }
+    };
+
     try {
       const existingAssignment = meetingRoles.find(ra => ra.role_name === roleName);
 
@@ -290,6 +426,10 @@ export default function ManageMeetingRoles() {
           console.error('Error updating role assignment:', error);
           Alert.alert('Error', 'Failed to update role assignment');
           return;
+        }
+
+        if (memberId && meetingId) {
+          await transferSpeechDetailsForAdminSlotMove(roleName, meetingId, memberId);
         }
       } else {
         Alert.alert('Error', 'Role not found in meeting');

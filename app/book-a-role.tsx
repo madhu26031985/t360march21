@@ -479,6 +479,9 @@ export default function BookARole() {
         }
       }
 
+      // Keep speech details when switching Prepared/Ice slot numbers in same meeting.
+      await transferSpeechDetailsToNewSpeakerSlot(role.role_name, role.meeting_id, user.id);
+
       setSelectedTab('my_bookings');
       loadMeetingRoles();
 
@@ -645,6 +648,105 @@ export default function BookARole() {
     }
     
     return false;
+  };
+
+  const parsePreparedOrIceSlot = (roleName: string): { kind: 'prepared' | 'ice'; slot: number } | null => {
+    const value = (roleName || '').trim().toLowerCase();
+    const preparedMatch = value.match(/^prepared\s*speaker\s*(\d+)$/i);
+    if (preparedMatch) {
+      const slot = Number(preparedMatch[1]);
+      if (slot >= 1 && slot <= 5) return { kind: 'prepared', slot };
+      return null;
+    }
+    const iceMatch = value.match(/^ice\s*breaker\s*(\d+)$/i);
+    if (iceMatch) {
+      const slot = Number(iceMatch[1]);
+      if (slot >= 1 && slot <= 5) return { kind: 'ice', slot };
+      return null;
+    }
+    return null;
+  };
+
+  const transferSpeechDetailsToNewSpeakerSlot = async (
+    newRoleName: string,
+    meetingId: string,
+    userId: string
+  ) => {
+    const targetSlot = parsePreparedOrIceSlot(newRoleName);
+    if (!targetSlot) return;
+
+    try {
+      // If the new slot already has pathway data, keep it untouched.
+      const { data: existingTarget, error: targetErr } = await supabase
+        .from('app_evaluation_pathway')
+        .select('id')
+        .eq('meeting_id', meetingId)
+        .eq('user_id', userId)
+        .eq('role_name', newRoleName)
+        .maybeSingle();
+
+      if (targetErr) {
+        console.error('Error checking target pathway row:', targetErr);
+        return;
+      }
+      if (existingTarget?.id) return;
+
+      const { data: candidates, error: candidateErr } = await supabase
+        .from('app_evaluation_pathway')
+        .select(`
+          id,
+          role_name,
+          speech_title,
+          pathway_name,
+          project_name,
+          level,
+          evaluation_form,
+          comments_for_evaluator,
+          updated_at,
+          created_at
+        `)
+        .eq('meeting_id', meetingId)
+        .eq('user_id', userId)
+        .or('role_name.ilike.Prepared Speaker %,role_name.ilike.Ice Breaker %')
+        .neq('role_name', newRoleName)
+        .order('updated_at', { ascending: false });
+
+      if (candidateErr) {
+        console.error('Error loading pathway transfer candidates:', candidateErr);
+        return;
+      }
+      if (!candidates?.length) return;
+
+      const hasDetails = (row: any) =>
+        !!(
+          (row.speech_title || '').trim() ||
+          (row.pathway_name || '').trim() ||
+          (row.project_name || '').trim() ||
+          row.level != null ||
+          (row.evaluation_form || '').trim() ||
+          (row.comments_for_evaluator || '').trim()
+        );
+
+      const scopedCandidates = candidates.filter((item: any) => !!parsePreparedOrIceSlot(item.role_name));
+      if (!scopedCandidates.length) return;
+
+      const source = scopedCandidates.find(hasDetails) || scopedCandidates[0];
+      if (!source?.id) return;
+
+      const { error: moveErr } = await supabase
+        .from('app_evaluation_pathway')
+        .update({
+          role_name: newRoleName,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', source.id);
+
+      if (moveErr) {
+        console.error('Error transferring speech details to new slot:', moveErr);
+      }
+    } catch (error) {
+      console.error('Error in speech detail transfer flow:', error);
+    }
   };
 
   // Removed isPreparedSpeakerRole, isEvaluatorRole, isGrammarianRole helper functions
