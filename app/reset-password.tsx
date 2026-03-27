@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { Lock, Eye, EyeOff, Shield, CircleCheck as CheckCircle } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import Constants from 'expo-constants';
+import { supabaseUrl } from '@/lib/supabase';
 
 export default function ResetPassword() {
   const { theme } = useTheme();
@@ -49,8 +49,7 @@ export default function ResetPassword() {
     console.log('Validating token:', token);
 
     try {
-      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
-      const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey;
+      const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
       
       if (!supabaseUrl || !supabaseAnonKey) {
         console.error('Missing Supabase configuration');
@@ -64,6 +63,7 @@ export default function ResetPassword() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey!,
           'Authorization': `Bearer ${supabaseAnonKey}`,
         },
         body: JSON.stringify({ token }),
@@ -121,8 +121,7 @@ export default function ResetPassword() {
     try {
       console.log('Updating password...');
       
-      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
-      const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey;
+      const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
       
       if (!supabaseUrl || !supabaseAnonKey) {
         Alert.alert('Error', 'Configuration error. Please try again later.');
@@ -133,6 +132,7 @@ export default function ResetPassword() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey!,
           'Authorization': `Bearer ${supabaseAnonKey}`,
         },
         body: JSON.stringify({

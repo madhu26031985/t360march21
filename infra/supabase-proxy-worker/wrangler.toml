@@ -1,0 +1,9 @@
+name = "supabase-proxy"
+main = "worker.mjs"
+compatibility_date = "2026-03-27"
+workers_dev = true
+
+[vars]
+# Your direct Supabase project URL (no trailing slash)
+SUPABASE_TARGET_URL = "https://chtkcretrpygqmwtyonx.supabase.co"
+

@@ -5,6 +5,7 @@
 # Supabase anon key is public-by-design (RLS protects data). Disable scan for this project.
 [build.environment]
   SECRETS_SCAN_ENABLED = "false"
+  EXPO_PUBLIC_SUPABASE_WEB_URL = "https://chtkcretrpygqmwtyonx.supabase.co"
 
 # Root → app lives under /weblogin (Expo baseUrl)
 [[redirects]]
