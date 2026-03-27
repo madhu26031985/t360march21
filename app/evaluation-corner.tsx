@@ -242,13 +242,13 @@ export default function EvaluationCorner() {
 
   const parsePreparedOrIceSlot = (roleName: string): { kind: 'prepared' | 'ice'; slot: number } | null => {
     const value = (roleName || '').trim().toLowerCase();
-    const preparedMatch = value.match(/^prepared\s*speaker\s*(\d+)$/i);
+    const preparedMatch = value.match(/^prepared\s*(?:speaker|speech)\s*(\d+)$/i);
     if (preparedMatch) {
       const slot = Number(preparedMatch[1]);
       if (slot >= 1 && slot <= 5) return { kind: 'prepared', slot };
       return null;
     }
-    const iceMatch = value.match(/^ice\s*breaker\s*(\d+)$/i);
+    const iceMatch = value.match(/^ice\s*breaker(?:\s*speech)?\s*(\d+)$/i);
     if (iceMatch) {
       const slot = Number(iceMatch[1]);
       if (slot >= 1 && slot <= 5) return { kind: 'ice', slot };
@@ -313,7 +313,7 @@ export default function EvaluationCorner() {
         `)
         .eq('meeting_id', targetMeetingId)
         .eq('user_id', targetUserId)
-        .or('role_name.ilike.Prepared Speaker %,role_name.ilike.Ice Breaker %')
+        .or('role_name.ilike.%prepared%speaker%,role_name.ilike.%prepared%speech%,role_name.ilike.%ice%breaker%')
         .neq('role_name', newRoleName)
         .order('updated_at', { ascending: false });
 
@@ -1935,11 +1935,20 @@ export default function EvaluationCorner() {
   const preparedAvailableRoles = filteredAvailableRoles
     .filter((role) => isPreparedSpeakerRole(role))
     .sort((a, b) => getSequenceNumber(a.role_name) - getSequenceNumber(b.role_name));
+  const preparedBookingBySeq = new Map(
+    filteredBookings
+      .filter((role) => isPreparedSpeakerRole(role))
+      .map((role) => [getSequenceNumber(role.role_name), role])
+  );
+  const preparedAvailableBySeq = new Map(
+    preparedAvailableRoles.map((role) => [getSequenceNumber(role.role_name), role])
+  );
   const evaluatorAvailableRoleBySeq = new Map(
     filteredAvailableRoles
       .filter((role) => isEvaluatorRole(role))
       .map((role) => [getSequenceNumber(role.role_name), role])
   );
+  const preparedSlotsInOrder = [1, 2, 3, 4, 5];
   const availablePairCount = preparedAvailableRoles.length;
   const currentTab = tabs.find(t => t.key === selectedTab);
 
@@ -2003,35 +2012,40 @@ export default function EvaluationCorner() {
                 },
               ]}
             >
-              {filteredBookings.map((booking, idx) => {
-                const totalCards = filteredBookings.length + preparedAvailableRoles.length;
-                return (
-                  <View
-                    key={booking.id}
-                    onLayout={(e) => {
-                      bookingCardYById.current[booking.id] = e.nativeEvent.layout.y;
-                    }}
-                  >
-                    <ParticipantCard
-                      booking={booking}
+              {preparedSlotsInOrder.map((slotNumber, idx) => {
+                const bookedRole = preparedBookingBySeq.get(slotNumber);
+                const openRole = preparedAvailableBySeq.get(slotNumber);
+                const evaluatorRole = evaluatorAvailableRoleBySeq.get(slotNumber);
+                const totalCards = preparedSlotsInOrder.length;
+
+                if (bookedRole) {
+                  return (
+                    <View
+                      key={`booked-slot-${slotNumber}-${bookedRole.id}`}
+                      onLayout={(e) => {
+                        bookingCardYById.current[bookedRole.id] = e.nativeEvent.layout.y;
+                      }}
+                    >
+                      <ParticipantCard
+                        booking={bookedRole}
+                        isLastCard={idx === totalCards - 1}
+                      />
+                    </View>
+                  );
+                }
+
+                if (openRole) {
+                  return (
+                    <OpenPreparedSlotCard
+                      key={`open-slot-${slotNumber}-${openRole.id}-${evaluatorRole?.id || 'none'}`}
+                      speakerRole={openRole}
+                      evaluatorRole={evaluatorRole}
                       isLastCard={idx === totalCards - 1}
                     />
-                  </View>
-                );
-              })}
-              {preparedAvailableRoles.map((speakerRole, idx) => {
-                const pairNumber = getSequenceNumber(speakerRole.role_name);
-                const evaluatorRole = evaluatorAvailableRoleBySeq.get(pairNumber);
-                const globalIdx = filteredBookings.length + idx;
-                const totalCards = filteredBookings.length + preparedAvailableRoles.length;
-                return (
-                  <OpenPreparedSlotCard
-                    key={`open-pair-${pairNumber}-${speakerRole.id}-${evaluatorRole?.id || 'none'}`}
-                    speakerRole={speakerRole}
-                    evaluatorRole={evaluatorRole}
-                    isLastCard={globalIdx === totalCards - 1}
-                  />
-                );
+                  );
+                }
+
+                return null;
               })}
             </View>
           ) : null}

@@ -271,13 +271,13 @@ export default function ManageMeetingRoles() {
   const handleAssignMember = useCallback(async (roleName: string, memberId: string | null) => {
     const parsePreparedOrIceSlot = (name: string): { kind: 'prepared' | 'ice'; slot: number } | null => {
       const value = (name || '').trim().toLowerCase();
-      const preparedMatch = value.match(/^prepared\s*speaker\s*(\d+)$/i);
+      const preparedMatch = value.match(/^prepared\s*(?:speaker|speech)\s*(\d+)$/i);
       if (preparedMatch) {
         const slot = Number(preparedMatch[1]);
         if (slot >= 1 && slot <= 5) return { kind: 'prepared', slot };
         return null;
       }
-      const iceMatch = value.match(/^ice\s*breaker\s*(\d+)$/i);
+      const iceMatch = value.match(/^ice\s*breaker(?:\s*speech)?\s*(\d+)$/i);
       if (iceMatch) {
         const slot = Number(iceMatch[1]);
         if (slot >= 1 && slot <= 5) return { kind: 'ice', slot };
@@ -346,7 +346,7 @@ export default function ManageMeetingRoles() {
           `)
           .eq('meeting_id', targetMeetingId)
           .eq('user_id', targetUserId)
-          .or('role_name.ilike.Prepared Speaker %,role_name.ilike.Ice Breaker %')
+          .or('role_name.ilike.%prepared%speaker%,role_name.ilike.%prepared%speech%,role_name.ilike.%ice%breaker%')
           .neq('role_name', newRoleName)
           .order('updated_at', { ascending: false });
 
