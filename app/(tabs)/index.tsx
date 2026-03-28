@@ -1,15 +1,57 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, AppState, AppStateStatus, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  AppState,
+  AppStateStatus,
+  Platform,
+} from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell, Timer, CreditCard } from 'lucide-react-native';
+import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell, Timer, CreditCard, Sparkles, UserCheck } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { supabase } from '@/lib/supabase';
 import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
+
+const ROLE_PLAYER_CONGRATS_STORAGE_PREFIX = 'journey_role_player_congrats_ack_v1_';
+
+const ROLE_PLAYER_CONGRATS_TEMPLATES = [
+  '{name}, great step forward in your Toastmasters journey!',
+  '{name}, well done on taking the stage—keep shining!',
+  '{name}, fantastic commitment to your growth—keep going!',
+  '{name}, every role you take builds your confidence—well done!',
+  '{name}, strong progress toward becoming a better speaker!',
+  "{name}, you're growing with every meeting—great job!",
+  '{name}, well done stepping up and taking initiative!',
+  '{name}, each role brings you closer to mastery—keep it up!',
+  '{name}, proud to see you actively participating—well done!',
+  "{name}, you're making your mark—keep going strong!",
+  '{name}, every speech and role adds to your journey—great work!',
+  '{name}, your consistency is shaping your success!',
+  '{name}, excellent step toward becoming a confident leader!',
+  "{name}, you're building your skills one meeting at a time!",
+  '{name}, great to see you take another step forward!',
+  "{name}, your effort today will reflect in tomorrow's growth!",
+  '{name}, stepping up like this makes all the difference!',
+  "{name}, you're inspiring progress—keep it going!",
+  '{name}, every participation counts—well done!',
+  "{name}, you're on your way to becoming a stronger communicator!",
+] as const;
+
+function pickRolePlayerCongratsMessage(firstName: string): string {
+  const i = Math.floor(Math.random() * ROLE_PLAYER_CONGRATS_TEMPLATES.length);
+  return ROLE_PLAYER_CONGRATS_TEMPLATES[i].replace(/\{name\}/g, firstName);
+}
 
 interface IconTileProps {
   title: string;
@@ -355,6 +397,17 @@ export default function MyJourney() {
   /** Vice President Education for current club (`club_profiles.vpe_id`) */
   const [isVPEForCurrentClub, setIsVPEForCurrentClub] = useState<boolean>(false);
   const [showNoTasksModal, setShowNoTasksModal] = useState<boolean>(false);
+  /** Re-evaluate “live meeting” window periodically on meeting day */
+  const [journeyLiveWindowTick, setJourneyLiveWindowTick] = useState(0);
+  /** Open meeting is between start and end time; user still needs to mark attendance */
+  const [journeyNeedsAttendanceReminder, setJourneyNeedsAttendanceReminder] = useState(false);
+  /** Open meeting is live; user has booked roles not marked complete */
+  const [journeyNeedsRoleCompletionReminder, setJourneyNeedsRoleCompletionReminder] = useState(false);
+  const [showRolePlayerCongratsModal, setShowRolePlayerCongratsModal] = useState(false);
+  const [rolePlayerCongratsBody, setRolePlayerCongratsBody] = useState('');
+  /** Hidden until AsyncStorage load; default true avoids flashing the row before we know */
+  const [rolePlayerCongratsDismissed, setRolePlayerCongratsDismissed] = useState(true);
+  const [roleCongratsAckLoaded, setRoleCongratsAckLoaded] = useState(false);
 
   const voteNowScale = useSharedValue(1);
   const heroReminderFade = useSharedValue(1);
@@ -420,6 +473,45 @@ export default function MyJourney() {
   })();
 
   const isCurrentOpenMeetingCompleted = meetingStatusText.includes('Completed');
+
+  useEffect(() => {
+    if (daysToGo === null || daysToGo !== 0) return undefined;
+    const id = setInterval(() => setJourneyLiveWindowTick((t) => t + 1), 30000);
+    return () => clearInterval(id);
+  }, [daysToGo]);
+
+  const isOpenMeetingLiveNow = useMemo(() => {
+    if (!currentOpenMeetingDate || daysToGo === null || daysToGo !== 0) return false;
+    if (!currentOpenMeetingStartTime && !currentOpenMeetingEndTime) return false;
+    const now = new Date();
+    const startTime = currentOpenMeetingStartTime || '00:00:00';
+    const endTime = currentOpenMeetingEndTime || '23:59:59';
+    const startParts = startTime.split(':').map(Number);
+    const endParts = endTime.split(':').map(Number);
+    const meetingStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      startParts[0] || 0,
+      startParts[1] || 0,
+      startParts[2] || 0
+    );
+    const meetingEnd = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      endParts[0] || 0,
+      endParts[1] || 0,
+      endParts[2] || 0
+    );
+    return now >= meetingStart && now <= meetingEnd;
+  }, [
+    currentOpenMeetingDate,
+    currentOpenMeetingStartTime,
+    currentOpenMeetingEndTime,
+    daysToGo,
+    journeyLiveWindowTick,
+  ]);
 
   const meetingDateObj = currentOpenMeetingDate ? new Date(`${currentOpenMeetingDate}T00:00:00`) : null;
   const meetingDayNum = meetingDateObj ? meetingDateObj.getDate() : null;
@@ -1130,6 +1222,130 @@ export default function MyJourney() {
     }, [currentOpenMeetingId, user?.id, user?.currentClubId, user?.clubRole, user?.role, isCurrentOpenMeetingCompleted])
   );
 
+  const refreshJourneyLiveTaskFlags = useCallback(async () => {
+    const meetingId = currentOpenMeetingId;
+    const uid = user?.id;
+    if (!meetingId || !uid) return;
+
+    try {
+      const { data: att, error: attErr } = await supabase
+        .from('app_meeting_attendance')
+        .select('attendance_marked_by')
+        .eq('meeting_id', meetingId)
+        .eq('user_id', uid)
+        .maybeSingle();
+
+      if (attErr) {
+        setJourneyNeedsAttendanceReminder(true);
+      } else {
+        setJourneyNeedsAttendanceReminder(!att || att.attendance_marked_by == null);
+      }
+
+      const { data: roles, error: rolesErr } = await supabase
+        .from('app_meeting_roles_management')
+        .select('id, is_completed')
+        .eq('meeting_id', meetingId)
+        .eq('assigned_user_id', uid)
+        .eq('booking_status', 'booked');
+
+      if (rolesErr || !roles?.length) {
+        setJourneyNeedsRoleCompletionReminder(false);
+      } else {
+        setJourneyNeedsRoleCompletionReminder(roles.some((r) => !r.is_completed));
+      }
+    } catch {
+      setJourneyNeedsAttendanceReminder(false);
+      setJourneyNeedsRoleCompletionReminder(false);
+    }
+  }, [currentOpenMeetingId, user?.id]);
+
+  useEffect(() => {
+    if (!currentOpenMeetingId || !user?.id) {
+      setJourneyNeedsAttendanceReminder(false);
+      setJourneyNeedsRoleCompletionReminder(false);
+      return undefined;
+    }
+    if (!isOpenMeetingLiveNow) {
+      setJourneyNeedsAttendanceReminder(false);
+      setJourneyNeedsRoleCompletionReminder(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const run = () => {
+      if (!cancelled) void refreshJourneyLiveTaskFlags();
+    };
+
+    run();
+    const intervalId = setInterval(run, 120000);
+
+    const meetingId = currentOpenMeetingId;
+    const uid = user.id;
+    const channel = supabase
+      .channel(`journey-live-task-flags-${meetingId}-${uid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_meeting_attendance',
+          filter: `meeting_id=eq.${meetingId}`,
+        },
+        run
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_meeting_roles_management',
+          filter: `meeting_id=eq.${meetingId}`,
+        },
+        run
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+      supabase.removeChannel(channel);
+    };
+  }, [currentOpenMeetingId, user?.id, isOpenMeetingLiveNow, refreshJourneyLiveTaskFlags]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (isOpenMeetingLiveNow && currentOpenMeetingId && user?.id) {
+        void refreshJourneyLiveTaskFlags();
+      }
+    }, [isOpenMeetingLiveNow, currentOpenMeetingId, user?.id, refreshJourneyLiveTaskFlags])
+  );
+
+  useEffect(() => {
+    setRoleCongratsAckLoaded(false);
+    if (!currentOpenMeetingId || !user?.id) {
+      setRolePlayerCongratsDismissed(true);
+      setRoleCongratsAckLoaded(true);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const key = `${ROLE_PLAYER_CONGRATS_STORAGE_PREFIX}${user.id}_${currentOpenMeetingId}`;
+        const v = await AsyncStorage.getItem(key);
+        if (!cancelled) {
+          setRolePlayerCongratsDismissed(v === '1');
+        }
+      } catch {
+        if (!cancelled) setRolePlayerCongratsDismissed(false);
+      } finally {
+        if (!cancelled) setRoleCongratsAckLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentOpenMeetingId, user?.id]);
+
   /** TMOD tile: show booked member’s photo for everyone; fallback to session avatar if you’re TM but DB has no URL */
   const journeyToastmasterDisplayAvatarUrls = useMemo(() => {
     if (journeyToastmasterAvatarUrls.length > 0) return journeyToastmasterAvatarUrls;
@@ -1167,6 +1383,11 @@ export default function MyJourney() {
       });
     }
     if (!currentOpenMeetingId || isCurrentOpenMeetingCompleted) return out;
+
+    if (isOpenMeetingLiveNow) {
+      return out;
+    }
+
     if (showBookRoleAttention) {
       out.push({
         key: 'book_role',
@@ -1207,6 +1428,7 @@ export default function MyJourney() {
   }, [
     currentOpenMeetingId,
     isCurrentOpenMeetingCompleted,
+    isOpenMeetingLiveNow,
     showBookRoleAttention,
     tmodNeedsThemeAlert,
     educationalSpeakerNeedsAlert,
@@ -1227,6 +1449,26 @@ export default function MyJourney() {
         .filter(Boolean)[0] || 'You',
     [user?.fullName]
   );
+
+  const openRolePlayerCongrats = useCallback(() => {
+    setRolePlayerCongratsBody(pickRolePlayerCongratsMessage(userFirstName));
+    setShowRolePlayerCongratsModal(true);
+  }, [userFirstName]);
+
+  const acknowledgeRolePlayerCongrats = useCallback(async () => {
+    if (currentOpenMeetingId && user?.id) {
+      try {
+        await AsyncStorage.setItem(
+          `${ROLE_PLAYER_CONGRATS_STORAGE_PREFIX}${user.id}_${currentOpenMeetingId}`,
+          '1'
+        );
+      } catch {
+        /* non-fatal */
+      }
+      setRolePlayerCongratsDismissed(true);
+    }
+    setShowRolePlayerCongratsModal(false);
+  }, [currentOpenMeetingId, user?.id]);
 
   const pendingRemindersKey = pendingMeetingReminders.map((r) => r.key).join('|');
 
@@ -1485,14 +1727,16 @@ export default function MyJourney() {
                   onPress={() => router.push('/speech-repository')}
                   inline
                 />
-                <JourneyListCard
-                  title="My Mentor"
-                  description="Get guidance from your mentor"
-                  icon={<Users size={18} color="#3b82f6" />}
-                  color="#3b82f6"
-                  onPress={() => router.push('/my-growth-guidance')}
-                  inline
-                />
+                {!isOpenMeetingLiveNow ? (
+                  <JourneyListCard
+                    title="My Mentor"
+                    description="Get guidance from your mentor"
+                    icon={<Users size={18} color="#3b82f6" />}
+                    color="#3b82f6"
+                    onPress={() => router.push('/my-growth-guidance')}
+                    inline
+                  />
+                ) : null}
                 <TouchableOpacity
                   style={styles.journeySectionHeader}
                   onPress={() => router.push('/(tabs)/club')}
@@ -1533,42 +1777,119 @@ export default function MyJourney() {
                       onPress={() => router.push('/speech-repository')}
                       inline
                     />
-                    <JourneyListCard
-                      title="My Mentor"
-                      description="Get guidance from your mentor"
-                      icon={<Users size={18} color="#3b82f6" />}
-                      color="#3b82f6"
-                      onPress={() => router.push('/my-growth-guidance')}
-                      inline
-                    />
-                    <JourneyListCard
-                      title="My Tasks"
-                      description={
-                        pendingMeetingReminders.length > 0 ? (
-                          <Animated.View style={[styles.myTasksAnimatedWrap, heroReminderTextAnimatedStyle]}>
-                            <Text style={[styles.myTasksAnimatedText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
-                              {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
+                    {!isOpenMeetingLiveNow ? (
+                      <JourneyListCard
+                        title="My Mentor"
+                        description="Get guidance from your mentor"
+                        icon={<Users size={18} color="#3b82f6" />}
+                        color="#3b82f6"
+                        onPress={() => router.push('/my-growth-guidance')}
+                        inline
+                      />
+                    ) : null}
+                    {!isOpenMeetingLiveNow ? (
+                      <JourneyListCard
+                        title="My Tasks"
+                        description={
+                          pendingMeetingReminders.length > 0 ? (
+                            <Animated.View style={[styles.myTasksAnimatedWrap, heroReminderTextAnimatedStyle]}>
+                              <Text style={[styles.myTasksAnimatedText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                                {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
+                              </Text>
+                            </Animated.View>
+                          ) : (
+                            <Text style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                              All set, champ! No tasks pending.
                             </Text>
-                          </Animated.View>
-                        ) : (
-                          <Text style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                            All set, champ! No tasks pending.
-                          </Text>
-                        )
-                      }
-                      icon={<Bell size={18} color="#b7791f" />}
-                      color="#3b82f6"
-                      onPress={() => {
-                        const item = pendingMeetingReminders[heroReminderSlide];
-                        if (item) {
-                          openPendingReminderTarget(item.key);
-                          return;
+                          )
                         }
-                        setShowNoTasksModal(true);
-                      }}
-                      animateIconOnly={pendingMeetingReminders.length > 0}
-                      inline
-                    />
+                        icon={<Bell size={18} color="#b7791f" />}
+                        color="#3b82f6"
+                        onPress={() => {
+                          const item = pendingMeetingReminders[heroReminderSlide];
+                          if (item) {
+                            openPendingReminderTarget(item.key);
+                            return;
+                          }
+                          setShowNoTasksModal(true);
+                        }}
+                        animateIconOnly={pendingMeetingReminders.length > 0}
+                        inline
+                      />
+                    ) : null}
+                    {isOpenMeetingLiveNow && journeyNeedsAttendanceReminder && currentOpenMeetingId ? (
+                      <JourneyListCard
+                        title={`Mark attendance, ${userFirstName}!`}
+                        description="Confirm you were present at this meeting."
+                        icon={<UserCheck size={18} color="#3b82f6" />}
+                        color="#3b82f6"
+                        onPress={() =>
+                          router.push({
+                            pathname: '/attendance-report',
+                            params: { meetingId: currentOpenMeetingId },
+                          })
+                        }
+                        inline
+                        showPendingHighlight
+                      />
+                    ) : null}
+                    {isOpenMeetingLiveNow && journeyNeedsRoleCompletionReminder && currentOpenMeetingId ? (
+                      <JourneyListCard
+                        title={`Mark role completion, ${userFirstName}!`}
+                        description="Record how your role went for this meeting."
+                        icon={<ClipboardCheck size={18} color="#6366f1" />}
+                        color="#6366f1"
+                        onPress={() =>
+                          router.push({
+                            pathname: '/role-completion-report',
+                            params: { meetingId: currentOpenMeetingId },
+                          })
+                        }
+                        inline
+                        showPendingHighlight
+                      />
+                    ) : null}
+                    {isOpenMeetingLiveNow && hasActivePoll && !hasVotedInActivePoll && currentOpenMeetingId ? (
+                      <JourneyListCard
+                        title={`Cast your vote, ${userFirstName}!`}
+                        description="A live poll is open—tap to participate."
+                        icon={<Vote size={18} color="#0a66c2" />}
+                        color="#0a66c2"
+                        onPress={() =>
+                          router.push({
+                            pathname: '/live-voting',
+                            params: { meetingId: currentOpenMeetingId },
+                          })
+                        }
+                        inline
+                        showPendingHighlight
+                      />
+                    ) : null}
+                    {isOpenMeetingLiveNow && roleCongratsAckLoaded && !rolePlayerCongratsDismissed ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.journeyListCard,
+                          styles.journeyListCardInline,
+                          styles.rolePlayerCongratsRow,
+                          { borderColor: theme.colors.border },
+                        ]}
+                        onPress={openRolePlayerCongrats}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.rolePlayerCongratsIconWrap, { backgroundColor: '#8b5cf620' }]}>
+                          <Sparkles size={18} color="#8b5cf6" />
+                        </View>
+                        <View style={styles.journeyListTextCol}>
+                          <Text style={[styles.journeyListTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                            {`Congrats, ${userFirstName}!`}
+                          </Text>
+                          <Text style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                            Tap to read a note for you.
+                          </Text>
+                        </View>
+                        <ChevronRight size={18} color={theme.colors.textSecondary} />
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                   <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
                   {/* Meeting details */}
@@ -1885,6 +2206,41 @@ export default function MyJourney() {
         </TouchableOpacity>
       </Modal>
 
+      <Modal
+        visible={showRolePlayerCongratsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRolePlayerCongratsModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.noTasksOverlay}
+          activeOpacity={1}
+          onPress={() => setShowRolePlayerCongratsModal(false)}
+        >
+          <TouchableOpacity
+            style={[styles.noTasksContent, { backgroundColor: theme.colors.surface }]}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <Text style={[styles.roleCongratsModalTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              All the best
+            </Text>
+            <Text style={[styles.roleCongratsModalBody, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+              {rolePlayerCongratsBody}
+            </Text>
+            <TouchableOpacity
+              style={[styles.noTasksButton, { backgroundColor: theme.colors.primary }]}
+              onPress={acknowledgeRolePlayerCongrats}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.noTasksButtonText} maxFontSizeMultiplier={1.2}>
+                Got it
+              </Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -1926,6 +2282,18 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  roleCongratsModalTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  roleCongratsModalBody: {
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 24,
   },
   incompleteProfileBulletBlock: {
     gap: 12,
@@ -2419,6 +2787,16 @@ const styles = StyleSheet.create({
   meetingActionsHeaderText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  rolePlayerCongratsRow: {
+    borderWidth: 1,
+  },
+  rolePlayerCongratsIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   meetingActionsGrid: {
     flexDirection: 'row',

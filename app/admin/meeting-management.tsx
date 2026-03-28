@@ -553,7 +553,7 @@ export default function MeetingManagement() {
                 </Text>
               </View>
               <View style={{ justifyContent: 'center', paddingHorizontal: 2 }}>
-                <Text style={[styles.createMeetingHeroArrow, { color: theme.colors.textSecondary }]}>></Text>
+                <Text style={[styles.createMeetingHeroArrow, { color: theme.colors.textSecondary }]}>{'>'}</Text>
               </View>
             </View>
           </TouchableOpacity>
