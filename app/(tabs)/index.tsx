@@ -390,6 +390,10 @@ export default function MyJourney() {
   const [journeyPreparedSpeakerAvatarUrls, setJourneyPreparedSpeakerAvatarUrls] = useState<string[]>([]);
   const [journeyTableTopicsMasterAvatarUrls, setJourneyTableTopicsMasterAvatarUrls] = useState<string[]>([]);
   const [journeyTableTopicsSpeakerAvatarUrls, setJourneyTableTopicsSpeakerAvatarUrls] = useState<string[]>([]);
+  const [journeySpeechEvaluatorAvatarUrls, setJourneySpeechEvaluatorAvatarUrls] = useState<string[]>([]);
+  const [journeyGeneralEvaluatorAvatarUrls, setJourneyGeneralEvaluatorAvatarUrls] = useState<string[]>([]);
+  const [journeyTimerAvatarUrls, setJourneyTimerAvatarUrls] = useState<string[]>([]);
+  const [journeyAhCounterAvatarUrls, setJourneyAhCounterAvatarUrls] = useState<string[]>([]);
   const [showBookRoleAttention, setShowBookRoleAttention] = useState<boolean>(false);
   /** Profile “About” has non-empty text */
   const [profileHasAbout, setProfileHasAbout] = useState<boolean>(false);
@@ -1080,6 +1084,10 @@ export default function MyJourney() {
         setJourneyPreparedSpeakerAvatarUrls([]);
         setJourneyTableTopicsMasterAvatarUrls([]);
         setJourneyTableTopicsSpeakerAvatarUrls([]);
+        setJourneySpeechEvaluatorAvatarUrls([]);
+        setJourneyGeneralEvaluatorAvatarUrls([]);
+        setJourneyTimerAvatarUrls([]);
+        setJourneyAhCounterAvatarUrls([]);
         return;
       }
       const meetingId = currentOpenMeetingId;
@@ -1118,7 +1126,18 @@ export default function MyJourney() {
       };
 
       (async () => {
-        const [gUrls, tmUrls, eUrls, pUrls, ttmUrls, ttsUrls] = await Promise.all([
+        const [
+          gUrls,
+          tmUrls,
+          eUrls,
+          pUrls,
+          ttmUrls,
+          ttsUrls,
+          seUrls,
+          geUrls,
+          timerUrls,
+          ahUrls,
+        ] = await Promise.all([
           orderedAvatarUrlsForRoles(
             supabase
               .from('app_meeting_roles_management')
@@ -1169,6 +1188,45 @@ export default function MyJourney() {
                 'role_name.ilike.%Table Topics Speaker%,role_name.ilike.%Table Topic Speaker%,role_name.ilike.%Table Topics Participant%,role_name.ilike.%Table Topic Participant%'
               )
           ),
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .in('role_classification', [
+                'Speech evaluvator',
+                'Master evaluvator',
+                'speech_evaluator',
+                'TT _ Evaluvator',
+              ])
+          ),
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .or(
+                'role_name.eq.General Evaluator,role_classification.eq.general_evaluator,role_name.ilike.%general%evaluator%'
+              )
+          ),
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .or('role_name.eq.Timer,role_name.ilike.timer')
+          ),
+          orderedAvatarUrlsForRoles(
+            supabase
+              .from('app_meeting_roles_management')
+              .select('assigned_user_id')
+              .eq('meeting_id', meetingId)
+              .eq('booking_status', 'booked')
+              .or('role_name.eq.Ah Counter,role_name.ilike.%ah%counter%')
+          ),
         ]);
         if (!cancelled) {
           setJourneyGrammarianAvatarUrls(gUrls);
@@ -1177,6 +1235,10 @@ export default function MyJourney() {
           setJourneyPreparedSpeakerAvatarUrls(pUrls);
           setJourneyTableTopicsMasterAvatarUrls(ttmUrls);
           setJourneyTableTopicsSpeakerAvatarUrls(ttsUrls);
+          setJourneySpeechEvaluatorAvatarUrls(seUrls);
+          setJourneyGeneralEvaluatorAvatarUrls(geUrls);
+          setJourneyTimerAvatarUrls(timerUrls);
+          setJourneyAhCounterAvatarUrls(ahUrls);
         }
       })();
 
@@ -1991,12 +2053,14 @@ export default function MyJourney() {
                   title="Speech evalution"
                   icon={<Mic size={16} color="#ffffff" />}
                   color="#0a66c2"
+                  avatarUrls={journeySpeechEvaluatorAvatarUrls}
                   onPress={handlePreparedSpeechesPress}
                 />
                 <MeetingActionButton
                   title="General Evaluator"
                   icon={<ClipboardCheck size={16} color="#ffffff" />}
                   color="#ec4899"
+                  avatarUrls={journeyGeneralEvaluatorAvatarUrls}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
                       Alert.alert('No open meeting', 'There is no current open meeting for General Evaluator.');
@@ -2030,6 +2094,7 @@ export default function MyJourney() {
                   title="Timer"
                   icon={<Timer size={16} color="#ffffff" />}
                   color="#0a66c2"
+                  avatarUrls={journeyTimerAvatarUrls}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
                       Alert.alert('No open meeting', 'There is no current open meeting for Timer.');
@@ -2042,6 +2107,7 @@ export default function MyJourney() {
                   title="Ah Counter"
                   icon={<Bell size={16} color="#ffffff" />}
                   color="#f59e0b"
+                  avatarUrls={journeyAhCounterAvatarUrls}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
                       Alert.alert('No open meeting', 'There is no current open meeting for Ah Counter.');
