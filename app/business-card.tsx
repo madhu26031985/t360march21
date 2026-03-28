@@ -1,4 +1,13 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image, useWindowDimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  useWindowDimensions,
+  ScrollView,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -80,8 +89,21 @@ export default function BusinessCardScreen() {
     [cardWidth]
   );
 
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      router.replace('/(tabs)');
+    }
+  }, []);
+
+  if (Platform.OS !== 'web') {
+    return <View style={[styles.container, { backgroundColor: theme.colors.background }]} />;
+  }
+
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView
+      edges={['top', 'left', 'right', 'bottom']}
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={22} color={theme.colors.text} />
@@ -92,7 +114,13 @@ export default function BusinessCardScreen() {
         <View style={styles.backButton} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bounces
+      >
         <View style={[styles.card, cardStyle, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={styles.cardTopRow}>
             <View style={styles.avatarWrap}>
@@ -119,17 +147,17 @@ export default function BusinessCardScreen() {
           <Text style={[styles.aboutLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
             About
           </Text>
-          <Text style={[styles.aboutText, { color: theme.colors.text }]} numberOfLines={5} maxFontSizeMultiplier={1.2}>
+          <Text style={[styles.aboutText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
             {about || `${firstName} has not updated the profile intro yet.`}
           </Text>
 
           <View style={[styles.divider, styles.bottomDivider, { backgroundColor: theme.colors.border }]} />
 
-          <Text style={[styles.bottomClubName, { color: theme.colors.textSecondary }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>
+          <Text style={[styles.bottomClubName, { color: theme.colors.textSecondary }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>
             {clubName || 'Toastmasters Club'}
           </Text>
         </View>
-          </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -156,23 +184,29 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
   },
-  content: {
+  scroll: {
     flex: 1,
+  },
+  scrollContent: {
     alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 32,
   },
   card: {
     borderWidth: 1,
     borderRadius: 14,
     padding: 16,
-    minHeight: 300,
+    paddingBottom: 18,
+    minHeight: 0,
     justifyContent: 'flex-start',
+    alignSelf: 'center',
+    overflow: 'visible',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
-    elevation: 3,
+    elevation: 4,
   },
   cardTopRow: {
     flexDirection: 'row',

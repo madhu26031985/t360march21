@@ -19,7 +19,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
+import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import {
   ArrowLeft,
   NotebookPen,
@@ -42,6 +42,8 @@ import {
   Save,
   User,
   X,
+  Search,
+  UserPlus,
 } from 'lucide-react-native';
 
 /** Match Toastmaster Corner bottom dock icon size */
@@ -112,6 +114,13 @@ interface KeynoteSpeaker {
   };
 }
 
+interface ClubMember {
+  id: string;
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
+}
+
 /**
  * Keynote Speaker Corner — consolidated card, title-only (summary stored as null), Prep → private notes.
  */
@@ -131,6 +140,10 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   const [isVPEClub, setIsVPEClub] = useState(false);
   const [showCongratsModal, setShowCongratsModal] = useState(false);
   const [bookingKeynoteRole, setBookingKeynoteRole] = useState(false);
+  const [showAssignKeynoteModal, setShowAssignKeynoteModal] = useState(false);
+  const [assignKeynoteSearch, setAssignKeynoteSearch] = useState('');
+  const [assigningKeynoteRole, setAssigningKeynoteRole] = useState(false);
+  const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [cornerKeynoteTitle, setCornerKeynoteTitle] = useState('');
   const [savingCornerKeynote, setSavingCornerKeynote] = useState(false);
   const [editingSavedCornerKeynote, setEditingSavedCornerKeynote] = useState(false);
@@ -166,6 +179,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
         loadMeeting(),
         loadKeynoteSpeaker(),
         checkUserRole(),
+        loadClubMembers(),
       ]);
     } catch (error) {
       console.error('Error loading keynote speaker corner data:', error);
@@ -233,6 +247,79 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
       setBookingKeynoteRole(false);
     }
   };
+
+  const loadClubMembers = async (): Promise<void> => {
+    if (!user?.currentClubId) return;
+    try {
+      const { data, error } = await supabase
+        .from('app_club_user_relationship')
+        .select(`
+          app_user_profiles (
+            id,
+            full_name,
+            email,
+            avatar_url
+          )
+        `)
+        .eq('club_id', user.currentClubId)
+        .eq('is_authenticated', true);
+      if (error) {
+        console.error('Error loading club members:', error);
+        return;
+      }
+      const members: ClubMember[] = (data || [])
+        .map((item: any) => {
+          const p = item.app_user_profiles;
+          if (!p?.id) return null;
+          return {
+            id: p.id,
+            full_name: p.full_name,
+            email: p.email,
+            avatar_url: p.avatar_url,
+          };
+        })
+        .filter((m): m is ClubMember => m !== null);
+      members.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setClubMembers(members);
+    } catch (e) {
+      console.error('Error loading club members:', e);
+    }
+  };
+
+  const handleAssignKeynoteToMember = async (member: ClubMember): Promise<void> => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to assign this role.');
+      return;
+    }
+    setAssigningKeynoteRole(true);
+    try {
+      const roleId = await fetchOpenMeetingRoleId(meetingId, { ilikeRoleName: '%keynote%' });
+      if (!roleId) {
+        Alert.alert('Error', 'No open Keynote Speaker role was found for this meeting.');
+        return;
+      }
+      const result = await bookMeetingRoleForCurrentUser(member.id, roleId);
+      if (result.ok) {
+        setShowAssignKeynoteModal(false);
+        setAssignKeynoteSearch('');
+        await loadKeynoteSpeaker();
+        Alert.alert('Assigned', `${member.full_name} is now the Keynote Speaker for this meeting.`);
+      } else {
+        Alert.alert('Could not assign', result.message);
+      }
+    } finally {
+      setAssigningKeynoteRole(false);
+    }
+  };
+
+  const filteredMembersForAssignKeynote = clubMembers.filter((member) => {
+    const q = assignKeynoteSearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      member.full_name.toLowerCase().includes(q) ||
+      member.email.toLowerCase().includes(q)
+    );
+  });
 
   const loadKeynoteSpeaker = async (): Promise<void> => {
     if (!meetingId || !user?.id) return;
@@ -854,58 +941,25 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                   <Text style={[styles.noSpeakerText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                     The stage is yours — make it count.
                   </Text>
-                  {isVPEClub ? (
-                    <View style={styles.vpeDualButtonsRow}>
-                      <TouchableOpacity
-                        style={[
-                          styles.bookSpeakerButton,
-                          styles.vpeDualBtn,
-                          {
-                            backgroundColor: theme.colors.primary,
-                            opacity: bookingKeynoteRole ? 0.85 : 1,
-                          },
-                        ]}
-                        onPress={() => handleBookKeynoteSpeakerInline()}
-                        disabled={bookingKeynoteRole}
-                      >
-                        {bookingKeynoteRole ? (
-                          <ActivityIndicator color="#ffffff" size="small" />
-                        ) : (
-                          <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
-                            Book Keynote Speaker Role
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.vpeDualBtn, styles.assignOutlineBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
-                        onPress={() => router.push({ pathname: '/admin/manage-meeting-roles', params: { meetingId } })}
-                      >
-                        <Text style={[styles.assignOutlineText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                          Assign
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={[
-                        styles.bookSpeakerButton,
-                        {
-                          backgroundColor: theme.colors.primary,
-                          opacity: bookingKeynoteRole ? 0.85 : 1,
-                        },
-                      ]}
-                      onPress={() => handleBookKeynoteSpeakerInline()}
-                      disabled={bookingKeynoteRole}
-                    >
-                      {bookingKeynoteRole ? (
-                        <ActivityIndicator color="#ffffff" size="small" />
-                      ) : (
-                        <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
-                          Book Keynote Speaker Role
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[
+                      styles.bookSpeakerButton,
+                      {
+                        backgroundColor: theme.colors.primary,
+                        opacity: bookingKeynoteRole || assigningKeynoteRole ? 0.85 : 1,
+                      },
+                    ]}
+                    onPress={() => handleBookKeynoteSpeakerInline()}
+                    disabled={bookingKeynoteRole || assigningKeynoteRole}
+                  >
+                    {bookingKeynoteRole ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
+                        Book Keynote Speaker Role
+                      </Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
               ) : (
                 <View style={styles.edSpeakerLoadingRow}>
@@ -925,6 +979,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
 
         {/* Footer Navigation — same as Toastmaster Corner when no keynote speaker booked */}
         {!keynoteSpeaker?.assigned_user_id && (
+          <>
           <View style={[styles.footerNavigationInline, {
             backgroundColor: theme.colors.surface,
             borderTopColor: theme.colors.border,
@@ -961,6 +1016,22 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
             </TouchableOpacity>
+
+            {isVPEClub && (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => {
+                  setShowAssignKeynoteModal(true);
+                  void loadClubMembers();
+                }}
+                disabled={bookingKeynoteRole || assigningKeynoteRole}
+              >
+                <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
+                  <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#059669" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Assign</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={styles.footerNavItem}
@@ -1097,6 +1168,102 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
             )}
           </ScrollView>
           </View>
+
+        <Modal
+          visible={showAssignKeynoteModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setShowAssignKeynoteModal(false);
+            setAssignKeynoteSearch('');
+          }}
+        >
+          <TouchableOpacity
+            style={styles.keynoteAssignOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              setShowAssignKeynoteModal(false);
+              setAssignKeynoteSearch('');
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.keynoteAssignModal, { backgroundColor: theme.colors.surface }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.keynoteAssignHeader}>
+                <Text style={[styles.keynoteAssignTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Assign Keynote Speaker
+                </Text>
+                <TouchableOpacity
+                  style={styles.keynoteAssignClose}
+                  onPress={() => {
+                    setShowAssignKeynoteModal(false);
+                    setAssignKeynoteSearch('');
+                  }}
+                >
+                  <X size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.keynoteAssignHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Choose a club member to book the Keynote Speaker role for this meeting.
+              </Text>
+              <View style={[styles.keynoteAssignSearchWrap, { backgroundColor: theme.colors.background }]}>
+                <Search size={20} color={theme.colors.textSecondary} />
+                <TextInput
+                  style={[styles.keynoteAssignSearchInput, { color: theme.colors.text }]}
+                  placeholder="Search by name or email..."
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={assignKeynoteSearch}
+                  onChangeText={setAssignKeynoteSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {assignKeynoteSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setAssignKeynoteSearch('')}>
+                    <X size={20} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <ScrollView style={styles.keynoteAssignList} showsVerticalScrollIndicator={false}>
+                {assigningKeynoteRole ? (
+                  <View style={styles.keynoteAssignEmptyWrap}>
+                    <ActivityIndicator color={theme.colors.primary} />
+                  </View>
+                ) : filteredMembersForAssignKeynote.length > 0 ? (
+                  filteredMembersForAssignKeynote.map((member) => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[styles.keynoteAssignMemberRow, { backgroundColor: theme.colors.background }]}
+                      onPress={() => handleAssignKeynoteToMember(member)}
+                      disabled={assigningKeynoteRole}
+                    >
+                      <View style={styles.keynoteAssignAvatar}>
+                        {member.avatar_url ? (
+                          <Image source={{ uri: member.avatar_url }} style={styles.keynoteAssignAvatarImage} />
+                        ) : (
+                          <User size={20} color="#ffffff" />
+                        )}
+                      </View>
+                      <View style={styles.keynoteAssignMemberTextWrap}>
+                        <Text style={[styles.keynoteAssignMemberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                          {member.full_name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.keynoteAssignEmptyWrap}>
+                    <Text style={[styles.keynoteAssignEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      No members found
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+          </>
         )}
 
         {/* Footer Navigation — same dock as Toastmaster Corner + Prep (keynote speaker notes) */}
@@ -1614,25 +1781,91 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     textAlign: 'center',
   },
-  vpeDualButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-  },
-  vpeDualBtn: {
+  keynoteAssignOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  keynoteAssignModal: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '80%',
+  },
+  keynoteAssignHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  keynoteAssignTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  keynoteAssignClose: {
+    padding: 6,
+  },
+  keynoteAssignHint: {
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  keynoteAssignSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+    gap: 8,
+  },
+  keynoteAssignSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 2,
+  },
+  keynoteAssignList: {
+    maxHeight: 360,
+  },
+  keynoteAssignMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  keynoteAssignAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ec4899',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginRight: 10,
+  },
+  keynoteAssignAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  keynoteAssignMemberTextWrap: {
+    flex: 1,
+  },
+  keynoteAssignMemberName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  keynoteAssignEmptyWrap: {
+    paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  assignOutlineBtn: {
-    borderWidth: 2,
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-  },
-  assignOutlineText: {
+  keynoteAssignEmptyText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   speechContent: {
     marginTop: 16,

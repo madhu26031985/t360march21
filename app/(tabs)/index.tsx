@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, AppState, AppStateStatus } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, AppState, AppStateStatus, Platform } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -1402,13 +1402,15 @@ export default function MyJourney() {
               </Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={[styles.businessCardButton, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
-            onPress={() => router.push('/business-card')}
-            activeOpacity={0.8}
-          >
-            <CreditCard size={18} color="#3730A3" />
-          </TouchableOpacity>
+          {Platform.OS === 'web' ? (
+            <TouchableOpacity
+              style={[styles.businessCardButton, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
+              onPress={() => router.push('/business-card')}
+              activeOpacity={0.8}
+            >
+              <CreditCard size={18} color="#3730A3" />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 

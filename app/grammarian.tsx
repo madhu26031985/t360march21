@@ -10,7 +10,7 @@ import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentU
 import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
 import { GrammarianNotesScreen } from './grammarian-notes';
-import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus } from 'lucide-react-native';
 
 /** Match Toastmaster / corner bottom dock icon size */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -1282,70 +1282,25 @@ export default function GrammarianReport() {
             <Text style={[styles.noAssignmentSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Love good words and great grammar?
             </Text>
-            {isVPEClub ? (
-              <View style={styles.noAssignmentButtonsRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.bookRoleButton,
-                    styles.bookRoleButtonInRow,
-                    styles.vpeRoleButtonCompact,
-                    {
-                      backgroundColor: theme.colors.primary,
-                      opacity: bookingGrammarianRole ? 0.85 : 1,
-                    },
-                  ]}
-                  onPress={() => handleBookGrammarianInline()}
-                  disabled={bookingGrammarianRole || assigningGrammarianRole}
-                >
-                  {bookingGrammarianRole ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={[styles.bookRoleButtonText, styles.vpeRoleButtonText]} maxFontSizeMultiplier={1.3}>
-                      Book Grammarian
-                    </Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.bookRoleButton,
-                    styles.bookRoleButtonInRow,
-                    styles.vpeRoleButtonCompact,
-                    {
-                      borderWidth: 2,
-                      borderColor: theme.colors.primary,
-                      backgroundColor: theme.colors.surface,
-                      opacity: assigningGrammarianRole ? 0.85 : 1,
-                    },
-                  ]}
-                  onPress={() => setShowAssignGrammarianModal(true)}
-                  disabled={bookingGrammarianRole || assigningGrammarianRole}
-                >
-                  <Text style={[styles.bookRoleButtonTextOutline, styles.vpeRoleButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                    Assign
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={[
-                  styles.bookRoleButton,
-                  {
-                    backgroundColor: theme.colors.primary,
-                    opacity: bookingGrammarianRole ? 0.85 : 1,
-                  },
-                ]}
-                onPress={() => handleBookGrammarianInline()}
-                disabled={bookingGrammarianRole}
-              >
-                {bookingGrammarianRole ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                    Book Grammarian
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={[
+                styles.bookRoleButton,
+                {
+                  backgroundColor: theme.colors.primary,
+                  opacity: bookingGrammarianRole || assigningGrammarianRole ? 0.85 : 1,
+                },
+              ]}
+              onPress={() => handleBookGrammarianInline()}
+              disabled={bookingGrammarianRole || assigningGrammarianRole}
+            >
+              {bookingGrammarianRole ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                  Book Grammarian
+                </Text>
+              )}
+            </TouchableOpacity>
             </View>
             <View style={styles.meetingCardDecoration} />
           </View>
@@ -1402,6 +1357,19 @@ export default function GrammarianReport() {
                 </View>
                 <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
               </TouchableOpacity>
+
+              {isVPEClub && (
+                <TouchableOpacity
+                  style={styles.quickActionItem}
+                  onPress={() => setShowAssignGrammarianModal(true)}
+                  disabled={bookingGrammarianRole || assigningGrammarianRole}
+                >
+                  <View style={[styles.quickActionIcon, { backgroundColor: '#ECFDF5' }]}>
+                    <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#059669" />
+                  </View>
+                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Assign</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={styles.quickActionItem}
@@ -3404,34 +3372,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
   },
-  bookRoleButtonInRow: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vpeRoleButtonCompact: {
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-    borderRadius: 8,
-  },
-  noAssignmentButtonsRow: {
-    flexDirection: 'row',
-    alignSelf: 'stretch',
-    gap: 10,
-    width: '100%',
-  },
   bookRoleButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
-  },
-  bookRoleButtonTextOutline: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  vpeRoleButtonText: {
-    fontSize: 12,
   },
   assignModalHint: {
     fontSize: 13,

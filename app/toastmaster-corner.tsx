@@ -7,7 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
-import { ArrowLeft, Calendar, Clock, MapPin, Building2, Crown, User, Shield, Eye, UserCheck, Plus, Edit3, FileText, NotebookPen, MessageSquare, Bell, FileBarChart, Award, BookOpen, Mic, ClipboardCheck, CheckSquare, Users, MessageCircle, Settings, UserCog, LayoutDashboard, Vote, Save, X, Search } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, MapPin, Building2, Crown, User, Shield, Eye, UserCheck, Plus, Edit3, FileText, NotebookPen, MessageSquare, Bell, FileBarChart, Award, BookOpen, Mic, ClipboardCheck, CheckSquare, Users, MessageCircle, Settings, UserCog, LayoutDashboard, Vote, Save, X, Search, UserPlus } from 'lucide-react-native';
 import { Image } from 'react-native';
 
 /** Bottom nav: icons + labels scaled to 75% of prior size (25% reduction) */
@@ -962,58 +962,25 @@ export default function ToastmasterCorner() {
                 <Text style={[styles.noToastmasterSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   It's time to become — TMOD now. 💫
                 </Text>
-                {isVPEClub ? (
-                  <View style={styles.vpeDualButtonsRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.bookRoleButton,
-                        styles.vpeDualBtn,
-                        {
-                          backgroundColor: theme.colors.primary,
-                          opacity: bookingTmodRole ? 0.85 : 1,
-                        },
-                      ]}
-                      onPress={() => handleBookTmodInline()}
-                      disabled={bookingTmodRole}
-                    >
-                      {bookingTmodRole ? (
-                        <ActivityIndicator color="#ffffff" size="small" />
-                      ) : (
-                        <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                          Book TMOD Role
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.vpeDualBtn, styles.assignOutlineBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
-                      onPress={() => setShowAssignToastmasterModal(true)}
-                    >
-                      <Text style={[styles.assignOutlineText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                        Assign
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={[
-                      styles.bookRoleButton,
-                      {
-                        backgroundColor: theme.colors.primary,
-                        opacity: bookingTmodRole ? 0.85 : 1,
-                      },
-                    ]}
-                    onPress={() => handleBookTmodInline()}
-                    disabled={bookingTmodRole}
-                  >
-                    {bookingTmodRole ? (
-                      <ActivityIndicator color="#ffffff" size="small" />
-                    ) : (
-                      <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                        Book TMOD Role
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                  style={[
+                    styles.bookRoleButton,
+                    {
+                      backgroundColor: theme.colors.primary,
+                      opacity: bookingTmodRole || assigningToastmasterRole ? 0.85 : 1,
+                    },
+                  ]}
+                  onPress={() => handleBookTmodInline()}
+                  disabled={bookingTmodRole || assigningToastmasterRole}
+                >
+                  {bookingTmodRole ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                      Book TMOD Role
+                    </Text>
+                  )}
+                </TouchableOpacity>
               </View>
               <View style={styles.meetingCardDecoration} />
             </View>
@@ -1158,6 +1125,22 @@ export default function ToastmasterCorner() {
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
             </TouchableOpacity>
+
+            {isVPEClub && (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => {
+                  setShowAssignToastmasterModal(true);
+                  void loadClubMembers();
+                }}
+                disabled={bookingTmodRole || assigningToastmasterRole}
+              >
+                <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
+                  <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#059669" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Assign</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={styles.footerNavItem}
@@ -1889,26 +1872,6 @@ const styles = StyleSheet.create({
   noAssignmentDivider: {
     height: 1,
     marginTop: 14,
-  },
-  vpeDualButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-  },
-  vpeDualBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  assignOutlineBtn: {
-    borderWidth: 2,
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-  },
-  assignOutlineText: {
-    fontSize: 14,
-    fontWeight: '700',
   },
   assignOverlay: {
     flex: 1,

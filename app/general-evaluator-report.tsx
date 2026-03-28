@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
@@ -6,9 +6,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
+import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
-import { ArrowLeft, Calendar, Clock, MapPin, Building2, Star, Info, CircleCheck as CheckCircle, Circle, CircleAlert as AlertCircle, X, NotebookPen, Bell, FileText, Users, MessageSquare, Mic, BookOpen, CheckSquare, ClipboardCheck, FileBarChart } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, MapPin, Building2, Star, Info, CircleCheck as CheckCircle, Circle, CircleAlert as AlertCircle, X, NotebookPen, Bell, FileText, Users, MessageSquare, Mic, BookOpen, CheckSquare, ClipboardCheck, FileBarChart, Search, UserPlus } from 'lucide-react-native';
 import { Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
 
 const getRoleIcon = (role: string) => {
@@ -45,6 +45,13 @@ interface GeneralEvaluator {
     email: string;
     avatar_url: string | null;
   };
+}
+
+interface ClubMember {
+  id: string;
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
 }
 
 interface GeneralEvaluatorData {
@@ -107,6 +114,10 @@ export default function GeneralEvaluatorReport() {
   const [activeTab, setActiveTab] = useState<'categories' | 'feedback'>('categories');
   const [bookingGeRole, setBookingGeRole] = useState(false);
   const [isVPEClub, setIsVPEClub] = useState(false);
+  const [showAssignGeModal, setShowAssignGeModal] = useState(false);
+  const [assignGeSearch, setAssignGeSearch] = useState('');
+  const [assigningGeRole, setAssigningGeRole] = useState(false);
+  const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
 
   const evaluationCategories: EvaluationCategory[] = [
     {
@@ -225,6 +236,7 @@ export default function GeneralEvaluatorReport() {
       await loadMeeting();
       await loadClubInfo();
       await loadIsVPEClub();
+      await loadClubMembers();
 
       // Load the assigned General Evaluator for this meeting
       const { data: geData, error: geError } = await supabase
@@ -296,6 +308,79 @@ export default function GeneralEvaluatorReport() {
       setBookingGeRole(false);
     }
   };
+
+  const loadClubMembers = async () => {
+    if (!user?.currentClubId) return;
+    try {
+      const { data, error } = await supabase
+        .from('app_club_user_relationship')
+        .select(`
+          app_user_profiles (
+            id,
+            full_name,
+            email,
+            avatar_url
+          )
+        `)
+        .eq('club_id', user.currentClubId)
+        .eq('is_authenticated', true);
+      if (error) {
+        console.error('Error loading club members:', error);
+        return;
+      }
+      const members: ClubMember[] = (data || [])
+        .map((item: any) => {
+          const p = item.app_user_profiles;
+          if (!p?.id) return null;
+          return {
+            id: p.id,
+            full_name: p.full_name,
+            email: p.email,
+            avatar_url: p.avatar_url,
+          };
+        })
+        .filter((m): m is ClubMember => m !== null);
+      members.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setClubMembers(members);
+    } catch (e) {
+      console.error('Error loading club members:', e);
+    }
+  };
+
+  const handleAssignGeToMember = async (member: ClubMember) => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to assign this role.');
+      return;
+    }
+    setAssigningGeRole(true);
+    try {
+      const roleId = await fetchOpenMeetingRoleId(meetingId, { ilikeRoleName: '%general evaluator%' });
+      if (!roleId) {
+        Alert.alert('Error', 'No open General Evaluator role was found for this meeting.');
+        return;
+      }
+      const result = await bookMeetingRoleForCurrentUser(member.id, roleId);
+      if (result.ok) {
+        setShowAssignGeModal(false);
+        setAssignGeSearch('');
+        await loadGeneralEvaluatorData();
+        Alert.alert('Assigned', `${member.full_name} is now the General Evaluator for this meeting.`);
+      } else {
+        Alert.alert('Could not assign', result.message);
+      }
+    } finally {
+      setAssigningGeRole(false);
+    }
+  };
+
+  const filteredMembersForAssignGe = clubMembers.filter((member) => {
+    const q = assignGeSearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      member.full_name.toLowerCase().includes(q) ||
+      member.email.toLowerCase().includes(q)
+    );
+  });
 
   const loadClubInfo = async () => {
     if (!user?.currentClubId) return;
@@ -893,45 +978,19 @@ export default function GeneralEvaluatorReport() {
               <Text style={[styles.guideMessage, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Guide the meeting to excellence ⭐
               </Text>
-              {isVPEClub ? (
-                <View style={styles.vpeDualButtonsRow}>
-                  <TouchableOpacity
-                    style={[styles.bookRoleButton, styles.vpeDualBtn, { opacity: bookingGeRole ? 0.85 : 1 }]}
-                    onPress={() => handleBookGeneralEvaluatorInline()}
-                    disabled={bookingGeRole}
-                  >
-                    {bookingGeRole ? (
-                      <ActivityIndicator color="#ffffff" size="small" />
-                    ) : (
-                      <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                        Book the GE role
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.vpeDualBtn, styles.assignOutlineBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
-                    onPress={() => router.push({ pathname: '/admin/manage-meeting-roles', params: { meetingId } })}
-                  >
-                    <Text style={[styles.assignOutlineText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                      Assign
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.bookRoleButton, { opacity: bookingGeRole ? 0.85 : 1 }]}
-                  onPress={() => handleBookGeneralEvaluatorInline()}
-                  disabled={bookingGeRole}
-                >
-                  {bookingGeRole ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                      Book the GE role
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={[styles.bookRoleButton, { opacity: bookingGeRole || assigningGeRole ? 0.85 : 1 }]}
+                onPress={() => handleBookGeneralEvaluatorInline()}
+                disabled={bookingGeRole || assigningGeRole}
+              >
+                {bookingGeRole ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                    Book the GE role
+                  </Text>
+                )}
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -1135,6 +1194,7 @@ export default function GeneralEvaluatorReport() {
 
         {/* Footer Navigation */}
         {meeting && (
+          <>
           <View style={[styles.footerNavigationInline, {
             backgroundColor: theme.colors.surface,
             marginTop: 24,
@@ -1174,6 +1234,22 @@ export default function GeneralEvaluatorReport() {
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
               </TouchableOpacity>
+
+              {isVPEClub && !generalEvaluator?.assigned_user_id && (
+                <TouchableOpacity
+                  style={styles.footerNavItem}
+                  onPress={() => {
+                    setShowAssignGeModal(true);
+                    void loadClubMembers();
+                  }}
+                  disabled={bookingGeRole || assigningGeRole}
+                >
+                  <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
+                    <UserPlus size={20} color="#059669" />
+                  </View>
+                  <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Assign</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={styles.footerNavItem}
@@ -1276,6 +1352,102 @@ export default function GeneralEvaluatorReport() {
               </TouchableOpacity>
             </ScrollView>
           </View>
+
+        <Modal
+          visible={showAssignGeModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setShowAssignGeModal(false);
+            setAssignGeSearch('');
+          }}
+        >
+          <TouchableOpacity
+            style={styles.geAssignOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              setShowAssignGeModal(false);
+              setAssignGeSearch('');
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.geAssignModal, { backgroundColor: theme.colors.surface }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.geAssignHeader}>
+                <Text style={[styles.geAssignTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Assign General Evaluator
+                </Text>
+                <TouchableOpacity
+                  style={styles.geAssignClose}
+                  onPress={() => {
+                    setShowAssignGeModal(false);
+                    setAssignGeSearch('');
+                  }}
+                >
+                  <X size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.geAssignHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Choose a club member to book the General Evaluator role for this meeting.
+              </Text>
+              <View style={[styles.geAssignSearchWrap, { backgroundColor: theme.colors.background }]}>
+                <Search size={20} color={theme.colors.textSecondary} />
+                <TextInput
+                  style={[styles.geAssignSearchInput, { color: theme.colors.text }]}
+                  placeholder="Search by name or email..."
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={assignGeSearch}
+                  onChangeText={setAssignGeSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {assignGeSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setAssignGeSearch('')}>
+                    <X size={20} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <ScrollView style={styles.geAssignList} showsVerticalScrollIndicator={false}>
+                {assigningGeRole ? (
+                  <View style={styles.geAssignEmptyWrap}>
+                    <ActivityIndicator color={theme.colors.primary} />
+                  </View>
+                ) : filteredMembersForAssignGe.length > 0 ? (
+                  filteredMembersForAssignGe.map((member) => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[styles.geAssignMemberRow, { backgroundColor: theme.colors.background }]}
+                      onPress={() => handleAssignGeToMember(member)}
+                      disabled={assigningGeRole}
+                    >
+                      <View style={styles.geAssignAvatar}>
+                        {member.avatar_url ? (
+                          <Image source={{ uri: member.avatar_url }} style={styles.geAssignAvatarImage} />
+                        ) : (
+                          <Star size={20} color="#ffffff" />
+                        )}
+                      </View>
+                      <View style={styles.geAssignMemberTextWrap}>
+                        <Text style={[styles.geAssignMemberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                          {member.full_name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.geAssignEmptyWrap}>
+                    <Text style={[styles.geAssignEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      No members found
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+          </>
         )}
       </ScrollView>
       </KeyboardAvoidingView>
@@ -1574,26 +1746,91 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  vpeDualButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-    marginTop: 5,
-  },
-  vpeDualBtn: {
+  geAssignOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  geAssignModal: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '80%',
+  },
+  geAssignHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  geAssignTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  geAssignClose: {
+    padding: 6,
+  },
+  geAssignHint: {
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  geAssignSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+    gap: 8,
+  },
+  geAssignSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 2,
+  },
+  geAssignList: {
+    maxHeight: 360,
+  },
+  geAssignMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  geAssignAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginRight: 10,
+  },
+  geAssignAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  geAssignMemberTextWrap: {
+    flex: 1,
+  },
+  geAssignMemberName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  geAssignEmptyWrap: {
+    paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  assignOutlineBtn: {
-    borderWidth: 2,
-    borderRadius: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-  },
-  assignOutlineText: {
+  geAssignEmptyText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   tabContainer: {
     flexDirection: 'row',

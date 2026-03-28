@@ -6,11 +6,9 @@ import { Linking } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, User, BookOpen, GraduationCap, Target, MessageSquare, NotebookPen, Save, X, ChevronDown, Plus, Info, FileText, Bell, Users, Star, Mic, CheckSquare, FileBarChart, Clock, CheckCircle, Link as LinkIcon, Upload } from 'lucide-react-native';
+import { ArrowLeft, Calendar, User, BookOpen, GraduationCap, Target, MessageSquare, NotebookPen, X, ChevronDown, Plus, Info, FileText, Bell, Users, Star, Mic, CheckSquare, FileBarChart, Clock, CheckCircle, Link as LinkIcon } from 'lucide-react-native';
 import { RefreshCw, RotateCcw } from 'lucide-react-native';
 import { Image } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 
 const FOOTER_NAV_ICON_SIZE = 15;
 
@@ -110,14 +108,11 @@ export default function EvaluationCorner() {
   const [isSaving, setIsSaving] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [bookingRoleId, setBookingRoleId] = useState<string | null>(null);
-  const [savingPathwayRoleId, setSavingPathwayRoleId] = useState<string | null>(null);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignTargetBooking, setAssignTargetBooking] = useState<RoleBooking | null>(null);
   const [evaluatorSearchQuery, setEvaluatorSearchQuery] = useState('');
   const [assigningEvaluatorForRoleId, setAssigningEvaluatorForRoleId] = useState<string | null>(null);
-  const [pendingFocusBookingId, setPendingFocusBookingId] = useState<string | null>(null);
   const mainScrollRef = useRef<ScrollView | null>(null);
-  const bookingCardYById = useRef<Record<string, number>>({});
 
   const currentUserRole = (user?.clubRole || user?.role || '').toLowerCase();
   const isExcomm = currentUserRole === 'excomm';
@@ -147,29 +142,6 @@ export default function EvaluationCorner() {
       }
     }, [meetingId])
   );
-
-  useEffect(() => {
-    if (!pendingFocusBookingId || savingPathwayRoleId) return;
-    const targetY = bookingCardYById.current[pendingFocusBookingId];
-    if (typeof targetY !== 'number') return;
-    const timer = setTimeout(() => {
-      mainScrollRef.current?.scrollTo({
-        y: Math.max(targetY - 8, 0),
-        animated: true,
-      });
-      setPendingFocusBookingId(null);
-    }, 60);
-    return () => clearTimeout(timer);
-  }, [pendingFocusBookingId, savingPathwayRoleId, roleBookings.length, availableRoles.length]);
-
-  const decodeBase64ToBytes = (base64: string): Uint8Array => {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-  };
 
   const showPreparedSpeakerInfo = () => {
     setShowInfoModal(true);
@@ -687,18 +659,6 @@ export default function EvaluationCorner() {
   const isPreparedSpeakerRole = (role: RoleBooking) =>
     role.role_classification === 'Prepared Speaker' || /prepared\s*speaker/i.test(role.role_name || '');
 
-  const hasPathwayInfo = (booking: RoleBooking) => {
-    const key = getEvaluationPathwayKey(booking.user_id, booking.role_name);
-    const pathway = existingEvaluationPathways[key];
-    
-    if (!pathway) return false;
-    
-    const currentTab = tabs.find(t => t.key === selectedTab);
-    if (!currentTab) return false;
-    
-    return !!(pathway.speech_title || pathway.pathway_name || pathway.level || pathway.project_name || pathway.evaluation_form || pathway.comments_for_evaluator);
-  };
-
   const handleEditPathway = (booking: RoleBooking) => {
     const key = getEvaluationPathwayKey(booking.user_id, booking.role_name);
     const pathway = existingEvaluationPathways[key];
@@ -724,77 +684,6 @@ export default function EvaluationCorner() {
       comments_for_evaluator: pathway?.comments_for_evaluator || '',
     });
     setShowEditModal(true);
-  };
-
-  const savePathwayInline = async (booking: RoleBooking, form: typeof editForm) => {
-    if (!meetingId || !user?.currentClubId || !user?.id) {
-      Alert.alert('Error', 'Missing required information');
-      return;
-    }
-    if (savingPathwayRoleId) return;
-
-    setSavingPathwayRoleId(booking.id);
-    try {
-      const saveData: any = {
-        meeting_id: meetingId,
-        club_id: user.currentClubId,
-        user_id: booking.user_id,
-        role_name: booking.role_name,
-        speech_title: form.speech_title.trim() || null,
-        pathway_name: form.pathway_name.trim() || null,
-        level: form.level ? parseInt(form.level, 10) : null,
-        project_name: form.project_name.trim() || null,
-        project_number: form.project_number.trim() || null,
-        evaluation_form: form.evaluation_form.trim() || null,
-        comments_for_evaluator: form.comments_for_evaluator.trim() || null,
-        evaluation_title: form.evaluation_title.trim() || null,
-        table_topics_title: form.table_topics_title.trim() || null,
-        updated_by: user.id,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data: existingData, error: checkError } = await supabase
-        .from('app_evaluation_pathway')
-        .select('id')
-        .eq('meeting_id', meetingId)
-        .eq('user_id', booking.user_id)
-        .eq('role_name', booking.role_name)
-        .maybeSingle();
-
-      if (checkError && (checkError as any).code !== 'PGRST116') {
-        console.error('Error checking existing pathway:', checkError);
-        Alert.alert('Error', 'Failed to check existing pathway');
-        return;
-      }
-
-      if (existingData?.id) {
-        const { error } = await supabase
-          .from('app_evaluation_pathway')
-          .update(saveData)
-          .eq('id', existingData.id);
-        if (error) {
-          console.error('Error updating pathway:', error);
-          Alert.alert('Error', 'Failed to update speech details');
-          return;
-        }
-      } else {
-        const { error } = await supabase
-          .from('app_evaluation_pathway')
-          .insert({ ...saveData, created_at: new Date().toISOString() });
-        if (error) {
-          console.error('Error creating pathway:', error);
-          Alert.alert('Error', 'Failed to save speech details');
-          return;
-        }
-      }
-
-      await loadExistingEvaluationPathways();
-    } catch (e) {
-      console.error('Error saving pathway inline:', e);
-      Alert.alert('Error', 'An unexpected error occurred while saving.');
-    } finally {
-      setSavingPathwayRoleId(null);
-    }
   };
 
   const handleSavePathway = async () => {
@@ -883,27 +772,6 @@ export default function EvaluationCorner() {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const getUpdatedByUser = (pathway: ExistingEvaluationPathway) => {
-    return userProfiles[pathway.updated_by];
-  };
-
-  const formatTimeAgo = (dateString: string) => {
-    const now = new Date();
-    const updatedDate = new Date(dateString);
-    const diffInMinutes = Math.floor((now.getTime() - updatedDate.getTime()) / (1000 * 60));
-
-    if (diffInMinutes < 1) return 'Just now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-    
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `${diffInDays}d ago`;
-    
-    return updatedDate.toLocaleDateString();
   };
 
   const handleOpenEvaluationForm = async (url: string) => {
@@ -1037,9 +905,6 @@ export default function EvaluationCorner() {
   const ParticipantCard = ({ booking, isLastCard = false }: { booking: RoleBooking; isLastCard?: boolean }) => {
     const key = getEvaluationPathwayKey(booking.user_id, booking.role_name);
     const pathway = existingEvaluationPathways[key];
-    const hasInfo = hasPathwayInfo(booking);
-    const currentTab = tabs.find(t => t.key === selectedTab);
-    const updatedByUser = pathway ? getUpdatedByUser(pathway) : null;
     const assignedEvaluator = pathway?.assigned_evaluator_id ? userProfiles[pathway.assigned_evaluator_id] : null;
     const bookingSequence = getSequenceNumber(booking.role_name || '');
     const pairedEvaluatorOpenRole = availableRoles.find(
@@ -1064,64 +929,7 @@ export default function EvaluationCorner() {
       pathway?.evaluation_form?.trim()
     );
 
-    const pathwayKey = `${booking.id}:${pathway?.vpe_approval_requested ? '1' : '0'}:${pathway?.is_locked ? '1' : '0'}`;
-    const [inlineForm, setInlineForm] = useState(() => ({
-      speech_title: pathway?.speech_title || '',
-      pathway_name: pathway?.pathway_name || '',
-      level: pathway?.level != null ? String(pathway.level) : '',
-      project_name: pathway?.project_name || '',
-      project_number: pathway?.project_number || '',
-      evaluation_title: pathway?.evaluation_title || '',
-      table_topics_title: pathway?.table_topics_title || '',
-      evaluation_form: pathway?.evaluation_form || '',
-      comments_for_evaluator: pathway?.comments_for_evaluator || '',
-    }));
-    const [evaluationFormType, setEvaluationFormType] = useState<'link' | 'pdf'>(() => {
-      const u = (pathway?.evaluation_form || '').trim();
-      return u.includes('/storage/v1/object/public/evaluation-forms/') ? 'pdf' : 'link';
-    });
-    const [uploadedFileName, setUploadedFileName] = useState<string | null>(() => {
-      const u = (pathway?.evaluation_form || '').trim();
-      if (!u) return null;
-      if (!u.includes('/storage/v1/object/public/evaluation-forms/')) return null;
-      const fn = u.split('/').pop();
-      return fn || 'Uploaded PDF';
-    });
-    const [isUploadingPDF, setIsUploadingPDF] = useState(false);
-    const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
-    const [detailsOpen, setDetailsOpen] = useState<boolean>(false);
-    const detailsAnim = useRef(new Animated.Value(0)).current;
     const editIconBlinkAnim = useRef(new Animated.Value(1)).current;
-
-    const toggleDetails = () => {
-      const next = !detailsOpen;
-      setDetailsOpen(next);
-      Animated.timing(detailsAnim, {
-        toValue: next ? 1 : 0,
-        duration: 200,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }).start();
-    };
-
-    useEffect(() => {
-      setInlineForm({
-        speech_title: pathway?.speech_title || '',
-        pathway_name: pathway?.pathway_name || '',
-        level: pathway?.level != null ? String(pathway.level) : '',
-        project_name: pathway?.project_name || '',
-        project_number: pathway?.project_number || '',
-        evaluation_title: pathway?.evaluation_title || '',
-        table_topics_title: pathway?.table_topics_title || '',
-        evaluation_form: pathway?.evaluation_form || '',
-        comments_for_evaluator: pathway?.comments_for_evaluator || '',
-      });
-      const u = (pathway?.evaluation_form || '').trim();
-      const isPdf = u.includes('/storage/v1/object/public/evaluation-forms/');
-      setEvaluationFormType(isPdf ? 'pdf' : 'link');
-      setUploadedFileName(isPdf ? (u.split('/').pop() || 'Uploaded PDF') : null);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pathwayKey]);
 
     useEffect(() => {
       let blinkLoop: Animated.CompositeAnimation | null = null;
@@ -1156,82 +964,10 @@ export default function EvaluationCorner() {
       };
     }, [isSpeechInfoIncomplete, pathway?.is_locked, pathway?.vpe_approval_requested, editIconBlinkAnim]);
 
-    const handlePickPDFInline = async () => {
-      try {
-        const result = await DocumentPicker.getDocumentAsync({
-          type: 'application/pdf',
-          copyToCacheDirectory: true,
-        });
-        if (result.canceled) return;
-        const file = result.assets[0];
-        if (!file?.uri) {
-          Alert.alert('Error', 'Could not read file');
-          return;
-        }
-        if (file.size && file.size > 10 * 1024 * 1024) {
-          Alert.alert('Error', 'File size must be less than 10MB');
-          return;
-        }
-
-        setIsUploadingPDF(true);
-        const fileExt = file.name.split('.').pop() || 'pdf';
-        const fileName = `${user?.currentClubId}/${meetingId}/${booking.id}/${Date.now()}.${fileExt}`;
-
-        let fileBlob: Blob | Uint8Array;
-        if (Platform.OS === 'web') {
-          const response = await fetch(file.uri);
-          fileBlob = await response.blob();
-        } else {
-          const fileInfo = await FileSystem.getInfoAsync(file.uri);
-          if (!fileInfo.exists) {
-            Alert.alert('Error', 'File does not exist');
-            return;
-          }
-          const fileData = await FileSystem.readAsStringAsync(file.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          fileBlob = decodeBase64ToBytes(fileData);
-        }
-
-        const { error } = await supabase.storage
-          .from('evaluation-forms')
-          .upload(fileName, fileBlob, {
-            contentType: 'application/pdf',
-            upsert: false,
-          });
-
-        if (error) {
-          console.error('Upload error:', error);
-          Alert.alert('Error', 'Failed to upload PDF');
-          return;
-        }
-
-        const { data: publicUrlData } = supabase.storage
-          .from('evaluation-forms')
-          .getPublicUrl(fileName);
-
-        setInlineForm((p) => ({ ...p, evaluation_form: publicUrlData.publicUrl }));
-        setUploadedFileName(file.name);
-        Alert.alert('Success', 'PDF uploaded successfully');
-      } catch (e) {
-        console.error('Error picking PDF:', e);
-        Alert.alert('Error', 'Failed to pick PDF file');
-      } finally {
-        setIsUploadingPDF(false);
-      }
+    const openSpeechDetailsPage = () => {
+      if (!meetingId) return;
+      router.push({ pathname: '/pathway-form', params: { meetingId, roleId: booking.id } });
     };
-
-    const handleRemovePDFInline = () => {
-      setInlineForm((p) => ({ ...p, evaluation_form: '' }));
-      setUploadedFileName(null);
-    };
-
-    console.log('🎯 ParticipantCard render for:', booking.app_user_profiles.full_name);
-    console.log('   - Key:', key);
-    console.log('   - Pathway found:', !!pathway);
-    console.log('   - Evaluation form:', pathway?.evaluation_form);
-    console.log('   - Assigned evaluator ID:', pathway?.assigned_evaluator_id);
-    console.log('   - Assigned evaluator name:', assignedEvaluator?.full_name);
 
     return (
       <View
@@ -1267,7 +1003,7 @@ export default function EvaluationCorner() {
           {!pathway?.is_locked && !pathway?.vpe_approval_requested && (
             <TouchableOpacity
               style={styles.detailsToggleBtn}
-              onPress={toggleDetails}
+              onPress={openSpeechDetailsPage}
               activeOpacity={0.8}
               accessibilityLabel="Edit Speech"
             >
@@ -1492,295 +1228,6 @@ export default function EvaluationCorner() {
           </View>
         )}
 
-        {/* Inline Speech Details Form (only for the booked speaker) */}
-        {/* Collapsible details */}
-        <Animated.View
-          style={[
-            styles.inlineEditSection,
-            detailsOpen
-              ? {
-                  marginTop: 16,
-                  borderWidth: 1,
-                  paddingHorizontal: 18,
-                  paddingVertical: 18,
-                }
-              : {
-                  marginTop: 0,
-                  borderWidth: 0,
-                  paddingHorizontal: 0,
-                  paddingVertical: 0,
-                },
-            {
-              backgroundColor: '#ffffff',
-              borderColor: '#E5E7EB',
-              opacity: detailsAnim,
-              transform: [
-                {
-                  translateY: detailsAnim.interpolate({ inputRange: [0, 1], outputRange: [-5, 0] }),
-                },
-              ],
-              maxHeight: detailsAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 2000] }),
-            },
-          ]}
-          pointerEvents={detailsOpen ? 'auto' : 'none'}
-        >
-          {!pathway?.is_locked && !pathway?.vpe_approval_requested && (
-            <>
-            <Text style={[styles.speechDetailsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-              Speech Details
-            </Text>
-
-            <View style={styles.formField}>
-              <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                Speech Title *
-              </Text>
-              <TextInput
-                style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
-                placeholder="Enter speech title"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={inlineForm.speech_title}
-                onChangeText={(t) => setInlineForm((p) => ({ ...p, speech_title: t }))}
-              />
-            </View>
-
-            <View style={styles.formField}>
-              <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                Pathway Name
-              </Text>
-              <TextInput
-                style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
-                placeholder="Enter pathway name"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={inlineForm.pathway_name}
-                onChangeText={(t) => setInlineForm((p) => ({ ...p, pathway_name: t }))}
-              />
-            </View>
-
-            <View style={[styles.formRow, styles.formRowGap]}>
-              <View style={[styles.formField, { flex: 1 }]}>
-                <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  Project Number
-                </Text>
-                <TextInput
-                  style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
-                  placeholder="e.g., 1"
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={inlineForm.project_number}
-                  onChangeText={(t) => setInlineForm((p) => ({ ...p, project_number: t.replace(/[^0-9]/g, '').slice(0, 2) }))}
-                  keyboardType="number-pad"
-                />
-              </View>
-              <View style={[styles.formField, { flex: 1 }]}>
-                <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  Level Number
-                </Text>
-                <TextInput
-                  style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
-                  placeholder="e.g., 1"
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={inlineForm.level}
-                  onChangeText={(t) => setInlineForm((p) => ({ ...p, level: t.replace(/[^0-9]/g, '').slice(0, 2) }))}
-                  keyboardType="number-pad"
-                />
-              </View>
-            </View>
-
-            <View style={styles.formField}>
-              <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                Project Name *
-              </Text>
-              <TextInput
-                style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
-                placeholder="Enter project name"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={inlineForm.project_name}
-                onChangeText={(t) => setInlineForm((p) => ({ ...p, project_name: t }))}
-              />
-            </View>
-
-            <View style={styles.formField}>
-              <Text style={[styles.speechFormLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                Evaluation Form *
-              </Text>
-              <View style={[styles.speechSegmentWrap, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                <TouchableOpacity
-                  style={[
-                    styles.speechSegmentBtn,
-                    evaluationFormType === 'link' && [styles.speechSegmentBtnActive, { borderColor: theme.colors.border }],
-                  ]}
-                  onPress={() => {
-                    setEvaluationFormType('link');
-                    setUploadedFileName(null);
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Text
-                    style={[
-                      styles.speechSegmentBtnText,
-                      { color: evaluationFormType === 'link' ? theme.colors.text : theme.colors.textSecondary },
-                    ]}
-                    maxFontSizeMultiplier={1.2}
-                  >
-                    Link
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.speechSegmentBtn,
-                    evaluationFormType === 'pdf' && [styles.speechSegmentBtnActive, { borderColor: theme.colors.border }],
-                  ]}
-                  onPress={() => {
-                    setEvaluationFormType('pdf');
-                    setInlineForm((p) => ({ ...p, evaluation_form: '' }));
-                    setUploadedFileName(null);
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Text
-                    style={[
-                      styles.speechSegmentBtnText,
-                      { color: evaluationFormType === 'pdf' ? theme.colors.text : theme.colors.textSecondary },
-                    ]}
-                    maxFontSizeMultiplier={1.2}
-                  >
-                    PDF
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {evaluationFormType === 'link' && (
-                <TextInput
-                  style={[styles.speechInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
-                  placeholder="Enter evaluation form link"
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={inlineForm.evaluation_form}
-                  onChangeText={(t) => setInlineForm((p) => ({ ...p, evaluation_form: t }))}
-                  autoCapitalize="none"
-                  keyboardType="url"
-                />
-              )}
-
-              {evaluationFormType === 'pdf' && (
-                <View style={{ gap: 10 }}>
-                  {!inlineForm.evaluation_form ? (
-                    <TouchableOpacity
-                      style={[styles.uploadButtonInline, styles.speechUploadButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                      onPress={handlePickPDFInline}
-                      activeOpacity={0.85}
-                      disabled={isUploadingPDF}
-                    >
-                      <Upload size={16} color={theme.colors.primary} />
-                      <Text style={[styles.uploadButtonInlineText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                        {isUploadingPDF ? 'Uploading…' : 'Upload PDF'}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={[styles.uploadedFileInline, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                      <FileText size={16} color={theme.colors.primary} />
-                      <Text style={[styles.uploadedFileInlineName, { color: theme.colors.text }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                        {uploadedFileName || 'Uploaded PDF'}
-                      </Text>
-                      <TouchableOpacity onPress={handleRemovePDFInline} activeOpacity={0.8}>
-                        <X size={16} color={theme.colors.textSecondary} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.saveInfoButton,
-                {
-                  backgroundColor: '#1D4ED8',
-                  opacity: savingPathwayRoleId === booking.id ? 0.7 : 1,
-                },
-              ]}
-              onPress={() => setShowSaveConfirmModal(true)}
-              disabled={savingPathwayRoleId === booking.id}
-            >
-              <Save size={16} color="#ffffff" />
-              <Text style={styles.saveInfoButtonText} maxFontSizeMultiplier={1.3}>
-                {savingPathwayRoleId === booking.id ? 'Saving...' : 'Save Information'}
-              </Text>
-            </TouchableOpacity>
-            <Text style={[styles.lastUpdatedMeta, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-              {updatedByUser?.full_name
-                ? `Last updated by ${updatedByUser.full_name}${pathway?.updated_at ? ` • ${formatTimeAgo(pathway.updated_at)}` : ''}`
-                : 'Last updated by -'}
-            </Text>
-            </>
-          )}
-        </Animated.View>
-
-        <Modal
-          visible={showSaveConfirmModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowSaveConfirmModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.saveConfirmModalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Text style={[styles.saveConfirmModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Confirm Speech Details
-              </Text>
-              <Text style={[styles.saveConfirmModalSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Please verify before saving.
-              </Text>
-
-              <View style={styles.saveConfirmRows}>
-                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  <Text style={{ fontWeight: '700' }}>Speech Title:</Text> {inlineForm.speech_title.trim() || '-'}
-                </Text>
-                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  <Text style={{ fontWeight: '700' }}>Pathway:</Text> {inlineForm.pathway_name.trim() || '-'}
-                </Text>
-                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  <Text style={{ fontWeight: '700' }}>Project Number:</Text> {inlineForm.project_number.trim() || '-'}
-                </Text>
-                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  <Text style={{ fontWeight: '700' }}>Level:</Text> {inlineForm.level.trim() || '-'}
-                </Text>
-                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  <Text style={{ fontWeight: '700' }}>Project Name:</Text> {inlineForm.project_name.trim() || '-'}
-                </Text>
-                <Text style={[styles.saveConfirmRow, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  <Text style={{ fontWeight: '700' }}>Evaluation Form:</Text>{' '}
-                  {inlineForm.evaluation_form.trim() ? (evaluationFormType === 'pdf' ? 'PDF uploaded' : inlineForm.evaluation_form.trim()) : '-'}
-                </Text>
-              </View>
-
-              <View style={styles.saveConfirmActions}>
-                <TouchableOpacity
-                  style={[styles.saveConfirmEditBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
-                  onPress={() => setShowSaveConfirmModal(false)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.saveConfirmEditBtnText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                    Edit
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.saveConfirmSaveBtn, { backgroundColor: '#1D4ED8', opacity: savingPathwayRoleId === booking.id ? 0.7 : 1 }]}
-                  onPress={async () => {
-                    setPendingFocusBookingId(booking.id);
-                    await savePathwayInline(booking, inlineForm);
-                    setShowSaveConfirmModal(false);
-                  }}
-                  disabled={savingPathwayRoleId === booking.id}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.saveConfirmSaveBtnText} maxFontSizeMultiplier={1.2}>
-                    {savingPathwayRoleId === booking.id ? 'Saving...' : 'Confirm & Save'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        
       </View>
     );
   };
@@ -2020,17 +1467,11 @@ export default function EvaluationCorner() {
 
                 if (bookedRole) {
                   return (
-                    <View
+                    <ParticipantCard
                       key={`booked-slot-${slotNumber}-${bookedRole.id}`}
-                      onLayout={(e) => {
-                        bookingCardYById.current[bookedRole.id] = e.nativeEvent.layout.y;
-                      }}
-                    >
-                      <ParticipantCard
-                        booking={bookedRole}
-                        isLastCard={idx === totalCards - 1}
-                      />
-                    </View>
+                      booking={bookedRole}
+                      isLastCard={idx === totalCards - 1}
+                    />
                   );
                 }
 

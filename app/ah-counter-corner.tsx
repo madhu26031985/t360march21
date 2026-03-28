@@ -5,8 +5,8 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
-import { ArrowLeft, Calendar, Clock, MapPin, Building2, User, FileText, ChartBar, Play, ClipboardList, Bell, Users, BookOpen, Star, Mic, CheckSquare, FileBarChart, MessageSquare, Crown, Settings, UserCog, LayoutDashboard, Vote, Info, X, UserCheck, NotebookPen, ClipboardCheck, Trash2, Plus } from 'lucide-react-native';
+import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
+import { ArrowLeft, Calendar, Clock, MapPin, Building2, User, FileText, ChartBar, Play, ClipboardList, Bell, Users, BookOpen, Star, Mic, CheckSquare, FileBarChart, MessageSquare, Crown, Settings, UserCog, LayoutDashboard, Vote, Info, X, UserCheck, NotebookPen, ClipboardCheck, Trash2, Plus, Search } from 'lucide-react-native';
 import { Image } from 'react-native';
 
 interface Meeting {
@@ -22,6 +22,13 @@ interface Meeting {
 }
 
 interface AssignedAhCounter {
+  id: string;
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
+}
+
+interface ClubMember {
   id: string;
   full_name: string;
   email: string;
@@ -74,6 +81,9 @@ const COLUMN_TO_FILLER_WORD: Record<string, string> = Object.fromEntries(
   Object.entries(FILLER_WORD_TO_COLUMN).map(([word, col]) => [col, word])
 );
 
+/** Bottom dock icon size — matches `grammarian.tsx` Grammarian Report footer. */
+const FOOTER_NAV_ICON_SIZE = 15;
+
 export default function AhCounterCorner() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -108,6 +118,10 @@ export default function AhCounterCorner() {
   const [showAddGuestModal, setShowAddGuestModal] = useState(false);
   const [newGuestInput, setNewGuestInput] = useState('');
   const [bookingAhCounterRole, setBookingAhCounterRole] = useState(false);
+  const [showAssignAhCounterModal, setShowAssignAhCounterModal] = useState(false);
+  const [assignAhCounterSearch, setAssignAhCounterSearch] = useState('');
+  const [assigningAhCounterRole, setAssigningAhCounterRole] = useState(false);
+  const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
 
   useEffect(() => {
     if (meetingId && user?.currentClubId) {
@@ -155,6 +169,74 @@ export default function AhCounterCorner() {
       }
     } finally {
       setBookingAhCounterRole(false);
+    }
+  };
+
+  const loadClubMembers = async () => {
+    if (!user?.currentClubId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('app_club_user_relationship')
+        .select(`
+          app_user_profiles (
+            id,
+            full_name,
+            email,
+            avatar_url
+          )
+        `)
+        .eq('club_id', user.currentClubId)
+        .eq('is_authenticated', true);
+
+      if (error) {
+        console.error('Error loading club members:', error);
+        return;
+      }
+
+      const members: ClubMember[] = (data || [])
+        .map((item) => {
+          const p = (item as any).app_user_profiles;
+          if (!p?.id) return null;
+          return {
+            id: p.id,
+            full_name: p.full_name,
+            email: p.email,
+            avatar_url: p.avatar_url,
+          };
+        })
+        .filter((m): m is ClubMember => m !== null);
+
+      members.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setClubMembers(members);
+    } catch (error) {
+      console.error('Error loading club members:', error);
+    }
+  };
+
+  const handleAssignAhCounterToMember = async (member: ClubMember) => {
+    if (!meetingId || !user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to assign this role.');
+      return;
+    }
+    setAssigningAhCounterRole(true);
+    try {
+      const roleId = await fetchOpenMeetingRoleId(meetingId, { ilikeRoleName: '%Ah Counter%' });
+      if (!roleId) {
+        Alert.alert('Error', 'No open Ah Counter role was found for this meeting.');
+        return;
+      }
+      const result = await bookMeetingRoleForCurrentUser(member.id, roleId);
+      if (result.ok) {
+        setShowAssignAhCounterModal(false);
+        setAssignAhCounterSearch('');
+        await loadData();
+        Alert.alert('Assigned', `${member.full_name} is now the Ah Counter for this meeting.`);
+      } else {
+        Alert.alert('Could not assign', result.message);
+      }
+    } finally {
+      setAssigningAhCounterRole(false);
     }
   };
 
@@ -607,6 +689,25 @@ export default function AhCounterCorner() {
     });
   };
 
+  const filteredMembersForAssignAhCounter = clubMembers.filter((member) => {
+    const q = assignAhCounterSearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      member.full_name.toLowerCase().includes(q) ||
+      member.email.toLowerCase().includes(q)
+    );
+  });
+
+  const handleAhCounterNavPress = () => {
+    if (!meetingId) return;
+    if (isVPEClub && !assignedAhCounter) {
+      setShowAssignAhCounterModal(true);
+      void loadClubMembers();
+    } else {
+      router.push({ pathname: '/ah-counter-corner', params: { meetingId } });
+    }
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -702,58 +803,25 @@ export default function AhCounterCorner() {
             <Text style={[styles.noAssignmentSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               It's time to become — Ah Counter now. 😊
             </Text>
-            {isVPEClub ? (
-              <View style={styles.vpeDualButtonsRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.bookRoleButton,
-                    styles.vpeDualBtn,
-                    {
-                      backgroundColor: theme.colors.primary,
-                      opacity: bookingAhCounterRole ? 0.85 : 1,
-                    },
-                  ]}
-                  onPress={() => handleBookAhCounterInline()}
-                  disabled={bookingAhCounterRole}
-                >
-                  {bookingAhCounterRole ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                      Book Ah Counter Role
-                    </Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.vpeDualBtn, styles.assignOutlineBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
-                  onPress={() => router.push({ pathname: '/admin/manage-meeting-roles', params: { meetingId: meeting?.id } })}
-                >
-                  <Text style={[styles.assignOutlineText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                    Assign
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={[
-                  styles.bookRoleButton,
-                  {
-                    backgroundColor: theme.colors.primary,
-                    opacity: bookingAhCounterRole ? 0.85 : 1,
-                  },
-                ]}
-                onPress={() => handleBookAhCounterInline()}
-                disabled={bookingAhCounterRole}
-              >
-                {bookingAhCounterRole ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                    Book Ah Counter Role
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={[
+                styles.bookRoleButton,
+                {
+                  backgroundColor: theme.colors.primary,
+                  opacity: bookingAhCounterRole || assigningAhCounterRole ? 0.85 : 1,
+                },
+              ]}
+              onPress={() => handleBookAhCounterInline()}
+              disabled={bookingAhCounterRole || assigningAhCounterRole}
+            >
+              {bookingAhCounterRole ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
+                  Book Ah Counter Role
+                </Text>
+              )}
+            </TouchableOpacity>
           </View>
             <View style={styles.meetingCardDecoration} />
           </View>
@@ -771,9 +839,19 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3E7' }]}>
-                  <FileText size={20} color="#f59e0b" />
+                  <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={handleAhCounterNavPress}
+              >
+                <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
+                  <Bell size={FOOTER_NAV_ICON_SIZE} color="#4f46e5" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -781,7 +859,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/toastmaster-corner', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FFF4E6' }]}>
-                  <Star size={20} color="#f59e0b" fill="#f59e0b" />
+                  <Star size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" fill="#f59e0b" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TMOD</Text>
               </TouchableOpacity>
@@ -791,7 +869,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Users size={20} color="#ec4899" />
+                  <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
               </TouchableOpacity>
@@ -801,7 +879,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                  <Calendar size={20} color="#004165" />
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
               </TouchableOpacity>
@@ -811,7 +889,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDF4' }]}>
-                  <BookOpen size={20} color="#16a34a" />
+                  <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#16a34a" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
               </TouchableOpacity>
@@ -821,7 +899,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FFF7ED' }]}>
-                  <Star size={20} color="#ea580c" />
+                  <Star size={FOOTER_NAV_ICON_SIZE} color="#ea580c" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
               </TouchableOpacity>
@@ -831,7 +909,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
-                  <NotebookPen size={20} color="#4f46e5" />
+                  <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#4f46e5" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
               </TouchableOpacity>
@@ -841,7 +919,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Mic size={20} color="#ec4899" />
+                  <Mic size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote</Text>
               </TouchableOpacity>
@@ -851,7 +929,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FDF4FF' }]}>
-                  <Vote size={20} color="#a855f7" />
+                  <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
               </TouchableOpacity>
@@ -861,7 +939,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                  <Mic size={20} color="#C9B84E" />
+                  <Mic size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
               </TouchableOpacity>
@@ -871,7 +949,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#E6F4FF' }]}>
-                  <Clock size={20} color="#0369a1" />
+                  <Clock size={FOOTER_NAV_ICON_SIZE} color="#0369a1" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
               </TouchableOpacity>
@@ -881,7 +959,7 @@ export default function AhCounterCorner() {
                 onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting?.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FFF1F2' }]}>
-                  <MessageSquare size={20} color="#e11d48" />
+                  <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#e11d48" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
               </TouchableOpacity>
@@ -894,7 +972,7 @@ export default function AhCounterCorner() {
                     onPress={() => router.push('/admin/voting-operations')}
                   >
                     <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                      <ClipboardCheck size={20} color="#772432" />
+                      <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#772432" />
                     </View>
                     <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Vote Ops</Text>
                   </TouchableOpacity>
@@ -904,7 +982,7 @@ export default function AhCounterCorner() {
                     onPress={() => router.push('/admin/meeting-management')}
                   >
                     <View style={[styles.footerNavIcon, { backgroundColor: '#DBEAFE' }]}>
-                      <LayoutDashboard size={20} color="#3b82f6" />
+                      <LayoutDashboard size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
                     </View>
                     <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
                   </TouchableOpacity>
@@ -914,7 +992,7 @@ export default function AhCounterCorner() {
                     onPress={() => router.push('/admin/manage-club-users')}
                   >
                     <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3C7' }]}>
-                      <UserCog size={20} color="#f59e0b" />
+                      <UserCog size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
                     </View>
                     <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Users</Text>
                   </TouchableOpacity>
@@ -924,7 +1002,7 @@ export default function AhCounterCorner() {
                     onPress={() => router.push('/admin/club-operations')}
                   >
                     <View style={[styles.footerNavIcon, { backgroundColor: '#D1FAE5' }]}>
-                      <Settings size={20} color="#10b981" />
+                      <Settings size={FOOTER_NAV_ICON_SIZE} color="#10b981" />
                     </View>
                     <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
                   </TouchableOpacity>
@@ -933,6 +1011,101 @@ export default function AhCounterCorner() {
             </ScrollView>
           </View>
         </ScrollView>
+
+        <Modal
+          visible={showAssignAhCounterModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setShowAssignAhCounterModal(false);
+            setAssignAhCounterSearch('');
+          }}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              setShowAssignAhCounterModal(false);
+              setAssignAhCounterSearch('');
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.assignAhCounterMemberModal, { backgroundColor: theme.colors.surface }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.assignAhCounterModalHeader}>
+                <Text style={[styles.assignAhCounterModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Assign Ah Counter
+                </Text>
+                <TouchableOpacity
+                  style={styles.assignAhCounterModalClose}
+                  onPress={() => {
+                    setShowAssignAhCounterModal(false);
+                    setAssignAhCounterSearch('');
+                  }}
+                >
+                  <X size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.assignAhCounterModalHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Choose a club member to book the Ah Counter role for this meeting.
+              </Text>
+              <View style={[styles.assignAhCounterSearchRow, { backgroundColor: theme.colors.background }]}>
+                <Search size={20} color={theme.colors.textSecondary} />
+                <TextInput
+                  style={[styles.assignAhCounterSearchInput, { color: theme.colors.text }]}
+                  placeholder="Search by name or email..."
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={assignAhCounterSearch}
+                  onChangeText={setAssignAhCounterSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {assignAhCounterSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setAssignAhCounterSearch('')}>
+                    <X size={20} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <ScrollView style={styles.assignAhCounterMembersScroll} showsVerticalScrollIndicator={false}>
+                {assigningAhCounterRole ? (
+                  <View style={styles.assignAhCounterNoResults}>
+                    <ActivityIndicator color={theme.colors.primary} />
+                  </View>
+                ) : filteredMembersForAssignAhCounter.length > 0 ? (
+                  filteredMembersForAssignAhCounter.map((member) => (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[styles.assignAhCounterMemberRow, { backgroundColor: theme.colors.background }]}
+                      onPress={() => handleAssignAhCounterToMember(member)}
+                      disabled={assigningAhCounterRole}
+                    >
+                      <View style={styles.assignAhCounterMemberAvatar}>
+                        {member.avatar_url ? (
+                          <Image source={{ uri: member.avatar_url }} style={styles.assignAhCounterMemberAvatarImg} />
+                        ) : (
+                          <User size={20} color="#ffffff" />
+                        )}
+                      </View>
+                      <View style={styles.assignAhCounterMemberInfo}>
+                        <Text style={[styles.assignAhCounterMemberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                          {member.full_name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.assignAhCounterNoResults}>
+                    <Text style={[styles.assignAhCounterNoResultsText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      No members found
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -1256,16 +1429,34 @@ export default function AhCounterCorner() {
         <View style={styles.navSpacer} />
 
         {/* Footer Navigation */}
-        <View style={[styles.quickActionsBoxContainer, { backgroundColor: theme.colors.surface, borderRadius: 16, marginHorizontal: 8, marginBottom: 16, paddingVertical: 12 }]}>
+        <View
+          style={[
+            styles.quickActionsBoxContainer,
+            {
+              backgroundColor: theme.colors.surface,
+              borderTopColor: theme.colors.border,
+            },
+          ]}
+        >
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
             <TouchableOpacity
               style={styles.quickActionItem}
               onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={20} color="#f59e0b" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickActionItem}
+              onPress={handleAhCounterNavPress}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
+                <Bell size={FOOTER_NAV_ICON_SIZE} color="#4f46e5" />
+              </View>
+              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1273,7 +1464,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={20} color="#ec4899" />
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
             </TouchableOpacity>
@@ -1283,7 +1474,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E6EFF4' }]}>
-                <Calendar size={20} color="#004165" />
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
             </TouchableOpacity>
@@ -1293,7 +1484,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#F0FDF4' }]}>
-                <BookOpen size={20} color="#16a34a" />
+                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#16a34a" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
             </TouchableOpacity>
@@ -1303,7 +1494,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FFF7ED' }]}>
-                <Star size={20} color="#ea580c" />
+                <Star size={FOOTER_NAV_ICON_SIZE} color="#ea580c" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
             </TouchableOpacity>
@@ -1313,7 +1504,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/grammarian', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
-                <NotebookPen size={20} color="#4f46e5" />
+                <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#4f46e5" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
             </TouchableOpacity>
@@ -1323,7 +1514,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Mic size={20} color="#ec4899" />
+                <Mic size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote</Text>
             </TouchableOpacity>
@@ -1333,7 +1524,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/live-voting', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FDF4FF' }]}>
-                <Vote size={20} color="#a855f7" />
+                <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
             </TouchableOpacity>
@@ -1343,7 +1534,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/quick-overview', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E0F2FE' }]}>
-                <FileText size={20} color="#0284c7" />
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#0284c7" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Overview</Text>
             </TouchableOpacity>
@@ -1353,7 +1544,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#ECFDF5' }]}>
-                <CheckSquare size={20} color="#059669" />
+                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#059669" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Roles</Text>
             </TouchableOpacity>
@@ -1363,7 +1554,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/prepared-speech-evaluations', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEF2F2' }]}>
-                <ClipboardList size={20} color="#dc2626" />
+                <ClipboardList size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speech Eval</Text>
             </TouchableOpacity>
@@ -1373,7 +1564,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FEFBF0' }]}>
-                <Mic size={20} color="#C9B84E" />
+                <Mic size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
             </TouchableOpacity>
@@ -1383,7 +1574,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#E6F4FF' }]}>
-                <Clock size={20} color="#0369a1" />
+                <Clock size={FOOTER_NAV_ICON_SIZE} color="#0369a1" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
             </TouchableOpacity>
@@ -1393,7 +1584,7 @@ export default function AhCounterCorner() {
               onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId } })}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#FFF1F2' }]}>
-                <MessageSquare size={20} color="#e11d48" />
+                <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#e11d48" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
             </TouchableOpacity>
@@ -2020,26 +2211,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 20,
   },
-  vpeDualButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-  },
-  vpeDualBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  assignOutlineBtn: {
-    borderWidth: 2,
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-  },
-  assignOutlineText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
   bookRoleButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
@@ -2069,31 +2240,34 @@ const styles = StyleSheet.create({
   footerNavigationInline: {
     marginHorizontal: 16,
     borderRadius: 16,
-    paddingVertical: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 3,
   },
   footerNavigationContent: {
-    paddingHorizontal: 16,
-    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 6,
   },
   footerNavItem: {
     alignItems: 'center',
-    gap: 6,
-    minWidth: 64,
+    minWidth: 45,
   },
   footerNavIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 3,
   },
   footerNavLabel: {
-    fontSize: 11,
+    fontSize: 8,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -2111,28 +2285,39 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   quickActionsBoxContainer: {
-    paddingHorizontal: 8,
+    borderTopWidth: 0,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   quickActionsContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 8,
+    gap: 9,
+    paddingHorizontal: 6,
   },
   quickActionItem: {
     alignItems: 'center',
-    minWidth: 60,
+    minWidth: 45,
   },
   quickActionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   quickActionLabel: {
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -2142,6 +2327,93 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  assignAhCounterMemberModal: {
+    borderRadius: 16,
+    padding: 20,
+    maxHeight: '70%',
+    minWidth: 320,
+    width: '100%',
+    maxWidth: 520,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  assignAhCounterModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  assignAhCounterModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    flex: 1,
+  },
+  assignAhCounterModalClose: {
+    padding: 4,
+  },
+  assignAhCounterModalHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 4,
+    marginBottom: 12,
+  },
+  assignAhCounterSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  assignAhCounterSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 4,
+  },
+  assignAhCounterMembersScroll: {
+    maxHeight: 400,
+  },
+  assignAhCounterMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
+  assignAhCounterMemberAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#4f46e5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  assignAhCounterMemberAvatarImg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  assignAhCounterMemberInfo: {
+    flex: 1,
+  },
+  assignAhCounterMemberName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  assignAhCounterNoResults: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  assignAhCounterNoResultsText: {
+    fontSize: 16,
+    fontStyle: 'italic',
   },
   infoModalContainer: {
     borderRadius: 20,

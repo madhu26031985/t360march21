@@ -43,6 +43,7 @@ import {
   User,
   X,
   Search,
+  UserPlus,
 } from 'lucide-react-native';
 
 /** Match Toastmaster Corner bottom dock icon size */
@@ -918,60 +919,25 @@ export default function EducationalCorner(): JSX.Element {
                   <Text style={[styles.noSpeakerText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                     The stage is yours — make it count.
                   </Text>
-                  {isVPEClub ? (
-                    <View style={styles.vpeDualButtonsRow}>
-                      <TouchableOpacity
-                        style={[
-                          styles.bookSpeakerButton,
-                          styles.vpeDualBtn,
-                          styles.vpeRoleButtonCompact,
-                          styles.vpeDualBtnEqualHeight,
-                          {
-                            backgroundColor: theme.colors.primary,
-                            opacity: bookingEducationalRole ? 0.85 : 1,
-                          },
-                        ]}
-                        onPress={() => handleBookEducationalSpeakerInline()}
-                        disabled={bookingEducationalRole}
-                      >
-                        {bookingEducationalRole ? (
-                          <ActivityIndicator color="#ffffff" size="small" />
-                        ) : (
-                          <Text style={[styles.bookSpeakerButtonText, styles.vpeRoleButtonText]} maxFontSizeMultiplier={1.3}>
-                            Book Now
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.vpeDualBtn, styles.assignOutlineBtn, styles.vpeRoleButtonCompact, styles.vpeDualBtnEqualHeight, { borderColor: theme.colors.primary, backgroundColor: theme.colors.surface }]}
-                        onPress={() => setShowAssignEducationalModal(true)}
-                      >
-                        <Text style={[styles.assignOutlineText, styles.vpeRoleButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                          Assign
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={[
-                        styles.bookSpeakerButton,
-                        {
-                          backgroundColor: theme.colors.primary,
-                          opacity: bookingEducationalRole ? 0.85 : 1,
-                        },
-                      ]}
-                      onPress={() => handleBookEducationalSpeakerInline()}
-                      disabled={bookingEducationalRole}
-                    >
-                      {bookingEducationalRole ? (
-                        <ActivityIndicator color="#ffffff" size="small" />
-                      ) : (
-                        <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
-                          Book Now
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[
+                      styles.bookSpeakerButton,
+                      {
+                        backgroundColor: theme.colors.primary,
+                        opacity: bookingEducationalRole || assigningEducationalRole ? 0.85 : 1,
+                      },
+                    ]}
+                    onPress={() => handleBookEducationalSpeakerInline()}
+                    disabled={bookingEducationalRole || assigningEducationalRole}
+                  >
+                    {bookingEducationalRole ? (
+                      <ActivityIndicator color="#ffffff" size="small" />
+                    ) : (
+                      <Text style={styles.bookSpeakerButtonText} maxFontSizeMultiplier={1.3}>
+                        Book Now
+                      </Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
               ) : (
                 <View style={styles.edSpeakerLoadingRow}>
@@ -991,6 +957,7 @@ export default function EducationalCorner(): JSX.Element {
 
         {/* Footer Navigation — same as Toastmaster Corner when no TMOD (no ed speaker booked here) */}
         {!educationalSpeaker?.assigned_user_id && (
+          <>
           <View style={[styles.footerNavigationInline, {
             backgroundColor: theme.colors.surface,
             borderTopColor: theme.colors.border,
@@ -1027,6 +994,22 @@ export default function EducationalCorner(): JSX.Element {
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
             </TouchableOpacity>
+
+            {isVPEClub && (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => {
+                  setShowAssignEducationalModal(true);
+                  void loadClubMembers();
+                }}
+                disabled={bookingEducationalRole || assigningEducationalRole}
+              >
+                <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
+                  <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#059669" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Assign</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={styles.footerNavItem}
@@ -1161,6 +1144,8 @@ export default function EducationalCorner(): JSX.Element {
                 </TouchableOpacity>
               </>
             )}
+          </ScrollView>
+          </View>
 
         <Modal
           visible={showAssignEducationalModal}
@@ -1256,8 +1241,7 @@ export default function EducationalCorner(): JSX.Element {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
-          </ScrollView>
-          </View>
+          </>
         )}
 
         {/* Footer Navigation — same dock as Toastmaster Corner + Prep (educational speaker notes) */}
@@ -1741,38 +1725,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     letterSpacing: 0.3,
     textAlign: 'center',
-  },
-  vpeDualButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-    marginTop: 28,
-  },
-  vpeDualBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  assignOutlineBtn: {
-    borderWidth: 2,
-    borderRadius: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-  },
-  assignOutlineText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  vpeRoleButtonCompact: {
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-  },
-  vpeDualBtnEqualHeight: {
-    minHeight: 42,
-    marginTop: 0,
-  },
-  vpeRoleButtonText: {
-    fontSize: 12,
   },
   educationalAssignOverlay: {
     flex: 1,
