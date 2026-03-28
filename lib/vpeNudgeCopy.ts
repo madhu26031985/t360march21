@@ -3,6 +3,8 @@
  * Day 1 = opening announcement; days 2–7 = follow-ups with gaps from live bookings.
  */
 
+import { vpeRegardsSignatureBlock } from '@/lib/vpeWhatsAppMessageParts';
+
 export type VpeNudgeRoleRow = {
   role_name: string;
   role_metric: string;
@@ -264,10 +266,6 @@ function meetingBlock(clubName: string, dateStr: string, meetingNo: string): str
   return `📍 Club Name: ${clubName}\n📅 Date: ${dateStr}\n🔢 Meeting No: ${meetingNo}\n`;
 }
 
-function signatureBlock(vpeName: string): string {
-  return `\n\nRegards,\n${vpeName}\nVPE`;
-}
-
 /** Unique salutation per day (avoid repeating “Hello everyone” on every nudge). */
 const GREETING_BY_DAY: Record<number, string> = {
   1: `Hi club 👋`,
@@ -337,7 +335,7 @@ export function buildDay1Message(ctx: NudgeContext): string {
     meetingBlock(clubName, meetingDateDisplay, meetingNumber) +
     `\n` +
     cta +
-    signatureBlock(vpeName)
+    vpeRegardsSignatureBlock(vpeName, clubName)
   );
 }
 
@@ -361,7 +359,7 @@ export function buildFollowUpMessage(
     bookedProgressLine(bookedCount) +
     missingSection(missing, listHeading) +
     cta +
-    signatureBlock(vpeName)
+    vpeRegardsSignatureBlock(vpeName, clubName)
   );
 }
 

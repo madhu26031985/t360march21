@@ -9,6 +9,7 @@ import {
   Linking,
   Modal,
   Pressable,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,31 +23,70 @@ import {
   daysUntilMeeting,
   formatMeetingDateDisplay,
   formatMeetingStartsTitle,
-  formatMeetingStartsTitleForMissedSlot,
   localISODate,
-  missedNudgeIndices,
   todayNudgeIndex,
   type VpeNudgeRoleRow,
 } from '@/lib/vpeNudgeCopy';
-
-type HintTab = 'today' | 'missed';
+import {
+  isToastmasterOfTheDayRoleName,
+  isWithinOneHourOfMeetingStart,
+  shouldShowBookRoleNudge,
+} from '@/lib/vpeNudgeMeetingWindow';
+import {
+  buildEducationalSpeakerTitleNudgeWhatsApp,
+  buildEducationalVpeSelfReminderWhatsApp,
+  buildEvaluatorPrepNudgeWhatsApp,
+  buildKeynoteTitleNudgeWhatsApp,
+  buildToastmasterThemeNudgeWhatsApp,
+} from '@/lib/vpeNudgeWhatsAppTemplates';
+import {
+  buildPreparedSpeakerSpeechDetailsWhatsApp,
+  firstNameFromFullName,
+  pathwayRowHasSpeechDetails,
+  type EvaluationPathwaySpeechRow,
+} from '@/lib/vpePreparedSpeakerNudge';
 
 const VPE_CARD_SUBTITLE = 'Nudge members to book the role';
 
-const VPE_DAILY_HINT = `New message daily, powered by live data.
-Sent today? Come back tomorrow.`;
+const VPE_SUBNOTE = 'Powered by T360 live data.';
 
-const VPE_INTRO_BLURB = `VPE Nudge
+const SCREEN_TITLE = 'Smart Daily Insights for VPE';
+
+const VPE_INTRO_BLURB = `Smart Daily Insights for VPE
 
 Stay ahead with smart, daily reminders tailored to your club.
 
-• Get data-driven nudges based on open and filled roles
-• Encourage members to act early and avoid last-minute gaps
-• Focus on key roles — TMOD, General Evaluator, Table Topics Master, Tag Roles, Speakers & Evaluators
-• Receive a fresh, intelligently crafted message every day
-• Built using real-time club data for maximum relevance
+• Lists refresh when you open the screen (live meeting data)
+• Book-the-role WhatsApp message appears only within 7 calendar days of the next open meeting
+• Nudge prepared speakers missing Pathway / title / evaluation form; Toastmaster missing theme; educational or keynote title missing; evaluators when the speaker has completed details
+• From one hour before the scheduled meeting start, all nudges are hidden so you can focus on the session
 
-⏳ Once today's message is sent, check back tomorrow for the next update.`;
+⏳ Book-the-role copy rotates daily while that window is active; open again tomorrow for the next line.`;
+
+type NudgeTabId = 'book_role' | 'prepared' | 'toastmaster' | 'educational' | 'keynote' | 'evaluator';
+
+const NUDGE_TABS: { id: NudgeTabId; label: string }[] = [
+  { id: 'book_role', label: 'Book role' },
+  { id: 'prepared', label: 'Prepared' },
+  { id: 'toastmaster', label: 'TMOD' },
+  { id: 'educational', label: 'Educational' },
+  { id: 'keynote', label: 'Keynote' },
+  { id: 'evaluator', label: 'Evaluator' },
+];
+
+/** Notion-like neutrals (screen is light-first; works with current forced light theme). */
+const N = {
+  canvas: '#F7F7F5',
+  shell: '#FFFFFF',
+  ink: '#37352F',
+  muted: '#787774',
+  faint: 'rgba(55, 53, 47, 0.08)',
+  hairline: 'rgba(55, 53, 47, 0.09)',
+  segment: '#E3E2E0',
+  inset: '#FAFAF8',
+  quoteBg: '#FFFFFF',
+  btn: '#37352F',
+};
 
 export default function VPENudgesScreen() {
   const { theme } = useTheme();
@@ -60,29 +100,81 @@ export default function VPENudgesScreen() {
   const [meetingTitle, setMeetingTitle] = useState<string | null>(null);
   const [meetingDateISO, setMeetingDateISO] = useState<string | null>(null);
   const [meetingNumberDisplay, setMeetingNumberDisplay] = useState<string>('—');
-  const [hintTab, setHintTab] = useState<HintTab>('today');
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [preparedSpeakerNudges, setPreparedSpeakerNudges] = useState<
+    { userId: string; fullName: string; message: string }[]
+  >([]);
+  const [toastmasterNudges, setToastmasterNudges] = useState<
+    { userId: string; fullName: string; message: string }[]
+  >([]);
+  const [educationalNudges, setEducationalNudges] = useState<
+    { userId: string; fullName: string; message: string }[]
+  >([]);
+  const [keynoteNudges, setKeynoteNudges] = useState<
+    { userId: string; fullName: string; message: string }[]
+  >([]);
+  const [evaluatorNudges, setEvaluatorNudges] = useState<
+    { key: string; evaluatorName: string; speakerName: string; message: string }[]
+  >([]);
+  const [nudgesHiddenFinalHour, setNudgesHiddenFinalHour] = useState(false);
+  const [educationalVpeSelfNeedsTitle, setEducationalVpeSelfNeedsTitle] = useState(false);
+  const [nudgeClubName, setNudgeClubName] = useState('Our club');
+  const [activeNudgeTab, setActiveNudgeTab] = useState<NudgeTabId>('book_role');
 
   const vpeFirstName =
     (user?.fullName || '').trim().split(/\s+/).filter(Boolean)[0] || 'VPE';
 
   const hintSchedule = useMemo(() => {
     if (!meetingDateISO || messages.length === 0) {
-      return { daysUntil: 0, todayIdx: 0, missed: [] as number[] };
+      return { daysUntil: 0, todayIdx: 0 };
     }
     const today = localISODate(new Date());
     const daysUntil = Math.max(0, daysUntilMeeting(meetingDateISO, today));
     const rawIdx = todayNudgeIndex(daysUntil);
     const todayIdx = Math.min(Math.max(0, rawIdx), messages.length - 1);
-    const missed = missedNudgeIndices(daysUntil).filter((i) => i >= 0 && i < messages.length);
-    return { daysUntil, todayIdx, missed };
+    return { daysUntil, todayIdx };
   }, [meetingDateISO, messages]);
+
+  const daysUntilOpenMeeting = useMemo(() => {
+    if (!meetingDateISO) return null;
+    const today = localISODate(new Date());
+    return Math.max(0, daysUntilMeeting(meetingDateISO, today));
+  }, [meetingDateISO]);
+
+  const bookRoleNudgeVisible =
+    !nudgesHiddenFinalHour &&
+    daysUntilOpenMeeting !== null &&
+    shouldShowBookRoleNudge(daysUntilOpenMeeting);
+
+  const educationalSelfReminderMessage = useMemo(() => {
+    if (!educationalVpeSelfNeedsTitle || !meetingDateISO) return '';
+    return buildEducationalVpeSelfReminderWhatsApp({
+      meetingDateDisplay: formatMeetingDateDisplay(meetingDateISO),
+      meetingNumber: meetingNumberDisplay,
+      vpeFirstName,
+      clubName: nudgeClubName,
+    });
+  }, [
+    educationalVpeSelfNeedsTitle,
+    meetingDateISO,
+    meetingNumberDisplay,
+    vpeFirstName,
+    nudgeClubName,
+  ]);
 
   const load = useCallback(async () => {
     if (!user?.id || !user?.currentClubId) {
       setAllowed(false);
       setLoading(false);
       setMessages([]);
+      setPreparedSpeakerNudges([]);
+      setToastmasterNudges([]);
+      setEducationalNudges([]);
+      setKeynoteNudges([]);
+      setEvaluatorNudges([]);
+      setNudgesHiddenFinalHour(false);
+      setEducationalVpeSelfNeedsTitle(false);
+      setNudgeClubName('Our club');
       setMeetingTitle(null);
       setMeetingDateISO(null);
       setMeetingNumberDisplay('—');
@@ -100,6 +192,14 @@ export default function VPENudgesScreen() {
       if (clubErr || !clubRow || (clubRow as { vpe_id?: string }).vpe_id !== user.id) {
         setAllowed(false);
         setMessages([]);
+        setPreparedSpeakerNudges([]);
+        setToastmasterNudges([]);
+        setEducationalNudges([]);
+        setKeynoteNudges([]);
+        setEvaluatorNudges([]);
+        setNudgesHiddenFinalHour(false);
+        setEducationalVpeSelfNeedsTitle(false);
+        setNudgeClubName('Our club');
         setMeetingTitle(null);
         setMeetingDateISO(null);
         setMeetingNumberDisplay('—');
@@ -109,11 +209,12 @@ export default function VPENudgesScreen() {
       setAllowed(true);
 
       const clubName = (clubRow as { club_name?: string | null }).club_name?.trim() || 'Our club';
+      setNudgeClubName(clubName);
       const today = localISODate(new Date());
 
       const { data: meetings, error: meetErr } = await supabase
         .from('app_club_meeting')
-        .select('id, meeting_title, meeting_date, meeting_number')
+        .select('id, meeting_title, meeting_date, meeting_number, meeting_start_time')
         .eq('club_id', user.currentClubId)
         .eq('meeting_status', 'open')
         .gte('meeting_date', today)
@@ -126,6 +227,13 @@ export default function VPENudgesScreen() {
         setMeetingDateISO(null);
         setMeetingNumberDisplay('—');
         setMessages([]);
+        setPreparedSpeakerNudges([]);
+        setToastmasterNudges([]);
+        setEducationalNudges([]);
+        setKeynoteNudges([]);
+        setEvaluatorNudges([]);
+        setNudgesHiddenFinalHour(false);
+        setEducationalVpeSelfNeedsTitle(false);
         return;
       }
 
@@ -134,7 +242,11 @@ export default function VPENudgesScreen() {
         meeting_title: string | null;
         meeting_date: string;
         meeting_number: string | number | null;
+        meeting_start_time: string | null;
       };
+
+      const finalHour = isWithinOneHourOfMeetingStart(m.meeting_date, m.meeting_start_time);
+      setNudgesHiddenFinalHour(finalHour);
 
       setMeetingTitle(m.meeting_title || 'Open meeting');
       setMeetingDateISO(m.meeting_date);
@@ -158,9 +270,300 @@ export default function VPENudgesScreen() {
       };
 
       setMessages(buildAllNudgeMessages(ctx, roles));
+
+      const clearRoleNudges = () => {
+        setPreparedSpeakerNudges([]);
+        setToastmasterNudges([]);
+        setEducationalNudges([]);
+        setKeynoteNudges([]);
+        setEvaluatorNudges([]);
+        setEducationalVpeSelfNeedsTitle(false);
+      };
+
+      if (finalHour) {
+        clearRoleNudges();
+        return;
+      }
+
+      const vpeUserId = user.id;
+
+      const isBooked = (r: VpeNudgeRoleRow) =>
+        r.booking_status === 'booked' && !!r.assigned_user_id;
+
+      const tmodRows = roles.filter(
+        (r) => isBooked(r) && isToastmasterOfTheDayRoleName(r.role_name)
+      );
+      const tmodUserIds = [...new Set(tmodRows.map((r) => r.assigned_user_id as string))];
+
+      const eduRole = roles.find(
+        (r) => isBooked(r) && r.role_name?.trim() === 'Educational Speaker'
+      );
+      const keynoteRole = roles.find(
+        (r) => isBooked(r) && (r.role_name || '').toLowerCase().includes('keynote')
+      );
+
+      const { data: psRolesRaw, error: psErr } = await supabase
+        .from('app_meeting_roles_management')
+        .select('role_name, assigned_user_id')
+        .eq('meeting_id', m.id)
+        .eq('booking_status', 'booked')
+        .not('assigned_user_id', 'is', null)
+        .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%ice%breaker%');
+
+      if (psErr) {
+        console.error('VPE nudges prepared speaker roles:', psErr);
+        setPreparedSpeakerNudges([]);
+        setEvaluatorNudges([]);
+      } else {
+        const psRoles = (psRolesRaw || []) as { role_name: string; assigned_user_id: string }[];
+        const speakerUserIds = [...new Set(psRoles.map((r) => r.assigned_user_id))];
+
+        if (speakerUserIds.length === 0) {
+          setPreparedSpeakerNudges([]);
+          setEvaluatorNudges([]);
+        } else {
+          const { data: pathwaysRaw, error: pathErr } = await supabase
+            .from('app_evaluation_pathway')
+            .select(
+              'user_id, role_name, speech_title, pathway_name, level, project_name, evaluation_form, comments_for_evaluator, assigned_evaluator_id'
+            )
+            .eq('meeting_id', m.id)
+            .in('user_id', speakerUserIds);
+
+          if (pathErr) {
+            console.error('VPE nudges pathways:', pathErr);
+            setPreparedSpeakerNudges([]);
+            setEvaluatorNudges([]);
+          } else {
+            const pathwayByUserRole = new Map<string, EvaluationPathwaySpeechRow>();
+            for (const row of pathwaysRaw || []) {
+              const r = row as EvaluationPathwaySpeechRow;
+              const uid = String(r.user_id ?? '');
+              const rn = String(r.role_name ?? '');
+              pathwayByUserRole.set(`${uid}::${rn}`, r);
+            }
+
+            const needNudgeUserIds = new Set<string>();
+            const evaluatorTuples: { evaluatorId: string; speakerId: string; roleName: string }[] = [];
+            for (const r of psRoles) {
+              const p = pathwayByUserRole.get(`${r.assigned_user_id}::${r.role_name}`) ?? null;
+              const speakerId = r.assigned_user_id;
+              const speakerIsVpe = speakerId === vpeUserId;
+
+              if (!speakerIsVpe && !pathwayRowHasSpeechDetails(p)) {
+                needNudgeUserIds.add(speakerId);
+              }
+
+              if (pathwayRowHasSpeechDetails(p)) {
+                const ev = p?.assigned_evaluator_id?.trim();
+                if (ev && ev !== vpeUserId) {
+                  evaluatorTuples.push({
+                    evaluatorId: ev,
+                    speakerId,
+                    roleName: r.role_name,
+                  });
+                }
+              }
+            }
+
+            const profileIds = new Set<string>([
+              ...speakerUserIds,
+              ...needNudgeUserIds,
+              ...evaluatorTuples.map((t) => t.evaluatorId),
+            ]);
+            tmodUserIds.forEach((id) => profileIds.add(id));
+            if (eduRole?.assigned_user_id) profileIds.add(eduRole.assigned_user_id);
+            if (keynoteRole?.assigned_user_id) profileIds.add(keynoteRole.assigned_user_id);
+
+            const { data: profilesRaw } = await supabase
+              .from('app_user_profiles')
+              .select('id, full_name')
+              .in('id', [...profileIds]);
+
+            const nameById = new Map(
+              (profilesRaw || []).map((p: { id: string; full_name: string | null }) => [
+                p.id,
+                (p.full_name || '').trim() || 'Member',
+              ])
+            );
+
+            const prepNudges = [...needNudgeUserIds]
+              .map((uid) => {
+                const fullName = nameById.get(uid) || 'Member';
+                const speakerFirstName = firstNameFromFullName(fullName);
+                return {
+                  userId: uid,
+                  fullName,
+                  message: buildPreparedSpeakerSpeechDetailsWhatsApp({
+                    speakerFirstName,
+                    vpeName: ctx.vpeName,
+                    clubName: ctx.clubName,
+                    meetingDateDisplay: ctx.meetingDateDisplay,
+                    meetingNumber: ctx.meetingNumber,
+                  }),
+                };
+              })
+              .sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+            setPreparedSpeakerNudges(prepNudges);
+
+            const evNudges = evaluatorTuples
+              .map((t) => {
+                const evaluatorName = nameById.get(t.evaluatorId) || 'Member';
+                const speakerName = nameById.get(t.speakerId) || 'Member';
+                return {
+                  key: `${t.evaluatorId}::${t.speakerId}::${t.roleName}`,
+                  evaluatorName,
+                  speakerName,
+                  message: buildEvaluatorPrepNudgeWhatsApp({
+                    evaluatorFirstName: firstNameFromFullName(evaluatorName),
+                    speakerFullName: speakerName,
+                    vpeName: ctx.vpeName,
+                    clubName: ctx.clubName,
+                    meetingDateDisplay: ctx.meetingDateDisplay,
+                    meetingNumber: ctx.meetingNumber,
+                  }),
+                };
+              })
+              .sort((a, b) => a.evaluatorName.localeCompare(b.evaluatorName) || a.speakerName.localeCompare(b.speakerName));
+
+            setEvaluatorNudges(evNudges);
+          }
+        }
+      }
+
+      const [tmRes, eduRes, knRes] = await Promise.all([
+        tmodUserIds.length
+          ? supabase
+              .from('toastmaster_meeting_data')
+              .select('toastmaster_user_id, theme_of_the_day')
+              .eq('meeting_id', m.id)
+              .in('toastmaster_user_id', tmodUserIds)
+          : Promise.resolve({ data: [] as { toastmaster_user_id: string; theme_of_the_day: string | null }[], error: null }),
+        eduRole?.assigned_user_id
+          ? supabase
+              .from('app_meeting_educational_speaker')
+              .select('speech_title')
+              .eq('meeting_id', m.id)
+              .eq('speaker_user_id', eduRole.assigned_user_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null as { speech_title: string | null } | null, error: null }),
+        keynoteRole?.assigned_user_id
+          ? supabase
+              .from('app_meeting_keynote_speaker')
+              .select('speech_title')
+              .eq('meeting_id', m.id)
+              .eq('speaker_user_id', keynoteRole.assigned_user_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null as { speech_title: string | null } | null, error: null }),
+      ]);
+
+      if (tmRes.error) {
+        console.error('VPE nudges toastmaster data:', tmRes.error);
+      }
+      if (eduRes.error) {
+        console.error('VPE nudges educational:', eduRes.error);
+      }
+      if (knRes.error) {
+        console.error('VPE nudges keynote:', knRes.error);
+      }
+
+      const themeByTmod = new Map<string, string | null>();
+      for (const row of tmRes.data || []) {
+        themeByTmod.set(row.toastmaster_user_id, row.theme_of_the_day);
+      }
+
+      const tmNeedTheme = tmodUserIds.filter(
+        (uid) => uid !== vpeUserId && !themeByTmod.get(uid)?.trim()
+      );
+      const eduNeedsTitle =
+        !!eduRole?.assigned_user_id &&
+        eduRole.assigned_user_id !== vpeUserId &&
+        !eduRes.data?.speech_title?.trim();
+      const knNeedsTitle =
+        !!keynoteRole?.assigned_user_id &&
+        keynoteRole.assigned_user_id !== vpeUserId &&
+        !knRes.data?.speech_title?.trim();
+
+      const tmEduKnProfileIds = [
+        ...tmNeedTheme,
+        ...(eduNeedsTitle && eduRole?.assigned_user_id ? [eduRole.assigned_user_id] : []),
+        ...(knNeedsTitle && keynoteRole?.assigned_user_id ? [keynoteRole.assigned_user_id] : []),
+      ];
+      const { data: tmEduKnProfiles } =
+        tmEduKnProfileIds.length > 0
+          ? await supabase.from('app_user_profiles').select('id, full_name').in('id', tmEduKnProfileIds)
+          : { data: [] as { id: string; full_name: string | null }[] };
+      const tmEduKnNameById = new Map(
+        (tmEduKnProfiles || []).map((p) => [p.id, (p.full_name || '').trim() || 'Member'])
+      );
+
+      const tmNudgesFinal: { userId: string; fullName: string; message: string }[] = [];
+      for (const uid of tmNeedTheme) {
+        const fullName = tmEduKnNameById.get(uid) || 'Member';
+        tmNudgesFinal.push({
+          userId: uid,
+          fullName,
+          message: buildToastmasterThemeNudgeWhatsApp({
+            toastmasterFirstName: firstNameFromFullName(fullName),
+            vpeName: ctx.vpeName,
+            clubName: ctx.clubName,
+            meetingDateDisplay: ctx.meetingDateDisplay,
+            meetingNumber: ctx.meetingNumber,
+          }),
+        });
+      }
+      setToastmasterNudges(tmNudgesFinal.sort((a, b) => a.fullName.localeCompare(b.fullName)));
+
+      const eduList: { userId: string; fullName: string; message: string }[] = [];
+      if (eduNeedsTitle && eduRole?.assigned_user_id) {
+        const fullName = tmEduKnNameById.get(eduRole.assigned_user_id) || 'Member';
+        eduList.push({
+          userId: eduRole.assigned_user_id,
+          fullName,
+          message: buildEducationalSpeakerTitleNudgeWhatsApp({
+            speakerFirstName: firstNameFromFullName(fullName),
+            vpeName: ctx.vpeName,
+            clubName: ctx.clubName,
+            meetingDateDisplay: ctx.meetingDateDisplay,
+            meetingNumber: ctx.meetingNumber,
+          }),
+        });
+      }
+      setEducationalNudges(eduList);
+
+      const eduVpeSelfNeedsTitle =
+        !!eduRole?.assigned_user_id &&
+        eduRole.assigned_user_id === vpeUserId &&
+        !eduRes.data?.speech_title?.trim();
+      setEducationalVpeSelfNeedsTitle(eduVpeSelfNeedsTitle);
+
+      const knList: { userId: string; fullName: string; message: string }[] = [];
+      if (knNeedsTitle && keynoteRole?.assigned_user_id) {
+        const fullName = tmEduKnNameById.get(keynoteRole.assigned_user_id) || 'Member';
+        knList.push({
+          userId: keynoteRole.assigned_user_id,
+          fullName,
+          message: buildKeynoteTitleNudgeWhatsApp({
+            speakerFirstName: firstNameFromFullName(fullName),
+            vpeName: ctx.vpeName,
+            clubName: ctx.clubName,
+            meetingDateDisplay: ctx.meetingDateDisplay,
+            meetingNumber: ctx.meetingNumber,
+          }),
+        });
+      }
+      setKeynoteNudges(knList);
     } catch (e) {
       console.error('VPE nudges load:', e);
       setMessages([]);
+      setPreparedSpeakerNudges([]);
+      setToastmasterNudges([]);
+      setEducationalNudges([]);
+      setKeynoteNudges([]);
+      setEvaluatorNudges([]);
+      setNudgesHiddenFinalHour(false);
+      setEducationalVpeSelfNeedsTitle(false);
     } finally {
       setLoading(false);
     }
@@ -170,6 +573,43 @@ export default function VPENudgesScreen() {
     useCallback(() => {
       load();
     }, [load])
+  );
+
+  useEffect(() => {
+    if (loading || nudgesHiddenFinalHour || !meetingTitle) return;
+    setActiveNudgeTab((prev) => {
+      if (prev === 'book_role' && !bookRoleNudgeVisible) return 'prepared';
+      return prev;
+    });
+  }, [loading, nudgesHiddenFinalHour, meetingTitle, bookRoleNudgeVisible]);
+
+  const tabBadgeCount = useCallback(
+    (id: NudgeTabId): number => {
+      switch (id) {
+        case 'book_role':
+          return 0;
+        case 'prepared':
+          return preparedSpeakerNudges.length;
+        case 'toastmaster':
+          return toastmasterNudges.length;
+        case 'educational':
+          return educationalNudges.length + (educationalVpeSelfNeedsTitle ? 1 : 0);
+        case 'keynote':
+          return keynoteNudges.length;
+        case 'evaluator':
+          return evaluatorNudges.length;
+        default:
+          return 0;
+      }
+    },
+    [
+      preparedSpeakerNudges.length,
+      toastmasterNudges.length,
+      educationalNudges.length,
+      educationalVpeSelfNeedsTitle,
+      keynoteNudges.length,
+      evaluatorNudges.length,
+    ]
   );
 
   /**
@@ -195,7 +635,13 @@ export default function VPENudgesScreen() {
   }, [params.quickShare]);
 
   useEffect(() => {
-    if (loading || messages.length === 0 || params.quickShare !== '1' || quickShareConsumed.current) {
+    if (
+      loading ||
+      messages.length === 0 ||
+      params.quickShare !== '1' ||
+      quickShareConsumed.current ||
+      !bookRoleNudgeVisible
+    ) {
       return;
     }
     quickShareConsumed.current = true;
@@ -204,12 +650,19 @@ export default function VPENudgesScreen() {
       await shareWhatsApp(messages[idx]);
       router.replace('/vpe-nudges');
     })();
-  }, [loading, messages, params.quickShare, shareWhatsApp, hintSchedule.todayIdx]);
+  }, [
+    loading,
+    messages,
+    params.quickShare,
+    shareWhatsApp,
+    hintSchedule.todayIdx,
+    bookRoleNudgeVisible,
+  ]);
 
   if (!user) {
     return (
-      <SafeAreaView style={[styles.centered, { backgroundColor: theme.colors.background }]}>
-        <Text style={{ color: theme.colors.text }}>Sign in to continue.</Text>
+      <SafeAreaView style={[styles.centered, { backgroundColor: N.canvas }]}>
+        <Text style={{ color: N.ink }}>Sign in to continue.</Text>
       </SafeAreaView>
     );
   }
@@ -224,7 +677,7 @@ export default function VPENudgesScreen() {
       <View style={styles.infoModalOverlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowInfoModal(false)} />
         <View
-          style={[styles.infoModalSheet, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+          style={[styles.infoModalSheet, { backgroundColor: N.inset, borderColor: N.faint }]}
         >
           <View style={[styles.infoModalHeader, { borderBottomColor: theme.colors.border }]}>
             <Text style={[styles.infoModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
@@ -264,32 +717,43 @@ export default function VPENudgesScreen() {
 
   const headerInfoButton = (
     <TouchableOpacity
-      style={[styles.headerInfoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
+      style={[styles.notionGhostIconBtn, { borderColor: N.hairline, backgroundColor: N.shell }]}
       onPress={() => setShowInfoModal(true)}
       hitSlop={12}
       accessibilityRole="button"
-      accessibilityLabel="About VPE Nudge"
-      activeOpacity={0.8}
+      accessibilityLabel="About Smart Daily Insights"
+      activeOpacity={0.75}
     >
-      <Info size={18} color="#6E839F" />
+      <Info size={18} color={N.muted} />
     </TouchableOpacity>
+  );
+
+  const notionTopBar = (
+    <View style={[styles.notionTopBar, { backgroundColor: N.canvas }]}>
+      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
+        <ArrowLeft size={22} color={N.ink} />
+      </TouchableOpacity>
+      <View style={{ flex: 1 }} />
+      {headerInfoButton}
+    </View>
   );
 
   if (!loading && !allowed) {
     return (
       <>
-        <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} hitSlop={12}>
-              <ArrowLeft size={24} color={theme.colors.text} />
-            </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>VPE Nudge</Text>
-            {headerInfoButton}
-          </View>
-          <View style={styles.deniedBox}>
-            <Text style={[styles.deniedText, { color: theme.colors.textSecondary }]}>
-              This area is only available to the Vice President Education for your club.
-            </Text>
+        <SafeAreaView style={[styles.container, { backgroundColor: N.canvas }]}>
+          {notionTopBar}
+          <View style={styles.notionCanvasFlex}>
+            <View style={[styles.notionShell, { backgroundColor: N.shell, borderColor: N.faint }]}>
+              <Text style={styles.notionPageTitle} numberOfLines={2}>
+                {SCREEN_TITLE}
+              </Text>
+              <Text style={styles.notionPageSub}>{VPE_SUBNOTE}</Text>
+              <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
+              <Text style={[styles.deniedText, { color: N.muted, marginTop: 8 }]}>
+                This area is only available to the Vice President Education for your club.
+              </Text>
+            </View>
           </View>
         </SafeAreaView>
         {infoModal}
@@ -299,141 +763,433 @@ export default function VPENudgesScreen() {
 
   return (
     <>
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} hitSlop={12}>
-            <ArrowLeft size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
-            VPE Nudge
-          </Text>
-          {headerInfoButton}
-        </View>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.canvas }]}>
+        {notionTopBar}
 
         {loading ? (
           <View style={styles.centered}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <ActivityIndicator size="large" color={N.ink} />
           </View>
         ) : !meetingTitle || messages.length === 0 ? (
-          <View style={styles.emptyPad}>
-            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>No upcoming open meeting</Text>
-            <Text style={[styles.emptySub, { color: theme.colors.textSecondary }]}>
-              Nudges apply to the next open meeting (by date) once it is scheduled. Open a meeting from club
-              tools first.
-            </Text>
+          <View style={styles.notionCanvasFlex}>
+            <View style={[styles.notionShell, { backgroundColor: N.shell, borderColor: N.faint }]}>
+              <Text style={styles.notionPageTitle} numberOfLines={2}>
+                {SCREEN_TITLE}
+              </Text>
+              <Text style={styles.notionPageSub}>{VPE_SUBNOTE}</Text>
+              <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
+              <Text style={[styles.notionEmptyTitle, { color: N.ink }]}>No upcoming open meeting</Text>
+              <Text style={[styles.notionEmptyBody, { color: N.muted }]}>
+                Nudges apply to the next open meeting (by date) once it is scheduled. Open a meeting from club tools first.
+              </Text>
+            </View>
           </View>
         ) : (
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.tabRow}>
-              <Pressable
-                onPress={() => setHintTab('today')}
-                style={[
-                  styles.tabBtn,
-                  hintTab === 'today' && { borderBottomColor: theme.colors.primary },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabBtnText,
-                    { color: hintTab === 'today' ? theme.colors.primary : theme.colors.textSecondary },
-                  ]}
-                  maxFontSizeMultiplier={1.2}
-                >
-                  {"Today's hint"}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setHintTab('missed')}
-                style={[
-                  styles.tabBtn,
-                  hintTab === 'missed' && { borderBottomColor: theme.colors.primary },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabBtnText,
-                    { color: hintTab === 'missed' ? theme.colors.primary : theme.colors.textSecondary },
-                  ]}
-                  maxFontSizeMultiplier={1.2}
-                >
-                  Missed hint
-                </Text>
-              </Pressable>
-            </View>
-            <Text style={[styles.vpeDailyHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-              {VPE_DAILY_HINT}
-            </Text>
-            {hintTab === 'today' ? (
-              <View
-                style={[
-                  styles.vpeMessageCard,
-                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                ]}
-              >
-                <Text style={[styles.vpeMessageTitleOnly, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
-                  {formatMeetingStartsTitle(meetingNumberDisplay, hintSchedule.daysUntil)}
-                </Text>
-                <Text style={[styles.vpeMessageSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                  {VPE_CARD_SUBTITLE}
-                </Text>
-                <View style={[styles.vpeMessageBodyWrap, { backgroundColor: theme.colors.background }]}>
-                  <Text style={[styles.vpeMessageBody, { color: theme.colors.text }]} selectable>
-                    {messages[hintSchedule.todayIdx]}
+          <View style={styles.notionCanvasFlex}>
+            <View style={[styles.notionShell, { backgroundColor: N.shell, borderColor: N.faint }]}>
+              <Text style={styles.notionPageTitle} numberOfLines={2}>
+                {SCREEN_TITLE}
+              </Text>
+              <Text style={styles.notionPageSub}>{VPE_SUBNOTE}</Text>
+
+              {nudgesHiddenFinalHour ? (
+                <View style={styles.notionPausedBlock}>
+                  <Text style={[styles.notionSectionTitle, { color: N.ink }]} maxFontSizeMultiplier={1.15}>
+                    Nudges paused
+                  </Text>
+                  <Text style={[styles.notionBodyMuted, { color: N.muted }]} maxFontSizeMultiplier={1.2}>
+                    Within one hour of the scheduled meeting start, WhatsApp nudges are hidden so you can focus on running the
+                    session. They return for the next meeting after this one.
                   </Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.vpeMessageSendBtn}
-                  onPress={() => shareWhatsApp(messages[hintSchedule.todayIdx])}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
-                    Send WhatsApp Message
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : hintSchedule.missed.length === 0 ? (
-              <View style={styles.missedEmpty}>
-                <Text style={[styles.missedEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                  {"No missed nudges — you're on track for this meeting."}
-                </Text>
-              </View>
-            ) : (
-              hintSchedule.missed.map((i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.vpeMessageCard,
-                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                  ]}
-                >
-                  <Text style={[styles.vpeMessageTitleOnly, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
-                    {formatMeetingStartsTitleForMissedSlot(meetingNumberDisplay, i)}
-                  </Text>
-                  <Text style={[styles.vpeMessageSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                    You may have missed sending this reminder
-                  </Text>
-                  <View style={[styles.vpeMessageBodyWrap, { backgroundColor: theme.colors.background }]}>
-                    <Text style={[styles.vpeMessageBody, { color: theme.colors.text }]} selectable>
-                      {messages[i]}
-                    </Text>
+              ) : (
+                <>
+                  <View style={[styles.notionSegment, { backgroundColor: N.segment }]}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      contentContainerStyle={styles.notionSegmentScroll}
+                    >
+                      {NUDGE_TABS.map(({ id, label }) => {
+                        const selected = activeNudgeTab === id;
+                        const count = tabBadgeCount(id);
+                        const suffix = count > 0 ? ` (${count})` : '';
+                        return (
+                          <Pressable
+                            key={id}
+                            onPress={() => setActiveNudgeTab(id)}
+                            style={({ pressed }) => [
+                              styles.notionSegPill,
+                              selected && styles.notionSegPillActive,
+                              { opacity: pressed ? 0.92 : 1 },
+                            ]}
+                            accessibilityRole="tab"
+                            accessibilityState={{ selected }}
+                          >
+                            <Text
+                              style={[styles.notionSegPillText, { color: selected ? N.ink : N.muted }]}
+                              maxFontSizeMultiplier={1.12}
+                              numberOfLines={1}
+                            >
+                              {label}
+                              <Text style={{ fontWeight: '700' }}>{suffix}</Text>
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
                   </View>
-                  <TouchableOpacity
-                    style={styles.vpeMessageSendBtn}
-                    onPress={() => shareWhatsApp(messages[i])}
-                    activeOpacity={0.85}
+
+                  <View style={[styles.notionDivider, { backgroundColor: N.hairline, marginTop: 16 }]} />
+
+                  <ScrollView
+                    style={styles.tabPanelScroll}
+                    contentContainerStyle={styles.notionPanelContent}
+                    showsVerticalScrollIndicator
+                    keyboardShouldPersistTaps="handled"
                   >
-                    <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
-                      Send WhatsApp Message
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ))
-            )}
-          </ScrollView>
+                  {activeNudgeTab === 'book_role' ? (
+                    bookRoleNudgeVisible ? (
+                      <View
+                        style={[
+                          styles.vpeMessageCard,
+                          { backgroundColor: N.inset, borderColor: N.faint },
+                        ]}
+                      >
+                        <Text style={[styles.vpeMessageTitleOnly]} maxFontSizeMultiplier={1.15}>
+                          {formatMeetingStartsTitle(meetingNumberDisplay, hintSchedule.daysUntil)}
+                        </Text>
+                        <Text style={[styles.vpeMessageSubtitle]} maxFontSizeMultiplier={1.2}>
+                          {VPE_CARD_SUBTITLE}
+                        </Text>
+                        <View style={[styles.vpeMessageBodyWrap, { backgroundColor: N.quoteBg }]}>
+                          <Text style={[styles.vpeMessageBody]} selectable>
+                            {messages[hintSchedule.todayIdx]}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.vpeMessageSendBtn}
+                          onPress={() => shareWhatsApp(messages[hintSchedule.todayIdx])}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
+                            Send WhatsApp Message
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.vpeMessageCard,
+                          { backgroundColor: N.inset, borderColor: N.faint },
+                        ]}
+                      >
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted, marginBottom: 0 }]} maxFontSizeMultiplier={1.2}>
+                          Book-the-role nudges show only when the next open meeting is within 7 calendar days and you are
+                          outside the final hour before start. Check back closer to the meeting, or use another tab.
+                        </Text>
+                      </View>
+                    )
+                  ) : null}
+
+                  {activeNudgeTab === 'prepared' ? (
+                    preparedSpeakerNudges.length > 0 ? (
+                      <View style={styles.preparedNudgeSection}>
+                        <Text style={[styles.preparedNudgeSectionTitle]} maxFontSizeMultiplier={1.15}>
+                          Prepared speech — update app details
+                        </Text>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted }]} maxFontSizeMultiplier={1.2}>
+                          These members are booked for a prepared speech (or ice breaker) but have not added Pathway details,
+                          speech title, or evaluation form. Use WhatsApp to nudge them the same day you see them here.
+                        </Text>
+                        {preparedSpeakerNudges.map((n) => (
+                          <View
+                            key={n.userId}
+                            style={[
+                              styles.vpeMessageCard,
+                              styles.preparedNudgeCard,
+                              { backgroundColor: N.inset, borderColor: N.faint },
+                            ]}
+                          >
+                            <Text style={[styles.preparedNudgeName]} maxFontSizeMultiplier={1.15}>
+                              {n.fullName}
+                            </Text>
+                            <View style={[styles.vpeMessageBodyWrap, { backgroundColor: N.quoteBg }]}>
+                              <Text style={[styles.vpeMessageBody]} selectable>
+                                {n.message}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.vpeMessageSendBtn}
+                              onPress={() => shareWhatsApp(n.message)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
+                                Send WhatsApp to {firstNameFromFullName(n.fullName)}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.vpeMessageCard,
+                          { backgroundColor: N.inset, borderColor: N.faint },
+                        ]}
+                      >
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted, marginBottom: 0 }]} maxFontSizeMultiplier={1.2}>
+                          No prepared speakers need this nudge — everyone booked has added Pathway details, speech title, and
+                          evaluation form (or no prepared / ice breaker roles are booked yet).
+                        </Text>
+                      </View>
+                    )
+                  ) : null}
+
+                  {activeNudgeTab === 'toastmaster' ? (
+                    toastmasterNudges.length > 0 ? (
+                      <View style={styles.preparedNudgeSection}>
+                        <Text style={[styles.preparedNudgeSectionTitle]} maxFontSizeMultiplier={1.15}>
+                          Toastmaster of the Day — theme of the day
+                        </Text>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted }]} maxFontSizeMultiplier={1.2}>
+                          Booked Toastmaster has not added the theme in the app yet. Nudge them to complete it before the
+                          meeting.
+                        </Text>
+                        {toastmasterNudges.map((n) => (
+                          <View
+                            key={n.userId}
+                            style={[
+                              styles.vpeMessageCard,
+                              styles.preparedNudgeCard,
+                              { backgroundColor: N.inset, borderColor: N.faint },
+                            ]}
+                          >
+                            <Text style={[styles.preparedNudgeName]} maxFontSizeMultiplier={1.15}>
+                              {n.fullName}
+                            </Text>
+                            <View style={[styles.vpeMessageBodyWrap, { backgroundColor: N.quoteBg }]}>
+                              <Text style={[styles.vpeMessageBody]} selectable>
+                                {n.message}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.vpeMessageSendBtn}
+                              onPress={() => shareWhatsApp(n.message)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
+                                Send WhatsApp to {firstNameFromFullName(n.fullName)}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.vpeMessageCard,
+                          { backgroundColor: N.inset, borderColor: N.faint },
+                        ]}
+                      >
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted, marginBottom: 0 }]} maxFontSizeMultiplier={1.2}>
+                          No Toastmaster theme reminder needed — the theme is set, or no Toastmaster of the Day is booked for
+                          this meeting yet.
+                        </Text>
+                      </View>
+                    )
+                  ) : null}
+
+                  {activeNudgeTab === 'educational' ? (
+                    educationalNudges.length > 0 ? (
+                      <View style={styles.preparedNudgeSection}>
+                        <Text style={[styles.preparedNudgeSectionTitle]} maxFontSizeMultiplier={1.15}>
+                          Educational speaker — session title
+                        </Text>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted }]} maxFontSizeMultiplier={1.2}>
+                          The educational speaker is booked but has not added their session title in the app.
+                        </Text>
+                        {educationalNudges.map((n) => (
+                          <View
+                            key={n.userId}
+                            style={[
+                              styles.vpeMessageCard,
+                              styles.preparedNudgeCard,
+                              { backgroundColor: N.inset, borderColor: N.faint },
+                            ]}
+                          >
+                            <Text style={[styles.preparedNudgeName]} maxFontSizeMultiplier={1.15}>
+                              {n.fullName}
+                            </Text>
+                            <View style={[styles.vpeMessageBodyWrap, { backgroundColor: N.quoteBg }]}>
+                              <Text style={[styles.vpeMessageBody]} selectable>
+                                {n.message}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.vpeMessageSendBtn}
+                              onPress={() => shareWhatsApp(n.message)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
+                                Send WhatsApp to {firstNameFromFullName(n.fullName)}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    ) : educationalVpeSelfNeedsTitle && educationalSelfReminderMessage ? (
+                      <View style={styles.preparedNudgeSection}>
+                        <Text style={[styles.preparedNudgeSectionTitle]} maxFontSizeMultiplier={1.15}>
+                          Educational speaker — session title
+                        </Text>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted }]} maxFontSizeMultiplier={1.2}>
+                          You are booked as Educational Speaker. We do not send a WhatsApp nudge to yourself — add your title in
+                          the app. For reference, the note below matches what we send to other members.
+                        </Text>
+                        <View
+                          style={[
+                            styles.vpeMessageCard,
+                            styles.preparedNudgeCard,
+                            { backgroundColor: N.inset, borderColor: N.faint },
+                          ]}
+                        >
+                          <View style={[styles.vpeMessageBodyWrap, { backgroundColor: N.quoteBg }]}>
+                            <Text style={[styles.vpeMessageBody]} selectable>
+                              {educationalSelfReminderMessage}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.vpeMessageCard,
+                          { backgroundColor: N.inset, borderColor: N.faint },
+                        ]}
+                      >
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted, marginBottom: 0 }]} maxFontSizeMultiplier={1.2}>
+                          No educational title reminder — the title is set, or the Educational Speaker role is not booked for
+                          this meeting.
+                        </Text>
+                      </View>
+                    )
+                  ) : null}
+
+                  {activeNudgeTab === 'keynote' ? (
+                    keynoteNudges.length > 0 ? (
+                      <View style={styles.preparedNudgeSection}>
+                        <Text style={[styles.preparedNudgeSectionTitle]} maxFontSizeMultiplier={1.15}>
+                          Keynote speaker — title
+                        </Text>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted }]} maxFontSizeMultiplier={1.2}>
+                          The keynote speaker is booked but has not added their keynote title in the app.
+                        </Text>
+                        {keynoteNudges.map((n) => (
+                          <View
+                            key={n.userId}
+                            style={[
+                              styles.vpeMessageCard,
+                              styles.preparedNudgeCard,
+                              { backgroundColor: N.inset, borderColor: N.faint },
+                            ]}
+                          >
+                            <Text style={[styles.preparedNudgeName]} maxFontSizeMultiplier={1.15}>
+                              {n.fullName}
+                            </Text>
+                            <View style={[styles.vpeMessageBodyWrap, { backgroundColor: N.quoteBg }]}>
+                              <Text style={[styles.vpeMessageBody]} selectable>
+                                {n.message}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.vpeMessageSendBtn}
+                              onPress={() => shareWhatsApp(n.message)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
+                                Send WhatsApp to {firstNameFromFullName(n.fullName)}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.vpeMessageCard,
+                          { backgroundColor: N.inset, borderColor: N.faint },
+                        ]}
+                      >
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted, marginBottom: 0 }]} maxFontSizeMultiplier={1.2}>
+                          No keynote title reminder — the title is set, or no keynote role is booked for this meeting.
+                        </Text>
+                      </View>
+                    )
+                  ) : null}
+
+                  {activeNudgeTab === 'evaluator' ? (
+                    evaluatorNudges.length > 0 ? (
+                      <View style={styles.preparedNudgeSection}>
+                        <Text style={[styles.preparedNudgeSectionTitle]} maxFontSizeMultiplier={1.15}>
+                          Evaluator — review speaker details
+                        </Text>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted }]} maxFontSizeMultiplier={1.2}>
+                          The speaker has completed Pathway details, title, and evaluation form. Nudge the assigned evaluator to
+                          review everything before the meeting.
+                        </Text>
+                        {evaluatorNudges.map((n) => (
+                          <View
+                            key={n.key}
+                            style={[
+                              styles.vpeMessageCard,
+                              styles.preparedNudgeCard,
+                              { backgroundColor: N.inset, borderColor: N.faint },
+                            ]}
+                          >
+                            <Text style={[styles.preparedNudgeName]} maxFontSizeMultiplier={1.15}>
+                              {n.evaluatorName}
+                            </Text>
+                            <Text style={[styles.evaluatorNudgeMeta]} maxFontSizeMultiplier={1.15}>
+                              Prepared speech: {n.speakerName}
+                            </Text>
+                            <View style={[styles.vpeMessageBodyWrap, { backgroundColor: N.quoteBg }]}>
+                              <Text style={[styles.vpeMessageBody]} selectable>
+                                {n.message}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.vpeMessageSendBtn}
+                              onPress={() => shareWhatsApp(n.message)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
+                                Send WhatsApp to {firstNameFromFullName(n.evaluatorName)}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.vpeMessageCard,
+                          { backgroundColor: N.inset, borderColor: N.faint },
+                        ]}
+                      >
+                        <Text style={[styles.preparedNudgeSectionSub, { color: N.muted, marginBottom: 0 }]} maxFontSizeMultiplier={1.2}>
+                          No evaluator prep reminders — assigned evaluators either are not set yet, or speakers still need to
+                          complete speech details first.
+                        </Text>
+                      </View>
+                    )
+                  ) : null}
+                  </ScrollView>
+                </>
+              )}
+            </View>
+          </View>
         )}
       </SafeAreaView>
       {infoModal}
@@ -444,67 +1200,157 @@ export default function VPENudgesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  header: {
+  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  notionTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerIconBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerInfoButton: {
+  notionGhostIconBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    shadowColor: '#93A7BF',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 1,
   },
-  headerTitle: { fontSize: 17, fontWeight: '700', flex: 1, textAlign: 'center' },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 32 },
-  tabRow: {
+  notionCanvasFlex: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 16,
+  },
+  notionShell: {
+    flex: 1,
+    minHeight: 0,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 20,
+    ...Platform.select({
+      web: {
+        maxWidth: 720,
+        width: '100%',
+        alignSelf: 'center',
+      },
+      default: {},
+    }),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  notionPageTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    letterSpacing: -0.35,
+    color: '#37352F',
+    lineHeight: 28,
+  },
+  notionPageSub: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#787774',
+    marginTop: 6,
+  },
+  notionDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 16,
+  },
+  notionSegment: {
+    borderRadius: 9,
+    padding: 3,
+    alignSelf: 'stretch',
+  },
+  notionSegmentScroll: {
     flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
+    paddingRight: 8,
+  },
+  notionSegPill: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginRight: 2,
+  },
+  notionSegPillActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  notionSegPillText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  notionPanelContent: {
+    paddingTop: 4,
+    paddingBottom: 32,
+  },
+  notionPausedBlock: {
+    marginTop: 4,
+  },
+  notionSectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
     marginBottom: 8,
   },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  tabBtnText: {
+  notionBodyMuted: {
     fontSize: 14,
-    fontWeight: '700',
+    lineHeight: 21,
   },
-  vpeDailyHint: {
-    fontSize: 13,
+  notionEmptyTitle: {
+    fontSize: 16,
     fontWeight: '600',
-    lineHeight: 19,
-    textAlign: 'center',
-    marginBottom: 14,
-    paddingHorizontal: 8,
+    marginBottom: 8,
   },
-  missedEmpty: {
-    paddingVertical: 28,
-    paddingHorizontal: 16,
-  },
-  missedEmptyText: {
+  notionEmptyBody: {
     fontSize: 14,
-    fontWeight: '500',
+    lineHeight: 21,
+  },
+  tabPanelScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  preparedNudgeSection: {
+    marginBottom: 20,
+  },
+  preparedNudgeSectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.55,
+    textTransform: 'uppercase',
+    color: '#787774',
+    marginBottom: 8,
+  },
+  preparedNudgeSectionSub: {
+    fontSize: 14,
     lineHeight: 20,
-    textAlign: 'center',
+    color: '#37352F',
+    opacity: 0.92,
+    marginBottom: 14,
+  },
+  preparedNudgeCard: {
+    marginBottom: 12,
+  },
+  preparedNudgeName: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#37352F',
+  },
+  evaluatorNudgeMeta: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 8,
+    color: '#787774',
   },
   infoModalOverlay: {
     flex: 1,
@@ -553,46 +1399,54 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   vpeMessageCard: {
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    borderColor: 'rgba(55, 53, 47, 0.08)',
+    backgroundColor: '#FAFAF8',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     marginBottom: 12,
   },
   vpeMessageTitleOnly: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
     lineHeight: 21,
-    marginBottom: 8,
+    marginBottom: 6,
+    color: '#37352F',
   },
   vpeMessageSubtitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
-    lineHeight: 14,
-    marginTop: 2,
-    marginBottom: 10,
+    lineHeight: 16,
+    marginTop: 0,
+    marginBottom: 12,
+    color: '#787774',
   },
   vpeMessageBodyWrap: {
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginBottom: 12,
+    borderRadius: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(55, 53, 47, 0.06)',
   },
   vpeMessageBody: {
     fontSize: 14,
-    lineHeight: 21,
+    lineHeight: 22,
+    color: '#37352F',
   },
   vpeMessageSendBtn: {
-    backgroundColor: '#0a66c2',
-    borderRadius: 12,
-    paddingVertical: 12,
+    backgroundColor: '#6BA8F0',
+    borderRadius: 6,
+    paddingVertical: 11,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   vpeMessageSendBtnText: {
-    color: '#ffffff',
-    fontSize: 15,
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '600',
   },
   emptyPad: { padding: 24 },

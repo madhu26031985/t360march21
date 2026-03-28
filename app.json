@@ -8,35 +8,6 @@
     "scheme": "toastmaster360",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
-    "deepLinking": {
-      "scheme": "toastmaster360",
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "data": [
-            {
-              "scheme": "https",
-              "host": "*.supabase.co"
-            },
-            {
-              "scheme": "https",
-              "host": "t360.in"
-            },
-            {
-              "scheme": "https",
-              "host": "www.t360.in"
-            },
-            {
-              "scheme": "toastmaster360"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        }
-      ]
-    },
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
@@ -67,7 +38,26 @@
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE"
       ],
-      "versionCode": 81
+      "versionCode": 81,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "t360.in",
+              "pathPrefix": "/weblogin"
+            },
+            {
+              "scheme": "https",
+              "host": "www.t360.in",
+              "pathPrefix": "/weblogin"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",

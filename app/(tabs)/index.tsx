@@ -1200,7 +1200,7 @@ export default function MyJourney() {
     if (isVPEForCurrentClub && currentOpenMeetingId) {
       out.push({
         key: 'vpe_nudge',
-        text: 'Nudge members to book a role.',
+        text: `${name}, Your Smart Daily Insights to fill roles faster`,
       });
     }
     return out;
