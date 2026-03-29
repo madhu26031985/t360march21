@@ -172,11 +172,18 @@ export default function GrammarianReport() {
   });
   const grammarianFirstName = (user?.fullName || '').trim().split(/\s+/).filter(Boolean)[0] || 'there';
 
+  // Wait for auth (same idea as toastmaster-corner useFocusEffect deps) so we never "finish" loading
+  // before user/club exist — avoids a dead early return that skipped loadData forever.
   useEffect(() => {
-    if (meetingId) {
-      loadData();
+    if (!meetingId) {
+      setIsLoading(false);
+      return;
     }
-  }, [meetingId]);
+    if (!user?.currentClubId || !user?.id) {
+      return;
+    }
+    loadData();
+  }, [meetingId, user?.id, user?.currentClubId]);
 
   useEffect(() => {
     if (selectedMember && grammarianReportId) {

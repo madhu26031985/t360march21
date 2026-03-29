@@ -71,23 +71,13 @@ export async function fetchGrammarianCornerSnapshot(
     console.warn('get_grammarian_corner_snapshot failed, using legacy queries:', error.message);
   }
 
-  const [{ data: meetingData, error: meetingErr }, clubRes, vpeRes, roleRes] = await Promise.all([
+  const [{ data: meetingData, error: meetingErr }, clubRes, vpeRes, roleRowRes] = await Promise.all([
     supabase.from('app_club_meeting').select('*').eq('id', meetingId).single(),
     supabase.from('clubs').select('name').eq('id', clubId).single(),
     supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle(),
     supabase
       .from('app_meeting_roles_management')
-      .select(
-        `
-        assigned_user_id,
-        app_user_profiles (
-          id,
-          full_name,
-          email,
-          avatar_url
-        )
-      `
-      )
+      .select('assigned_user_id')
       .eq('meeting_id', meetingId)
       .ilike('role_name', '%grammarian%')
       .eq('booking_status', 'booked')
@@ -100,14 +90,21 @@ export async function fetchGrammarianCornerSnapshot(
   }
 
   let assigned: GrammarianAssignedProfile | null = null;
-  if (roleRes.data && (roleRes.data as { app_user_profiles?: GrammarianAssignedProfile }).app_user_profiles) {
-    const p = (roleRes.data as { app_user_profiles: GrammarianAssignedProfile }).app_user_profiles;
-    assigned = {
-      id: p.id,
-      full_name: p.full_name,
-      email: p.email,
-      avatar_url: p.avatar_url,
-    };
+  const assigneeId = (roleRowRes.data as { assigned_user_id?: string } | null)?.assigned_user_id;
+  if (assigneeId) {
+    const { data: prof } = await supabase
+      .from('app_user_profiles')
+      .select('id, full_name, email, avatar_url')
+      .eq('id', assigneeId)
+      .maybeSingle();
+    if (prof) {
+      assigned = {
+        id: prof.id,
+        full_name: prof.full_name,
+        email: prof.email,
+        avatar_url: prof.avatar_url,
+      };
+    }
   }
 
   return {
