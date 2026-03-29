@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchGrammarianClubMembersDirectory } from '@/lib/grammarianCornerQuery';
 import { ArrowLeft, StickyNote, BookOpen, AlertCircle, MessageSquareQuote, Lightbulb, Plus, X, CheckCircle2, AlertTriangle, Clock, Trash2, TrendingUp, Minus, MinusCircle, User, Eye, EyeOff, BarChart2 } from 'lucide-react-native';
 
 interface Meeting {
@@ -259,7 +260,7 @@ export function GrammarianNotesScreen({
     }
 
     try {
-      const [, , , wordResult, idiomResult, quoteResult] = await Promise.all([
+      const [, , , , wordResult, idiomResult, quoteResult] = await Promise.all([
         loadMeeting(),
         loadGrammarianOfDay(),
         loadIsVPEClub(),
@@ -269,7 +270,6 @@ export function GrammarianNotesScreen({
         loadQuoteOfTheDayData(),
         loadLiveObservations(),
         loadUsageStats(),
-        loadClubMembers()
       ]);
 
       await loadMemberUsage(wordResult?.id, idiomResult?.id, quoteResult?.id);
@@ -295,7 +295,6 @@ export function GrammarianNotesScreen({
         loadGrammarianOfDay(),
         loadIsVPEClub(),
         loadLiveObservations(),
-        loadClubMembers(),
       ]);
     } catch (error) {
       console.error('Error loading inline live meeting core:', error);
@@ -561,27 +560,23 @@ export function GrammarianNotesScreen({
     if (!user?.currentClubId) return;
 
     try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('user_id, app_user_profiles(id, full_name, avatar_url)')
-        .eq('club_id', user.currentClubId)
-        .eq('is_authenticated', true);
-
-      if (error) {
-        console.error('Error loading club members:', error);
-        return;
-      }
-
-      if (data) {
-        const members = data
-          .map(item => item.app_user_profiles)
-          .filter((profile): profile is ClubMember => profile !== null);
-        setClubMembers(members);
-      }
+      const rows = await fetchGrammarianClubMembersDirectory(user.currentClubId);
+      const members: ClubMember[] = rows.map((r) => ({
+        id: r.id,
+        full_name: r.full_name,
+        avatar_url: r.avatar_url,
+      }));
+      setClubMembers(members);
     } catch (error) {
       console.error('Error loading club members:', error);
     }
   };
+
+  useEffect(() => {
+    if (!showMemberPicker || !user?.currentClubId) return;
+    if (clubMembers.length > 0) return;
+    void loadClubMembers();
+  }, [showMemberPicker, user?.currentClubId, clubMembers.length]);
 
   const loadMemberUsage = async (wordId?: string | null, idiomId?: string | null, quoteId?: string | null) => {
     const wId = wordId ?? wordOfTheDay?.id;
@@ -1526,7 +1521,6 @@ export function GrammarianNotesScreen({
       await Promise.all([
         loadLiveObservations(),
         loadUsageStats(),
-        loadClubMembers(),
         loadWordOfTheDayData().catch(() => null),
         loadIdiomOfTheDayData().catch(() => null),
         loadQuoteOfTheDayData().catch(() => null),

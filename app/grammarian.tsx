@@ -156,6 +156,7 @@ export default function GrammarianReport() {
   const [isVPEClub, setIsVPEClub] = useState(false);
   const [showAssignGrammarianModal, setShowAssignGrammarianModal] = useState(false);
   const [assignGrammarianSearch, setAssignGrammarianSearch] = useState('');
+  const [isLoadingClubMembers, setIsLoadingClubMembers] = useState(false);
   const [assigningGrammarianRole, setAssigningGrammarianRole] = useState(false);
   const [cornerLiveSubTab, setCornerLiveSubTab] = useState<'good-usage' | 'improvements' | 'stats'>('good-usage');
   const [showGrammarianInfoModal, setShowGrammarianInfoModal] = useState(false);
@@ -239,8 +240,6 @@ export default function GrammarianReport() {
     } finally {
       setIsLoading(false);
     }
-
-    void loadClubMembers();
   };
 
   const handleBookGrammarianInline = async () => {
@@ -389,6 +388,7 @@ export default function GrammarianReport() {
   const loadClubMembers = async () => {
     if (!user?.currentClubId) return;
 
+    setIsLoadingClubMembers(true);
     try {
       const members = await fetchGrammarianClubMembersDirectory(user.currentClubId);
       setClubMembers(members);
@@ -396,8 +396,17 @@ export default function GrammarianReport() {
       setSelectedMember((prev) => (prev ? prev : members[0] ?? null));
     } catch (error) {
       console.error('Error loading club members:', error);
+    } finally {
+      setIsLoadingClubMembers(false);
     }
   };
+
+  useEffect(() => {
+    if (!showMemberModal && !showAssignGrammarianModal) return;
+    if (!user?.currentClubId) return;
+    if (clubMembers.length > 0) return;
+    void loadClubMembers();
+  }, [showMemberModal, showAssignGrammarianModal, user?.currentClubId, clubMembers.length]);
 
   const loadClubName = async () => {
     if (!user?.currentClubId) return;
@@ -1506,6 +1515,10 @@ export default function GrammarianReport() {
                   <View style={styles.noResultsContainer}>
                     <ActivityIndicator color={theme.colors.primary} />
                   </View>
+                ) : isLoadingClubMembers && clubMembers.length === 0 ? (
+                  <View style={styles.noResultsContainer}>
+                    <ActivityIndicator color={theme.colors.primary} />
+                  </View>
                 ) : filteredMembersForAssign.length > 0 ? (
                   filteredMembersForAssign.map((member) => (
                     <TouchableOpacity
@@ -2415,7 +2428,11 @@ export default function GrammarianReport() {
             </View>
 
             <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
-              {filteredClubMembers.length > 0 ? (
+              {isLoadingClubMembers && clubMembers.length === 0 ? (
+                <View style={styles.noResultsContainer}>
+                  <ActivityIndicator color={theme.colors.primary} />
+                </View>
+              ) : filteredClubMembers.length > 0 ? (
                 filteredClubMembers.map((member) => (
                   <TouchableOpacity
                     key={member.id}
