@@ -130,51 +130,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-        (async () => {
-          try {
-            const appVersion = Constants.expoConfig?.version ?? 'unknown';
-            const platform = Platform.OS as 'ios' | 'android' | 'web';
-            const buildNumber =
-              platform === 'ios'
-                ? Constants.expoConfig?.ios?.buildNumber ?? null
-                : platform === 'android'
-                ? String(Constants.expoConfig?.android?.versionCode ?? '')
-                : null;
-            const now = new Date().toISOString();
-            const { data: existing } = await supabase
-              .from('user_app_versions')
-              .select('id')
-              .eq('user_id', session.user.id)
-              .eq('platform', platform)
-              .maybeSingle();
-
-            if (existing) {
-              const { error: updateError } = await supabase
-                .from('user_app_versions')
-                .update({ app_version: appVersion, build_number: buildNumber, last_seen_at: now })
-                .eq('id', existing.id);
-              if (updateError) {
-                console.warn('[AppVersion] update error:', JSON.stringify(updateError));
-              }
-            } else {
-              const { error: insertError } = await supabase
-                .from('user_app_versions')
-                .insert({
+        const runAppVersionPing = () => {
+          void (async () => {
+            try {
+              const appVersion = Constants.expoConfig?.version ?? 'unknown';
+              const platform = Platform.OS as 'ios' | 'android' | 'web';
+              const buildNumber =
+                platform === 'ios'
+                  ? Constants.expoConfig?.ios?.buildNumber ?? null
+                  : platform === 'android'
+                  ? String(Constants.expoConfig?.android?.versionCode ?? '')
+                  : null;
+              const now = new Date().toISOString();
+              // One round-trip (replaces select + update/insert). first_seen_at uses table default on insert.
+              const { error: upsertError } = await supabase.from('user_app_versions').upsert(
+                {
                   user_id: session.user.id,
-                  app_version: appVersion,
                   platform,
+                  app_version: appVersion,
                   build_number: buildNumber,
                   last_seen_at: now,
-                  first_seen_at: now,
-                });
-              if (insertError) {
-                console.warn('[AppVersion] insert error:', JSON.stringify(insertError));
+                  updated_at: now,
+                },
+                { onConflict: 'user_id,platform' }
+              );
+              if (upsertError) {
+                console.warn('[AppVersion] upsert error:', JSON.stringify(upsertError));
               }
+            } catch (e) {
+              console.warn('[AppVersion] unexpected error:', e);
             }
-          } catch (e) {
-            console.warn('[AppVersion] unexpected error:', e);
+          })();
+        };
+
+        // Web: defer so we don't compete with profile + Journey Home on Slow networks.
+        if (Platform.OS === 'web') {
+          const w = typeof globalThis !== 'undefined' ? (globalThis as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback : undefined;
+          if (typeof w === 'function') {
+            w(() => runAppVersionPing(), { timeout: 4000 });
+          } else {
+            setTimeout(runAppVersionPing, 2000);
           }
-        })();
+        } else {
+          runAppVersionPing();
+        }
       }
 
       const shouldLoadProfile = ['SIGNED_IN', 'USER_UPDATED', 'INITIAL_SESSION'].includes(event);

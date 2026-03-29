@@ -572,6 +572,7 @@ export default function MyJourney() {
   );
 
   useEffect(() => {
+    let cancelled = false;
     const loadJourneyStats = async () => {
       if (!user?.id || !user?.currentClubId) return;
 
@@ -585,6 +586,8 @@ export default function MyJourney() {
           .eq('club_id', clubId)
           .eq('assigned_user_id', uid)
           .eq('booking_status', 'booked');
+
+        if (cancelled) return;
 
         if (error) {
           console.error('Error loading journey stats:', error);
@@ -616,7 +619,27 @@ export default function MyJourney() {
       }
     };
 
-    if (isAuthenticated) loadJourneyStats();
+    if (!isAuthenticated || !user?.id || !user?.currentClubId) return undefined;
+
+    const run = () => {
+      if (cancelled) return;
+      void loadJourneyStats();
+    };
+
+    if (Platform.OS === 'web') {
+      const id = requestAnimationFrame(() => {
+        setTimeout(run, 0);
+      });
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(id);
+      };
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
   }, [isAuthenticated, user?.id, user?.currentClubId]);
 
   useEffect(() => {
@@ -646,7 +669,28 @@ export default function MyJourney() {
         }
       }
     };
-    loadVPEForClub();
+
+    if (!user?.id || !user?.currentClubId) {
+      setIsVPEForCurrentClub(false);
+      return undefined;
+    }
+
+    const run = () => {
+      if (cancelled) return;
+      void loadVPEForClub();
+    };
+
+    if (Platform.OS === 'web') {
+      const id = requestAnimationFrame(() => {
+        setTimeout(run, 0);
+      });
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(id);
+      };
+    }
+
+    run();
     return () => {
       cancelled = true;
     };
@@ -794,6 +838,10 @@ export default function MyJourney() {
 
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') {
+        const t = setTimeout(() => refreshPollStatus(), 150);
+        return () => clearTimeout(t);
+      }
       refreshPollStatus();
     }, [refreshPollStatus])
   );

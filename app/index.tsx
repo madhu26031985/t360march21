@@ -1,4 +1,4 @@
-import { View, StyleSheet, Image, Text, Animated, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Image, Text, Animated, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useRef, useState } from 'react';
 import { router } from 'expo-router';
@@ -11,9 +11,11 @@ export default function Index() {
   const [minSplashTimeElapsed, setMinSplashTimeElapsed] = useState(false);
 
   useEffect(() => {
+    // Web: shorter splash so auth + first shell can show sooner; native keeps branded pause.
+    const ms = Platform.OS === 'web' ? 400 : 2500;
     const minTimer = setTimeout(() => {
       setMinSplashTimeElapsed(true);
-    }, 2500);
+    }, ms);
 
     return () => clearTimeout(minTimer);
   }, []);

@@ -30,9 +30,13 @@ export function useAppUpdate() {
 
   useEffect(() => {
     console.log('🎬 [VERSION CHECK] Hook mounted');
-    // Add a small delay to ensure app is fully loaded
+    // Web skips DB work; no need to wait 1s (faster first paint).
+    if (Platform.OS === 'web') {
+      void checkForUpdate();
+      return undefined;
+    }
     const timer = setTimeout(() => {
-      checkForUpdate();
+      void checkForUpdate();
     }, 1000);
     return () => clearTimeout(timer);
   }, []);
