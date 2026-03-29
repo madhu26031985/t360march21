@@ -14,7 +14,7 @@ import {
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -39,6 +39,7 @@ import {
   isAhCounterRole,
 } from '@/lib/journeyMeetingOpenData';
 import { prefetchEducationalCorner } from '@/lib/prefetchEducationalCorner';
+import { journeyHomeQueryKeys, fetchJourneyHomeSnapshot } from '@/lib/journeyHomeQuery';
 
 const ROLE_PLAYER_CONGRATS_STORAGE_PREFIX = 'journey_role_player_congrats_ack_v1_';
 
@@ -435,6 +436,63 @@ export default function MyJourney() {
   const [rolePlayerCongratsDismissed, setRolePlayerCongratsDismissed] = useState(true);
   const [roleCongratsAckLoaded, setRoleCongratsAckLoaded] = useState(false);
 
+  const {
+    data: journeyHomeSnapshot,
+    refetch: refetchJourneyHome,
+  } = useQuery({
+    queryKey: journeyHomeQueryKeys.snapshot(user?.currentClubId ?? '', user?.id ?? ''),
+    queryFn: async () => {
+      const d = await fetchJourneyHomeSnapshot(user!.currentClubId!, user!.id);
+      if (d === null) {
+        return {
+          club_id: user!.currentClubId!,
+          open_meeting: null,
+          journey_stats: {
+            meeting_attended_count: 0,
+            roles_completed_count: 0,
+            speeches_given_count: 0,
+            evaluations_given_count: 0,
+          },
+          is_vpe_for_club: false,
+          has_active_poll: false,
+          has_voted_in_active_poll: false,
+        };
+      }
+      return d;
+    },
+    enabled: Boolean(isAuthenticated && user?.currentClubId && user?.id),
+    staleTime: 30 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (!journeyHomeSnapshot) return;
+    const d = journeyHomeSnapshot;
+    if (d.open_meeting) {
+      setCurrentOpenMeetingId(d.open_meeting.id);
+      setCurrentOpenMeetingTitle(d.open_meeting.meeting_title);
+      setCurrentOpenMeetingDate(d.open_meeting.meeting_date);
+      setCurrentOpenMeetingStartTime(d.open_meeting.meeting_start_time);
+      setCurrentOpenMeetingEndTime(d.open_meeting.meeting_end_time);
+      setCurrentOpenMeetingMode(d.open_meeting.meeting_mode);
+    } else {
+      setCurrentOpenMeetingId(null);
+      setCurrentOpenMeetingTitle(null);
+      setCurrentOpenMeetingDate(null);
+      setCurrentOpenMeetingStartTime(null);
+      setCurrentOpenMeetingEndTime(null);
+      setCurrentOpenMeetingMode(null);
+    }
+    setMeetingAttendedCount(d.journey_stats.meeting_attended_count);
+    setRolesCompletedCount(d.journey_stats.roles_completed_count);
+    setSpeechesGivenCount(d.journey_stats.speeches_given_count);
+    setEvaluationsGivenCount(d.journey_stats.evaluations_given_count);
+    setIsVPEForCurrentClub(d.is_vpe_for_club);
+    setHasActivePoll(d.has_active_poll);
+    setHasVotedInActivePoll(d.has_voted_in_active_poll);
+  }, [journeyHomeSnapshot]);
+
   const voteNowScale = useSharedValue(1);
   const heroReminderFade = useSharedValue(1);
   const headerAvatarRingPulse = useSharedValue(1);
@@ -571,197 +629,25 @@ export default function MyJourney() {
     }, [isAuthenticated, refreshUserProfile])
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadJourneyStats = async () => {
-      if (!user?.id || !user?.currentClubId) return;
-
-      try {
-        const clubId = user.currentClubId;
-        const uid = user.id;
-
-        const { data: rows, error } = await supabase
-          .from('app_meeting_roles_management')
-          .select('meeting_id, role_classification, role_name')
-          .eq('club_id', clubId)
-          .eq('assigned_user_id', uid)
-          .eq('booking_status', 'booked');
-
-        if (cancelled) return;
-
-        if (error) {
-          console.error('Error loading journey stats:', error);
-          return;
-        }
-
-        const list = rows || [];
-        const distinctMeetingIds = new Set(list.map((row: { meeting_id: string }) => row.meeting_id));
-        setMeetingAttendedCount(distinctMeetingIds.size);
-        setRolesCompletedCount(list.length);
-
-        const isPrepared = (r: { role_classification?: string | null; role_name?: string | null }) => {
-          const rc = r.role_classification || '';
-          const rn = (r.role_name || '').toLowerCase();
-          if (rc === 'Prepared Speaker') return true;
-          if (rn.includes('prepared') && rn.includes('speaker')) return true;
-          if (rn.includes('ice') && rn.includes('breaker')) return true;
-          return false;
-        };
-        const evalClass = new Set([
-          'Speech evaluvator',
-          'Master evaluvator',
-          'speech_evaluator',
-        ]);
-        setSpeechesGivenCount(list.filter(isPrepared).length);
-        setEvaluationsGivenCount(list.filter((r) => evalClass.has(r.role_classification || '')).length);
-      } catch (e) {
-        console.error('Error loading journey stats:', e);
-      }
-    };
-
-    if (!isAuthenticated || !user?.id || !user?.currentClubId) return undefined;
-
-    const run = () => {
-      if (cancelled) return;
-      void loadJourneyStats();
-    };
-
-    if (Platform.OS === 'web') {
-      const id = requestAnimationFrame(() => {
-        setTimeout(run, 0);
-      });
-      return () => {
-        cancelled = true;
-        cancelAnimationFrame(id);
-      };
-    }
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, user?.id, user?.currentClubId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadVPEForClub = async () => {
-      if (!user?.id || !user?.currentClubId) {
-        if (!cancelled) setIsVPEForCurrentClub(false);
-        return;
-      }
-      try {
-        const { data, error } = await supabase
-          .from('club_profiles')
-          .select('vpe_id')
-          .eq('club_id', user.currentClubId)
-          .maybeSingle();
-        if (cancelled) return;
-        if (error) {
-          console.error('Error loading VPE for Journey:', error);
-          setIsVPEForCurrentClub(false);
-          return;
-        }
-        setIsVPEForCurrentClub(data?.vpe_id === user.id);
-      } catch (e) {
-        if (!cancelled) {
-          console.error('Error loading VPE for Journey:', e);
-          setIsVPEForCurrentClub(false);
-        }
-      }
-    };
-
-    if (!user?.id || !user?.currentClubId) {
-      setIsVPEForCurrentClub(false);
-      return undefined;
-    }
-
-    const run = () => {
-      if (cancelled) return;
-      void loadVPEForClub();
-    };
-
-    if (Platform.OS === 'web') {
-      const id = requestAnimationFrame(() => {
-        setTimeout(run, 0);
-      });
-      return () => {
-        cancelled = true;
-        cancelAnimationFrame(id);
-      };
-    }
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id, user?.currentClubId]);
-
   const refreshCurrentOpenMeeting = useCallback(async () => {
-    if (!user?.currentClubId) {
+    if (!user?.currentClubId || !user?.id) {
       setCurrentOpenMeetingId(null);
       setCurrentOpenMeetingTitle(null);
       setCurrentOpenMeetingDate(null);
       setCurrentOpenMeetingStartTime(null);
       setCurrentOpenMeetingEndTime(null);
       setCurrentOpenMeetingMode(null);
+      setMeetingAttendedCount(0);
+      setRolesCompletedCount(0);
+      setSpeechesGivenCount(0);
+      setEvaluationsGivenCount(0);
+      setHasActivePoll(false);
+      setHasVotedInActivePoll(false);
+      setIsVPEForCurrentClub(false);
       return;
     }
-
-    try {
-      const fourHoursAgo = new Date();
-      fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
-      const cutoffDate = fourHoursAgo.toISOString().split('T')[0];
-
-      const { data, error } = await supabase
-        .from('app_club_meeting')
-        .select('id, meeting_title, meeting_date, meeting_start_time, meeting_end_time, meeting_mode')
-        .eq('club_id', user.currentClubId)
-        .eq('meeting_status', 'open')
-        .gte('meeting_date', cutoffDate)
-        .order('meeting_date', { ascending: true })
-        .limit(5);
-
-      if (error) {
-        console.error('Error loading current open meeting:', error);
-        setCurrentOpenMeetingId(null);
-        setCurrentOpenMeetingTitle(null);
-        setCurrentOpenMeetingDate(null);
-        setCurrentOpenMeetingStartTime(null);
-        setCurrentOpenMeetingEndTime(null);
-        setCurrentOpenMeetingMode(null);
-        return;
-      }
-
-      const now = new Date();
-      const openMeetingsWithinWindow = (data || []).filter((meeting) => {
-        const meetingEndDateTime = new Date(
-          `${meeting.meeting_date}T${meeting.meeting_end_time || '23:59:59'}`
-        );
-        const hoursSinceMeetingEnd = (now.getTime() - meetingEndDateTime.getTime()) / (1000 * 60 * 60);
-        return hoursSinceMeetingEnd < 4;
-      });
-
-      const active = openMeetingsWithinWindow[0];
-      setCurrentOpenMeetingId(active?.id || null);
-      setCurrentOpenMeetingTitle(active?.meeting_title || null);
-      setCurrentOpenMeetingDate(active?.meeting_date || null);
-      setCurrentOpenMeetingStartTime(active?.meeting_start_time || null);
-      setCurrentOpenMeetingEndTime(active?.meeting_end_time || null);
-      setCurrentOpenMeetingMode(active?.meeting_mode || null);
-    } catch (e) {
-      console.error('Exception loading current open meeting:', e);
-      setCurrentOpenMeetingId(null);
-      setCurrentOpenMeetingTitle(null);
-      setCurrentOpenMeetingDate(null);
-      setCurrentOpenMeetingStartTime(null);
-      setCurrentOpenMeetingEndTime(null);
-      setCurrentOpenMeetingMode(null);
-    }
-  }, [user?.currentClubId]);
-
-  useEffect(() => {
-    refreshCurrentOpenMeeting();
-  }, [refreshCurrentOpenMeeting]);
+    await refetchJourneyHome();
+  }, [user?.currentClubId, user?.id, refetchJourneyHome]);
 
   useFocusEffect(
     useCallback(() => {
@@ -809,43 +695,6 @@ export default function MyJourney() {
     };
   }, [user?.currentClubId, refreshCurrentOpenMeeting]);
 
-  const refreshPollStatus = useCallback(async () => {
-    if (!user?.currentClubId || !user?.id) {
-      setHasActivePoll(false);
-      setHasVotedInActivePoll(false);
-      return;
-    }
-    const { data: polls, error: pollsError } = await supabase
-      .from('polls')
-      .select('id')
-      .eq('club_id', user.currentClubId)
-      .eq('status', 'published');
-    const active = !pollsError && polls && polls.length > 0;
-    setHasActivePoll(!!active);
-    if (!active || !polls?.length) {
-      setHasVotedInActivePoll(false);
-      return;
-    }
-    const pollIds = polls.map((p: { id: string }) => p.id);
-    const { data: votes, error: votesError } = await supabase
-      .from('simple_poll_votes')
-      .select('poll_id')
-      .eq('user_id', user.id)
-      .in('poll_id', pollIds)
-      .limit(1);
-    setHasVotedInActivePoll(!votesError && votes && votes.length > 0);
-  }, [user?.currentClubId, user?.id]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (Platform.OS === 'web') {
-        const t = setTimeout(() => refreshPollStatus(), 150);
-        return () => clearTimeout(t);
-      }
-      refreshPollStatus();
-    }, [refreshPollStatus])
-  );
-
   useEffect(() => {
     if (!user?.currentClubId || !user?.id) return;
 
@@ -859,7 +708,7 @@ export default function MyJourney() {
       }, (payload) => {
         const row = payload.new as { status?: string } | null;
         if (row?.status === 'published' || payload.eventType === 'DELETE') {
-          refreshPollStatus();
+          void refetchJourneyHome();
         }
       })
       .subscribe();
@@ -872,7 +721,7 @@ export default function MyJourney() {
         table: 'simple_poll_votes',
         filter: `user_id=eq.${user.id}`,
       }, () => {
-        refreshPollStatus();
+        void refetchJourneyHome();
       })
       .subscribe();
 
@@ -880,7 +729,7 @@ export default function MyJourney() {
       supabase.removeChannel(channelPolls);
       supabase.removeChannel(channelVotes);
     };
-  }, [user?.currentClubId, user?.id, refreshPollStatus]);
+  }, [user?.currentClubId, user?.id, refetchJourneyHome]);
 
   const resetJourneyMeetingDerivedState = useCallback(() => {
     setTmodNeedsThemeAlert(false);
