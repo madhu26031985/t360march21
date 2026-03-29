@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
+import { fetchGrammarianCornerSnapshot, fetchGrammarianClubMembersDirectory } from '@/lib/grammarianCornerQuery';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
 import { GrammarianNotesScreen } from './grammarian-notes';
 import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus } from 'lucide-react-native';
@@ -201,25 +202,45 @@ export default function GrammarianReport() {
   );
 
   const loadData = async () => {
-    if (!meetingId || !user?.currentClubId) {
+    if (!meetingId || !user?.currentClubId || !user?.id) {
       setIsLoading(false);
       return;
     }
 
     try {
-      await Promise.all([
-        loadMeeting(),
-        loadAssignedGrammarian(),
-        loadClubMembers(),
-        loadClubName(),
-        loadIsVPEClub(),
-      ]);
+      const snap = await fetchGrammarianCornerSnapshot(meetingId, user.id, user.currentClubId);
+
+      if (snap) {
+        setMeeting(snap.meeting as Meeting);
+        if (snap.club_name) setClubName(snap.club_name);
+        setIsVPEClub(snap.is_vpe_for_club);
+
+        if (snap.assigned_grammarian) {
+          setAssignedGrammarian(snap.assigned_grammarian);
+
+          if (snap.assigned_grammarian.id === user.id) {
+            await loadDailyElements();
+            await loadGrammarianReport();
+          }
+
+          await loadWordOfTheDay();
+          await loadIdiomOfTheDay();
+          await loadQuoteOfTheDay();
+          await loadPublishedLiveObservations();
+        } else {
+          setAssignedGrammarian(null);
+        }
+      } else {
+        await Promise.all([loadMeeting(), loadAssignedGrammarian(), loadClubName(), loadIsVPEClub()]);
+      }
     } catch (error) {
       console.error('Error loading data:', error);
       Alert.alert('Error', 'Failed to load Grammarian data');
     } finally {
       setIsLoading(false);
     }
+
+    void loadClubMembers();
   };
 
   const handleBookGrammarianInline = async () => {
@@ -369,40 +390,10 @@ export default function GrammarianReport() {
     if (!user?.currentClubId) return;
 
     try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select(`
-          app_user_profiles (
-            id,
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-        .eq('club_id', user.currentClubId)
-        .eq('is_authenticated', true);
-
-      if (error) {
-        console.error('Error loading club members:', error);
-        return;
-      }
-
-      const members = (data || []).map(item => ({
-        id: (item as any).app_user_profiles.id,
-        full_name: (item as any).app_user_profiles.full_name,
-        email: (item as any).app_user_profiles.email,
-        avatar_url: (item as any).app_user_profiles.avatar_url,
-      }));
-
-      // Sort members alphabetically by full_name
-      members.sort((a, b) => a.full_name.localeCompare(b.full_name));
-
+      const members = await fetchGrammarianClubMembersDirectory(user.currentClubId);
       setClubMembers(members);
-      
-      // Auto-select first member if available
-      if (members.length > 0 && !selectedMember) {
-        setSelectedMember(members[0]);
-      }
+
+      setSelectedMember((prev) => (prev ? prev : members[0] ?? null));
     } catch (error) {
       console.error('Error loading club members:', error);
     }

@@ -39,6 +39,7 @@ import {
   isAhCounterRole,
 } from '@/lib/journeyMeetingOpenData';
 import { prefetchEducationalCorner } from '@/lib/prefetchEducationalCorner';
+import { prefetchGrammarianCorner } from '@/lib/prefetchGrammarianCorner';
 import { journeyHomeQueryKeys, fetchJourneyHomeSnapshot } from '@/lib/journeyHomeQuery';
 
 const ROLE_PLAYER_CONGRATS_STORAGE_PREFIX = 'journey_role_player_congrats_ack_v1_';
@@ -1289,6 +1290,7 @@ export default function MyJourney() {
           break;
         case 'grammarian_wotd':
           if (!currentOpenMeetingId) return;
+          prefetchGrammarianCorner(currentOpenMeetingId, user?.id, user?.currentClubId);
           router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
           break;
         case 'prepared_speech':
@@ -1330,8 +1332,9 @@ export default function MyJourney() {
       Alert.alert('No open meeting', 'There is no current open meeting for Grammarian.');
       return;
     }
+    prefetchGrammarianCorner(currentOpenMeetingId, user?.id, user?.currentClubId);
     router.push(`/grammarian?meetingId=${currentOpenMeetingId}`);
-  }, [currentOpenMeetingId]);
+  }, [currentOpenMeetingId, user?.id, user?.currentClubId]);
 
   const handleToastmasterPress = useCallback(() => {
     if (!currentOpenMeetingId) {
