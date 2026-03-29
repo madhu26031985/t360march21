@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   View,
   Text,
@@ -19,6 +20,14 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
+import {
+  educationalCornerQueryKeys,
+  fetchEducationalCornerBundle,
+  fetchClubMembersForEducationalAssign,
+  type EducationalCornerMeeting as Meeting,
+  type EducationalCornerSpeaker as EducationalSpeaker,
+  type EducationalCornerClubMember as ClubMember,
+} from '@/lib/educationalCornerQuery';
 import {
   ArrowLeft,
   GraduationCap,
@@ -50,21 +59,6 @@ import {
 const FOOTER_NAV_ICON_SIZE = 15;
 
 const CORNER_EDUCATIONAL_TITLE_MAX_LEN = 50;
-
-// Type definitions
-interface Meeting {
-  id: string;
-  meeting_title: string;
-  meeting_date: string;
-  meeting_number: string | null;
-  meeting_start_time: string | null;
-  meeting_end_time: string | null;
-  meeting_mode: string;
-  meeting_location: string | null;
-  meeting_link: string | null;
-  meeting_status: string;
-  club_name?: string;
-}
 
 function formatTimeForDisplay(t: string): string {
   const p = t.split(':');
@@ -99,28 +93,6 @@ interface UserProfile {
   avatar_url: string | null;
 }
 
-interface EducationalSpeaker {
-  id: string;
-  role_name: string;
-  assigned_user_id: string | null;
-  booking_status: string; // Added booking_status to EducationalSpeaker interface
-  speech_title: string | null;
-  summary: string | null; // Changed from educational_details
-  notes: string | null;
-  app_user_profiles?: {
-    full_name: string;
-    email: string;
-    avatar_url: string | null;
-  };
-}
-
-interface ClubMember {
-  id: string;
-  full_name: string;
-  email: string;
-  avatar_url: string | null;
-}
-
 /**
  * Educational Corner Component
  * Displays Educational Speaker assignment and allows adding speech details
@@ -134,9 +106,24 @@ export default function EducationalCorner(): JSX.Element {
   const consolidatedCardSideMargin = Math.min(56, Math.max(36, Math.round(windowWidth * 0.11)));
 
   // State management
+  const skipFocusRefetchRef = useRef(true);
+
+  const {
+    data: bundle,
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: educationalCornerQueryKeys.snapshot(meetingId ?? '', user?.id ?? ''),
+    queryFn: () => fetchEducationalCornerBundle(meetingId!, user!.id, user!.currentClubId!),
+    enabled: Boolean(meetingId && user?.id && user?.currentClubId),
+    staleTime: 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [educationalSpeaker, setEducationalSpeaker] = useState<EducationalSpeaker | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isExComm, setIsExComm] = useState(false);
   const [isVPEClub, setIsVPEClub] = useState(false);
   const [bookingEducationalRole, setBookingEducationalRole] = useState(false);
@@ -148,78 +135,48 @@ export default function EducationalCorner(): JSX.Element {
   const [savingCornerEducational, setSavingCornerEducational] = useState(false);
   const [editingSavedCornerEducational, setEditingSavedCornerEducational] = useState(false);
 
-  // Load data on component mount
   useEffect(() => {
-    if (meetingId) {
-      loadEducationalCornerData();
-    }
+    skipFocusRefetchRef.current = true;
   }, [meetingId]);
 
-  // Reload educational speaker data when screen comes back into focus
-  useFocusEffect(
-    useCallback(() => {
-      // Always refresh when coming back to this screen
-      if (meetingId && user?.id) {
-        loadEducationalSpeaker();
-      }
-    }, [meetingId, user?.id])
-  );
-
-  /**
-   * Load all educational corner data
-   */
-  const loadEducationalCornerData = async (): Promise<void> => {
-    if (!meetingId || !user?.currentClubId) {
-      setIsLoading(false);
+  useEffect(() => {
+    if (bundle === undefined) return;
+    if (bundle === null) {
+      setMeeting(null);
+      setEducationalSpeaker(null);
+      setIsExComm(false);
+      setIsVPEClub(false);
       return;
     }
+    setMeeting(bundle.meeting);
+    setEducationalSpeaker(bundle.educationalSpeaker);
+    setIsExComm(bundle.isExComm);
+    setIsVPEClub(bundle.isVPEClub);
+  }, [bundle]);
 
-    try {
-      await Promise.all([
-        loadMeeting(),
-        loadEducationalSpeaker(),
-        checkUserRole(),
-        loadClubMembers(),
-      ]);
-    } catch (error) {
-      console.error('Error loading educational corner data:', error);
-      Alert.alert('Error', 'Failed to load educational corner data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadClubMembers = async (): Promise<void> => {
-    if (!user?.currentClubId) return;
-    try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select(`
-          app_user_profiles (
-            id,
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-        .eq('club_id', user.currentClubId)
-        .eq('is_authenticated', true);
-      if (error) {
-        console.error('Error loading club members:', error);
+  useFocusEffect(
+    useCallback(() => {
+      if (skipFocusRefetchRef.current) {
+        skipFocusRefetchRef.current = false;
         return;
       }
-      const members = (data || []).map((item: any) => ({
-        id: item.app_user_profiles.id,
-        full_name: item.app_user_profiles.full_name,
-        email: item.app_user_profiles.email,
-        avatar_url: item.app_user_profiles.avatar_url,
-      }));
-      members.sort((a, b) => a.full_name.localeCompare(b.full_name));
-      setClubMembers(members);
-    } catch (error) {
-      console.error('Error loading club members:', error);
-    }
-  };
+      if (meetingId && user?.id) {
+        void refetch();
+      }
+    }, [meetingId, user?.id, refetch])
+  );
+
+  useEffect(() => {
+    if (!showAssignEducationalModal || !user?.currentClubId) return;
+    let cancelled = false;
+    void (async () => {
+      const members = await fetchClubMembersForEducationalAssign(user.currentClubId!);
+      if (!cancelled) setClubMembers(members);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showAssignEducationalModal, user?.currentClubId]);
 
   const handleAssignEducationalToMember = async (member: ClubMember): Promise<void> => {
     if (!meetingId || !user?.id) {
@@ -237,7 +194,7 @@ export default function EducationalCorner(): JSX.Element {
       if (result.ok) {
         setShowAssignEducationalModal(false);
         setAssignEducationalSearch('');
-        await loadEducationalSpeaker();
+        await refetch();
         Alert.alert('Assigned', `${member.full_name} is now the Educational Speaker for this meeting.`);
       } else {
         Alert.alert('Could not assign', result.message);
@@ -256,42 +213,6 @@ export default function EducationalCorner(): JSX.Element {
     );
   });
 
-  /**
-   * Load meeting details
-   */
-  const loadMeeting = async (): Promise<void> => {
-    if (!meetingId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_meeting')
-        .select(`
-          *,
-          clubs!inner(name)
-        `)
-        .eq('id', meetingId)
-        .single();
-
-      if (error) {
-        console.error('Error loading meeting:', error);
-        return;
-      }
-
-      // Flatten the club data
-      const meetingData: Meeting = {
-        ...data,
-        club_name: (data as any).clubs?.name
-      };
-
-      setMeeting(meetingData);
-    } catch (error) {
-      console.error('Error loading meeting:', error);
-    }
-  };
-
-  /**
-   * Load Educational Speaker assignment and its details
-   */
   const handleBookEducationalSpeakerInline = async (): Promise<void> => {
     if (!meetingId || !user?.id) {
       Alert.alert('Sign in required', 'Please sign in to book this role.');
@@ -306,125 +227,12 @@ export default function EducationalCorner(): JSX.Element {
         'Educational Speaker is already booked or not set up for this meeting.'
       );
       if (result.ok) {
-        await loadEducationalSpeaker();
+        await refetch();
       } else {
         Alert.alert('Could not book', result.message);
       }
     } finally {
       setBookingEducationalRole(false);
-    }
-  };
-
-  const loadEducationalSpeaker = async (): Promise<void> => {
-    if (!meetingId || !user?.id) return;
-
-    try {
-      // Step 1: Load the Educational Speaker assignment from app_meeting_roles_management
-      const { data: roleAssignment, error: roleError } = await supabase
-        .from('app_meeting_roles_management')
-        .select(`
-          id,
-          role_name,
-          assigned_user_id,
-          booking_status,
-          role_status,
-          role_classification,
-          app_user_profiles (
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-        .eq('meeting_id', meetingId)
-        .eq('role_name', 'Educational Speaker')
-        .eq('role_status', 'Available')
-        .eq('booking_status', 'booked')
-        .maybeSingle();
-
-      if (roleError && roleError.code !== 'PGRST116') {
-        console.error('Error loading educational speaker role assignment:', roleError);
-        setEducationalSpeaker(null);
-        return;
-      }
-
-      if (roleAssignment) {
-        // Found an assigned Educational Speaker
-        const speakerData: EducationalSpeaker = {
-          id: roleAssignment.id,
-          role_name: roleAssignment.role_name,
-          assigned_user_id: roleAssignment.assigned_user_id,
-          booking_status: roleAssignment.booking_status,
-          app_user_profiles: roleAssignment.app_user_profiles,
-          speech_title: null, // Initialize to null
-          summary: null,      // Initialize to null
-          notes: null,        // Initialize to null
-        };
-
-        // Step 2: Load educational content for the assigned speaker (if any)
-        if (roleAssignment.assigned_user_id) { // Removed the check for user.id
-          const { data: educationalContent, error: contentError } = await supabase
-            .from('app_meeting_educational_speaker')
-            .select('speech_title, notes')
-            .eq('meeting_id', meetingId)
-            .eq('speaker_user_id', roleAssignment.assigned_user_id)
-            .maybeSingle();
-
-          if (contentError && contentError.code !== 'PGRST116') {
-            console.error('Error loading educational content:', contentError);
-          }
-
-          if (educationalContent) {
-            speakerData.speech_title = educationalContent.speech_title;
-            speakerData.summary = null;
-            speakerData.notes = educationalContent.notes;
-          }
-        }
-
-        setEducationalSpeaker(speakerData);
-      } else {
-        // No Educational Speaker assigned for this meeting
-        setEducationalSpeaker(null);
-      }
-    } catch (error) {
-      console.error('Error in loadEducationalSpeaker:', error);
-      setEducationalSpeaker(null);
-    }
-  };
-
-  /**
-   * Check if current user is ExComm
-   */
-  const checkUserRole = async (): Promise<void> => {
-    if (!user?.id || !user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading user role:', error);
-        return;
-      }
-
-      setIsExComm(data?.role === 'excomm');
-
-      const { data: vpeData, error: vpeError } = await supabase
-        .from('club_profiles')
-        .select('vpe_id')
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-      if (vpeError) {
-        console.error('Error loading club VPE:', vpeError);
-        setIsVPEClub(false);
-      } else {
-        setIsVPEClub(vpeData?.vpe_id === user.id);
-      }
-    } catch (error) {
-      console.error('Error loading user role:', error);
     }
   };
 
@@ -510,7 +318,7 @@ export default function EducationalCorner(): JSX.Element {
         setEducationalSpeaker((prev) => (prev ? { ...prev, speech_title: null, summary: null } : prev));
         alertCorner('Success', 'Educational title cleared.');
         setEditingSavedCornerEducational(false);
-        await loadEducationalSpeaker();
+        await refetch();
         return;
       }
 
@@ -550,7 +358,7 @@ export default function EducationalCorner(): JSX.Element {
       );
       alertCorner('Success', 'Educational title saved!');
       setEditingSavedCornerEducational(false);
-      await loadEducationalSpeaker();
+      await refetch();
     } catch (e) {
       console.error('saveCornerEducationalTitle:', e);
       alertCorner('Error', 'Failed to save. Please try again.');
@@ -579,8 +387,7 @@ export default function EducationalCorner(): JSX.Element {
     educationalSpeaker?.assigned_user_id && educationalSpeaker.app_user_profiles
   );
 
-  // Loading state
-  if (isLoading) {
+  if (isPending && !isError) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
@@ -592,7 +399,35 @@ export default function EducationalCorner(): JSX.Element {
     );
   }
 
-  // Error state - meeting not found
+  if (isError) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Educational Corner
+          </Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Couldn't load Educational Corner.
+          </Text>
+          <TouchableOpacity
+            style={[styles.backButton, { backgroundColor: theme.colors.primary, marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }]}
+            onPress={() => refetch()}
+          >
+            <Text style={[styles.backButtonText, { color: '#fff' }]} maxFontSizeMultiplier={1.3}>
+              Retry
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!meeting) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -998,10 +833,7 @@ export default function EducationalCorner(): JSX.Element {
             {isVPEClub && (
               <TouchableOpacity
                 style={styles.footerNavItem}
-                onPress={() => {
-                  setShowAssignEducationalModal(true);
-                  void loadClubMembers();
-                }}
+                onPress={() => setShowAssignEducationalModal(true)}
                 disabled={bookingEducationalRole || assigningEducationalRole}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>

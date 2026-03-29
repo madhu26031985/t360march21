@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { prefetchClubInfoManagement } from '@/lib/prefetchClubInfoManagement';
+import { prefetchExcommManagement } from '@/lib/prefetchExcommManagement';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -181,7 +182,10 @@ export default function ClubOperations() {
             title="ExComm Management"
             description="Manage Executive Committee roles and assignments"
             icon={<Crown size={20} color="#0a66c2" />}
-            onPress={() => router.push('/admin/excomm-management')}
+            onPress={() => {
+              prefetchExcommManagement(queryClient, user?.currentClubId);
+              router.push('/admin/excomm-management');
+            }}
           />
           
           <FeatureCard

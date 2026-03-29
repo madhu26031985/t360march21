@@ -9,13 +9,16 @@ import {
   TextInput,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { excommManagementQueryKeys, fetchExcommManagementBundle } from '@/lib/excommManagementQuery';
 import {
   ArrowLeft,
   Crown,
@@ -150,6 +153,18 @@ function emptyRolesFromDefinitions(): ExCommRole[] {
     member_id: null,
     term_start: null,
     term_end: null,
+  }));
+}
+
+function mapClubProfileToExcommRoles(clubProfile: Record<string, unknown> | null | undefined): ExCommRole[] {
+  const p = clubProfile || {};
+  return EXCOMM_ROLE_DEFINITIONS.map((role) => ({
+    key: role.key,
+    title: role.title,
+    description: role.description,
+    member_id: (p[`${role.key}_id`] as string | null | undefined) || null,
+    term_start: (p[`${role.key}_term_start`] as string | null | undefined) || null,
+    term_end: (p[`${role.key}_term_end`] as string | null | undefined) || null,
   }));
 }
 
@@ -315,11 +330,11 @@ export default function ExCommManagement() {
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [excommRoles, setExcommRoles] = useState<ExCommRole[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [filteredMembers, setFilteredMembers] = useState<ClubMember[]>([]);
   const [memberModalRoleKey, setMemberModalRoleKey] = useState<string | null>(null);
+  const [excommDataReady, setExcommDataReady] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [showTermModal, setShowTermModal] = useState(false);
@@ -337,9 +352,58 @@ export default function ExCommManagement() {
     excommRolesRef.current = excommRoles;
   }, [excommRoles]);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const clubId = user?.currentClubId ?? '';
+
+  const {
+    data: bundle,
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: excommManagementQueryKeys.snapshot(clubId),
+    queryFn: () => fetchExcommManagementBundle(clubId),
+    enabled: Boolean(clubId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  useLayoutEffect(() => {
+    setExcommDataReady(false);
+  }, [clubId]);
+
+  useLayoutEffect(() => {
+    if (!bundle) return;
+    baselineReadyRef.current = false;
+    if (bundle.club) setClubInfo(bundle.club);
+    const roles = mapClubProfileToExcommRoles(bundle.excomm);
+    setExcommRoles(roles);
+    excommRolesRef.current = roles;
+    baselineSerializedRef.current = serializeAssignments(roles);
+    baselineReadyRef.current = true;
+    setClubMembers(
+      bundle.members.map((m) => ({
+        id: m.id,
+        full_name: m.full_name,
+        email: m.email,
+        avatar_url: m.avatar_url ?? null,
+        phone_number: m.phone_number ?? null,
+        role: m.role,
+      }))
+    );
+    setExcommDataReady(true);
+  }, [bundle]);
+
+  const seededClub = useMemo((): ClubInfo | null => {
+    const cid = user?.currentClubId;
+    if (!cid || !user?.clubs?.length) return null;
+    const c = user.clubs.find((x) => x.id === cid);
+    return c ? { id: c.id, name: c.name, club_number: c.club_number ?? null } : null;
+  }, [user?.currentClubId, user?.clubs]);
+
+  const displayClub = clubInfo ?? seededClub;
+  const showRolesSkeleton = Boolean(clubId) && !excommDataReady && !isError;
+  const showRolesErrorPlaceholder = Boolean(clubId) && !excommDataReady && isError;
 
   useEffect(() => {
     filterMembers();
@@ -440,142 +504,6 @@ export default function ExCommManagement() {
     }, 900);
   }, [performSave]);
 
-  const loadData = async () => {
-    if (!user?.currentClubId) {
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      baselineReadyRef.current = false;
-      await Promise.all([loadClubInfo(), loadClubMembers(), loadExcommRoles()]);
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadClubInfo = async () => {
-    if (!user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase.from('clubs').select('id, name, club_number').eq('id', user.currentClubId).single();
-
-      if (error) {
-        console.error('Error loading club info:', error);
-        return;
-      }
-
-      setClubInfo(data);
-    } catch (error) {
-      console.error('Error loading club info:', error);
-    }
-  };
-
-  const loadClubMembers = async () => {
-    if (!user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select(
-          `
-          app_user_profiles (
-            id,
-            full_name,
-            email,
-            avatar_url,
-            phone_number
-          ),
-          role
-        `
-        )
-        .eq('club_id', user.currentClubId)
-        .eq('is_authenticated', true);
-
-      if (error) {
-        console.error('Error loading club members:', error);
-        return;
-      }
-
-      const members = (data || []).map((item) => ({
-        id: (item as any).app_user_profiles.id,
-        full_name: (item as any).app_user_profiles.full_name,
-        email: (item as any).app_user_profiles.email,
-        avatar_url: (item as any).app_user_profiles.avatar_url ?? null,
-        phone_number: (item as any).app_user_profiles.phone_number ?? null,
-        role: (item as any).role,
-      }));
-
-      setClubMembers(members);
-    } catch (error) {
-      console.error('Error loading club members:', error);
-    }
-  };
-
-  const loadExcommRoles = async () => {
-    if (!user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('club_profiles')
-        .select(
-          `
-          president_id, president_term_start, president_term_end,
-          ipp_id, ipp_term_start, ipp_term_end,
-          vpe_id, vpe_term_start, vpe_term_end,
-          vpm_id, vpm_term_start, vpm_term_end,
-          vppr_id, vppr_term_start, vppr_term_end,
-          secretary_id, secretary_term_start, secretary_term_end,
-          treasurer_id, treasurer_term_start, treasurer_term_end,
-          saa_id, saa_term_start, saa_term_end,
-          area_director_id, area_director_term_start, area_director_term_end,
-          division_director_id, division_director_term_start, division_director_term_end,
-          district_director_id, district_director_term_start, district_director_term_end,
-          program_quality_director_id, program_quality_director_term_start, program_quality_director_term_end,
-          club_growth_director_id, club_growth_director_term_start, club_growth_director_term_end,
-          immediate_past_district_director_id, immediate_past_district_director_term_start, immediate_past_district_director_term_end
-        `
-        )
-        .eq('club_id', user.currentClubId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading excomm roles:', error);
-        const fallback = emptyRolesFromDefinitions();
-        setExcommRoles(fallback);
-        excommRolesRef.current = fallback;
-        baselineSerializedRef.current = serializeAssignments(fallback);
-        baselineReadyRef.current = true;
-        return;
-      }
-
-      const clubProfile = (data as any) || {};
-
-      const roles = EXCOMM_ROLE_DEFINITIONS.map((role) => ({
-        key: role.key,
-        title: role.title,
-        description: role.description,
-        member_id: clubProfile[`${role.key}_id`] || null,
-        term_start: clubProfile[`${role.key}_term_start`] || null,
-        term_end: clubProfile[`${role.key}_term_end`] || null,
-      }));
-
-      setExcommRoles(roles);
-      excommRolesRef.current = roles;
-      baselineSerializedRef.current = serializeAssignments(roles);
-      baselineReadyRef.current = true;
-    } catch (error) {
-      console.error('Error loading excomm roles:', error);
-      const fallback = emptyRolesFromDefinitions();
-      setExcommRoles(fallback);
-      excommRolesRef.current = fallback;
-      baselineSerializedRef.current = serializeAssignments(fallback);
-      baselineReadyRef.current = true;
-    }
-  };
-
   const filterMembers = () => {
     if (!memberSearchQuery.trim()) {
       setFilteredMembers(clubMembers);
@@ -660,12 +588,12 @@ export default function ExCommManagement() {
     () => (memberModalRoleKey ? displayRoles.find((r) => r.key === memberModalRoleKey) : undefined),
     [displayRoles, memberModalRoleKey]
   );
-  if (isLoading) {
+  if (!user?.currentClubId) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Loading ExComm data...
+            No club selected
           </Text>
         </View>
       </SafeAreaView>
@@ -705,7 +633,17 @@ export default function ExCommManagement() {
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {clubInfo && (
+          {isError && (
+            <View style={[styles.inlineErrorBanner, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+              <Text style={[styles.inlineErrorText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Couldn&apos;t load ExComm data.
+              </Text>
+              <TouchableOpacity onPress={() => refetch()} style={styles.inlineRetry}>
+                <Text style={[styles.inlineRetryText, { color: theme.colors.text }]}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {displayClub && (
             <View style={[styles.notionClubPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
               <View style={styles.clubHeader}>
                 <View
@@ -718,12 +656,12 @@ export default function ExCommManagement() {
                 </View>
                 <View style={styles.clubInfo}>
                   <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {clubInfo.name}
+                    {displayClub.name}
                   </Text>
                   <View style={styles.clubMeta}>
-                    {clubInfo.club_number && (
+                    {displayClub.club_number && (
                       <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        Club #{clubInfo.club_number}
+                        Club #{displayClub.club_number}
                       </Text>
                     )}
                     {user?.clubRole && (
@@ -758,55 +696,83 @@ export default function ExCommManagement() {
                 },
               ]}
             >
-              {displayRoles.map((role, index) => {
-                const assignedMember = clubMembers.find((m) => m.id === role.member_id);
-                return (
-                  <ExCommRoleCard
-                    key={role.key}
-                    role={role}
-                    theme={theme}
-                    assignedMember={assignedMember}
-                    isLast={index === displayRoles.length - 1}
-                    onAssignMember={() => setMemberModalRoleKey(role.key)}
-                    onChangeMember={() => setMemberModalRoleKey(role.key)}
-                    onRemoveMember={() => handleMemberSelect(role.key, null)}
-                    onTermFieldPress={(which) => {
-                      const d =
-                        which === 'start'
-                          ? role.term_start
-                            ? new Date(role.term_start)
-                            : new Date()
-                          : role.term_end
-                            ? new Date(role.term_end)
-                            : new Date();
-                      pendingTermEditRef.current = { roleKey: role.key, which };
-                      setSelectedRole(role.key);
-                      setTermType(which);
-                      setTempDate(d);
+              {showRolesSkeleton && (
+                <View style={styles.skeletonPanelInner}>
+                  <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                  <Text style={[styles.skeletonHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    Loading roles…
+                  </Text>
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.skeletonRow,
+                        i < 4 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+                      ]}
+                    >
+                      <View style={[styles.skeletonBar, { backgroundColor: theme.colors.border }]} />
+                      <View style={[styles.skeletonBarShort, { backgroundColor: theme.colors.border }]} />
+                    </View>
+                  ))}
+                </View>
+              )}
+              {showRolesErrorPlaceholder && (
+                <View style={styles.skeletonPanelInner}>
+                  <Text style={[styles.skeletonHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    Roles couldn't be loaded. Use Retry above or pull to refresh.
+                  </Text>
+                </View>
+              )}
+              {excommDataReady &&
+                displayRoles.map((role, index) => {
+                  const assignedMember = clubMembers.find((m) => m.id === role.member_id);
+                  return (
+                    <ExCommRoleCard
+                      key={role.key}
+                      role={role}
+                      theme={theme}
+                      assignedMember={assignedMember}
+                      isLast={index === displayRoles.length - 1}
+                      onAssignMember={() => setMemberModalRoleKey(role.key)}
+                      onChangeMember={() => setMemberModalRoleKey(role.key)}
+                      onRemoveMember={() => handleMemberSelect(role.key, null)}
+                      onTermFieldPress={(which) => {
+                        const d =
+                          which === 'start'
+                            ? role.term_start
+                              ? new Date(role.term_start)
+                              : new Date()
+                            : role.term_end
+                              ? new Date(role.term_end)
+                              : new Date();
+                        pendingTermEditRef.current = { roleKey: role.key, which };
+                        setSelectedRole(role.key);
+                        setTermType(which);
+                        setTempDate(d);
 
-                      if (Platform.OS === 'web') {
-                        const el = webTermDateInputRef.current;
-                        const iso = d.toISOString().split('T')[0];
-                        if (el) {
-                          el.value = iso;
-                          try {
-                            if (typeof el.showPicker === 'function') {
-                              el.showPicker();
-                            } else {
+                        if (Platform.OS === 'web') {
+                          const el = webTermDateInputRef.current;
+                          const iso = d.toISOString().split('T')[0];
+                          if (el) {
+                            el.value = iso;
+                            try {
+                              if (typeof el.showPicker === 'function') {
+                                el.showPicker();
+                              } else {
+                                el.click();
+                              }
+                            } catch {
                               el.click();
                             }
-                          } catch {
-                            el.click();
                           }
+                        } else {
+                          setShowTermModal(true);
                         }
-                      } else {
-                        setShowTermModal(true);
-                      }
-                    }}
-                    formatDate={formatDate}
-                  />
-                );
-              })}
+                      }}
+                      formatDate={formatDate}
+                    />
+                  );
+                })}
             </View>
           </View>
         </ScrollView>
@@ -1107,6 +1073,26 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
+  inlineErrorBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  inlineErrorText: { flex: 1, fontSize: 12.8, fontWeight: '500' },
+  inlineRetry: { paddingVertical: 6, paddingHorizontal: 10 },
+  inlineRetryText: { fontSize: 13, fontWeight: '600' },
+  skeletonPanelInner: { paddingVertical: 16, paddingHorizontal: 14, alignItems: 'center', gap: 10 },
+  skeletonHint: { fontSize: 12.5, fontWeight: '500', textAlign: 'center', marginBottom: 4 },
+  skeletonRow: { width: '100%', paddingVertical: 12, gap: 8 },
+  skeletonBar: { height: 12, borderRadius: 4, width: '55%' },
+  skeletonBarShort: { height: 10, borderRadius: 4, width: '35%' },
   notionRoleCardRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 14, paddingVertical: 14 },
   notionIconBox: {
     width: 40,

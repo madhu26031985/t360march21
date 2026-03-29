@@ -24,6 +24,7 @@ import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { prefetchClubInfoManagement } from '@/lib/prefetchClubInfoManagement';
+import { prefetchExcommManagement } from '@/lib/prefetchExcommManagement';
 
 const CLUB_OPERATIONS_SUB_PAGES = [
   {
@@ -431,6 +432,9 @@ export default function AdminPanel() {
                       onPress={() => {
                         if (route === '/admin/club-info-management') {
                           prefetchClubInfoManagement(queryClient, user?.currentClubId);
+                        }
+                        if (route === '/admin/excomm-management') {
+                          prefetchExcommManagement(queryClient, user?.currentClubId);
                         }
                         router.push(route);
                       }}

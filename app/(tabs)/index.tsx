@@ -14,6 +14,7 @@ import {
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -37,6 +38,7 @@ import {
   isTimerRole,
   isAhCounterRole,
 } from '@/lib/journeyMeetingOpenData';
+import { prefetchEducationalCorner } from '@/lib/prefetchEducationalCorner';
 
 const ROLE_PLAYER_CONGRATS_STORAGE_PREFIX = 'journey_role_player_congrats_ack_v1_';
 
@@ -375,6 +377,7 @@ function JourneyListCard({
 
 export default function MyJourney() {
   const { theme } = useTheme();
+  const queryClient = useQueryClient();
   const { user, isAuthenticated, refreshUserProfile, hasInitialized } = useAuth();
   const profileFieldsLoaded = hasInitialized && !!user;
   const userAvatar = (user?.avatarUrl || '').trim() || null;
@@ -1381,6 +1384,7 @@ export default function MyJourney() {
           break;
         case 'educational_speech':
           if (!currentOpenMeetingId) return;
+          prefetchEducationalCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId);
           router.push({
             pathname: '/educational-corner',
             params: { meetingId: currentOpenMeetingId, showCongrats: '1' },
@@ -1401,7 +1405,7 @@ export default function MyJourney() {
           break;
       }
     },
-    [currentOpenMeetingId]
+    [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId]
   );
 
   const showMyProfilePending =
@@ -1445,11 +1449,12 @@ export default function MyJourney() {
       Alert.alert('No open meeting', 'There is no current open meeting for Educational speaker.');
       return;
     }
+    prefetchEducationalCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId);
     router.push({
       pathname: '/educational-corner',
       params: { meetingId: currentOpenMeetingId },
     });
-  }, [currentOpenMeetingId]);
+  }, [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId]);
 
   useEffect(() => {
     if (!showHeaderAvatarPending) {
