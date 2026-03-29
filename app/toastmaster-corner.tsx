@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -129,6 +129,8 @@ export default function ToastmasterCorner() {
   const [assignToastmasterSearch, setAssignToastmasterSearch] = useState('');
   const [assigningToastmasterRole, setAssigningToastmasterRole] = useState(false);
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
+  const [assignRosterLoading, setAssignRosterLoading] = useState(false);
+  const rosterRequestId = useRef(0);
   const [cornerThemeName, setCornerThemeName] = useState('');
   const [savingCornerTheme, setSavingCornerTheme] = useState(false);
   const [editingSavedCornerTheme, setEditingSavedCornerTheme] = useState(false);
@@ -150,15 +152,8 @@ export default function ToastmasterCorner() {
   };
   const effectiveToastmasterUserId = toastmasterOfDay?.assigned_user_id || user?.id || null;
 
-  useEffect(() => {
-    if (meetingId) {
-      loadToastmasterCornerData();
-    }
-  }, [meetingId]);
-
   useFocusEffect(
     useCallback(() => {
-      // Always refresh when coming back to this screen
       if (meetingId && user?.currentClubId) {
         loadToastmasterCornerData();
       }
@@ -334,17 +329,20 @@ export default function ToastmasterCorner() {
   };
 
   const loadToastmasterCornerData = async () => {
-    if (!meetingId || !user?.currentClubId) {
+    const clubId = user?.currentClubId;
+    const uid = user?.id;
+    if (!meetingId || !clubId || !uid) {
       setIsLoading(false);
       return;
     }
 
     try {
-      // Booked TMOD comes from app_meeting_roles_management (not app_meeting_roles).
-      // Theme in toastmaster_meeting_data is keyed by toastmaster_user_id — must match this assignee.
-      const { data: tmData, error: tmError } = await supabase
-        .from('app_meeting_roles_management')
-        .select(`
+      // Single network phase: all reads in parallel (was: TMOD first, then 5 more → ~2× RTT on slow links).
+      // Theme rows for meeting+club load here; we pick the row for the booked TMOD after.
+      const [tmRes, meetingRes, clubRes, roleRes, vpeRes, themeListRes] = await Promise.all([
+        supabase
+          .from('app_meeting_roles_management')
+          .select(`
           id,
           role_name,
           assigned_user_id,
@@ -355,26 +353,63 @@ export default function ToastmasterCorner() {
             avatar_url
           )
         `)
-        .eq('meeting_id', meetingId)
-        .ilike('role_name', '%toastmaster%')
-        .eq('role_status', 'Available')
-        .eq('booking_status', 'booked')
-        .maybeSingle();
-
-      if (tmError) {
-        console.error('Error loading toastmaster of day:', tmError);
-        // Continue without toastmasterOfDay if there's an error
-      }
-      setToastmasterOfDay(tmData);
-
-      await Promise.all([
-        loadMeeting(),
-        loadClubInfo(),
-        loadToastmasterMeetingData(tmData?.assigned_user_id), // Pass assigned_user_id
-        loadUserRole(),
-        loadIsVPEClub(),
-        loadClubMembers(),
+          .eq('meeting_id', meetingId)
+          .ilike('role_name', '%toastmaster%')
+          .eq('role_status', 'Available')
+          .eq('booking_status', 'booked')
+          .maybeSingle(),
+        supabase.from('app_club_meeting').select('*').eq('id', meetingId).single(),
+        supabase.from('clubs').select('id, name, club_number, charter_date').eq('id', clubId).single(),
+        supabase.from('app_club_user_relationship').select('role').eq('user_id', uid).eq('club_id', clubId).maybeSingle(),
+        supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle(),
+        supabase.from('toastmaster_meeting_data').select('*').eq('meeting_id', meetingId).eq('club_id', clubId),
       ]);
+
+      if (tmRes.error) {
+        console.error('Error loading toastmaster of day:', tmRes.error);
+      }
+      setToastmasterOfDay(tmRes.data ?? null);
+
+      if (meetingRes.error) {
+        console.error('Error loading meeting:', meetingRes.error);
+        setMeeting(null);
+      } else {
+        setMeeting(meetingRes.data as Meeting);
+      }
+
+      if (clubRes.error) {
+        console.error('Error loading club info:', clubRes.error);
+      } else {
+        setClubInfo(clubRes.data as ClubInfo);
+      }
+
+      if (roleRes.error) {
+        console.error('Error loading user role:', roleRes.error);
+        setIsExComm(false);
+      } else {
+        setIsExComm(roleRes.data?.role === 'excomm');
+      }
+
+      if (vpeRes.error) {
+        console.error('Error loading club VPE:', vpeRes.error);
+        setIsVPEClub(false);
+      } else {
+        setIsVPEClub(vpeRes.data?.vpe_id === uid);
+      }
+
+      if (themeListRes.error) {
+        console.error('Error loading toastmaster meeting data:', themeListRes.error);
+        setToastmasterMeetingData(null);
+      } else {
+        const assignedId = (tmRes.data as ToastmasterOfDay | null)?.assigned_user_id ?? null;
+        const rows = (themeListRes.data as ToastmasterMeetingData[] | null) ?? [];
+        if (!assignedId) {
+          setToastmasterMeetingData(null);
+        } else {
+          const match = rows.find((r) => r.toastmaster_user_id === assignedId) ?? null;
+          setToastmasterMeetingData(match);
+        }
+      }
     } catch (error) {
       console.error('Error loading toastmaster corner data:', error);
       Alert.alert('Error', 'Failed to load toastmaster corner data');
@@ -384,8 +419,35 @@ export default function ToastmasterCorner() {
   };
 
   const loadClubMembers = async () => {
-    if (!user?.currentClubId) return;
+    const clubId = user?.currentClubId;
+    if (!clubId) return;
+    const reqId = ++rosterRequestId.current;
+    setAssignRosterLoading(true);
     try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_club_member_directory', {
+        target_club_id: clubId,
+      });
+
+      if (reqId !== rosterRequestId.current) return;
+
+      if (!rpcError && rpcData && Array.isArray(rpcData)) {
+        const members: ClubMember[] = (rpcData as { user_id: string; full_name: string; email: string; avatar_url: string | null }[])
+          .map((row) => ({
+            id: row.user_id,
+            full_name: row.full_name || '',
+            email: row.email || '',
+            avatar_url: row.avatar_url ?? null,
+          }))
+          .filter((m) => m.id);
+        members.sort((a, b) => a.full_name.localeCompare(b.full_name));
+        setClubMembers(members);
+        return;
+      }
+
+      if (rpcError) {
+        console.warn('get_club_member_directory failed, falling back to embed query:', rpcError);
+      }
+
       const { data, error } = await supabase
         .from('app_club_user_relationship')
         .select(`
@@ -396,22 +458,29 @@ export default function ToastmasterCorner() {
             avatar_url
           )
         `)
-        .eq('club_id', user.currentClubId)
+        .eq('club_id', clubId)
         .eq('is_authenticated', true);
+
+      if (reqId !== rosterRequestId.current) return;
+
       if (error) {
         console.error('Error loading club members:', error);
         return;
       }
       const members = (data || []).map((item: any) => ({
-        id: item.app_user_profiles.id,
-        full_name: item.app_user_profiles.full_name,
-        email: item.app_user_profiles.email,
-        avatar_url: item.app_user_profiles.avatar_url,
-      }));
-      members.sort((a, b) => a.full_name.localeCompare(b.full_name));
+        id: item.app_user_profiles?.id,
+        full_name: item.app_user_profiles?.full_name ?? '',
+        email: item.app_user_profiles?.email ?? '',
+        avatar_url: item.app_user_profiles?.avatar_url ?? null,
+      })).filter((m: ClubMember) => m.id);
+      members.sort((a: ClubMember, b: ClubMember) => a.full_name.localeCompare(b.full_name));
       setClubMembers(members);
     } catch (error) {
       console.error('Error loading club members:', error);
+    } finally {
+      if (reqId === rosterRequestId.current) {
+        setAssignRosterLoading(false);
+      }
     }
   };
 
@@ -449,122 +518,6 @@ export default function ToastmasterCorner() {
       member.email.toLowerCase().includes(q)
     );
   });
-
-  const loadMeeting = async () => {
-    if (!meetingId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_meeting')
-        .select('*')
-        .eq('id', meetingId)
-        .single();
-
-      if (error) {
-        console.error('Error loading meeting:', error);
-        return;
-      }
-
-      setMeeting(data);
-    } catch (error) {
-      console.error('Error loading meeting:', error);
-    }
-  };
-
-  const loadClubInfo = async () => {
-    if (!user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('clubs')
-        .select('id, name, club_number, charter_date')
-        .eq('id', user.currentClubId)
-        .single();
-
-      if (error) {
-        console.error('Error loading club info:', error);
-        return;
-      }
-
-      setClubInfo(data);
-    } catch (error) {
-      console.error('Error loading club info:', error);
-    }
-  };
-
-  const loadUserRole = async () => {
-    if (!user?.id || !user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading user role:', error);
-        return;
-      }
-
-      setIsExComm(data?.role === 'excomm');
-    } catch (error) {
-      console.error('Error loading user role:', error);
-    }
-  };
-
-  const loadIsVPEClub = async () => {
-    if (!user?.currentClubId || !user?.id) {
-      setIsVPEClub(false);
-      return;
-    }
-    const { data, error } = await supabase
-      .from('club_profiles')
-      .select('vpe_id')
-      .eq('club_id', user.currentClubId)
-      .maybeSingle();
-    if (error) {
-      console.error('Error loading club VPE:', error);
-      setIsVPEClub(false);
-      return;
-    }
-    setIsVPEClub(data?.vpe_id === user.id);
-  };
-
-  /** Theme row for whoever is booked TMOD only. No row / empty theme → new TMOD can enter. */
-  const loadToastmasterMeetingData = async (assignedToastmasterId: string | null) => {
-    if (!meetingId || !user?.currentClubId) {
-      setToastmasterMeetingData(null);
-      return;
-    }
-
-    try {
-      if (!assignedToastmasterId) {
-        setToastmasterMeetingData(null);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('toastmaster_meeting_data')
-        .select('*')
-        .eq('meeting_id', meetingId)
-        .eq('club_id', user.currentClubId)
-        .eq('toastmaster_user_id', assignedToastmasterId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading toastmaster meeting data:', error);
-        setToastmasterMeetingData(null);
-        return;
-      }
-
-      setToastmasterMeetingData(data ?? null);
-    } catch (error) {
-      console.error('Error loading toastmaster meeting data:', error);
-      setToastmasterMeetingData(null);
-    }
-  };
 
   const handleAddTheme = () => {
     router.push({
@@ -1049,6 +1002,13 @@ export default function ToastmasterCorner() {
                 {assigningToastmasterRole ? (
                   <View style={styles.assignEmptyWrap}>
                     <ActivityIndicator color={theme.colors.primary} />
+                  </View>
+                ) : assignRosterLoading ? (
+                  <View style={styles.assignEmptyWrap}>
+                    <ActivityIndicator color={theme.colors.primary} />
+                    <Text style={[styles.assignEmptyText, { color: theme.colors.textSecondary, marginTop: 10 }]} maxFontSizeMultiplier={1.2}>
+                      Loading members…
+                    </Text>
                   </View>
                 ) : filteredMembersForAssign.length > 0 ? (
                   filteredMembersForAssign.map((member) => (
