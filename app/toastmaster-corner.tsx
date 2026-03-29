@@ -2,13 +2,22 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import {
+  fetchToastmasterCornerBundle,
+  toastmasterCornerQueryKeys,
+  type ToastmasterCornerMeeting as Meeting,
+  type ToastmasterCornerClubInfo as ClubInfo,
+  type ToastmasterOfDayRow as ToastmasterOfDay,
+  type ToastmasterMeetingDataRow as ToastmasterMeetingData,
+} from '@/lib/toastmasterCornerQuery';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { ArrowLeft, Calendar, Clock, MapPin, Building2, Crown, User, Shield, Eye, UserCheck, Plus, Edit3, FileText, NotebookPen, MessageSquare, Bell, FileBarChart, Award, BookOpen, Mic, ClipboardCheck, CheckSquare, Users, MessageCircle, Settings, UserCog, LayoutDashboard, Vote, Save, X, Search, UserPlus } from 'lucide-react-native';
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 
 /** Bottom nav: icons + labels scaled to 75% of prior size (25% reduction) */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -52,19 +61,6 @@ interface ClubMember {
   full_name: string;
   email: string;
   avatar_url: string | null;
-}
-
-// NEW INTERFACE for consolidated Toastmaster data
-interface ToastmasterMeetingData {
-  id: string;
-  meeting_id: string;
-  club_id: string;
-  toastmaster_user_id: string;
-  personal_notes: string | null;
-  theme_of_the_day: string | null; // New column
-  theme_summary: string | null;    // New column
-  created_at: string;
-  updated_at: string;
 }
 
 function formatTimeForDisplay(t: string): string {
@@ -116,6 +112,20 @@ export default function ToastmasterCorner() {
   const consolidatedCardSideMargin = Math.min(56, Math.max(36, Math.round(windowWidth * 0.11)));
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
 
+  const queryClient = useQueryClient();
+  const clubId = user?.currentClubId;
+  const uid = user?.id;
+  const queryEnabled = !!meetingId && !!clubId && !!uid;
+
+  const { data: cornerData, isPending, isError, error } = useQuery({
+    queryKey: toastmasterCornerQueryKeys.detail(meetingId ?? '', clubId ?? '', uid ?? ''),
+    queryFn: () => fetchToastmasterCornerBundle(meetingId!, clubId!, uid!),
+    enabled: queryEnabled,
+    staleTime: 60_000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [showCongratsModal, setShowCongratsModal] = useState(false);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
@@ -123,7 +133,6 @@ export default function ToastmasterCorner() {
   const [toastmasterMeetingData, setToastmasterMeetingData] = useState<ToastmasterMeetingData | null>(null); // New state for consolidated data
   const [isExComm, setIsExComm] = useState(false);
   const [isVPEClub, setIsVPEClub] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [bookingTmodRole, setBookingTmodRole] = useState(false);
   const [showAssignToastmasterModal, setShowAssignToastmasterModal] = useState(false);
   const [assignToastmasterSearch, setAssignToastmasterSearch] = useState('');
@@ -152,13 +161,41 @@ export default function ToastmasterCorner() {
   };
   const effectiveToastmasterUserId = toastmasterOfDay?.assigned_user_id || user?.id || null;
 
-  useFocusEffect(
-    useCallback(() => {
-      if (meetingId && user?.currentClubId) {
-        loadToastmasterCornerData();
-      }
-    }, [meetingId, user?.currentClubId])
-  );
+  useEffect(() => {
+    setMeeting(null);
+    setClubInfo(null);
+    setToastmasterOfDay(null);
+    setToastmasterMeetingData(null);
+    setIsExComm(false);
+    setIsVPEClub(false);
+  }, [meetingId]);
+
+  useEffect(() => {
+    if (!cornerData) return;
+    setMeeting(cornerData.meeting);
+    setClubInfo(cornerData.clubInfo);
+    setToastmasterOfDay(cornerData.toastmasterOfDay);
+    setToastmasterMeetingData(cornerData.toastmasterMeetingData);
+    setIsExComm(cornerData.isExComm);
+    setIsVPEClub(cornerData.isVPEClub);
+  }, [cornerData]);
+
+  useEffect(() => {
+    if (!isError || !error) return;
+    console.error('Toastmaster corner query error:', error);
+    Alert.alert('Error', 'Failed to load toastmaster corner data');
+  }, [isError, error]);
+
+  const isLoading =
+    (queryEnabled && isPending) ||
+    (!!meetingId && !!clubId && !uid);
+
+  const invalidateToastmasterCorner = useCallback(async () => {
+    if (!meetingId || !user?.currentClubId || !user?.id) return;
+    await queryClient.invalidateQueries({
+      queryKey: toastmasterCornerQueryKeys.detail(meetingId, user.currentClubId, user.id),
+    });
+  }, [meetingId, queryClient, user?.currentClubId, user?.id]);
 
   const TMOD_CONGRATS_SEEN_KEY = meetingId ? `tmodCongratsSeen_${meetingId}` : null;
 
@@ -250,7 +287,7 @@ export default function ToastmasterCorner() {
         });
         alertCorner('Success', 'Theme cleared.');
         setEditingSavedCornerTheme(false);
-        await loadToastmasterCornerData();
+        await invalidateToastmasterCorner();
         return;
       }
 
@@ -296,7 +333,7 @@ export default function ToastmasterCorner() {
       }
       alertCorner('Success', 'Theme saved successfully!');
       setEditingSavedCornerTheme(false);
-      await loadToastmasterCornerData();
+      await invalidateToastmasterCorner();
     } catch (e) {
       console.error('Error saving theme:', e);
       alertCorner('Error', 'Failed to save theme. Please try again.');
@@ -319,102 +356,12 @@ export default function ToastmasterCorner() {
         'Toastmaster of the Day is already booked or not set up for this meeting.'
       );
       if (result.ok) {
-        await loadToastmasterCornerData();
+        await invalidateToastmasterCorner();
       } else {
         Alert.alert('Could not book', result.message);
       }
     } finally {
       setBookingTmodRole(false);
-    }
-  };
-
-  const loadToastmasterCornerData = async () => {
-    const clubId = user?.currentClubId;
-    const uid = user?.id;
-    if (!meetingId || !clubId || !uid) {
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      // Single network phase: all reads in parallel (was: TMOD first, then 5 more → ~2× RTT on slow links).
-      // Theme rows for meeting+club load here; we pick the row for the booked TMOD after.
-      const [tmRes, meetingRes, clubRes, roleRes, vpeRes, themeListRes] = await Promise.all([
-        supabase
-          .from('app_meeting_roles_management')
-          .select(`
-          id,
-          role_name,
-          assigned_user_id,
-          booking_status,
-          app_user_profiles (
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-          .eq('meeting_id', meetingId)
-          .ilike('role_name', '%toastmaster%')
-          .eq('role_status', 'Available')
-          .eq('booking_status', 'booked')
-          .maybeSingle(),
-        supabase.from('app_club_meeting').select('*').eq('id', meetingId).single(),
-        supabase.from('clubs').select('id, name, club_number, charter_date').eq('id', clubId).single(),
-        supabase.from('app_club_user_relationship').select('role').eq('user_id', uid).eq('club_id', clubId).maybeSingle(),
-        supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle(),
-        supabase.from('toastmaster_meeting_data').select('*').eq('meeting_id', meetingId).eq('club_id', clubId),
-      ]);
-
-      if (tmRes.error) {
-        console.error('Error loading toastmaster of day:', tmRes.error);
-      }
-      setToastmasterOfDay(tmRes.data ?? null);
-
-      if (meetingRes.error) {
-        console.error('Error loading meeting:', meetingRes.error);
-        setMeeting(null);
-      } else {
-        setMeeting(meetingRes.data as Meeting);
-      }
-
-      if (clubRes.error) {
-        console.error('Error loading club info:', clubRes.error);
-      } else {
-        setClubInfo(clubRes.data as ClubInfo);
-      }
-
-      if (roleRes.error) {
-        console.error('Error loading user role:', roleRes.error);
-        setIsExComm(false);
-      } else {
-        setIsExComm(roleRes.data?.role === 'excomm');
-      }
-
-      if (vpeRes.error) {
-        console.error('Error loading club VPE:', vpeRes.error);
-        setIsVPEClub(false);
-      } else {
-        setIsVPEClub(vpeRes.data?.vpe_id === uid);
-      }
-
-      if (themeListRes.error) {
-        console.error('Error loading toastmaster meeting data:', themeListRes.error);
-        setToastmasterMeetingData(null);
-      } else {
-        const assignedId = (tmRes.data as ToastmasterOfDay | null)?.assigned_user_id ?? null;
-        const rows = (themeListRes.data as ToastmasterMeetingData[] | null) ?? [];
-        if (!assignedId) {
-          setToastmasterMeetingData(null);
-        } else {
-          const match = rows.find((r) => r.toastmaster_user_id === assignedId) ?? null;
-          setToastmasterMeetingData(match);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading toastmaster corner data:', error);
-      Alert.alert('Error', 'Failed to load toastmaster corner data');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -500,7 +447,7 @@ export default function ToastmasterCorner() {
       if (result.ok) {
         setShowAssignToastmasterModal(false);
         setAssignToastmasterSearch('');
-        await loadToastmasterCornerData();
+        await invalidateToastmasterCorner();
         Alert.alert('Assigned', `${member.full_name} is now Toastmaster of the Day for this meeting.`);
       } else {
         Alert.alert('Could not assign', result.message);
@@ -669,6 +616,7 @@ export default function ToastmasterCorner() {
                 {toastmasterOfDay!.app_user_profiles!.avatar_url ? (
                   <Image
                     source={{ uri: toastmasterOfDay!.app_user_profiles!.avatar_url }}
+                    cachePolicy="memory-disk"
                     style={styles.consolidatedAvatarImage}
                   />
                 ) : (
@@ -1020,7 +968,11 @@ export default function ToastmasterCorner() {
                     >
                       <View style={styles.assignAvatar}>
                         {member.avatar_url ? (
-                          <Image source={{ uri: member.avatar_url }} style={styles.assignAvatarImage} />
+                          <Image
+                            source={{ uri: member.avatar_url }}
+                            cachePolicy="memory-disk"
+                            style={styles.assignAvatarImage}
+                          />
                         ) : (
                           <User size={20} color="#ffffff" />
                         )}

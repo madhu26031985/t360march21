@@ -40,6 +40,7 @@ import {
 } from '@/lib/journeyMeetingOpenData';
 import { prefetchEducationalCorner } from '@/lib/prefetchEducationalCorner';
 import { prefetchGrammarianCorner } from '@/lib/prefetchGrammarianCorner';
+import { prefetchToastmasterCorner } from '@/lib/prefetchToastmasterCorner';
 import { journeyHomeQueryKeys, fetchJourneyHomeSnapshot } from '@/lib/journeyHomeQuery';
 
 const ROLE_PLAYER_CONGRATS_STORAGE_PREFIX = 'journey_role_player_congrats_ack_v1_';
@@ -1278,6 +1279,7 @@ export default function MyJourney() {
           break;
         case 'toastmaster_theme':
           if (!currentOpenMeetingId) return;
+          prefetchToastmasterCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId);
           router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}&showCongrats=1`);
           break;
         case 'educational_speech':
@@ -1341,8 +1343,9 @@ export default function MyJourney() {
       Alert.alert('No open meeting', 'There is no current open meeting for Toastmaster.');
       return;
     }
+    prefetchToastmasterCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId);
     router.push(`/toastmaster-corner?meetingId=${currentOpenMeetingId}`);
-  }, [currentOpenMeetingId]);
+  }, [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId]);
 
   const handleEducationalSpeakerPress = useCallback(() => {
     if (!currentOpenMeetingId) {

@@ -8,13 +8,14 @@ export const excommManagementQueryKeys = {
 export type ExcommManagementBundle = {
   club: { id: string; name: string; club_number: string | null } | null;
   excomm: Record<string, unknown> | null;
+  /** RPC returns slim rows; legacy fetch may include avatar_url / phone_number. */
   members: Array<{
     id: string;
     full_name: string;
     email: string;
-    avatar_url: string | null;
-    phone_number: string | null;
     role: string;
+    avatar_url?: string | null;
+    phone_number?: string | null;
   }>;
 };
 
@@ -54,10 +55,18 @@ export async function fetchExcommManagementBundle(clubId: string): Promise<Excom
       excomm: Record<string, unknown> | null;
       members: ExcommManagementBundle['members'] | null;
     };
+    const members = (row.members ?? []).map((m) => ({
+      id: m.id,
+      full_name: m.full_name,
+      email: m.email,
+      role: m.role,
+      avatar_url: m.avatar_url ?? null,
+      phone_number: m.phone_number ?? null,
+    }));
     return {
       club: row.club ?? null,
       excomm: row.excomm ?? null,
-      members: row.members ?? [],
+      members,
     };
   }
 
