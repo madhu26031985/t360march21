@@ -127,16 +127,11 @@ export default function EvaluationCorner() {
     }
   ];
 
-  useEffect(() => {
-    if (meetingId) {
-      loadData();
-    }
-  }, [meetingId]);
-
-  // Refresh data when screen comes into focus (after navigating back from pathway form)
+  // Single load path: initial mount + every focus (e.g. return from pathway form).
+  // Avoid duplicating useEffect + useFocusEffect — that fired loadData twice and doubled
+  // heavy queries (e.g. full-club app_club_user_relationship embed).
   useFocusEffect(
     useCallback(() => {
-      console.log('🔄 Evaluation corner page focused, refreshing data...');
       if (meetingId) {
         loadData();
       }
@@ -197,7 +192,7 @@ export default function EvaluationCorner() {
         }
       }
 
-      await loadExistingEvaluationPathways();
+      await refreshRolesPathwaysAndProfiles();
     } catch (e) {
       console.error('Error assigning evaluator:', e);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -210,6 +205,7 @@ export default function EvaluationCorner() {
     setAssignTargetBooking(booking);
     setEvaluatorSearchQuery('');
     setAssignModalOpen(true);
+    void loadMemberDirectoryForAssignModal();
   };
 
   const parsePreparedOrIceSlot = (roleName: string): { kind: 'prepared' | 'ice'; slot: number } | null => {
@@ -371,8 +367,7 @@ export default function EvaluationCorner() {
       }
 
       await transferSpeechDetailsForSlotMove(role.role_name, meetingId, user.id);
-      await loadRoleBookings();
-      await loadExistingEvaluationPathways();
+      await refreshRolesPathwaysAndProfiles();
       Alert.alert('Booked', `${role.role_name} booked successfully.`);
     } catch (e) {
       console.error('Error booking slot:', e);
@@ -382,6 +377,94 @@ export default function EvaluationCorner() {
     }
   };
 
+  /** One DB round-trip for pathways + roles when migration is applied; else REST fallback. */
+  const tryLoadRolesAndPathwaysViaRpc = async (): Promise<
+    | {
+        ok: true;
+        roleRows: RoleBooking[];
+        pathwaysRecord: Record<string, ExistingEvaluationPathway>;
+        /** False if server RPC predates `meeting` in payload — caller should loadMeeting(). */
+        hasMeetingInSnapshot: boolean;
+      }
+    | { ok: false }
+  > => {
+    if (!meetingId) return { ok: false };
+
+    const { data, error } = await supabase.rpc('get_evaluation_corner_snapshot', {
+      p_meeting_id: meetingId,
+    });
+
+    if (error) {
+      console.warn('get_evaluation_corner_snapshot failed, using REST:', error.message);
+      return { ok: false };
+    }
+    if (data == null || typeof data !== 'object') {
+      console.warn('get_evaluation_corner_snapshot returned empty, using REST');
+      return { ok: false };
+    }
+
+    const snap = data as {
+      pathways?: unknown[];
+      roles?: unknown[];
+      meeting?: Meeting | null;
+    };
+    const pathwaysArr = Array.isArray(snap.pathways) ? snap.pathways : [];
+    const rolesArr = Array.isArray(snap.roles) ? snap.roles : [];
+
+    const hasMeetingInSnapshot = !!(
+      snap.meeting &&
+      typeof snap.meeting === 'object' &&
+      (snap.meeting as Meeting).id
+    );
+    if (hasMeetingInSnapshot) {
+      setMeeting(snap.meeting as Meeting);
+    }
+
+    const pathwaysRecord: Record<string, ExistingEvaluationPathway> = {};
+    pathwaysArr.forEach((raw) => {
+      const pathway = raw as ExistingEvaluationPathway;
+      pathwaysRecord[`${pathway.user_id}_${pathway.role_name}`] = pathway;
+    });
+    setExistingEvaluationPathways(pathwaysRecord);
+
+    const booked: RoleBooking[] = [];
+    const available: RoleBooking[] = [];
+    for (const raw of rolesArr) {
+      const row = raw as {
+        id: string;
+        assigned_user_id: string | null;
+        role_name: string;
+        role_metric: string;
+        booking_status: string;
+        role_classification: string | null;
+        app_user_profiles?: UserProfile | null;
+      };
+      const roleData: RoleBooking = {
+        id: row.id,
+        user_id: row.assigned_user_id || '',
+        role_name: row.role_name,
+        role_metric: row.role_metric,
+        booking_status: row.booking_status,
+        role_classification: row.role_classification,
+        app_user_profiles: row.app_user_profiles as RoleBooking['app_user_profiles'],
+      };
+      if (row.booking_status === 'booked' && row.assigned_user_id) {
+        booked.push(roleData);
+      } else if (row.booking_status === 'open') {
+        available.push(roleData);
+      }
+    }
+    setRoleBookings(booked);
+    setAvailableRoles(available);
+
+    return {
+      ok: true,
+      roleRows: [...booked, ...available],
+      pathwaysRecord,
+      hasMeetingInSnapshot,
+    };
+  };
+
   const loadData = async () => {
     if (!meetingId || !user?.currentClubId) {
       setIsLoading(false);
@@ -389,12 +472,21 @@ export default function EvaluationCorner() {
     }
 
     try {
-      await Promise.all([
-        loadMeeting(),
-        loadRoleBookings(),
-        loadExistingEvaluationPathways(),
-        loadUserProfiles()
-      ]);
+      const rpc = await tryLoadRolesAndPathwaysViaRpc();
+
+      if (rpc.ok) {
+        if (!rpc.hasMeetingInSnapshot) {
+          await loadMeeting();
+        }
+        await hydrateUserProfilesForScreen(rpc.roleRows, rpc.pathwaysRecord);
+      } else {
+        const [, roleRows, pathwaysRecord] = await Promise.all([
+          loadMeeting(),
+          loadRoleBookings(),
+          loadExistingEvaluationPathways(),
+        ]);
+        await hydrateUserProfilesForScreen(roleRows, pathwaysRecord);
+      }
     } catch (error) {
       console.error('Error loading data:', error);
       Alert.alert('Error', 'Failed to load evaluation data');
@@ -424,8 +516,8 @@ export default function EvaluationCorner() {
     }
   };
 
-  const loadRoleBookings = async () => {
-    if (!meetingId || !user?.currentClubId) return;
+  const loadRoleBookings = async (): Promise<RoleBooking[]> => {
+    if (!meetingId || !user?.currentClubId) return [];
 
     try {
       // Load prepared-speaker and evaluator roles for this meeting
@@ -452,7 +544,7 @@ export default function EvaluationCorner() {
 
       if (error) {
         console.error('Error loading role bookings:', error);
-        return;
+        return [];
       }
 
       // Separate booked and available roles
@@ -479,18 +571,17 @@ export default function EvaluationCorner() {
 
       setRoleBookings(booked);
       setAvailableRoles(available);
+      return [...booked, ...available];
     } catch (error) {
       console.error('Error loading role bookings:', error);
+      return [];
     }
   };
 
-  const loadExistingEvaluationPathways = async () => {
-    if (!meetingId || !user) return;
+  const loadExistingEvaluationPathways = async (): Promise<Record<string, ExistingEvaluationPathway>> => {
+    if (!meetingId || !user) return {};
 
     try {
-      console.log('🔄 Refreshing evaluation pathways data...');
-      console.log('Loading existing evaluation pathways for meeting:', meetingId);
-      
       const { data, error } = await supabase
         .from('app_evaluation_pathway')
         .select(`
@@ -526,68 +617,127 @@ export default function EvaluationCorner() {
         `)
         .eq('meeting_id', meetingId);
 
-      console.log('Evaluation pathways query result:', { count: data?.length || 0, error });
-
       if (error) {
         console.error('Error loading existing evaluation pathways:', error);
-        return;
+        return {};
       }
 
-      // Group by user_id and role_name
       const pathways: Record<string, ExistingEvaluationPathway> = {};
       (data || []).forEach(pathway => {
         const key = `${pathway.user_id}_${pathway.role_name}`;
         pathways[key] = pathway as ExistingEvaluationPathway;
-        console.log('✅ Loaded pathway for key:', key, {
-          speechTitle: pathway.speech_title,
-          pathwayName: pathway.pathway_name,
-          level: pathway.level,
-          projectName: pathway.project_name,
-          projectNumber: pathway.project_number,
-          evaluationForm: pathway.evaluation_form,
-          assignedEvaluatorId: pathway.assigned_evaluator_id
-        });
       });
 
       setExistingEvaluationPathways(pathways);
-      console.log('✅ Total pathways loaded:', Object.keys(pathways).length);
-      console.log('✅ All pathways:', JSON.stringify(pathways, null, 2));
+      return pathways;
     } catch (error) {
       console.error('Error loading existing evaluation pathways:', error);
+      return {};
     }
   };
 
-  const loadUserProfiles = async () => {
-    if (!user?.currentClubId) return;
-
-    try {
+  /** Main list: profiles from role rows + any assigned evaluators not on those rows (one small IN query). */
+  const hydrateUserProfilesForScreen = async (
+    roles: RoleBooking[],
+    pathways: Record<string, ExistingEvaluationPathway>
+  ) => {
+    const byId = new Map<string, UserProfile>();
+    for (const r of roles) {
+      const p = r.app_user_profiles;
+      if (p?.id) {
+        byId.set(p.id, p);
+      }
+    }
+    const missing = new Set<string>();
+    for (const p of Object.values(pathways)) {
+      const eid = p.assigned_evaluator_id;
+      if (eid && !byId.has(eid)) {
+        missing.add(eid);
+      }
+    }
+    if (missing.size > 0) {
       const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select(`
+        .from('app_user_profiles')
+        .select('id, full_name, email, avatar_url')
+        .in('id', [...missing]);
+      if (!error && data) {
+        for (const row of data as UserProfile[]) {
+          byId.set(row.id, row);
+        }
+      }
+    }
+    setUserProfiles(Object.fromEntries(byId));
+  };
+
+  const refreshRolesPathwaysAndProfiles = async () => {
+    const rpc = await tryLoadRolesAndPathwaysViaRpc();
+    if (rpc.ok) {
+      if (!rpc.hasMeetingInSnapshot) {
+        await loadMeeting();
+      }
+      await hydrateUserProfilesForScreen(rpc.roleRows, rpc.pathwaysRecord);
+      return;
+    }
+    const [roleRows, pathwaysRecord] = await Promise.all([
+      loadRoleBookings(),
+      loadExistingEvaluationPathways(),
+    ]);
+    await hydrateUserProfilesForScreen(roleRows, pathwaysRecord);
+  };
+
+  /** Full club roster for “Assign evaluator” modal only (RPC — avoids heavy relationship embed). */
+  const loadMemberDirectoryForAssignModal = async () => {
+    if (!user?.currentClubId) return;
+    try {
+      const { data, error } = await supabase.rpc('get_club_member_directory', {
+        target_club_id: user.currentClubId,
+      });
+      if (error) {
+        console.error('get_club_member_directory error:', error);
+        const { data: relData, error: relErr } = await supabase
+          .from('app_club_user_relationship')
+          .select(
+            `
           app_user_profiles (
             id,
             full_name,
             email,
             avatar_url
           )
-        `)
-        .eq('club_id', user.currentClubId)
-        .eq('is_authenticated', true);
-
-      if (error) {
-        console.error('Error loading user profiles:', error);
+        `
+          )
+          .eq('club_id', user.currentClubId)
+          .eq('is_authenticated', true);
+        if (relErr) {
+          console.error('Fallback club profile load failed:', relErr);
+          return;
+        }
+        const profiles: Record<string, UserProfile> = {};
+        (relData || []).forEach((item) => {
+          const profile = (item as { app_user_profiles: UserProfile }).app_user_profiles;
+          if (profile?.id) profiles[profile.id] = profile;
+        });
+        setUserProfiles((prev) => ({ ...profiles, ...prev }));
         return;
       }
-
-      const profiles: Record<string, UserProfile> = {};
-      (data || []).forEach(item => {
-        const profile = (item as any).app_user_profiles;
-        profiles[profile.id] = profile;
-      });
-
-      setUserProfiles(profiles);
-    } catch (error) {
-      console.error('Error loading user profiles:', error);
+      const rows = (data || []) as {
+        user_id: string;
+        full_name: string;
+        email: string;
+        avatar_url: string | null;
+      }[];
+      const fromRpc: Record<string, UserProfile> = {};
+      for (const row of rows) {
+        fromRpc[row.user_id] = {
+          id: row.user_id,
+          full_name: row.full_name,
+          email: row.email,
+          avatar_url: row.avatar_url,
+        };
+      }
+      setUserProfiles((prev) => ({ ...fromRpc, ...prev }));
+    } catch (e) {
+      console.error('loadMemberDirectoryForAssignModal:', e);
     }
   };
 
@@ -765,7 +915,7 @@ export default function EvaluationCorner() {
       Alert.alert('Success', 'Pathway information saved successfully');
       setShowEditModal(false);
       setSelectedBooking(null);
-      loadExistingEvaluationPathways();
+      void refreshRolesPathwaysAndProfiles();
     } catch (error) {
       console.error('Error saving pathway:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -876,7 +1026,7 @@ export default function EvaluationCorner() {
               }
 
               Alert.alert('Success', 'Your speech has been submitted for VPE approval');
-              loadExistingEvaluationPathways();
+              void refreshRolesPathwaysAndProfiles();
             } catch (error) {
               console.error('Error requesting VPE approval:', error);
               Alert.alert('Error', 'An unexpected error occurred');

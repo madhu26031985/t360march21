@@ -22,6 +22,21 @@ import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, w
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { supabase } from '@/lib/supabase';
 import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
+import {
+  type MeetingRoleRow,
+  orderedUniqueUserIds,
+  mapIdsToAvatarUrls,
+  isGrammarianRole,
+  isToastmasterRole,
+  isEducationalSpeakerRoleRow,
+  isPreparedSpeakerRole,
+  isTableTopicsMasterRole,
+  isTableTopicsSpeakerRole,
+  isSpeechEvaluatorRole,
+  isGeneralEvaluatorRole,
+  isTimerRole,
+  isAhCounterRole,
+} from '@/lib/journeyMeetingOpenData';
 
 const ROLE_PLAYER_CONGRATS_STORAGE_PREFIX = 'journey_role_player_congrats_ack_v1_';
 
@@ -360,8 +375,15 @@ function JourneyListCard({
 
 export default function MyJourney() {
   const { theme } = useTheme();
-  const { user, isAuthenticated, refreshUserProfile } = useAuth();
-  const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const { user, isAuthenticated, refreshUserProfile, hasInitialized } = useAuth();
+  const profileFieldsLoaded = hasInitialized && !!user;
+  const userAvatar = (user?.avatarUrl || '').trim() || null;
+  const profileHasAbout =
+    typeof user?.profileAbout === 'string' && user.profileAbout.trim().length > 0;
+  const [headerAvatarLoadFailed, setHeaderAvatarLoadFailed] = useState(false);
+  useEffect(() => {
+    setHeaderAvatarLoadFailed(false);
+  }, [user?.avatarUrl]);
   const [currentOpenMeetingId, setCurrentOpenMeetingId] = useState<string | null>(null);
   const [currentOpenMeetingTitle, setCurrentOpenMeetingTitle] = useState<string | null>(null);
   const [currentOpenMeetingDate, setCurrentOpenMeetingDate] = useState<string | null>(null);
@@ -395,9 +417,6 @@ export default function MyJourney() {
   const [journeyTimerAvatarUrls, setJourneyTimerAvatarUrls] = useState<string[]>([]);
   const [journeyAhCounterAvatarUrls, setJourneyAhCounterAvatarUrls] = useState<string[]>([]);
   const [showBookRoleAttention, setShowBookRoleAttention] = useState<boolean>(false);
-  /** Profile “About” has non-empty text */
-  const [profileHasAbout, setProfileHasAbout] = useState<boolean>(false);
-  const [profileFieldsLoaded, setProfileFieldsLoaded] = useState<boolean>(false);
   /** Vice President Education for current club (`club_profiles.vpe_id`) */
   const [isVPEForCurrentClub, setIsVPEForCurrentClub] = useState<boolean>(false);
   const [showNoTasksModal, setShowNoTasksModal] = useState<boolean>(false);
@@ -557,55 +576,38 @@ export default function MyJourney() {
         const clubId = user.currentClubId;
         const uid = user.id;
 
-        // Run in parallel — was 4 sequential round-trips (~4× RTT on slow networks).
-        const [meetingRes, rolesRes, speechesRes, evalsRes] = await Promise.all([
-          supabase
-            .from('app_meeting_roles_management')
-            .select('meeting_id')
-            .eq('club_id', clubId)
-            .eq('assigned_user_id', uid)
-            .eq('booking_status', 'booked'),
-          supabase
-            .from('app_meeting_roles_management')
-            .select('id', { count: 'exact', head: true })
-            .eq('club_id', clubId)
-            .eq('assigned_user_id', uid)
-            .eq('booking_status', 'booked'),
-          supabase
-            .from('app_meeting_roles_management')
-            .select('id', { count: 'exact', head: true })
-            .eq('club_id', clubId)
-            .eq('assigned_user_id', uid)
-            .eq('booking_status', 'booked')
-            .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%'),
-          supabase
-            .from('app_meeting_roles_management')
-            .select('id', { count: 'exact', head: true })
-            .eq('club_id', clubId)
-            .eq('assigned_user_id', uid)
-            .eq('booking_status', 'booked')
-            .in('role_classification', ['Speech evaluvator', 'Master evaluvator', 'speech_evaluator']),
-        ]);
+        const { data: rows, error } = await supabase
+          .from('app_meeting_roles_management')
+          .select('meeting_id, role_classification, role_name')
+          .eq('club_id', clubId)
+          .eq('assigned_user_id', uid)
+          .eq('booking_status', 'booked');
 
-        const { data: meetingData, error: meetingErr } = meetingRes;
-        if (!meetingErr) {
-          const distinctMeetingIds = new Set((meetingData || []).map((row: any) => row.meeting_id));
-          setMeetingAttendedCount(distinctMeetingIds.size);
-        } else {
-          console.error('Error loading meeting attended count:', meetingErr);
+        if (error) {
+          console.error('Error loading journey stats:', error);
+          return;
         }
 
-        const { count: rolesCount, error: rolesErr } = rolesRes;
-        if (!rolesErr) setRolesCompletedCount(rolesCount ?? 0);
-        else console.error('Error loading roles completed count:', rolesErr);
+        const list = rows || [];
+        const distinctMeetingIds = new Set(list.map((row: { meeting_id: string }) => row.meeting_id));
+        setMeetingAttendedCount(distinctMeetingIds.size);
+        setRolesCompletedCount(list.length);
 
-        const { count: speechesCount, error: speechesErr } = speechesRes;
-        if (!speechesErr) setSpeechesGivenCount(speechesCount ?? 0);
-        else console.error('Error loading speeches given count:', speechesErr);
-
-        const { count: evalsCount, error: evalsErr } = evalsRes;
-        if (!evalsErr) setEvaluationsGivenCount(evalsCount ?? 0);
-        else console.error('Error loading evaluations given count:', evalsErr);
+        const isPrepared = (r: { role_classification?: string | null; role_name?: string | null }) => {
+          const rc = r.role_classification || '';
+          const rn = (r.role_name || '').toLowerCase();
+          if (rc === 'Prepared Speaker') return true;
+          if (rn.includes('prepared') && rn.includes('speaker')) return true;
+          if (rn.includes('ice') && rn.includes('breaker')) return true;
+          return false;
+        };
+        const evalClass = new Set([
+          'Speech evaluvator',
+          'Master evaluvator',
+          'speech_evaluator',
+        ]);
+        setSpeechesGivenCount(list.filter(isPrepared).length);
+        setEvaluationsGivenCount(list.filter((r) => evalClass.has(r.role_classification || '')).length);
       } catch (e) {
         console.error('Error loading journey stats:', e);
       }
@@ -613,48 +615,6 @@ export default function MyJourney() {
 
     if (isAuthenticated) loadJourneyStats();
   }, [isAuthenticated, user?.id, user?.currentClubId]);
-
-  const loadUserJourneyProfileFields = useCallback(async () => {
-    const uid = user?.id;
-    if (!uid) {
-      setUserAvatar(null);
-      setProfileHasAbout(false);
-      setProfileFieldsLoaded(false);
-      return;
-    }
-    try {
-      const { data, error } = await supabase
-        .from('app_user_profiles')
-        .select('avatar_url, About')
-        .eq('id', uid)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading journey profile fields:', error);
-        setUserAvatar(null);
-        setProfileHasAbout(false);
-        return;
-      }
-
-      const row = data as { avatar_url?: string | null; About?: string | null } | null;
-      const url = (row?.avatar_url ?? '').trim();
-      setUserAvatar(url || null);
-      const aboutRaw = row?.About;
-      setProfileHasAbout(typeof aboutRaw === 'string' && aboutRaw.trim().length > 0);
-    } catch (e) {
-      console.error('Could not load journey profile fields:', e);
-      setUserAvatar(null);
-      setProfileHasAbout(false);
-    } finally {
-      setProfileFieldsLoaded(true);
-    }
-  }, [user?.id]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadUserJourneyProfileFields();
-    }, [loadUserJourneyProfileFields])
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -761,7 +721,7 @@ export default function MyJourney() {
       refreshCurrentOpenMeeting();
       const id = setInterval(() => {
         refreshCurrentOpenMeeting();
-      }, 5000);
+      }, 30000);
       return () => clearInterval(id);
     }, [refreshCurrentOpenMeeting])
   );
@@ -871,85 +831,27 @@ export default function MyJourney() {
     };
   }, [user?.currentClubId, user?.id, refreshPollStatus]);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!currentOpenMeetingId || !user?.id) {
-        setTmodNeedsThemeAlert(false);
-        setUserBookedToastmaster(false);
-        return;
-      }
-      let cancelled = false;
-      (async () => {
-        const { data: roleData } = await supabase
-          .from('app_meeting_roles_management')
-          .select('id, assigned_user_id')
-          .eq('meeting_id', currentOpenMeetingId)
-          .ilike('role_name', '%toastmaster%')
-          .eq('booking_status', 'booked')
-          .limit(1);
-        const role = Array.isArray(roleData) && roleData.length > 0 ? roleData[0] : null;
-        const isCurrentUserTmod = !!(role && role.assigned_user_id === user.id);
-        if (!cancelled) {
-          setUserBookedToastmaster(isCurrentUserTmod);
-        }
-        if (!isCurrentUserTmod || cancelled) {
-          if (!cancelled) setTmodNeedsThemeAlert(false);
-          return;
-        }
-        const { data: themeData } = await supabase
-          .from('toastmaster_meeting_data')
-          .select('theme_of_the_day')
-          .eq('meeting_id', currentOpenMeetingId)
-          .eq('toastmaster_user_id', user.id)
-          .maybeSingle();
-        const hasTheme = !!(themeData?.theme_of_the_day?.trim());
-        if (!cancelled) setTmodNeedsThemeAlert(!hasTheme);
-      })();
-      return () => { cancelled = true; };
-    }, [currentOpenMeetingId, user?.id])
-  );
+  const resetJourneyMeetingDerivedState = useCallback(() => {
+    setTmodNeedsThemeAlert(false);
+    setUserBookedToastmaster(false);
+    setEducationalSpeakerNeedsAlert(false);
+    setPreparedSpeakerNeedsSpeechDetailsAlert(false);
+    setGrammarianNeedsWordOfTheDayAlert(false);
+    setJourneyGrammarianAvatarUrls([]);
+    setJourneyToastmasterAvatarUrls([]);
+    setJourneyEducationalAvatarUrls([]);
+    setJourneyPreparedSpeakerAvatarUrls([]);
+    setJourneyTableTopicsMasterAvatarUrls([]);
+    setJourneyTableTopicsSpeakerAvatarUrls([]);
+    setJourneySpeechEvaluatorAvatarUrls([]);
+    setJourneyGeneralEvaluatorAvatarUrls([]);
+    setJourneyTimerAvatarUrls([]);
+    setJourneyAhCounterAvatarUrls([]);
+    setShowBookRoleAttention(false);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      if (!currentOpenMeetingId || !user?.id) {
-        setEducationalSpeakerNeedsAlert(false);
-        return;
-      }
-      let cancelled = false;
-      (async () => {
-        const { data: roleData } = await supabase
-          .from('app_meeting_roles_management')
-          .select('id, assigned_user_id')
-          .eq('meeting_id', currentOpenMeetingId)
-          .eq('role_name', 'Educational Speaker')
-          .eq('role_status', 'Available')
-          .eq('booking_status', 'booked')
-          .limit(1);
-        const role = Array.isArray(roleData) && roleData.length > 0 ? roleData[0] : null;
-        const isCurrentUserEdSpeaker = role && role.assigned_user_id === user.id;
-        if (!isCurrentUserEdSpeaker || cancelled) {
-          if (!cancelled) setEducationalSpeakerNeedsAlert(false);
-          return;
-        }
-        const { data: contentData } = await supabase
-          .from('app_meeting_educational_speaker')
-          .select('speech_title')
-          .eq('meeting_id', currentOpenMeetingId)
-          .eq('speaker_user_id', user.id)
-          .maybeSingle();
-        const hasContent = !!(contentData?.speech_title?.trim());
-        if (!cancelled) setEducationalSpeakerNeedsAlert(!hasContent);
-      })();
-      return () => { cancelled = true; };
-    }, [currentOpenMeetingId, user?.id])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!currentOpenMeetingId || !user?.id || isCurrentOpenMeetingCompleted) {
-        setPreparedSpeakerNeedsSpeechDetailsAlert(false);
-        return;
-      }
       let cancelled = false;
 
       const pathwayHasSpeechDetails = (p: {
@@ -971,320 +873,224 @@ export default function MyJourney() {
         );
 
       (async () => {
-        const { data: psRoles, error: rolesErr } = await supabase
+        if (!currentOpenMeetingId || !user?.id) {
+          resetJourneyMeetingDerivedState();
+          return;
+        }
+
+        if (isCurrentOpenMeetingCompleted) {
+          resetJourneyMeetingDerivedState();
+          return;
+        }
+
+        const meetingId = currentOpenMeetingId;
+        const uid = user.id;
+
+        const { data: roleRows, error: rolesErr } = await supabase
           .from('app_meeting_roles_management')
-          .select('role_name')
-          .eq('meeting_id', currentOpenMeetingId)
-          .eq('assigned_user_id', user.id)
-          .eq('booking_status', 'booked')
-          .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%ice%breaker%');
-
-        if (rolesErr || cancelled) {
-          if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(false);
-          return;
-        }
-        if (!psRoles?.length) {
-          if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(false);
-          return;
-        }
-
-        const { data: pathways, error: pathErr } = await supabase
-          .from('app_evaluation_pathway')
-          .select(
-            'role_name, speech_title, pathway_name, level, project_name, evaluation_form, comments_for_evaluator'
-          )
-          .eq('meeting_id', currentOpenMeetingId)
-          .eq('user_id', user.id);
-
-        if (pathErr || cancelled) {
-          if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(false);
-          return;
-        }
-
-        const byRole = new Map(
-          (pathways || []).map((row: any) => [row.role_name as string, row])
-        );
-
-        let needs = false;
-        for (const row of psRoles) {
-          const p = byRole.get(row.role_name);
-          if (!pathwayHasSpeechDetails(p || null)) {
-            needs = true;
-            break;
-          }
-        }
-        if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(needs);
-      })();
-
-      return () => {
-        cancelled = true;
-      };
-    }, [currentOpenMeetingId, user?.id, isCurrentOpenMeetingCompleted])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!currentOpenMeetingId || !user?.id || isCurrentOpenMeetingCompleted) {
-        setGrammarianNeedsWordOfTheDayAlert(false);
-        return;
-      }
-      let cancelled = false;
-      (async () => {
-        const { data: gRole, error: rErr } = await supabase
-          .from('app_meeting_roles_management')
-          .select('id')
-          .eq('meeting_id', currentOpenMeetingId)
-          .eq('assigned_user_id', user.id)
-          .eq('booking_status', 'booked')
-          .ilike('role_name', '%grammarian%')
-          .limit(1)
-          .maybeSingle();
-
-        if (rErr || cancelled || !gRole) {
-          if (!cancelled) setGrammarianNeedsWordOfTheDayAlert(false);
-          return;
-        }
-
-        const [dailyRes, wotdRes] = await Promise.all([
-          supabase
-            .from('app_grammarian_daily_elements')
-            .select('word_of_the_day')
-            .eq('meeting_id', currentOpenMeetingId)
-            .eq('grammarian_user_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          supabase
-            .from('grammarian_word_of_the_day')
-            .select('word, grammarian_user_id')
-            .eq('meeting_id', currentOpenMeetingId)
-            .maybeSingle(),
-        ]);
+          .select('id, assigned_user_id, role_name, role_classification, role_status')
+          .eq('meeting_id', meetingId)
+          .eq('booking_status', 'booked');
 
         if (cancelled) return;
 
-        const dailyWord = (dailyRes.data?.word_of_the_day || '').trim();
-        const wotd = wotdRes.data;
-        const structuredWord =
-          wotd && wotd.grammarian_user_id === user.id ? (wotd.word || '').trim() : '';
+        if (rolesErr || !roleRows) {
+          console.error('Error loading meeting roles for Journey:', rolesErr);
+          resetJourneyMeetingDerivedState();
+          return;
+        }
 
-        const hasWord = !!(dailyWord || structuredWord);
-        if (!cancelled) setGrammarianNeedsWordOfTheDayAlert(!hasWord);
-      })();
+        const rows = roleRows as MeetingRoleRow[];
 
-      return () => {
-        cancelled = true;
-      };
-    }, [currentOpenMeetingId, user?.id, isCurrentOpenMeetingCompleted])
-  );
+        const idsG = orderedUniqueUserIds(rows, isGrammarianRole);
+        const idsTm = orderedUniqueUserIds(rows, isToastmasterRole);
+        const idsE = orderedUniqueUserIds(rows, isEducationalSpeakerRoleRow);
+        const idsP = orderedUniqueUserIds(rows, isPreparedSpeakerRole);
+        const idsTtm = orderedUniqueUserIds(rows, isTableTopicsMasterRole);
+        const idsTts = orderedUniqueUserIds(rows, isTableTopicsSpeakerRole);
+        const idsSe = orderedUniqueUserIds(rows, isSpeechEvaluatorRole);
+        const idsGe = orderedUniqueUserIds(rows, isGeneralEvaluatorRole);
+        const idsTimer = orderedUniqueUserIds(rows, isTimerRole);
+        const idsAh = orderedUniqueUserIds(rows, isAhCounterRole);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!currentOpenMeetingId || isCurrentOpenMeetingCompleted) {
-        setJourneyGrammarianAvatarUrls([]);
-        setJourneyToastmasterAvatarUrls([]);
-        setJourneyEducationalAvatarUrls([]);
-        setJourneyPreparedSpeakerAvatarUrls([]);
-        setJourneyTableTopicsMasterAvatarUrls([]);
-        setJourneyTableTopicsSpeakerAvatarUrls([]);
-        setJourneySpeechEvaluatorAvatarUrls([]);
-        setJourneyGeneralEvaluatorAvatarUrls([]);
-        setJourneyTimerAvatarUrls([]);
-        setJourneyAhCounterAvatarUrls([]);
-        return;
-      }
-      const meetingId = currentOpenMeetingId;
-      let cancelled = false;
+        const allAvatarIds = [
+          ...new Set([
+            ...idsG,
+            ...idsTm,
+            ...idsE,
+            ...idsP,
+            ...idsTtm,
+            ...idsTts,
+            ...idsSe,
+            ...idsGe,
+            ...idsTimer,
+            ...idsAh,
+          ]),
+        ];
 
-      const orderedAvatarUrlsForRoles = async (
-        rolesPromise: Promise<{
-          data: { assigned_user_id: string | null }[] | null;
-          error: unknown;
-        }>
-      ): Promise<string[]> => {
-        const { data, error } = await rolesPromise;
-        if (cancelled || error || !data?.length) return [];
-        const seen = new Set<string>();
-        const orderedIds: string[] = [];
-        for (const row of data) {
-          const id = row.assigned_user_id;
-          if (id && !seen.has(id)) {
-            seen.add(id);
-            orderedIds.push(id);
+        const urlById = new Map<string, string | null | undefined>();
+        if (allAvatarIds.length > 0) {
+          const { data: profiles, error: pErr } = await supabase
+            .from('app_user_profiles')
+            .select('id, avatar_url')
+            .in('id', allAvatarIds);
+          if (!cancelled && !pErr && profiles) {
+            for (const p of profiles as { id: string; avatar_url: string | null }[]) {
+              urlById.set(p.id, p.avatar_url);
+            }
           }
         }
-        if (!orderedIds.length) return [];
-        const { data: profiles, error: pErr } = await supabase
-          .from('app_user_profiles')
-          .select('id, avatar_url')
-          .in('id', orderedIds);
-        if (cancelled || pErr || !profiles?.length) return [];
-        const urlById = new Map(
-          (profiles as { id: string; avatar_url: string | null }[]).map((p) => [
-            p.id,
-            (p.avatar_url || '').trim() || null,
-          ])
+
+        if (cancelled) return;
+
+        setJourneyGrammarianAvatarUrls(mapIdsToAvatarUrls(idsG, urlById));
+        setJourneyToastmasterAvatarUrls(mapIdsToAvatarUrls(idsTm, urlById));
+        setJourneyEducationalAvatarUrls(mapIdsToAvatarUrls(idsE, urlById));
+        setJourneyPreparedSpeakerAvatarUrls(mapIdsToAvatarUrls(idsP, urlById));
+        setJourneyTableTopicsMasterAvatarUrls(mapIdsToAvatarUrls(idsTtm, urlById));
+        setJourneyTableTopicsSpeakerAvatarUrls(mapIdsToAvatarUrls(idsTts, urlById));
+        setJourneySpeechEvaluatorAvatarUrls(mapIdsToAvatarUrls(idsSe, urlById));
+        setJourneyGeneralEvaluatorAvatarUrls(mapIdsToAvatarUrls(idsGe, urlById));
+        setJourneyTimerAvatarUrls(mapIdsToAvatarUrls(idsTimer, urlById));
+        setJourneyAhCounterAvatarUrls(mapIdsToAvatarUrls(idsAh, urlById));
+
+        const userBookedTm = rows.some(
+          (r) => isToastmasterRole(r) && r.assigned_user_id === uid
         );
-        return orderedIds.map((id) => urlById.get(id)).filter((u): u is string => !!u);
-      };
+        setUserBookedToastmaster(userBookedTm);
 
-      (async () => {
-        const [
-          gUrls,
-          tmUrls,
-          eUrls,
-          pUrls,
-          ttmUrls,
-          ttsUrls,
-          seUrls,
-          geUrls,
-          timerUrls,
-          ahUrls,
-        ] = await Promise.all([
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .ilike('role_name', '%grammarian%')
-          ),
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .ilike('role_name', '%toastmaster%')
-          ),
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .eq('role_name', 'Educational Speaker')
-          ),
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%ice%breaker%')
-          ),
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .ilike('role_name', '%table%topics%master%')
-          ),
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .or(
-                'role_name.ilike.%Table Topics Speaker%,role_name.ilike.%Table Topic Speaker%,role_name.ilike.%Table Topics Participant%,role_name.ilike.%Table Topic Participant%'
-              )
-          ),
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .in('role_classification', [
-                'Speech evaluvator',
-                'Master evaluvator',
-                'speech_evaluator',
-                'TT _ Evaluvator',
-              ])
-          ),
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .or(
-                'role_name.eq.General Evaluator,role_classification.eq.general_evaluator,role_name.ilike.%general%evaluator%'
-              )
-          ),
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .or('role_name.eq.Timer,role_name.ilike.timer')
-          ),
-          orderedAvatarUrlsForRoles(
-            supabase
-              .from('app_meeting_roles_management')
-              .select('assigned_user_id')
-              .eq('meeting_id', meetingId)
-              .eq('booking_status', 'booked')
-              .or('role_name.eq.Ah Counter,role_name.ilike.%ah%counter%')
-          ),
-        ]);
-        if (!cancelled) {
-          setJourneyGrammarianAvatarUrls(gUrls);
-          setJourneyToastmasterAvatarUrls(tmUrls);
-          setJourneyEducationalAvatarUrls(eUrls);
-          setJourneyPreparedSpeakerAvatarUrls(pUrls);
-          setJourneyTableTopicsMasterAvatarUrls(ttmUrls);
-          setJourneyTableTopicsSpeakerAvatarUrls(ttsUrls);
-          setJourneySpeechEvaluatorAvatarUrls(seUrls);
-          setJourneyGeneralEvaluatorAvatarUrls(geUrls);
-          setJourneyTimerAvatarUrls(timerUrls);
-          setJourneyAhCounterAvatarUrls(ahUrls);
+        const parallel: Promise<void>[] = [];
+
+        if (userBookedTm) {
+          parallel.push(
+            (async () => {
+              const { data: themeData } = await supabase
+                .from('toastmaster_meeting_data')
+                .select('theme_of_the_day')
+                .eq('meeting_id', meetingId)
+                .eq('toastmaster_user_id', uid)
+                .maybeSingle();
+              const hasTheme = !!(themeData?.theme_of_the_day?.trim());
+              if (!cancelled) setTmodNeedsThemeAlert(!hasTheme);
+            })()
+          );
+        } else {
+          setTmodNeedsThemeAlert(false);
         }
+
+        const edAssigned = rows.find(
+          (r) =>
+            r.role_name === 'Educational Speaker' &&
+            r.role_status === 'Available' &&
+            r.assigned_user_id === uid
+        );
+        if (edAssigned) {
+          parallel.push(
+            (async () => {
+              const { data: contentData } = await supabase
+                .from('app_meeting_educational_speaker')
+                .select('speech_title')
+                .eq('meeting_id', meetingId)
+                .eq('speaker_user_id', uid)
+                .maybeSingle();
+              const hasContent = !!(contentData?.speech_title?.trim());
+              if (!cancelled) setEducationalSpeakerNeedsAlert(!hasContent);
+            })()
+          );
+        } else {
+          setEducationalSpeakerNeedsAlert(false);
+        }
+
+        const psRoles = rows.filter((r) => r.assigned_user_id === uid && isPreparedSpeakerRole(r));
+        if (!psRoles.length) {
+          setPreparedSpeakerNeedsSpeechDetailsAlert(false);
+        } else {
+          parallel.push(
+            (async () => {
+              const { data: pathways, error: pathErr } = await supabase
+                .from('app_evaluation_pathway')
+                .select(
+                  'role_name, speech_title, pathway_name, level, project_name, evaluation_form, comments_for_evaluator'
+                )
+                .eq('meeting_id', meetingId)
+                .eq('user_id', uid);
+
+              if (pathErr || cancelled) {
+                if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(false);
+                return;
+              }
+
+              const byRole = new Map(
+                (pathways || []).map((row: { role_name: string }) => [row.role_name as string, row])
+              );
+
+              let needs = false;
+              for (const row of psRoles) {
+                const p = byRole.get(row.role_name as string);
+                if (!pathwayHasSpeechDetails(p || null)) {
+                  needs = true;
+                  break;
+                }
+              }
+              if (!cancelled) setPreparedSpeakerNeedsSpeechDetailsAlert(needs);
+            })()
+          );
+        }
+
+        const hasGramRole = rows.some((r) => r.assigned_user_id === uid && isGrammarianRole(r));
+        if (hasGramRole) {
+          parallel.push(
+            (async () => {
+              const [dailyRes, wotdRes] = await Promise.all([
+                supabase
+                  .from('app_grammarian_daily_elements')
+                  .select('word_of_the_day')
+                  .eq('meeting_id', meetingId)
+                  .eq('grammarian_user_id', uid)
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle(),
+                supabase
+                  .from('grammarian_word_of_the_day')
+                  .select('word, grammarian_user_id')
+                  .eq('meeting_id', meetingId)
+                  .maybeSingle(),
+              ]);
+              if (cancelled) return;
+              const dailyWord = (dailyRes.data?.word_of_the_day || '').trim();
+              const wotd = wotdRes.data;
+              const structuredWord =
+                wotd && wotd.grammarian_user_id === uid ? (wotd.word || '').trim() : '';
+              const hasWord = !!(dailyWord || structuredWord);
+              if (!cancelled) setGrammarianNeedsWordOfTheDayAlert(!hasWord);
+            })()
+          );
+        } else {
+          setGrammarianNeedsWordOfTheDayAlert(false);
+        }
+
+        const rlow = (user.clubRole || user.role || '').toLowerCase();
+        if (rlow === 'guest') {
+          setShowBookRoleAttention(false);
+        } else {
+          const userRoleCount = rows.filter((r) => r.assigned_user_id === uid).length;
+          setShowBookRoleAttention(userRoleCount === 0);
+        }
+
+        await Promise.all(parallel);
       })();
 
       return () => {
         cancelled = true;
       };
-    }, [currentOpenMeetingId, isCurrentOpenMeetingCompleted])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!currentOpenMeetingId || !user?.id || !user?.currentClubId) {
-        setShowBookRoleAttention(false);
-        return;
-      }
-      if (isCurrentOpenMeetingCompleted) {
-        setShowBookRoleAttention(false);
-        return;
-      }
-      const r = (user.clubRole || user.role || '').toLowerCase();
-      if (r === 'guest') {
-        setShowBookRoleAttention(false);
-        return;
-      }
-      let cancelled = false;
-      (async () => {
-        try {
-          const { count, error } = await supabase
-            .from('app_meeting_roles_management')
-            .select('id', { count: 'exact', head: true })
-            .eq('club_id', user.currentClubId)
-            .eq('meeting_id', currentOpenMeetingId)
-            .eq('assigned_user_id', user.id)
-            .eq('booking_status', 'booked');
-          if (!cancelled) setShowBookRoleAttention(!error && (count ?? 0) === 0);
-        } catch {
-          if (!cancelled) setShowBookRoleAttention(false);
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }, [currentOpenMeetingId, user?.id, user?.currentClubId, user?.clubRole, user?.role, isCurrentOpenMeetingCompleted])
+    }, [
+      currentOpenMeetingId,
+      user?.id,
+      user?.clubRole,
+      user?.role,
+      isCurrentOpenMeetingCompleted,
+      resetJourneyMeetingDerivedState,
+    ])
   );
 
   const refreshJourneyLiveTaskFlags = useCallback(async () => {
@@ -1689,11 +1495,11 @@ export default function MyJourney() {
               ]}
             >
               <View style={styles.profileAvatar}>
-                {userAvatar ? (
+                {userAvatar && !headerAvatarLoadFailed ? (
                   <Image
                     source={{ uri: userAvatar }}
                     style={styles.profileAvatarImage}
-                    onError={() => setUserAvatar(null)}
+                    onError={() => setHeaderAvatarLoadFailed(true)}
                   />
                 ) : (
                   <User size={20} color="#ffffff" />

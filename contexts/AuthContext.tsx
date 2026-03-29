@@ -31,6 +31,9 @@ interface User {
     is_authenticated: boolean;
   }>;
   currentClubId?: string;
+  /** From `app_user_profiles` — avoids a duplicate fetch on Journey Home */
+  avatarUrl?: string | null;
+  profileAbout?: string | null;
 }
 
 interface AuthContextType {
@@ -268,7 +271,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       devLog('🔍 AuthContext: Querying app_user_profiles for user:', supabaseUser.id);
       const profileQuery = supabase
         .from('app_user_profiles')
-        .select('id, email, full_name, phone_number, role, is_active, created_at, updated_at')
+        .select('id, email, full_name, phone_number, role, is_active, created_at, updated_at, avatar_url, About')
         .eq('id', supabaseUser.id)
         .maybeSingle()
         .abortSignal(signal as AbortSignal);
@@ -517,6 +520,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       devLog('🎭 AuthContext: Final role assigned:', finalRole);
       
+      const aboutRaw = (appProfile as { About?: string | null }).About;
+      const avatarRaw = (appProfile as { avatar_url?: string | null }).avatar_url;
+
       const existingUser = {
         id: appProfile.id,
         email: appProfile.email,
@@ -529,6 +535,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: isAuthenticated,
         clubs: clubs,
         currentClubId: currentClubId,
+        avatarUrl: typeof avatarRaw === 'string' ? avatarRaw.trim() || null : null,
+        profileAbout: typeof aboutRaw === 'string' ? aboutRaw : null,
       };
       
       devLog('👤 AuthContext: FINAL USER OBJECT:', {
