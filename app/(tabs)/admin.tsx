@@ -21,7 +21,9 @@ import {
 } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { useCallback, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { prefetchClubInfoManagement } from '@/lib/prefetchClubInfoManagement';
 
 const CLUB_OPERATIONS_SUB_PAGES = [
   {
@@ -90,6 +92,7 @@ function QuickActionTile({ label, icon, onPress, accentColor }: QuickActionProps
 export default function AdminPanel() {
   const { theme } = useTheme();
   const { user, isAuthenticated, refreshUserProfile } = useAuth();
+  const queryClient = useQueryClient();
 
   const [onboardingLoading, setOnboardingLoading] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState<0 | 1 | 2 | 3 | 4>(0);
@@ -425,7 +428,12 @@ export default function AdminPanel() {
                     {index > 0 && <View style={[styles.clubOpsRowDivider, { backgroundColor: theme.colors.border }]} />}
                     <TouchableOpacity
                       style={styles.clubOpsRow}
-                      onPress={() => router.push(route)}
+                      onPress={() => {
+                        if (route === '/admin/club-info-management') {
+                          prefetchClubInfoManagement(queryClient, user?.currentClubId);
+                        }
+                        router.push(route);
+                      }}
                       activeOpacity={0.7}
                     >
                       <View style={[styles.clubOpsRowIcon, { backgroundColor: accentColor + '20' }]}>

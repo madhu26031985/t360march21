@@ -1,7 +1,9 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Linking } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 import { useEffect } from 'react';
+import { QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { queryClient } from '@/lib/queryClient';
 import Constants from 'expo-constants';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -80,6 +82,14 @@ export default function RootLayout() {
   const shouldShowSplash = true; // Always show splash on app start
 
   useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const sub = AppState.addEventListener('change', (next) => {
+      focusManager.setFocused(next === 'active');
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
     // Handle deep links for email confirmation
     const handleDeepLink = (url: string) => {
       console.log('Deep link received:', url);
@@ -124,12 +134,14 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ThemeProvider>
-      <SafeAreaProvider>
-        <AuthProvider>
-          <AppContent />
-        </AuthProvider>
-      </SafeAreaProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <AppContent />
+          </AuthProvider>
+        </SafeAreaProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }

@@ -554,14 +554,40 @@ export default function MyJourney() {
       if (!user?.id || !user?.currentClubId) return;
 
       try {
-        // Meeting attended: distinct meetings where user has any booked role
-        const { data: meetingData, error: meetingErr } = await supabase
-          .from('app_meeting_roles_management')
-          .select('meeting_id')
-          .eq('club_id', user.currentClubId)
-          .eq('assigned_user_id', user.id)
-          .eq('booking_status', 'booked');
+        const clubId = user.currentClubId;
+        const uid = user.id;
 
+        // Run in parallel — was 4 sequential round-trips (~4× RTT on slow networks).
+        const [meetingRes, rolesRes, speechesRes, evalsRes] = await Promise.all([
+          supabase
+            .from('app_meeting_roles_management')
+            .select('meeting_id')
+            .eq('club_id', clubId)
+            .eq('assigned_user_id', uid)
+            .eq('booking_status', 'booked'),
+          supabase
+            .from('app_meeting_roles_management')
+            .select('id', { count: 'exact', head: true })
+            .eq('club_id', clubId)
+            .eq('assigned_user_id', uid)
+            .eq('booking_status', 'booked'),
+          supabase
+            .from('app_meeting_roles_management')
+            .select('id', { count: 'exact', head: true })
+            .eq('club_id', clubId)
+            .eq('assigned_user_id', uid)
+            .eq('booking_status', 'booked')
+            .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%'),
+          supabase
+            .from('app_meeting_roles_management')
+            .select('id', { count: 'exact', head: true })
+            .eq('club_id', clubId)
+            .eq('assigned_user_id', uid)
+            .eq('booking_status', 'booked')
+            .in('role_classification', ['Speech evaluvator', 'Master evaluvator', 'speech_evaluator']),
+        ]);
+
+        const { data: meetingData, error: meetingErr } = meetingRes;
         if (!meetingErr) {
           const distinctMeetingIds = new Set((meetingData || []).map((row: any) => row.meeting_id));
           setMeetingAttendedCount(distinctMeetingIds.size);
@@ -569,38 +595,15 @@ export default function MyJourney() {
           console.error('Error loading meeting attended count:', meetingErr);
         }
 
-        // Roles completed: count of all roles booked
-        const { count: rolesCount, error: rolesErr } = await supabase
-          .from('app_meeting_roles_management')
-          .select('id', { count: 'exact', head: true })
-          .eq('club_id', user.currentClubId)
-          .eq('assigned_user_id', user.id)
-          .eq('booking_status', 'booked');
-
+        const { count: rolesCount, error: rolesErr } = rolesRes;
         if (!rolesErr) setRolesCompletedCount(rolesCount ?? 0);
         else console.error('Error loading roles completed count:', rolesErr);
 
-        // Speeches Given: count of prepared speeches booked
-        const { count: speechesCount, error: speechesErr } = await supabase
-          .from('app_meeting_roles_management')
-          .select('id', { count: 'exact', head: true })
-          .eq('club_id', user.currentClubId)
-          .eq('assigned_user_id', user.id)
-          .eq('booking_status', 'booked')
-          .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%');
-
+        const { count: speechesCount, error: speechesErr } = speechesRes;
         if (!speechesErr) setSpeechesGivenCount(speechesCount ?? 0);
         else console.error('Error loading speeches given count:', speechesErr);
 
-        // Evaluation given: count of evaluator roles booked (speech evaluator, etc.)
-        const { count: evalsCount, error: evalsErr } = await supabase
-          .from('app_meeting_roles_management')
-          .select('id', { count: 'exact', head: true })
-          .eq('club_id', user.currentClubId)
-          .eq('assigned_user_id', user.id)
-          .eq('booking_status', 'booked')
-          .in('role_classification', ['Speech evaluvator', 'Master evaluvator', 'speech_evaluator']);
-
+        const { count: evalsCount, error: evalsErr } = evalsRes;
         if (!evalsErr) setEvaluationsGivenCount(evalsCount ?? 0);
         else console.error('Error loading evaluations given count:', evalsErr);
       } catch (e) {

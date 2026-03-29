@@ -1,12 +1,18 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, Animated, Easing, PanResponder, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { router } from 'expo-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import {
+  clubInfoManagementQueryKeys,
+  fetchClubInfoManagementBundle,
+  type ClubInfoManagementClubInfo,
+  type ClubInfoManagementFormData,
+} from '@/lib/clubInfoManagementQuery';
 import { ArrowLeft, Building2, Crown, User, Shield, Eye, UserCheck, ChevronDown, MapPin, Info, Navigation } from 'lucide-react-native';
-import { useWindowDimensions } from 'react-native';
 import moment from 'moment-timezone';
 import CountryPicker from '@/components/CountryPicker';
 
@@ -61,42 +67,29 @@ function timezoneLabelFromValue(timezoneValue: string | null | undefined): strin
   }
 }
 
-interface ClubInfoData {
-  // Read-only fields from clubs table
-  club_name: string;
-  club_number: string | null;
-  charter_date: string | null;
-  
-  // Editable fields from club_profiles table
-  club_status: string | null;
-  club_type: string | null;
-  club_mission: string | null;
-  banner_color: string | null;
-  city: string | null;
-  country: string | null;
-  region: string | null;
-  district: string | null;
-  division: string | null;
-  area: string | null;
-  time_zone: string | null;
-  address: string | null;
-  pin_code: string | null;
-  google_location_link: string | null;
-}
-
-interface ClubInfo {
-  id: string;
-  name: string;
-  club_number: string | null;
-  charter_date: string | null;
-}
+type ClubInfoData = ClubInfoManagementFormData;
+type ClubInfo = ClubInfoManagementClubInfo;
 
 export default function ClubInfoManagement() {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const { width } = useWindowDimensions();
-  const isCompact = width < 768;
-  
+  const queryClient = useQueryClient();
+  const clubId = user?.currentClubId ?? null;
+
+  const {
+    data: bundle,
+    isPending,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery({
+    queryKey: clubInfoManagementQueryKeys.detail(clubId ?? '__none__'),
+    queryFn: () => fetchClubInfoManagementBundle(clubId!),
+    enabled: !!clubId,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [clubData, setClubData] = useState<ClubInfoData>({
     club_name: '',
@@ -118,7 +111,6 @@ export default function ClubInfoManagement() {
     google_location_link: null,
   });
   
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showClubTypeModal, setShowClubTypeModal] = useState(false);
   const [showClubStatusModal, setShowClubStatusModal] = useState(false);
@@ -194,90 +186,14 @@ export default function ClubInfoManagement() {
   ];
 
   useEffect(() => {
-    console.log('ClubInfoManagement mounted, loading data...');
-    loadClubData();
-  }, []);
+    lastSavedSnapshotRef.current = '';
+  }, [clubId]);
 
-  const loadClubData = async () => {
-    console.log('Starting loadClubData...');
-    
-    if (!user?.currentClubId) {
-      console.log('No current club ID found');
-      setIsLoading(false);
-      return;
-    }
-
-    console.log('Loading data for club ID:', user.currentClubId);
-
-    try {
-      // Load basic club info from clubs table
-      console.log('Fetching club data...');
-      const { data: clubData, error: clubError } = await supabase
-        .from('clubs')
-        .select('id, name, club_number, charter_date')
-        .eq('id', user.currentClubId)
-        .single();
-
-      console.log('Club data result:', { clubData, clubError });
-
-      if (clubError) {
-        console.error('Error loading club info:', clubError);
-        Alert.alert('Error', 'Failed to load club information');
-        setIsLoading(false);
-        return;
-      }
-
-      setClubInfo(clubData);
-
-      // Load extended club profile data
-      console.log('Fetching club profile data...');
-      const { data: profileData, error: profileError } = await supabase
-        .from('club_profiles')
-        .select(`
-          club_status, club_type, club_mission, city, country, region,
-          district, division, area, time_zone, address, pin_code,
-          google_location_link, club_name, club_number, charter_date, banner_color
-        `)
-        .eq('club_id', user.currentClubId)
-        .single();
-
-      console.log('Profile data result:', { profileData, profileError });
-
-      if (profileError && profileError.code !== 'PGRST116') {
-        console.error('Error loading club profile:', profileError);
-      }
-
-      // Combine data from both tables
-      const combinedData: ClubInfoData = {
-        club_name: (clubData as any).name,
-        club_number: (clubData as any).club_number,
-        charter_date: (clubData as any).charter_date,
-        club_status: (profileData as any)?.club_status || null,
-        club_type: (profileData as any)?.club_type || null,
-        club_mission: (profileData as any)?.club_mission || null,
-        banner_color: (profileData as any)?.banner_color || null,
-        city: (profileData as any)?.city || null,
-        country: (profileData as any)?.country || null,
-        region: (profileData as any)?.region || null,
-        district: (profileData as any)?.district || null,
-        division: (profileData as any)?.division || null,
-        area: (profileData as any)?.area || null,
-        time_zone: (profileData as any)?.time_zone || null,
-        address: (profileData as any)?.address || null,
-        pin_code: (profileData as any)?.pin_code || null,
-        google_location_link: (profileData as any)?.google_location_link || null,
-      };
-
-      console.log('Setting combined club data:', combinedData);
-      setClubData(combinedData);
-    } catch (error) {
-      console.error('Error loading club data:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-    } finally {
-      console.log('Setting loading to false');
-      setIsLoading(false);
-    }
-  };
+  useLayoutEffect(() => {
+    if (!bundle) return;
+    setClubInfo(bundle.clubInfo);
+    setClubData(bundle.clubData);
+  }, [bundle]);
 
   const updateField = (field: keyof ClubInfoData, value: string) => {
     setClubData(prev => ({ ...prev, [field]: value }));
@@ -431,6 +347,11 @@ export default function ClubInfoManagement() {
       }
 
       lastSavedSnapshotRef.current = JSON.stringify(getUpdatePayload());
+      if (user?.currentClubId) {
+        void queryClient.invalidateQueries({
+          queryKey: clubInfoManagementQueryKeys.detail(user.currentClubId),
+        });
+      }
     } catch (error) {
       console.error('Error saving club info:', error);
     } finally {
@@ -439,7 +360,7 @@ export default function ClubInfoManagement() {
   };
 
   useEffect(() => {
-    if (isLoading || !clubInfo || !user?.currentClubId || isSaving) return;
+    if (!bundle || !clubInfo || !user?.currentClubId || isSaving) return;
     const currentSnapshot = JSON.stringify(getUpdatePayload());
     if (!lastSavedSnapshotRef.current) {
       lastSavedSnapshotRef.current = currentSnapshot;
@@ -452,7 +373,7 @@ export default function ClubInfoManagement() {
     }, 700);
 
     return () => clearTimeout(timeout);
-  }, [clubData, isLoading, clubInfo, user?.currentClubId, isSaving]);
+  }, [clubData, bundle, clubInfo, user?.currentClubId, isSaving]);
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
@@ -487,22 +408,94 @@ export default function ClubInfoManagement() {
     }
   };
 
-  if (isLoading) {
-    console.log('Rendering loading state');
+  if (!clubId) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info Management</Text>
+          <View style={styles.headerRightSpacer} />
+        </View>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading club information...</Text>
+          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Select a club to manage club information.
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  console.log('Rendering main component with data:', {
-    hasClubInfo: !!clubInfo,
-    clubName: clubData.club_name,
-    clubType: clubData.club_type
-  });
+  if (isError) {
+    const message = error instanceof Error ? error.message : 'Something went wrong';
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info Management</Text>
+          <View style={styles.headerRightSpacer} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: theme.colors.text, textAlign: 'center', marginBottom: 16 }]} maxFontSizeMultiplier={1.2}>
+            {message}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => refetch()}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.retryButtonText} maxFontSizeMultiplier={1.2}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isPending && !bundle) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info Management</Text>
+          <View style={[styles.headerRightSpacer, isFetching && styles.headerSpinnerWrap]}>
+            {isFetching ? <Text style={[styles.headerFetchingDot, { color: theme.colors.primary }]}>●</Text> : null}
+          </View>
+        </View>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={[styles.notionPanel, styles.skeletonPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={styles.skeletonHeaderBlock}>
+              <View style={[styles.skeletonLine, styles.skeletonTitle, { backgroundColor: theme.colors.border }]} />
+              <View style={[styles.skeletonLine, styles.skeletonMeta, { backgroundColor: theme.colors.border }]} />
+            </View>
+            <View style={[styles.skeletonTabRow, { borderBottomColor: theme.colors.border }]}>
+              {[1, 2, 3].map((k) => (
+                <View key={k} style={[styles.skeletonTab, { backgroundColor: theme.colors.border }]} />
+              ))}
+            </View>
+            <View style={styles.notionPanelBody}>
+              <View style={[styles.skeletonLine, { backgroundColor: theme.colors.border }]} />
+              <View style={[styles.skeletonBox, { backgroundColor: theme.colors.border }]} />
+              <View style={styles.skeletonRow}>
+                <View style={[styles.skeletonHalf, { backgroundColor: theme.colors.border }]} />
+                <View style={[styles.skeletonHalf, { backgroundColor: theme.colors.border }]} />
+              </View>
+              <View style={[styles.skeletonBox, styles.skeletonTall, { backgroundColor: theme.colors.border }]} />
+              <View style={styles.skeletonRow}>
+                <View style={[styles.skeletonHalf, { backgroundColor: theme.colors.border }]} />
+                <View style={[styles.skeletonHalf, { backgroundColor: theme.colors.border }]} />
+              </View>
+            </View>
+          </View>
+          <View style={styles.bottomSpacing} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -512,7 +505,9 @@ export default function ClubInfoManagement() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info Management</Text>
-        <View style={styles.headerRightSpacer} />
+        <View style={[styles.headerRightSpacer, isFetching && styles.headerSpinnerWrap]}>
+          {isFetching ? <Text style={[styles.headerFetchingDot, { color: theme.colors.primary }]}>●</Text> : null}
+        </View>
       </View>
 
       <KeyboardAvoidingView
@@ -524,11 +519,11 @@ export default function ClubInfoManagement() {
           style={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          stickyHeaderIndices={clubInfo ? [1] : []}
+          stickyHeaderIndices={[]}
         >
         {clubInfo && (
-          <View style={[styles.clubCardPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <View style={styles.clubCard}>
+          <View style={[styles.notionPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.notionPanelHeader, { borderBottomColor: theme.colors.border }]}>
               <View style={styles.clubHeader}>
                 <View style={styles.clubInfo}>
                   <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -550,11 +545,8 @@ export default function ClubInfoManagement() {
                 </View>
               </View>
             </View>
-          </View>
-        )}
 
-        {clubInfo && (
-            <View style={[styles.stickyTabWrap, { backgroundColor: theme.colors.surface, borderBottomColor: '#E5E7EB' }]}>
+            <View style={[styles.notionTabStrip, { borderBottomColor: theme.colors.border }]}>
             <View style={styles.tabBar}>
               <TouchableOpacity
                 style={[
@@ -611,12 +603,10 @@ export default function ClubInfoManagement() {
               </TouchableOpacity>
             </View>
             </View>
-        )}
 
-        {clubInfo && (
           <Animated.View
             style={[
-              styles.tabContentWrap,
+              styles.notionPanelBody,
               {
                 opacity: tabTransition,
                 transform: [
@@ -634,47 +624,62 @@ export default function ClubInfoManagement() {
 
             {/* Club Information Tab */}
             {activeTab === 'info' && (
-              <View style={styles.unifiedCard}>
+              <View style={[styles.unifiedCard, styles.notionClubInfoStack]}>
             {/* Club Name */}
-            <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Name</Text>
-              <View style={[styles.readOnlyField, styles.clubInfoCompactReadOnly, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                <Text style={[styles.readOnlyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  {clubData.club_name}
-                </Text>
+            <View style={styles.clubInfoNameBlock}>
+              <View style={styles.formField}>
+                <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Name</Text>
+                <View style={[styles.readOnlyField, styles.clubInfoCompactReadOnly, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                  <Text style={[styles.readOnlyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    {clubData.club_name}
+                  </Text>
+                </View>
+                <Text style={[styles.fieldNote, styles.clubInfoNameFieldNote, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>This field cannot be edited</Text>
               </View>
-              <Text style={[styles.fieldNote, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>This field cannot be edited</Text>
             </View>
-
-            <View style={[styles.sectionDivider, styles.clubNameDivider]} />
 
             {/* Club Number and Charter Date */}
-            <View style={[styles.formRow, isCompact && styles.formRowStacked, styles.clubInfoCompactRow]}>
-              <View style={styles.formField}>
-                <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Number</Text>
-                <View style={[styles.readOnlyField, styles.clubInfoCompactReadOnly, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                  <Text style={[styles.readOnlyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {clubData.club_number || 'Not set'}
-                  </Text>
+            <View style={styles.clubInfoNumberCharterBlock}>
+              <View style={[styles.formRow, styles.clubInfoCompactRow]}>
+                <View style={styles.formField}>
+                  <Text style={[styles.clubInfoPairedLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Number</Text>
+                  <View style={[styles.readOnlyField, styles.clubInfoCompactReadOnly, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                    <Text
+                      style={[styles.clubInfoPairedReadOnlyText, { color: theme.colors.textSecondary }]}
+                      maxFontSizeMultiplier={1.3}
+                      numberOfLines={1}
+                    >
+                      {clubData.club_number || 'Not set'}
+                    </Text>
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.formField}>
-                <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Charter Date</Text>
-                <View style={[styles.readOnlyField, styles.clubInfoCompactReadOnly, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                  <Text style={[styles.readOnlyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {formatDate(clubData.charter_date)}
-                  </Text>
+                <View style={styles.formField}>
+                  <Text style={[styles.clubInfoPairedLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Charter Date</Text>
+                  <View style={[styles.readOnlyField, styles.clubInfoCompactReadOnly, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                    <Text
+                      style={[styles.clubInfoPairedReadOnlyText, { color: theme.colors.textSecondary }]}
+                      maxFontSizeMultiplier={1.3}
+                      numberOfLines={1}
+                    >
+                      {formatDate(clubData.charter_date)}
+                    </Text>
+                  </View>
                 </View>
               </View>
+              <Text style={[styles.fieldNote, styles.clubInfoPairedFieldNote, styles.clubInfoPairedNoteTightTop, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>This field cannot be edited</Text>
             </View>
-            <Text style={[styles.fieldNote, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>This field cannot be edited</Text>
-
-            <View style={styles.sectionDivider} />
 
             {/* Club Mission */}
-            <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Mission</Text>
+            <View style={[styles.formField, styles.clubInfoMissionField]}>
+              <View style={styles.clubMissionLabelRow}>
+                <Text style={[styles.fieldLabel, styles.clubMissionLabelText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Club Mission
+                </Text>
+                <Text style={[styles.characterCountInline, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.25}>
+                  {(clubData.club_mission || '').length} / 200 characters
+                </Text>
+              </View>
               <TextInput
                 style={[styles.textAreaInput, styles.clubInfoCompactTextArea, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
                 placeholder="Enter your club's mission statement..."
@@ -690,43 +695,44 @@ export default function ClubInfoManagement() {
                 textAlignVertical="top"
                 maxLength={200}
               />
-              <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {(clubData.club_mission || '').length} / 200 characters
-              </Text>
             </View>
 
-            <View style={styles.sectionDivider} />
-
             {/* Club Status and Club Type */}
-            <View style={[styles.formRow, isCompact && styles.formRowStacked]}>
+            <View style={[styles.formRow, styles.clubInfoStatusTypeRow]}>
               <View style={styles.formField}>
-                <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Status</Text>
+                <Text style={[styles.clubInfoPairedLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Status</Text>
                 <TouchableOpacity
                   style={[styles.dropdown, styles.clubInfoCompactDropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                   onPress={() => setShowClubStatusModal(true)}
                 >
-                  <Text style={[styles.dropdownText, { color: clubData.club_status ? theme.colors.text : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  <Text
+                    style={[styles.clubInfoPairedDropdownText, { color: clubData.club_status ? theme.colors.text : theme.colors.textSecondary }]}
+                    maxFontSizeMultiplier={1.3}
+                    numberOfLines={1}
+                  >
                     {getClubStatusLabel()}
                   </Text>
-                  <ChevronDown size={16} color={theme.colors.textSecondary} />
+                  <ChevronDown size={14} color={theme.colors.textSecondary} />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.formField}>
-                <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Type</Text>
+                <Text style={[styles.clubInfoPairedLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Type</Text>
                 <TouchableOpacity
                   style={[styles.dropdown, styles.clubInfoCompactDropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                   onPress={() => setShowClubTypeModal(true)}
                 >
-                  <Text style={[styles.dropdownText, { color: clubData.club_type ? theme.colors.text : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  <Text
+                    style={[styles.clubInfoPairedDropdownText, { color: clubData.club_type ? theme.colors.text : theme.colors.textSecondary }]}
+                    maxFontSizeMultiplier={1.3}
+                    numberOfLines={1}
+                  >
                     {getClubTypeLabel()}
                   </Text>
-                  <ChevronDown size={16} color={theme.colors.textSecondary} />
+                  <ChevronDown size={14} color={theme.colors.textSecondary} />
                 </TouchableOpacity>
               </View>
             </View>
-
-            <View style={styles.sectionDivider} />
 
             {/* Banner Color Selection */}
             <View style={[styles.formField, styles.lastFormField]}>
@@ -753,8 +759,7 @@ export default function ClubInfoManagement() {
             {/* Location Information Tab */}
             {activeTab === 'location' && (
               <View style={styles.locationTabWrap}>
-                <View style={[styles.locationCard, { borderColor: '#E5E7EB' }]}>
-                  <Text style={[styles.locationCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Location</Text>
+                  <Text style={[styles.locationSectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Location</Text>
 
                   <View style={[styles.formField, styles.sectionBlock]}>
                     <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Country</Text>
@@ -852,13 +857,12 @@ export default function ClubInfoManagement() {
                       </TouchableOpacity>
                     </View>
                   </View>
-                </View>
               </View>
             )}
 
             {/* More Info Tab */}
             {activeTab === 'moreInfo' && (
-              <View style={styles.section}>
+              <View style={styles.notionMoreInfo}>
             <View style={styles.sectionHeader}>
               <View style={[styles.sectionIcon, { backgroundColor: '#3b82f6' + '20' }]}>
                 <Info size={20} color="#3b82f6" />
@@ -918,6 +922,7 @@ export default function ClubInfoManagement() {
               </View>
             )}
           </Animated.View>
+          </View>
         )}
 
         {/* Bottom Spacing */}
@@ -1096,32 +1101,126 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
   },
+  headerSpinnerWrap: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerFetchingDot: {
+    fontSize: 10,
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  skeletonPanel: {
+    paddingBottom: 8,
+  },
+  skeletonHeaderBlock: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 6,
+    opacity: 0.35,
+  },
+  skeletonTitle: {
+    width: '55%',
+    height: 16,
+  },
+  skeletonMeta: {
+    width: '40%',
+  },
+  skeletonTabRow: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  skeletonTab: {
+    flex: 1,
+    height: 32,
+    borderRadius: 8,
+    opacity: 0.35,
+  },
+  skeletonBox: {
+    height: 48,
+    borderRadius: 10,
+    opacity: 0.35,
+    marginTop: 8,
+  },
+  skeletonTall: {
+    height: 100,
+    marginTop: 12,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  skeletonHalf: {
+    flex: 1,
+    height: 48,
+    borderRadius: 10,
+    opacity: 0.35,
+  },
   content: {
     flex: 1,
   },
-  managementPanel: {
+  /** Single Notion-style surface: club summary + tabs + tab content */
+  notionPanel: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     overflow: 'hidden',
   },
-  clubCardPanel: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    overflow: 'hidden',
+  notionPanelHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  clubCard: {
-    marginHorizontal: 0,
-    marginTop: 0,
-    borderRadius: 0,
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+  notionTabStrip: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  notionPanelBody: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+  notionClubInfoStack: {
+    gap: 0,
+  },
+  /** ~2 lines (13px × ~2) between name → number/charter → mission */
+  clubInfoNameBlock: {
+    marginBottom: 26,
+  },
+  clubInfoNameFieldNote: {
+    marginTop: 4,
+    marginBottom: 0,
+  },
+  clubInfoNumberCharterBlock: {
+    marginBottom: 26,
+  },
+  clubInfoPairedNoteTightTop: {
+    marginTop: 4,
+  },
+  clubInfoMissionField: {
+    marginBottom: 20,
+  },
+  clubInfoStatusTypeRow: {
+    marginBottom: 20,
+  },
+  notionMoreInfo: {
+    gap: 18,
   },
   clubHeader: {
     flexDirection: 'row',
@@ -1166,19 +1265,13 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    marginHorizontal: 16,
+    marginHorizontal: 0,
     marginTop: 0,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
+    borderWidth: 0,
+    borderRadius: 0,
     overflow: 'hidden',
     minHeight: 44,
     maxHeight: 48,
-  },
-  stickyTabWrap: {
-    paddingHorizontal: 0,
-    paddingTop: 0,
-    paddingBottom: 8,
   },
   tab: {
     flex: 1,
@@ -1200,50 +1293,20 @@ const styles = StyleSheet.create({
   activeTabText: {
     fontWeight: '700',
   },
-  tabContentWrap: {
-    marginHorizontal: 16,
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: '#E5E7EB',
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-  },
   unifiedCard: {
     marginHorizontal: 0,
     marginTop: 0,
     borderRadius: 0,
-    padding: 16,
-  },
-  sectionDivider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 12,
-  },
-  clubNameDivider: {
-    marginTop: 5,
-    marginBottom: 6,
-  },
-  section: {
-    marginHorizontal: 0,
-    marginTop: 0,
-    borderRadius: 0,
-    padding: 20,
+    padding: 0,
   },
   locationTabWrap: {
-    padding: 20,
+    padding: 0,
     gap: 16,
   },
-  locationCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-  },
-  locationCardTitle: {
-    fontSize: 17,
+  locationSectionTitle: {
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 16,
+    marginBottom: 4,
     letterSpacing: -0.2,
   },
   locationLabel: {
@@ -1410,9 +1473,6 @@ const styles = StyleSheet.create({
   sectionBlock: {
     marginBottom: 18,
   },
-  formRowStacked: {
-    flexDirection: 'column',
-  },
   formField: {
     flex: 1,
     marginBottom: 0,
@@ -1426,6 +1486,43 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 10,
     letterSpacing: -0.2,
+  },
+  clubMissionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 10,
+  },
+  clubMissionLabelText: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  characterCountInline: {
+    fontSize: 11,
+    lineHeight: 18,
+    fontWeight: '500',
+    flexShrink: 0,
+  },
+  /** ~10% smaller type for side-by-side Club # / charter and status / type */
+  clubInfoPairedLabel: {
+    fontSize: 11.7,
+    fontWeight: '600',
+    marginBottom: 9,
+    letterSpacing: -0.2,
+  },
+  clubInfoPairedReadOnlyText: {
+    fontSize: 11.7,
+    fontWeight: '500',
+  },
+  clubInfoPairedDropdownText: {
+    fontSize: 11.7,
+    flex: 1,
+    fontWeight: '500',
+    marginRight: 8,
+  },
+  clubInfoPairedFieldNote: {
+    fontSize: 9.9,
   },
   textInput: {
     borderWidth: 1,
@@ -1557,15 +1654,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '400',
     flex: 1,
-  },
-  characterCount: {
-    fontSize: 11,
-    textAlign: 'right',
-    marginTop: 8,
-    marginBottom: 10,
-    lineHeight: 18,
-    fontWeight: '500',
-    alignSelf: 'flex-end',
   },
   colorSelector: {
     flexDirection: 'row',

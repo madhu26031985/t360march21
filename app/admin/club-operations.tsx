@@ -1,7 +1,9 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
+import { prefetchClubInfoManagement } from '@/lib/prefetchClubInfoManagement';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -39,6 +41,7 @@ function FeatureCard({ title, description, icon, onPress }: FeatureCardProps) {
 export default function ClubOperations() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -168,7 +171,10 @@ export default function ClubOperations() {
             title="Club Info Management"
             description="Update club information and preferences"
             icon={<Settings size={20} color="#0a66c2" />}
-            onPress={() => router.push('/admin/club-info-management')}
+            onPress={() => {
+              prefetchClubInfoManagement(queryClient, user?.currentClubId);
+              router.push('/admin/club-info-management');
+            }}
           />
           
           <FeatureCard
