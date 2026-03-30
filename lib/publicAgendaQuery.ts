@@ -44,13 +44,13 @@ export type PublicAgendaPayload = {
 
 export async function fetchPublicMeetingAgenda(params: {
   meetingId: string;
-  clubSlug: string;
+  clubId: string;
   meetingNo: string;
 }): Promise<PublicAgendaPayload | null> {
-  const { data, error } = await supabase.rpc('get_public_meeting_agenda', {
-    p_meeting_id: params.meetingId,
-    p_club_slug: params.clubSlug,
+  const { data, error } = await supabase.rpc('get_public_meeting_agenda_by_club', {
+    p_club_id: params.clubId,
     p_meeting_no: params.meetingNo,
+    p_meeting_id: params.meetingId,
   });
   if (error) throw error;
   if (data == null || typeof data !== 'object') return null;

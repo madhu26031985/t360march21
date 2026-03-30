@@ -1012,7 +1012,7 @@ export function MeetingAgendaViewContent({
   const handleOpenWebAgenda = async () => {
     if (!meeting || !clubInfo) return;
     const url = buildAgendaWebUrl({
-      clubName: clubInfo.club_name,
+      clubId: meeting.club_id,
       meetingNumber: meeting.meeting_number,
       meetingId: meeting.id,
     });
@@ -1032,7 +1032,7 @@ export function MeetingAgendaViewContent({
   const handleCopyWebAgendaLink = async () => {
     if (!meeting || !clubInfo) return;
     const url = buildAgendaWebUrl({
-      clubName: clubInfo.club_name,
+      clubId: meeting.club_id,
       meetingNumber: meeting.meeting_number,
       meetingId: meeting.id,
     });
@@ -1184,13 +1184,13 @@ export function MeetingAgendaViewContent({
               maxFontSizeMultiplier={1.2}
             >
               {buildAgendaWebUrl({
-                clubName: clubInfo.club_name,
+                clubId: meeting.club_id,
                 meetingNumber: meeting.meeting_number,
                 meetingId: meeting.id,
               })}
             </Text>
             <Text style={[styles.agendaWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
-              Opens on app.t360.in — share or copy for guests.
+              Public link — no login required. Use t360.in or set EXPO_PUBLIC_AGENDA_WEB_HOST for your web host.
             </Text>
             <View style={styles.agendaWebLinkActions}>
               <TouchableOpacity

@@ -1,5 +1,5 @@
-# Legacy agenda URLs at site root → baseUrl path (matches app.json experiments.baseUrl)
-/:clubSlug/:meetingNo/:meetingId  /weblogin/:clubSlug/:meetingNo/:meetingId  302
+# /{clubId}/agenda/{meetingNo}/{meetingId} → Expo baseUrl (see app.json experiments.baseUrl)
+/:clubId/agenda/:meetingNo/:meetingId  /weblogin/:clubId/agenda/:meetingNo/:meetingId  302
 
 # Netlify redirects for SPA routing at /weblogin
 /weblogin    /weblogin/    301

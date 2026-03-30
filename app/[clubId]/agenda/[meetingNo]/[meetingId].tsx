@@ -79,8 +79,8 @@ function roleDetailLines(rd: Record<string, unknown> | null): string[] {
 
 export default function PublicMeetingAgendaPage() {
   const { theme } = useTheme();
-  const { clubSlug, meetingNo, meetingId } = useLocalSearchParams<{
-    clubSlug: string;
+  const { clubId, meetingNo, meetingId } = useLocalSearchParams<{
+    clubId: string;
     meetingNo: string;
     meetingId: string;
   }>();
@@ -90,11 +90,11 @@ export default function PublicMeetingAgendaPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const slug = Array.isArray(clubSlug) ? clubSlug[0] : clubSlug;
+    const cid = Array.isArray(clubId) ? clubId[0] : clubId;
     const num = Array.isArray(meetingNo) ? meetingNo[0] : meetingNo;
-    const id = Array.isArray(meetingId) ? meetingId[0] : meetingId;
+    const mid = Array.isArray(meetingId) ? meetingId[0] : meetingId;
 
-    if (!slug || !num || !id || !UUID_RE.test(id)) {
+    if (!cid || !num || !mid || !UUID_RE.test(cid) || !UUID_RE.test(mid)) {
       setState('empty');
       setMessage('This link is invalid or incomplete.');
       return;
@@ -104,8 +104,8 @@ export default function PublicMeetingAgendaPage() {
     setMessage(null);
     try {
       const data = await fetchPublicMeetingAgenda({
-        meetingId: id,
-        clubSlug: slug,
+        meetingId: mid,
+        clubId: cid,
         meetingNo: num,
       });
       if (!data) {
@@ -124,7 +124,7 @@ export default function PublicMeetingAgendaPage() {
       setState('error');
       setMessage('Something went wrong while loading the agenda. Please try again later.');
     }
-  }, [clubSlug, meetingNo, meetingId]);
+  }, [clubId, meetingNo, meetingId]);
 
   useEffect(() => {
     load();

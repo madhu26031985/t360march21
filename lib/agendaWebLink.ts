@@ -1,20 +1,18 @@
-/** Public web host for shareable meeting agenda URLs (must match hosting / routing). */
-export const AGENDA_WEB_HOST = 'https://app.t360.in';
-
-/** Expo `experiments.baseUrl` and Netlify publish path — links must include this prefix. */
-export const AGENDA_WEB_PATH_PREFIX = '/weblogin';
-
 /**
- * URL-safe club segment: lowercase alphanumerics only, e.g. "T-360 Training Club" → "t360trainingclub".
+ * Shareable public agenda URLs (no login).
+ * Path: /{clubId}/agenda/{meetingNo}/{meetingId}
+ *
+ * Default host is https://t360.in — point that domain at the same Netlify site as the app, or set
+ * EXPO_PUBLIC_AGENDA_WEB_HOST (e.g. https://app.t360.in) at build time.
  */
-export function slugifyClubNameForAgendaUrl(clubName: string): string {
-  const s = clubName
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '')
-    .slice(0, 96);
-  return s || 'club';
+function agendaWebHost(): string {
+  const h = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.trim();
+  if (h) return h.replace(/\/$/, '');
+  return 'https://t360.in';
+}
+
+export function getAgendaWebHost(): string {
+  return agendaWebHost();
 }
 
 export function sanitizeMeetingNumberSegment(meetingNumber: string | null | undefined): string {
@@ -24,12 +22,11 @@ export function sanitizeMeetingNumberSegment(meetingNumber: string | null | unde
 }
 
 export function buildAgendaWebUrl(params: {
-  clubName: string;
+  clubId: string;
   meetingNumber: string | null | undefined;
   meetingId: string;
 }): string {
-  const slug = slugifyClubNameForAgendaUrl(params.clubName);
   const num = sanitizeMeetingNumberSegment(params.meetingNumber);
-  const path = `${AGENDA_WEB_PATH_PREFIX}/${slug}/${num}/${params.meetingId}`;
-  return `${AGENDA_WEB_HOST}${path}`;
+  const path = `/${params.clubId}/agenda/${num}/${params.meetingId}`;
+  return `${agendaWebHost()}${path}`;
 }
