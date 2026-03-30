@@ -5,11 +5,8 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import * as Clipboard from 'expo-clipboard';
-import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users, Timer, PenLine, BookOpen, ExternalLink, Copy } from 'lucide-react-native';
+import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users, Timer, PenLine, BookOpen } from 'lucide-react-native';
 import { exportAgendaToPDF, generatePDFFilename } from '@/lib/pdfExportUtils';
-import { buildAgendaWebUrl } from '@/lib/agendaWebLink';
-import { normalizeStoredPublicAgendaSkin } from '@/lib/publicAgendaSkin';
 import { parseMemberPreparedAgenda } from '@/lib/preparedSpeechesAgendaParse';
 
 interface Meeting {
@@ -1011,44 +1008,6 @@ export function MeetingAgendaViewContent({
     }
   };
 
-  const handleOpenWebAgenda = async () => {
-    if (!meeting || !clubInfo) return;
-    const url = buildAgendaWebUrl({
-      clubId: meeting.club_id,
-      meetingNumber: meeting.meeting_number,
-      meetingId: meeting.id,
-      skin: normalizeStoredPublicAgendaSkin(meeting.public_agenda_skin),
-    });
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Error', 'Unable to open this link');
-      }
-    } catch (e) {
-      console.error('Open web agenda:', e);
-      Alert.alert('Error', 'Failed to open link');
-    }
-  };
-
-  const handleCopyWebAgendaLink = async () => {
-    if (!meeting || !clubInfo) return;
-    const url = buildAgendaWebUrl({
-      clubId: meeting.club_id,
-      meetingNumber: meeting.meeting_number,
-      meetingId: meeting.id,
-      skin: normalizeStoredPublicAgendaSkin(meeting.public_agenda_skin),
-    });
-    try {
-      await Clipboard.setStringAsync(url);
-      Alert.alert('Copied', 'Agenda link copied to clipboard');
-    } catch (e) {
-      console.error('Copy agenda link:', e);
-      Alert.alert('Error', 'Could not copy link');
-    }
-  };
-
   if (loading) {
     return (
       <AgendaScreenShell embedded={embedded} backgroundColor={theme.colors.background}>
@@ -1167,64 +1126,6 @@ export function MeetingAgendaViewContent({
         <View nativeID="agenda-content" style={styles.agendaContentWrapper}>
         {/* Banners and agenda sections as separate boxes */}
         <View style={styles.agendaSectionsContainer}>
-        {clubInfo && meeting && (
-          <View
-            style={[
-              styles.agendaSectionCard,
-              styles.agendaWebLinkCard,
-              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-            ]}
-          >
-            <View style={styles.agendaWebLinkHeaderRow}>
-              <ExternalLink size={18} color={theme.colors.primary} />
-              <Text style={[styles.agendaWebLinkHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-                Web agenda
-              </Text>
-            </View>
-            <Text
-              style={[styles.agendaWebLinkUrlText, { color: theme.colors.textSecondary }]}
-              numberOfLines={4}
-              maxFontSizeMultiplier={1.2}
-            >
-              {buildAgendaWebUrl({
-                clubId: meeting.club_id,
-                meetingNumber: meeting.meeting_number,
-                meetingId: meeting.id,
-                skin: normalizeStoredPublicAgendaSkin(meeting.public_agenda_skin),
-              })}
-            </Text>
-            {meeting.is_agenda_visible === false ? (
-              <Text style={[styles.agendaWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.15}>
-                Public web link will not open until agenda visibility is on: Agenda editor → Agenda Visibility → Visible to members.
-              </Text>
-            ) : null}
-            <Text style={[styles.agendaWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
-              Use Copy link or Open. ExComm sets the default layout in Edit Agenda; ?skin= on the URL still overrides for previews. Do not select text by hand — it can break the link.
-            </Text>
-            <View style={styles.agendaWebLinkActions}>
-              <TouchableOpacity
-                style={[styles.agendaWebLinkButton, { backgroundColor: theme.colors.primary }]}
-                onPress={handleOpenWebAgenda}
-                activeOpacity={0.85}
-              >
-                <ExternalLink size={16} color="#ffffff" />
-                <Text style={styles.agendaWebLinkButtonLabel} maxFontSizeMultiplier={1.2}>
-                  Open
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.agendaWebLinkButtonOutline, { borderColor: theme.colors.border }]}
-                onPress={handleCopyWebAgendaLink}
-                activeOpacity={0.85}
-              >
-                <Copy size={16} color={theme.colors.primary} />
-                <Text style={[styles.agendaWebLinkButtonLabelOutline, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
-                  Copy link
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
         {/* Banner 1: Club Name and District Info */}
         <View style={[styles.agendaSectionCard, styles.clubInfoBanner, { backgroundColor: meeting.club_info_banner_color || '#0ea5e9', borderWidth: 0, marginBottom: 0, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }]}>
           <View style={styles.bannerContent}>
@@ -2340,61 +2241,6 @@ const styles = StyleSheet.create({
     marginHorizontal: Platform.OS === 'web' ? 16 : 20,
     marginTop: 16,
     marginBottom: 16,
-  },
-  agendaWebLinkCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  agendaWebLinkHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  agendaWebLinkHeading: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  agendaWebLinkUrlText: {
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: 6,
-  },
-  agendaWebLinkHint: {
-    fontSize: 11,
-    marginBottom: 12,
-  },
-  agendaWebLinkActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  agendaWebLinkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-  },
-  agendaWebLinkButtonOutline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    borderWidth: 1,
-    backgroundColor: 'transparent',
-  },
-  agendaWebLinkButtonLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  agendaWebLinkButtonLabelOutline: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   agendaSectionCard: {
     marginBottom: 12,

@@ -5,9 +5,11 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import * as Clipboard from 'expo-clipboard';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import { normalizeStoredPublicAgendaSkin } from '@/lib/publicAgendaSkin';
-import { ChevronLeft, Save, Clock, Eye, EyeOff, Trash2, UserPlus, Search, X, ChevronUp, ChevronDown, RotateCcw, FileText, Zap, PencilLine, Users2, Filter, Check, Square, ListOrdered } from 'lucide-react-native';
+import { buildAgendaWebUrl } from '@/lib/agendaWebLink';
+import { ChevronLeft, Save, Clock, Eye, EyeOff, Trash2, UserPlus, Search, X, ChevronUp, ChevronDown, RotateCcw, FileText, Zap, PencilLine, Users2, Filter, Check, Square, ListOrdered, ExternalLink, Copy } from 'lucide-react-native';
 import { useCallback } from 'react';
 
 interface AgendaItem {
@@ -236,6 +238,8 @@ export default function AgendaEditor() {
   const [grammarianModalVisible, setGrammarianModalVisible] = useState(false);
   const [isAgendaVisible, setIsAgendaVisible] = useState(true);
   const [publicAgendaSkin, setPublicAgendaSkin] = useState<PublicAgendaSkinId>('default');
+  const [meetingClubIdForWeb, setMeetingClubIdForWeb] = useState<string | null>(null);
+  const [meetingNumberForWeb, setMeetingNumberForWeb] = useState<string | null>(null);
   const [preparedSpeakers, setPreparedSpeakers] = useState<PreparedSpeaker[]>([]);
   const [preparedSpeakerRoleDefs, setPreparedSpeakerRoleDefs] = useState<
     Array<{ slot: number; role_name: string }>
@@ -896,7 +900,7 @@ export default function AgendaEditor() {
     try {
       const { data, error } = await supabase
         .from('app_club_meeting')
-        .select('meeting_start_time, club_info_banner_color, datetime_banner_color, footer_banner_1_color, footer_banner_2_color, theme, word_of_the_day, phrase_of_the_day, idiom_of_the_day, quote_of_the_day, is_agenda_visible, public_agenda_skin')
+        .select('meeting_start_time, meeting_number, club_id, club_info_banner_color, datetime_banner_color, footer_banner_1_color, footer_banner_2_color, theme, word_of_the_day, phrase_of_the_day, idiom_of_the_day, quote_of_the_day, is_agenda_visible, public_agenda_skin')
         .eq('id', meetingId)
         .maybeSingle();
 
@@ -918,6 +922,8 @@ export default function AgendaEditor() {
         setQuoteOfTheDay(data.quote_of_the_day || '');
         setIsAgendaVisible(data.is_agenda_visible ?? true);
         setPublicAgendaSkin(normalizeStoredPublicAgendaSkin((data as { public_agenda_skin?: string | null }).public_agenda_skin));
+        setMeetingClubIdForWeb((data as { club_id?: string | null }).club_id ?? null);
+        setMeetingNumberForWeb((data as { meeting_number?: string | null }).meeting_number ?? null);
         console.log('✓ Loaded meeting start time:', data.meeting_start_time);
       } else {
         console.log('No meeting found with ID:', meetingId);
@@ -2567,6 +2573,39 @@ export default function AgendaEditor() {
     }
   };
 
+  const publicWebAgendaUrl =
+    meetingClubIdForWeb && meetingId
+      ? buildAgendaWebUrl({
+          clubId: meetingClubIdForWeb,
+          meetingNumber: meetingNumberForWeb,
+          meetingId,
+          skin: publicAgendaSkin,
+        })
+      : null;
+
+  const handleOpenPublicWebAgenda = async () => {
+    if (!publicWebAgendaUrl) return;
+    try {
+      const supported = await Linking.canOpenURL(publicWebAgendaUrl);
+      if (supported) await Linking.openURL(publicWebAgendaUrl);
+      else Alert.alert('Error', 'Unable to open this link');
+    } catch (e) {
+      console.error('Open public web agenda:', e);
+      Alert.alert('Error', 'Failed to open link');
+    }
+  };
+
+  const handleCopyPublicWebAgendaLink = async () => {
+    if (!publicWebAgendaUrl) return;
+    try {
+      await Clipboard.setStringAsync(publicWebAgendaUrl);
+      Alert.alert('Copied', 'Public agenda link copied to clipboard');
+    } catch (e) {
+      console.error('Copy public web agenda link:', e);
+      Alert.alert('Error', 'Could not copy link');
+    }
+  };
+
   const toggleAgendaVisibility = async () => {
     try {
       const newVisibility = !isAgendaVisible;
@@ -3359,6 +3398,44 @@ export default function AgendaEditor() {
               </Text>
             </TouchableOpacity>
           ))}
+          {publicWebAgendaUrl ? (
+            <>
+              <Text style={[styles.publicWebLinkText, { color: theme.colors.textSecondary }]} numberOfLines={4} maxFontSizeMultiplier={1.15}>
+                {publicWebAgendaUrl}
+              </Text>
+              {isAgendaVisible === false ? (
+                <Text style={[styles.publicWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.1}>
+                  Public web link will not open until Agenda Visibility is set to Visible to members.
+                </Text>
+              ) : null}
+              <View style={styles.publicWebLinkActions}>
+                <TouchableOpacity
+                  style={[styles.publicWebLinkPrimaryButton, { backgroundColor: theme.colors.primary }]}
+                  onPress={handleOpenPublicWebAgenda}
+                  activeOpacity={0.85}
+                >
+                  <ExternalLink size={16} color="#ffffff" />
+                  <Text style={styles.publicWebLinkPrimaryButtonLabel} maxFontSizeMultiplier={1.1}>
+                    Open
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.publicWebLinkOutlineButton, { borderColor: theme.colors.border }]}
+                  onPress={handleCopyPublicWebAgendaLink}
+                  activeOpacity={0.85}
+                >
+                  <Copy size={16} color={theme.colors.primary} />
+                  <Text style={[styles.publicWebLinkOutlineButtonLabel, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.1}>
+                    Copy link
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <Text style={[styles.publicWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+              Save meeting details first to generate a public web link.
+            </Text>
+          )}
         </View>
 
         <View style={[styles.masterAutoFillCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -6486,6 +6563,49 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
     lineHeight: 16,
+  },
+  publicWebLinkText: {
+    fontSize: 13,
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  publicWebLinkHint: {
+    fontSize: 12,
+    marginTop: 8,
+    lineHeight: 17,
+  },
+  publicWebLinkActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  publicWebLinkPrimaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  publicWebLinkPrimaryButtonLabel: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  publicWebLinkOutlineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  publicWebLinkOutlineButtonLabel: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   masterAutoFillCard: {
     marginHorizontal: 16,
