@@ -105,20 +105,18 @@ export default function PublicMeetingAgendaPage() {
     setState('loading');
     setMessage(null);
     try {
-      const data = await fetchPublicMeetingAgenda({
+      const res = await fetchPublicMeetingAgenda({
         meetingId: mid,
         clubId: cid,
         meetingNo: num,
       });
-      if (!data) {
+      if (!res.ok) {
         setPayload(null);
         setState('empty');
-        setMessage(
-          'This agenda is not available. It may be private, the meeting may not exist, or the link may be incorrect.'
-        );
+        setMessage(res.message);
         return;
       }
-      setPayload(data);
+      setPayload(res.data);
       setState('ready');
     } catch (e) {
       console.error('Public agenda load:', e);

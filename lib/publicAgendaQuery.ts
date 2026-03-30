@@ -42,11 +42,22 @@ export type PublicAgendaPayload = {
   items: PublicAgendaItemRow[];
 };
 
+export type PublicAgendaErrorCode =
+  | 'meeting_not_found'
+  | 'agenda_not_public'
+  | 'rpc_null'
+  | 'bad_shape'
+  | 'unknown_error';
+
+export type PublicAgendaFetchResult =
+  | { ok: true; data: PublicAgendaPayload }
+  | { ok: false; code: PublicAgendaErrorCode; message: string };
+
 export async function fetchPublicMeetingAgenda(params: {
   meetingId: string;
   clubId: string;
   meetingNo: string;
-}): Promise<PublicAgendaPayload | null> {
+}): Promise<PublicAgendaFetchResult> {
   const { data, error } = await supabase.rpc('get_public_meeting_agenda_by_club', {
     p_club_id: params.clubId,
     p_meeting_no: params.meetingNo,
@@ -56,13 +67,31 @@ export async function fetchPublicMeetingAgenda(params: {
   if (data == null || typeof data !== 'object') {
     if (typeof window !== 'undefined') {
       console.warn(
-        '[T360 public agenda] RPC returned null. In Supabase SQL: SELECT id, is_agenda_visible FROM app_club_meeting WHERE id = $1; ' +
-          'and confirm get_public_meeting_agenda_by_club + row_security migration ran on this project.'
+        '[T360 public agenda] RPC returned null — check Supabase project matches site env and migrations are applied.'
       );
     }
-    return null;
+    return {
+      ok: false,
+      code: 'rpc_null',
+      message:
+        'Could not load this agenda. Confirm this site uses the correct Supabase project and database migrations are up to date.',
+    };
   }
   const o = data as Record<string, unknown>;
+  if (typeof o.error === 'string' && o.error.length > 0) {
+    const msg =
+      typeof o.message === 'string' && o.message.trim() !== ''
+        ? o.message.trim()
+        : 'This agenda is not available.';
+    if (o.error === 'meeting_not_found') {
+      return { ok: false, code: 'meeting_not_found', message: msg };
+    }
+    if (o.error === 'agenda_not_public') {
+      return { ok: false, code: 'agenda_not_public', message: msg };
+    }
+    return { ok: false, code: 'unknown_error', message: msg };
+  }
+
   const meeting = o.meeting as PublicAgendaMeeting | undefined;
   const clubRaw = o.club as PublicAgendaClub | Record<string, unknown> | undefined;
   const items = o.items as PublicAgendaItemRow[] | undefined;
@@ -74,7 +103,11 @@ export async function fetchPublicMeetingAgenda(params: {
         itemsIsArray: Array.isArray(items),
       });
     }
-    return null;
+    return {
+      ok: false,
+      code: 'bad_shape',
+      message: 'Received an unexpected response from the server. Try again later.',
+    };
   }
   const name =
     typeof clubRaw?.club_name === 'string' && clubRaw.club_name.trim() !== ''
@@ -87,5 +120,5 @@ export async function fetchPublicMeetingAgenda(params: {
         ? (clubRaw.club_number as string | null)
         : null,
   };
-  return { meeting, club, items };
+  return { ok: true, data: { meeting, club, items } };
 }
