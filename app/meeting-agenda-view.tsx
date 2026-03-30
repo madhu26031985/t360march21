@@ -1188,6 +1188,11 @@ export function MeetingAgendaViewContent({
                 meetingId: meeting.id,
               })}
             </Text>
+            {meeting.is_agenda_visible === false ? (
+              <Text style={[styles.agendaWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.15}>
+                Public web link will not open until agenda visibility is on: Agenda editor → Agenda Visibility → Visible to members.
+              </Text>
+            ) : null}
             <Text style={[styles.agendaWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
               Use Copy link or Open — selecting the URL by hand can paste extra text and break the page.
             </Text>

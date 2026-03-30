@@ -3240,7 +3240,7 @@ export default function AgendaEditor() {
             Agenda Visibility
           </Text>
           <Text style={[styles.agendaVisibilitySubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Control whether members can see the meeting agenda. If hidden, section-level visibility is disabled.
+            Control whether members can see the meeting agenda. If hidden, section-level visibility is disabled. The public web share link only works when the agenda is visible to members.
           </Text>
 
           <TouchableOpacity
