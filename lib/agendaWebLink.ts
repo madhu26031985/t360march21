@@ -1,10 +1,13 @@
 /**
  * Shareable public agenda URLs (no login).
- * Path: /{clubId}/agenda/{meetingNo}/{meetingId}
+ * Path includes Expo `experiments.baseUrl` so the link matches the real URL in the browser:
+ * /weblogin/{clubId}/agenda/{meetingNo}/{meetingId}
  *
- * Default host is https://t360.in — point that domain at the same Netlify site as the app, or set
- * EXPO_PUBLIC_AGENDA_WEB_HOST (e.g. https://app.t360.in) at build time.
+ * Shorter URLs without /weblogin still work: Netlify redirects them to this path.
+ *
+ * Default host is https://t360.in — or set EXPO_PUBLIC_AGENDA_WEB_HOST (e.g. https://app.t360.in).
  */
+export const AGENDA_WEB_PATH_PREFIX = '/weblogin';
 function agendaWebHost(): string {
   const h = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.trim();
   if (h) return h.replace(/\/$/, '');
@@ -55,6 +58,6 @@ export function buildAgendaWebUrl(params: {
   meetingId: string;
 }): string {
   const num = sanitizeMeetingNumberSegment(params.meetingNumber);
-  const path = `/${params.clubId}/agenda/${num}/${params.meetingId}`;
+  const path = `${AGENDA_WEB_PATH_PREFIX}/${params.clubId}/agenda/${num}/${params.meetingId}`;
   return `${agendaWebHost()}${path}`;
 }
