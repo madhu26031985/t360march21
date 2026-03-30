@@ -56,8 +56,19 @@ export async function fetchPublicMeetingAgenda(params: {
   if (data == null || typeof data !== 'object') return null;
   const o = data as Record<string, unknown>;
   const meeting = o.meeting as PublicAgendaMeeting | undefined;
-  const club = o.club as PublicAgendaClub | undefined;
+  const clubRaw = o.club as PublicAgendaClub | Record<string, unknown> | undefined;
   const items = o.items as PublicAgendaItemRow[] | undefined;
-  if (!meeting?.id || !club?.club_name || !Array.isArray(items)) return null;
+  if (!meeting?.id || !Array.isArray(items)) return null;
+  const name =
+    typeof clubRaw?.club_name === 'string' && clubRaw.club_name.trim() !== ''
+      ? clubRaw.club_name.trim()
+      : 'Club';
+  const club: PublicAgendaClub = {
+    club_name: name,
+    club_number:
+      clubRaw && typeof clubRaw === 'object' && 'club_number' in clubRaw
+        ? (clubRaw.club_number as string | null)
+        : null,
+  };
   return { meeting, club, items };
 }
