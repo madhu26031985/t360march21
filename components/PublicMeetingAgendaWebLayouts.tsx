@@ -135,54 +135,65 @@ function MinimalLayout({
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
       <ScrollView contentContainerStyle={styles.minScroll} keyboardShouldPersistTaps="handled">
-        <View style={[styles.minHeader, { borderBottomColor: theme.colors.border }]}>
-          <Text style={[styles.minClub, { color: theme.colors.textSecondary }]} numberOfLines={2}>
-            {club.club_name}
-            {club.club_number ? ` · #${club.club_number}` : ''}
-            {meeting.meeting_number ? ` · MEETING #${meeting.meeting_number}` : ''}
-          </Text>
-          <Text style={[styles.minTitle, { color: theme.colors.text }]} numberOfLines={3}>
-            {meeting.meeting_title}
-          </Text>
-          <Text style={[styles.minMeta, { color: theme.colors.textSecondary }]}>
-            {formatPublicAgendaMeetingDate(meeting.meeting_date)}
-            {meeting.meeting_start_time
-              ? ` · ${meeting.meeting_start_time}${meeting.meeting_end_time ? `–${meeting.meeting_end_time}` : ''}`
-              : ''}
-          </Text>
-          {meeting.meeting_location ? (
-            <Text style={[styles.minMeta, { color: theme.colors.textSecondary, marginTop: 6 }]}>
-              {meeting.meeting_mode ? `${meeting.meeting_mode.replace(/_/g, ' ')} · ` : ''}
-              {meeting.meeting_location}
+        <View
+          style={[
+            styles.minFrame,
+            {
+              backgroundColor: theme.colors.background,
+              borderLeftColor: theme.colors.borderLight,
+              borderRightColor: theme.colors.borderLight,
+            },
+          ]}
+        >
+          <View style={[styles.minHeader, { borderBottomColor: theme.colors.border }]}>
+            <Text style={[styles.minClub, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+              {club.club_name}
+              {club.club_number ? ` · #${club.club_number}` : ''}
+              {meeting.meeting_number ? ` · MEETING #${meeting.meeting_number}` : ''}
             </Text>
-          ) : meeting.meeting_mode ? (
-            <Text style={[styles.minMeta, { color: theme.colors.textSecondary, marginTop: 6 }]}>
-              {meeting.meeting_mode.replace(/_/g, ' ')}
+            <Text style={[styles.minTitle, { color: theme.colors.text }]} numberOfLines={3}>
+              {meeting.meeting_title}
             </Text>
-          ) : null}
-          {meeting.meeting_link ? (
-            <Pressable onPress={() => openLink(meeting.meeting_link!)} style={{ marginTop: 10 }}>
-              <Text style={[styles.minLink, { color: theme.colors.primary }]}>Join online</Text>
-            </Pressable>
-          ) : null}
+            <Text style={[styles.minMeta, { color: theme.colors.textSecondary }]}>
+              {formatPublicAgendaMeetingDate(meeting.meeting_date)}
+              {meeting.meeting_start_time
+                ? ` · ${meeting.meeting_start_time}${meeting.meeting_end_time ? `–${meeting.meeting_end_time}` : ''}`
+                : ''}
+            </Text>
+            {meeting.meeting_location ? (
+              <Text style={[styles.minMeta, { color: theme.colors.textSecondary, marginTop: 6 }]}>
+                {meeting.meeting_mode ? `${meeting.meeting_mode.replace(/_/g, ' ')} · ` : ''}
+                {meeting.meeting_location}
+              </Text>
+            ) : meeting.meeting_mode ? (
+              <Text style={[styles.minMeta, { color: theme.colors.textSecondary, marginTop: 6 }]}>
+                {meeting.meeting_mode.replace(/_/g, ' ')}
+              </Text>
+            ) : null}
+            {meeting.meeting_link ? (
+              <Pressable onPress={() => openLink(meeting.meeting_link!)} style={{ marginTop: 10 }}>
+                <Text style={[styles.minLink, { color: theme.colors.primary }]}>Join online</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          <Text style={[styles.minNote, { color: theme.colors.textTertiary }]}>
+            Shared agenda — T360 app for booking and member details.
+          </Text>
+
+          {items.map((item) => (
+            <AgendaSectionCard
+              key={`${item.section_order}-${item.section_name}`}
+              item={item}
+              theme={theme}
+              skin="minimal"
+            />
+          ))}
+
+          <Text style={[styles.minFooter, { color: theme.colors.textTertiary }]}>
+            © {new Date().getFullYear()} {club.club_name}
+          </Text>
         </View>
-
-        <Text style={[styles.minNote, { color: theme.colors.textTertiary }]}>
-          Shared agenda — T360 app for booking and member details.
-        </Text>
-
-        {items.map((item) => (
-          <AgendaSectionCard
-            key={`${item.section_order}-${item.section_name}`}
-            item={item}
-            theme={theme}
-            skin="minimal"
-          />
-        ))}
-
-        <Text style={[styles.minFooter, { color: theme.colors.textTertiary }]}>
-          © {new Date().getFullYear()} {club.club_name}
-        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -488,17 +499,25 @@ const styles = StyleSheet.create({
   footer: { textAlign: 'center', fontSize: 12, marginTop: 20, paddingHorizontal: 16 },
 
   minScroll: { paddingBottom: 48 },
+  // Centered “document” look with visible left/right borders.
+  minFrame: {
+    width: '100%',
+    maxWidth: 860,
+    alignSelf: 'center',
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+  },
   minHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
+    paddingHorizontal: 24,
+    paddingTop: 22,
+    paddingBottom: 18,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   minClub: { fontSize: 13, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' },
-  minTitle: { fontSize: 24, fontWeight: '700', marginTop: 8, lineHeight: 30 },
-  minMeta: { fontSize: 15, marginTop: 8, lineHeight: 22 },
+  minTitle: { fontSize: 34, fontWeight: '800', marginTop: 10, lineHeight: 40 },
+  minMeta: { fontSize: 16, marginTop: 8, lineHeight: 22 },
   minLink: { fontSize: 16, fontWeight: '600', textDecorationLine: 'underline' },
-  minNote: { fontSize: 12, paddingHorizontal: 20, paddingVertical: 14 },
+  minNote: { fontSize: 13, paddingHorizontal: 24, paddingVertical: 14 },
   minCard: {
     paddingHorizontal: 20,
     paddingVertical: 18,
@@ -507,17 +526,17 @@ const styles = StyleSheet.create({
   minCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   // Notion-style minimal rows (time left, content middle, assignee right)
   minRowCard: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   minRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 16,
+    gap: 18,
   },
   minRowTimeCol: {
-    width: 92,
+    width: 110,
     paddingTop: 2,
   },
   minRowTimeText: {
@@ -555,7 +574,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   minRowRightCol: {
-    minWidth: 130,
+    minWidth: 160,
     paddingTop: 2,
     alignItems: 'flex-end',
   },
@@ -565,7 +584,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'right',
   },
-  minFooter: { textAlign: 'center', fontSize: 11, marginTop: 24, paddingHorizontal: 20 },
+  minFooter: { textAlign: 'center', fontSize: 11, marginTop: 24, paddingHorizontal: 24 },
 
   vibScroll: { paddingBottom: 40 },
   vibBannerTop: {
