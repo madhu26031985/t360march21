@@ -23,7 +23,7 @@ interface ClubInfo {
   club_number: string | null;
 }
 
-export default function ClubMeetingDetails() {
+export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boolean }) {
   const { theme } = useTheme();
   const { user } = useAuth();
   
@@ -306,11 +306,17 @@ export default function ClubMeetingDetails() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Meeting Details</Text>
-        <TouchableOpacity 
+        {embedded ? (
+          <View style={styles.backButtonPlaceholder} />
+        ) : (
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+        )}
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          Club Meeting Details
+        </Text>
+        <TouchableOpacity
           style={[styles.saveButton, { backgroundColor: theme.colors.primary }]}
           onPress={handleSave}
           disabled={isSaving}
@@ -649,6 +655,10 @@ export default function ClubMeetingDetails() {
   );
 }
 
+export default function ClubMeetingDetailsPage() {
+  return <ClubMeetingDetailsContent embedded={false} />;
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -672,6 +682,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
+  },
+  backButtonPlaceholder: {
+    padding: 8,
+    width: 40,
   },
   headerTitle: {
     fontSize: 18,

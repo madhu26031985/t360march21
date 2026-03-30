@@ -47,7 +47,7 @@ const CLUB_OPERATIONS_SUB_PAGES = [
   },
   {
     title: 'Club Meeting Details',
-    route: '/admin/club-meeting-details' as const,
+    route: '/admin/club-info-management?tab=meetingDetails' as const,
     Icon: Calendar,
     accentColor: '#0a66c2',
   },
@@ -430,10 +430,10 @@ export default function AdminPanel() {
                     <TouchableOpacity
                       style={styles.clubOpsRow}
                       onPress={() => {
-                        if (route === '/admin/club-info-management') {
+                        if (route.startsWith('/admin/club-info-management')) {
                           prefetchClubInfoManagement(queryClient, user?.currentClubId);
                         }
-                        if (route === '/admin/excomm-management') {
+                        if (route.startsWith('/admin/excomm-management')) {
                           prefetchExcommManagement(queryClient, user?.currentClubId);
                         }
                         router.push(route);

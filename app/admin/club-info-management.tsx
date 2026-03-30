@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, Animated, Easing, PanResponder, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,9 +12,10 @@ import {
   type ClubInfoManagementClubInfo,
   type ClubInfoManagementFormData,
 } from '@/lib/clubInfoManagementQuery';
-import { ArrowLeft, Building2, Crown, User, Shield, Eye, UserCheck, ChevronDown, MapPin, Info, Navigation } from 'lucide-react-native';
+import { ArrowLeft, Building2, Crown, User, Shield, Eye, UserCheck, ChevronDown, MapPin, Info, Navigation, Calendar } from 'lucide-react-native';
 import moment from 'moment-timezone';
 import CountryPicker from '@/components/CountryPicker';
+import { ClubMeetingDetailsContent } from './club-meeting-details';
 
 /** When a country has many IANA zones, pick a stable default (user can override in the picker). */
 const COUNTRY_PREFERRED_TIMEZONE: Partial<Record<string, string>> = {
@@ -75,6 +76,19 @@ export default function ClubInfoManagement() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const clubId = user?.currentClubId ?? null;
+  const params = useLocalSearchParams<{ tab?: string | string[] }>();
+
+  const tabParamRaw = params.tab;
+  const tabParam = Array.isArray(tabParamRaw) ? tabParamRaw[0] : tabParamRaw;
+  const normalizedTab = (tabParam ?? '').toString();
+  const computedInitialTab: 'info' | 'location' | 'meetingDetails' | 'moreInfo' =
+    normalizedTab === 'location'
+      ? 'location'
+      : normalizedTab === 'meetingDetails'
+        ? 'meetingDetails'
+        : normalizedTab === 'moreInfo'
+          ? 'moreInfo'
+          : 'info';
 
   const {
     data: bundle,
@@ -116,9 +130,14 @@ export default function ClubInfoManagement() {
   const [showClubStatusModal, setShowClubStatusModal] = useState(false);
   const [showBannerColorModal, setShowBannerColorModal] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'location' | 'moreInfo'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'location' | 'meetingDetails' | 'moreInfo'>(computedInitialTab);
   const tabTransition = useRef(new Animated.Value(1)).current;
-  const tabOrder: Array<'info' | 'location' | 'moreInfo'> = ['info', 'location', 'moreInfo'];
+  const tabOrder: Array<'info' | 'location' | 'meetingDetails' | 'moreInfo'> = [
+    'info',
+    'location',
+    'meetingDetails',
+    'moreInfo',
+  ];
   const lastSavedSnapshotRef = useRef<string>('');
 
   const clubTypeOptions = [
@@ -228,7 +247,7 @@ export default function ClubInfoManagement() {
     return option?.label || 'Select banner color';
   };
 
-  const switchTab = (nextTab: 'info' | 'location' | 'moreInfo') => {
+  const switchTab = (nextTab: 'info' | 'location' | 'meetingDetails' | 'moreInfo') => {
     if (nextTab === activeTab) return;
     Animated.timing(tabTransition, {
       toValue: 0,
@@ -580,7 +599,25 @@ export default function ClubInfoManagement() {
                   { color: activeTab === 'location' ? '#111827' : '#6B7280' },
                   activeTab === 'location' && styles.activeTabText
                 ]} maxFontSizeMultiplier={1.3}>
-                  Location
+                  Club Location
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  activeTab === 'meetingDetails' && styles.activeTab,
+                  activeTab === 'meetingDetails' && { borderBottomColor: theme.colors.primary }
+                ]}
+                onPress={() => switchTab('meetingDetails')}
+              >
+                <Calendar size={16} color={activeTab === 'meetingDetails' ? theme.colors.primary : '#9CA3AF'} />
+                <Text style={[
+                  styles.tabText,
+                  { color: activeTab === 'meetingDetails' ? '#111827' : '#6B7280' },
+                  activeTab === 'meetingDetails' && styles.activeTabText
+                ]} maxFontSizeMultiplier={1.3}>
+                  Club Meeting Details
                 </Text>
               </TouchableOpacity>
 
@@ -598,7 +635,7 @@ export default function ClubInfoManagement() {
                   { color: activeTab === 'moreInfo' ? '#111827' : '#6B7280' },
                   activeTab === 'moreInfo' && styles.activeTabText
                 ]} maxFontSizeMultiplier={1.3}>
-                  More Info
+                  Club More Details
                 </Text>
               </TouchableOpacity>
             </View>
@@ -759,7 +796,7 @@ export default function ClubInfoManagement() {
             {/* Location Information Tab */}
             {activeTab === 'location' && (
               <View style={styles.locationTabWrap}>
-                  <Text style={[styles.locationSectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Location</Text>
+                  <Text style={[styles.locationSectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Location</Text>
 
                   <View style={[styles.formField, styles.sectionBlock]}>
                     <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Country</Text>
@@ -867,7 +904,7 @@ export default function ClubInfoManagement() {
               <View style={[styles.sectionIcon, { backgroundColor: '#3b82f6' + '20' }]}>
                 <Info size={20} color="#3b82f6" />
               </View>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>More Info</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club More Details</Text>
             </View>
 
           {/* Region/State and District */}
@@ -919,6 +956,13 @@ export default function ClubInfoManagement() {
               />
             </View>
           </View>
+              </View>
+            )}
+
+            {/* Club Meeting Details Tab */}
+            {activeTab === 'meetingDetails' && (
+              <View style={{ marginBottom: 24 }}>
+                <ClubMeetingDetailsContent embedded />
               </View>
             )}
           </Animated.View>

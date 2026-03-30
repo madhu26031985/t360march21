@@ -206,7 +206,12 @@ export default function ClubOperations() {
             title="Club Meeting Details"
             description="Configure meeting schedule, frequency, and format"
             icon={<Calendar size={20} color="#0a66c2" />}
-            onPress={() => router.push('/admin/club-meeting-details')}
+            onPress={() =>
+              router.push({
+                pathname: '/admin/club-info-management',
+                params: { tab: 'meetingDetails' },
+              })
+            }
           />
         </View>
 
