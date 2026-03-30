@@ -20,6 +20,9 @@ export type PublicAgendaMeeting = {
 export type PublicAgendaClub = {
   club_name: string;
   club_number: string | null;
+  district?: string | null;
+  division?: string | null;
+  area?: string | null;
 };
 
 export type PublicAgendaItemRow = {
