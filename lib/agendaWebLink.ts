@@ -7,6 +7,8 @@
  *
  * Default host is https://t360.in — or set EXPO_PUBLIC_AGENDA_WEB_HOST (e.g. https://app.t360.in).
  */
+import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
+
 export const AGENDA_WEB_PATH_PREFIX = '/weblogin';
 function agendaWebHost(): string {
   const h = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.trim();
@@ -56,8 +58,14 @@ export function buildAgendaWebUrl(params: {
   clubId: string;
   meetingNumber: string | null | undefined;
   meetingId: string;
+  /** Append `?skin=minimal` or `?skin=vibrant` (default layout omits query). */
+  skin?: PublicAgendaSkinId;
 }): string {
   const num = sanitizeMeetingNumberSegment(params.meetingNumber);
   const path = `${AGENDA_WEB_PATH_PREFIX}/${params.clubId}/agenda/${num}/${params.meetingId}`;
-  return `${agendaWebHost()}${path}`;
+  let url = `${agendaWebHost()}${path}`;
+  if (params.skin === 'minimal' || params.skin === 'vibrant') {
+    url += `?skin=${params.skin}`;
+  }
+  return url;
 }

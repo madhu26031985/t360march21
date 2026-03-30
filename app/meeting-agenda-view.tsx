@@ -1194,7 +1194,7 @@ export function MeetingAgendaViewContent({
               </Text>
             ) : null}
             <Text style={[styles.agendaWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
-              Use Copy link or Open — selecting the URL by hand can paste extra text and break the page.
+              Use Copy link or Open. Optional layouts: add ?skin=minimal or ?skin=vibrant to the URL. Do not select text by hand — it can break the link.
             </Text>
             <View style={styles.agendaWebLinkActions}>
               <TouchableOpacity
