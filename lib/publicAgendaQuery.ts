@@ -53,12 +53,29 @@ export async function fetchPublicMeetingAgenda(params: {
     p_meeting_id: params.meetingId,
   });
   if (error) throw error;
-  if (data == null || typeof data !== 'object') return null;
+  if (data == null || typeof data !== 'object') {
+    if (typeof window !== 'undefined') {
+      console.warn(
+        '[T360 public agenda] RPC returned null. In Supabase SQL: SELECT id, is_agenda_visible FROM app_club_meeting WHERE id = $1; ' +
+          'and confirm get_public_meeting_agenda_by_club + row_security migration ran on this project.'
+      );
+    }
+    return null;
+  }
   const o = data as Record<string, unknown>;
   const meeting = o.meeting as PublicAgendaMeeting | undefined;
   const clubRaw = o.club as PublicAgendaClub | Record<string, unknown> | undefined;
   const items = o.items as PublicAgendaItemRow[] | undefined;
-  if (!meeting?.id || !Array.isArray(items)) return null;
+  if (!meeting?.id || !Array.isArray(items)) {
+    if (typeof window !== 'undefined') {
+      console.warn('[T360 public agenda] Unexpected RPC JSON shape', {
+        keys: Object.keys(o),
+        hasMeetingId: !!meeting?.id,
+        itemsIsArray: Array.isArray(items),
+      });
+    }
+    return null;
+  }
   const name =
     typeof clubRaw?.club_name === 'string' && clubRaw.club_name.trim() !== ''
       ? clubRaw.club_name.trim()
