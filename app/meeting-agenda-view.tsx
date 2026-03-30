@@ -1179,8 +1179,7 @@ export function MeetingAgendaViewContent({
             </View>
             <Text
               style={[styles.agendaWebLinkUrlText, { color: theme.colors.textSecondary }]}
-              selectable
-              numberOfLines={3}
+              numberOfLines={4}
               maxFontSizeMultiplier={1.2}
             >
               {buildAgendaWebUrl({
@@ -1190,7 +1189,7 @@ export function MeetingAgendaViewContent({
               })}
             </Text>
             <Text style={[styles.agendaWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
-              Public link — no login required. Use t360.in or set EXPO_PUBLIC_AGENDA_WEB_HOST for your web host.
+              Use Copy link or Open — selecting the URL by hand can paste extra text and break the page.
             </Text>
             <View style={styles.agendaWebLinkActions}>
               <TouchableOpacity

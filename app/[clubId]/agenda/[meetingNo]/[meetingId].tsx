@@ -14,12 +14,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { parseMemberPreparedAgenda } from '@/lib/preparedSpeechesAgendaParse';
 import {
+  extractMeetingNoFromRouteParam,
+  extractUuidFromRouteParam,
+} from '@/lib/agendaWebLink';
+import {
   fetchPublicMeetingAgenda,
   type PublicAgendaItemRow,
   type PublicAgendaPayload,
 } from '@/lib/publicAgendaQuery';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function formatMeetingDate(iso: string | undefined): string {
   if (!iso) return '';
@@ -90,11 +92,11 @@ export default function PublicMeetingAgendaPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const cid = Array.isArray(clubId) ? clubId[0] : clubId;
-    const num = Array.isArray(meetingNo) ? meetingNo[0] : meetingNo;
-    const mid = Array.isArray(meetingId) ? meetingId[0] : meetingId;
+    const cid = extractUuidFromRouteParam(clubId);
+    const mid = extractUuidFromRouteParam(meetingId);
+    const num = extractMeetingNoFromRouteParam(meetingNo);
 
-    if (!cid || !num || !mid || !UUID_RE.test(cid) || !UUID_RE.test(mid)) {
+    if (!cid || !num || !mid) {
       setState('empty');
       setMessage('This link is invalid or incomplete.');
       return;

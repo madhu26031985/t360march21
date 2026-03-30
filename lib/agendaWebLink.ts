@@ -15,6 +15,34 @@ export function getAgendaWebHost(): string {
   return agendaWebHost();
 }
 
+/** First UUID in a path/query segment (handles pasted URL + trailing junk). */
+export function extractUuidFromRouteParam(raw: string | string[] | undefined): string | null {
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  if (s == null || String(s).trim() === '') return null;
+  let decoded = String(s).trim();
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    /* already decoded or bad % */
+  }
+  const m = decoded.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  return m ? m[0].toLowerCase() : null;
+}
+
+/** Meeting number segment only; strips spaces or pasted text after the number. */
+export function extractMeetingNoFromRouteParam(raw: string | string[] | undefined): string | null {
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  if (s == null || String(s).trim() === '') return null;
+  let decoded = String(s).trim();
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    /* ignore */
+  }
+  const m = decoded.match(/^([a-zA-Z0-9._-]+)/);
+  return m ? m[1] : null;
+}
+
 export function sanitizeMeetingNumberSegment(meetingNumber: string | null | undefined): string {
   if (meetingNumber == null || String(meetingNumber).trim() === '') return '0';
   const t = String(meetingNumber).trim().replace(/[^a-zA-Z0-9._-]/g, '');
