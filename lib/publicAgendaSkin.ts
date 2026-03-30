@@ -12,3 +12,21 @@ export function normalizePublicAgendaSkin(
   if (v === 'minimal' || v === 'vibrant') return v;
   return 'default';
 }
+
+/** Normalizes a DB value for meeting.public_agenda_skin. */
+export function normalizeStoredPublicAgendaSkin(
+  raw: string | null | undefined
+): PublicAgendaSkinId {
+  const v = String(raw ?? '').toLowerCase().trim();
+  if (v === 'minimal' || v === 'vibrant') return v;
+  return 'default';
+}
+
+/** `?skin=` in URL — returns null if absent so caller can use meeting default. */
+export function publicAgendaSkinFromUrlParam(
+  raw: string | string[] | undefined
+): PublicAgendaSkinId | null {
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  if (s == null || String(s).trim() === '') return null;
+  return normalizePublicAgendaSkin(s);
+}

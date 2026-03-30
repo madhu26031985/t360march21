@@ -8,7 +8,10 @@ import {
   extractMeetingNoFromRouteParam,
   extractUuidFromRouteParam,
 } from '@/lib/agendaWebLink';
-import { normalizePublicAgendaSkin } from '@/lib/publicAgendaSkin';
+import {
+  normalizeStoredPublicAgendaSkin,
+  publicAgendaSkinFromUrlParam,
+} from '@/lib/publicAgendaSkin';
 import { fetchPublicMeetingAgenda, type PublicAgendaPayload } from '@/lib/publicAgendaQuery';
 
 export default function PublicMeetingAgendaPage() {
@@ -19,7 +22,6 @@ export default function PublicMeetingAgendaPage() {
     meetingId: string;
   }>();
   const globalParams = useGlobalSearchParams<{ skin?: string | string[] }>();
-  const skin = normalizePublicAgendaSkin(globalParams.skin);
 
   const [state, setState] = useState<'loading' | 'error' | 'empty' | 'ready'>('loading');
   const [payload, setPayload] = useState<PublicAgendaPayload | null>(null);
@@ -96,6 +98,10 @@ export default function PublicMeetingAgendaPage() {
   }
 
   if (!payload) return null;
+
+  const skin =
+    publicAgendaSkinFromUrlParam(globalParams.skin) ??
+    normalizeStoredPublicAgendaSkin(payload.meeting.public_agenda_skin);
 
   return <PublicMeetingAgendaLoadedView skin={skin} payload={payload} theme={theme} />;
 }

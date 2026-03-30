@@ -9,6 +9,7 @@ import * as Clipboard from 'expo-clipboard';
 import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users, Timer, PenLine, BookOpen, ExternalLink, Copy } from 'lucide-react-native';
 import { exportAgendaToPDF, generatePDFFilename } from '@/lib/pdfExportUtils';
 import { buildAgendaWebUrl } from '@/lib/agendaWebLink';
+import { normalizeStoredPublicAgendaSkin } from '@/lib/publicAgendaSkin';
 import { parseMemberPreparedAgenda } from '@/lib/preparedSpeechesAgendaParse';
 
 interface Meeting {
@@ -30,6 +31,7 @@ interface Meeting {
   footer_banner_1_color?: string;
   footer_banner_2_color?: string;
   is_agenda_visible?: boolean;
+  public_agenda_skin?: string | null;
 }
 
 interface ClubInfo {
@@ -1015,6 +1017,7 @@ export function MeetingAgendaViewContent({
       clubId: meeting.club_id,
       meetingNumber: meeting.meeting_number,
       meetingId: meeting.id,
+      skin: normalizeStoredPublicAgendaSkin(meeting.public_agenda_skin),
     });
     try {
       const supported = await Linking.canOpenURL(url);
@@ -1035,6 +1038,7 @@ export function MeetingAgendaViewContent({
       clubId: meeting.club_id,
       meetingNumber: meeting.meeting_number,
       meetingId: meeting.id,
+      skin: normalizeStoredPublicAgendaSkin(meeting.public_agenda_skin),
     });
     try {
       await Clipboard.setStringAsync(url);
@@ -1186,6 +1190,7 @@ export function MeetingAgendaViewContent({
                 clubId: meeting.club_id,
                 meetingNumber: meeting.meeting_number,
                 meetingId: meeting.id,
+                skin: normalizeStoredPublicAgendaSkin(meeting.public_agenda_skin),
               })}
             </Text>
             {meeting.is_agenda_visible === false ? (
@@ -1194,7 +1199,7 @@ export function MeetingAgendaViewContent({
               </Text>
             ) : null}
             <Text style={[styles.agendaWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
-              Use Copy link or Open. Optional layouts: add ?skin=minimal or ?skin=vibrant to the URL. Do not select text by hand — it can break the link.
+              Use Copy link or Open. ExComm sets the default layout in Edit Agenda; ?skin= on the URL still overrides for previews. Do not select text by hand — it can break the link.
             </Text>
             <View style={styles.agendaWebLinkActions}>
               <TouchableOpacity

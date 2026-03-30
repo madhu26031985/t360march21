@@ -13,6 +13,8 @@ export type PublicAgendaMeeting = {
   meeting_link: string | null;
   club_info_banner_color?: string | null;
   datetime_banner_color?: string | null;
+  /** ExComm default for web layout; URL ?skin= overrides. */
+  public_agenda_skin?: string | null;
 };
 
 export type PublicAgendaClub = {

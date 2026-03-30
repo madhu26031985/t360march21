@@ -5,6 +5,8 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
+import { normalizeStoredPublicAgendaSkin } from '@/lib/publicAgendaSkin';
 import { ChevronLeft, Save, Clock, Eye, EyeOff, Trash2, UserPlus, Search, X, ChevronUp, ChevronDown, RotateCcw, FileText, Zap, PencilLine, Users2, Filter, Check, Square, ListOrdered } from 'lucide-react-native';
 import { useCallback } from 'react';
 
@@ -233,6 +235,7 @@ export default function AgendaEditor() {
   const [ahCounterModalVisible, setAhCounterModalVisible] = useState(false);
   const [grammarianModalVisible, setGrammarianModalVisible] = useState(false);
   const [isAgendaVisible, setIsAgendaVisible] = useState(true);
+  const [publicAgendaSkin, setPublicAgendaSkin] = useState<PublicAgendaSkinId>('default');
   const [preparedSpeakers, setPreparedSpeakers] = useState<PreparedSpeaker[]>([]);
   const [preparedSpeakerRoleDefs, setPreparedSpeakerRoleDefs] = useState<
     Array<{ slot: number; role_name: string }>
@@ -893,7 +896,7 @@ export default function AgendaEditor() {
     try {
       const { data, error } = await supabase
         .from('app_club_meeting')
-        .select('meeting_start_time, club_info_banner_color, datetime_banner_color, footer_banner_1_color, footer_banner_2_color, theme, word_of_the_day, phrase_of_the_day, idiom_of_the_day, quote_of_the_day, is_agenda_visible')
+        .select('meeting_start_time, club_info_banner_color, datetime_banner_color, footer_banner_1_color, footer_banner_2_color, theme, word_of_the_day, phrase_of_the_day, idiom_of_the_day, quote_of_the_day, is_agenda_visible, public_agenda_skin')
         .eq('id', meetingId)
         .maybeSingle();
 
@@ -914,6 +917,7 @@ export default function AgendaEditor() {
         setIdiomOfTheDay(data.idiom_of_the_day || '');
         setQuoteOfTheDay(data.quote_of_the_day || '');
         setIsAgendaVisible(data.is_agenda_visible ?? true);
+        setPublicAgendaSkin(normalizeStoredPublicAgendaSkin((data as { public_agenda_skin?: string | null }).public_agenda_skin));
         console.log('✓ Loaded meeting start time:', data.meeting_start_time);
       } else {
         console.log('No meeting found with ID:', meetingId);
@@ -2548,6 +2552,21 @@ export default function AgendaEditor() {
     }, 500); // Wait 500ms after user stops typing
   };
 
+  const persistPublicAgendaSkin = async (skin: PublicAgendaSkinId) => {
+    if (skin === publicAgendaSkin) return;
+    const prev = publicAgendaSkin;
+    setPublicAgendaSkin(skin);
+    const { error } = await supabase
+      .from('app_club_meeting')
+      .update({ public_agenda_skin: skin })
+      .eq('id', meetingId);
+    if (error) {
+      setPublicAgendaSkin(prev);
+      console.error('Error saving public web layout:', error);
+      Alert.alert('Error', 'Could not save web layout');
+    }
+  };
+
   const toggleAgendaVisibility = async () => {
     try {
       const newVisibility = !isAgendaVisible;
@@ -3303,6 +3322,43 @@ export default function AgendaEditor() {
               </View>
             </>
           )}
+        </View>
+
+        <View style={[styles.agendaVisibilityCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <Text style={[styles.agendaVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Public web layout
+          </Text>
+          <Text style={[styles.agendaVisibilitySubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Choose how the shareable web agenda looks. Adding ?skin=minimal or ?skin=vibrant to the link still overrides this for one-off previews.
+          </Text>
+          {(
+            [
+              { id: 'default' as const, title: 'Default', subtitle: 'Banners and section cards' },
+              { id: 'minimal' as const, title: 'Minimal', subtitle: 'Simple list' },
+              { id: 'vibrant' as const, title: 'Vibrant', subtitle: 'Bold cards' },
+            ] as const
+          ).map(opt => (
+            <TouchableOpacity
+              key={opt.id}
+              style={[
+                styles.publicWebSkinOption,
+                {
+                  borderColor: publicAgendaSkin === opt.id ? theme.colors.primary : theme.colors.border,
+                  borderWidth: publicAgendaSkin === opt.id ? 2 : 1,
+                  backgroundColor: theme.colors.background,
+                },
+              ]}
+              onPress={() => persistPublicAgendaSkin(opt.id)}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.publicWebSkinOptionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                {opt.title}
+              </Text>
+              <Text style={[styles.publicWebSkinOptionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
+                {opt.subtitle}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         <View style={[styles.masterAutoFillCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -6415,6 +6471,21 @@ const styles = StyleSheet.create({
   sectionVisibilityButtonText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  publicWebSkinOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  publicWebSkinOptionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  publicWebSkinOptionSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
   },
   masterAutoFillCard: {
     marginHorizontal: 16,
