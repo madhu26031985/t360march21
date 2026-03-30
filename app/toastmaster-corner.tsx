@@ -140,6 +140,8 @@ export default function ToastmasterCorner() {
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [assignRosterLoading, setAssignRosterLoading] = useState(false);
   const rosterRequestId = useRef(0);
+  /** Sync guard so rapid double-taps on iOS cannot enqueue two bookings before state disables the button. */
+  const bookTmodInFlightRef = useRef(false);
   const [cornerThemeName, setCornerThemeName] = useState('');
   const [savingCornerTheme, setSavingCornerTheme] = useState(false);
   const [editingSavedCornerTheme, setEditingSavedCornerTheme] = useState(false);
@@ -342,25 +344,49 @@ export default function ToastmasterCorner() {
     }
   };
 
+  /** Open TMOD role row id from snapshot — skips extra app_meeting_roles_management GET before PATCH. */
+  const resolveOpenToastmasterRoleId = async (): Promise<string | null> => {
+    if (toastmasterOfDay?.id && !toastmasterOfDay.assigned_user_id) {
+      return toastmasterOfDay.id;
+    }
+    return fetchOpenMeetingRoleId(meetingId!, { ilikeRoleName: '%toastmaster%' });
+  };
+
   const handleBookTmodInline = async () => {
     if (!meetingId || !user?.id) {
       Alert.alert('Sign in required', 'Please sign in to book this role.');
       return;
     }
+    if (bookTmodInFlightRef.current) return;
+    bookTmodInFlightRef.current = true;
     setBookingTmodRole(true);
     try {
-      const result = await bookOpenMeetingRole(
-        user.id,
-        meetingId,
-        { ilikeRoleName: '%toastmaster%' },
-        'Toastmaster of the Day is already booked or not set up for this meeting.'
-      );
+      let result: Awaited<ReturnType<typeof bookOpenMeetingRole>>;
+      if (toastmasterOfDay?.id && !toastmasterOfDay.assigned_user_id) {
+        result = await bookMeetingRoleForCurrentUser(user.id, toastmasterOfDay.id);
+        if (!result.ok) {
+          result = await bookOpenMeetingRole(
+            user.id,
+            meetingId,
+            { ilikeRoleName: '%toastmaster%' },
+            'Toastmaster of the Day is already booked or not set up for this meeting.'
+          );
+        }
+      } else {
+        result = await bookOpenMeetingRole(
+          user.id,
+          meetingId,
+          { ilikeRoleName: '%toastmaster%' },
+          'Toastmaster of the Day is already booked or not set up for this meeting.'
+        );
+      }
       if (result.ok) {
         await invalidateToastmasterCorner();
       } else {
         Alert.alert('Could not book', result.message);
       }
     } finally {
+      bookTmodInFlightRef.current = false;
       setBookingTmodRole(false);
     }
   };
@@ -438,7 +464,7 @@ export default function ToastmasterCorner() {
     }
     setAssigningToastmasterRole(true);
     try {
-      const roleId = await fetchOpenMeetingRoleId(meetingId, { ilikeRoleName: '%toastmaster%' });
+      const roleId = await resolveOpenToastmasterRoleId();
       if (!roleId) {
         Alert.alert('Error', 'No open Toastmaster role was found for this meeting.');
         return;
@@ -576,6 +602,7 @@ export default function ToastmasterCorner() {
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded]}
       >
         <View style={styles.contentTop} pointerEvents="box-none">
@@ -869,10 +896,14 @@ export default function ToastmasterCorner() {
                     {
                       backgroundColor: theme.colors.primary,
                       opacity: bookingTmodRole || assigningToastmasterRole ? 0.85 : 1,
+                      zIndex: 2,
                     },
                   ]}
                   onPress={() => handleBookTmodInline()}
                   disabled={bookingTmodRole || assigningToastmasterRole}
+                  delayPressIn={0}
+                  activeOpacity={0.88}
+                  hitSlop={{ top: 16, bottom: 16, left: 20, right: 20 }}
                 >
                   {bookingTmodRole ? (
                     <ActivityIndicator color="#ffffff" size="small" />
@@ -883,7 +914,7 @@ export default function ToastmasterCorner() {
                   )}
                 </TouchableOpacity>
               </View>
-              <View style={styles.meetingCardDecoration} />
+              <View style={styles.meetingCardDecoration} pointerEvents="none" />
             </View>
           </>
         )}
@@ -1007,7 +1038,12 @@ export default function ToastmasterCorner() {
             marginTop: 0,
             marginBottom: 16
           }]}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.footerNavigationContent}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.footerNavigationContent}
+            >
             <TouchableOpacity
               style={styles.footerNavItem}
               onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
@@ -1873,7 +1909,11 @@ const styles = StyleSheet.create({
   },
   bookRoleButton: {
     paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    minHeight: 48,
+    minWidth: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 8,
     shadowColor: '#000',
     shadowOffset: {

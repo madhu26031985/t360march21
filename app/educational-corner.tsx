@@ -107,6 +107,8 @@ export default function EducationalCorner(): JSX.Element {
 
   // State management
   const skipFocusRefetchRef = useRef(true);
+  /** Sync guard so rapid double-taps on iOS cannot enqueue two bookings before state disables the button. */
+  const bookEducationalInFlightRef = useRef(false);
 
   const {
     data: bundle,
@@ -178,6 +180,14 @@ export default function EducationalCorner(): JSX.Element {
     };
   }, [showAssignEducationalModal, user?.currentClubId]);
 
+  /** Open role row id from snapshot — avoids an extra app_meeting_roles_management round-trip before PATCH. */
+  const resolveOpenEducationalRoleId = async (): Promise<string | null> => {
+    if (educationalSpeaker?.id && !educationalSpeaker.assigned_user_id) {
+      return educationalSpeaker.id;
+    }
+    return fetchOpenMeetingRoleId(meetingId!, { eqRoleName: 'Educational Speaker' });
+  };
+
   const handleAssignEducationalToMember = async (member: ClubMember): Promise<void> => {
     if (!meetingId || !user?.id) {
       Alert.alert('Sign in required', 'Please sign in to assign this role.');
@@ -185,7 +195,7 @@ export default function EducationalCorner(): JSX.Element {
     }
     setAssigningEducationalRole(true);
     try {
-      const roleId = await fetchOpenMeetingRoleId(meetingId, { eqRoleName: 'Educational Speaker' });
+      const roleId = await resolveOpenEducationalRoleId();
       if (!roleId) {
         Alert.alert('Error', 'No open Educational Speaker role was found for this meeting.');
         return;
@@ -218,20 +228,36 @@ export default function EducationalCorner(): JSX.Element {
       Alert.alert('Sign in required', 'Please sign in to book this role.');
       return;
     }
+    if (bookEducationalInFlightRef.current) return;
+    bookEducationalInFlightRef.current = true;
     setBookingEducationalRole(true);
     try {
-      const result = await bookOpenMeetingRole(
-        user.id,
-        meetingId,
-        { eqRoleName: 'Educational Speaker' },
-        'Educational Speaker is already booked or not set up for this meeting.'
-      );
+      let result: Awaited<ReturnType<typeof bookOpenMeetingRole>>;
+      if (educationalSpeaker?.id && !educationalSpeaker.assigned_user_id) {
+        result = await bookMeetingRoleForCurrentUser(user.id, educationalSpeaker.id);
+        if (!result.ok) {
+          result = await bookOpenMeetingRole(
+            user.id,
+            meetingId,
+            { eqRoleName: 'Educational Speaker' },
+            'Educational Speaker is already booked or not set up for this meeting.'
+          );
+        }
+      } else {
+        result = await bookOpenMeetingRole(
+          user.id,
+          meetingId,
+          { eqRoleName: 'Educational Speaker' },
+          'Educational Speaker is already booked or not set up for this meeting.'
+        );
+      }
       if (result.ok) {
         await refetch();
       } else {
         Alert.alert('Could not book', result.message);
       }
     } finally {
+      bookEducationalInFlightRef.current = false;
       setBookingEducationalRole(false);
     }
   };
@@ -463,6 +489,7 @@ export default function EducationalCorner(): JSX.Element {
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded]}
       >
         {showConsolidatedEducationalCard ? (
@@ -760,10 +787,14 @@ export default function EducationalCorner(): JSX.Element {
                       {
                         backgroundColor: theme.colors.primary,
                         opacity: bookingEducationalRole || assigningEducationalRole ? 0.85 : 1,
+                        zIndex: 2,
                       },
                     ]}
                     onPress={() => handleBookEducationalSpeakerInline()}
                     disabled={bookingEducationalRole || assigningEducationalRole}
+                    delayPressIn={0}
+                    activeOpacity={0.88}
+                    hitSlop={{ top: 16, bottom: 16, left: 20, right: 20 }}
                   >
                     {bookingEducationalRole ? (
                       <ActivityIndicator color="#ffffff" size="small" />
@@ -782,7 +813,7 @@ export default function EducationalCorner(): JSX.Element {
                   </Text>
                 </View>
               )}
-              <View style={styles.meetingCardDecoration} />
+              <View style={styles.meetingCardDecoration} pointerEvents="none" />
             </View>
           </>
         )}
@@ -799,7 +830,12 @@ export default function EducationalCorner(): JSX.Element {
             marginTop: 0,
             marginBottom: 16,
           }]}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.footerNavigationContent}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.footerNavigationContent}
+            >
             <TouchableOpacity
               style={styles.footerNavItem}
               onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
@@ -1539,7 +1575,11 @@ const styles = StyleSheet.create({
   },
   bookSpeakerButton: {
     paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    minHeight: 48,
+    minWidth: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 8,
     marginTop: 28,
     shadowColor: '#000',

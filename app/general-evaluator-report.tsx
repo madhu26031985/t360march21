@@ -7,6 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
+import { fetchGeneralEvaluatorReportBundle } from '@/lib/generalEvaluatorReportQuery';
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
 import { ArrowLeft, Calendar, Clock, MapPin, Building2, Star, Info, CircleCheck as CheckCircle, Circle, CircleAlert as AlertCircle, X, NotebookPen, Bell, FileText, Users, MessageSquare, Mic, BookOpen, CheckSquare, ClipboardCheck, FileBarChart, Search, UserPlus } from 'lucide-react-native';
 import { Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
@@ -118,6 +119,7 @@ export default function GeneralEvaluatorReport() {
   const [assignGeSearch, setAssignGeSearch] = useState('');
   const [assigningGeRole, setAssigningGeRole] = useState(false);
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
+  const [clubMembersLoading, setClubMembersLoading] = useState(false);
 
   const evaluationCategories: EvaluationCategory[] = [
     {
@@ -227,56 +229,41 @@ export default function GeneralEvaluatorReport() {
   }, [responses, feedbackForm]);
 
   const loadGeneralEvaluatorData = async () => {
-    if (!meetingId || !user?.currentClubId) {
+    if (!meetingId || !user?.currentClubId || !user?.id) {
       setIsLoading(false);
       return;
     }
 
     try {
-      await loadMeeting();
-      await loadClubInfo();
-      await loadIsVPEClub();
-      await loadClubMembers();
+      // Prefer single RPC (get_general_evaluator_report_snapshot) → one round-trip vs 4+ parallel REST calls.
+      // Club roster for “Assign GE” still loads on demand via loadClubMembers().
+      const bundle = await fetchGeneralEvaluatorReportBundle(meetingId, user.currentClubId, user.id);
+      setMeeting(bundle.meeting as Meeting | null);
+      setClubInfo(bundle.clubInfo);
+      setIsVPEClub(bundle.isVPEClub);
+      setGeneralEvaluator(bundle.generalEvaluator as GeneralEvaluator | null);
 
-      // Load the assigned General Evaluator for this meeting
-      const { data: geData, error: geError } = await supabase
-        .from('app_meeting_roles_management')
-        .select(`
-          id,
-          role_name,
-          assigned_user_id,
-          booking_status,
-          app_user_profiles (
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-        .eq('meeting_id', meetingId)
-        .ilike('role_name', '%general evaluator%')
-        .eq('role_status', 'Available')
-        .eq('booking_status', 'booked') // Only consider booked GE
-        .maybeSingle();
-
-      if (geError && geError.code !== 'PGRST116') {
-        console.error('Error loading general evaluator assignment:', geError);
-        // Continue without GE assignment if there's an error
-      }
-      setGeneralEvaluator(geData);
-
-      // Now load the evaluation data for the assigned GE (if any)
-      // This ensures we load THE report for the meeting, not just the logged-in user's
-      if (geData?.assigned_user_id) {
-        await loadExistingEvaluation(geData.assigned_user_id);
+      if (bundle.geReport) {
+        const data = bundle.geReport as GeneralEvaluatorData;
+        setExistingEvaluation(data);
+        setFeedbackForm({
+          summary: data.evaluation_summary || '',
+          whatWentWell: data.what_went_well || '',
+          whatNeedsImprovement: data.what_needs_improvement || '',
+        });
+        if (data.evaluation_data && typeof data.evaluation_data === 'object') {
+          setResponses(data.evaluation_data as Record<string, EvaluationResponse['rating']>);
+        } else {
+          setResponses({});
+        }
       } else {
-        // If no GE is assigned, clear any existing evaluation data
         setExistingEvaluation(null);
         setFeedbackForm({
           summary: '',
           whatWentWell: '',
           whatNeedsImprovement: '',
         });
-        setResponses({}); // Clear responses too
+        setResponses({});
       }
     } catch (error) {
       console.error('Error loading general evaluator data:', error);
@@ -309,9 +296,29 @@ export default function GeneralEvaluatorReport() {
     }
   };
 
+  /** Assign-GE modal only: RPC avoids slow PostgREST embed on app_club_user_relationship (see evaluation-corner). */
   const loadClubMembers = async () => {
     if (!user?.currentClubId) return;
+    setClubMembersLoading(true);
     try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_club_member_directory', {
+        target_club_id: user.currentClubId,
+      });
+      if (!rpcError && rpcData) {
+        const rows = rpcData as { user_id: string; full_name: string; email: string; avatar_url: string | null }[];
+        const members: ClubMember[] = rows.map((row) => ({
+          id: row.user_id,
+          full_name: row.full_name,
+          email: row.email,
+          avatar_url: row.avatar_url,
+        }));
+        members.sort((a, b) => a.full_name.localeCompare(b.full_name));
+        setClubMembers(members);
+        return;
+      }
+      if (rpcError) {
+        console.warn('get_club_member_directory failed, falling back to relationship query:', rpcError.message);
+      }
       const { data, error } = await supabase
         .from('app_club_user_relationship')
         .select(`
@@ -344,6 +351,8 @@ export default function GeneralEvaluatorReport() {
       setClubMembers(members);
     } catch (e) {
       console.error('Error loading club members:', e);
+    } finally {
+      setClubMembersLoading(false);
     }
   };
 
@@ -381,66 +390,6 @@ export default function GeneralEvaluatorReport() {
       member.email.toLowerCase().includes(q)
     );
   });
-
-  const loadClubInfo = async () => {
-    if (!user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('clubs')
-        .select('id, name, club_number')
-        .eq('id', user.currentClubId)
-        .single();
-
-      if (error) {
-        console.error('Error loading club info:', error);
-        return;
-      }
-
-      setClubInfo(data);
-    } catch (error) {
-      console.error('Error loading club info:', error);
-    }
-  };
-
-  const loadMeeting = async () => {
-    if (!meetingId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_meeting')
-        .select('*')
-        .eq('id', meetingId)
-        .single();
-
-      if (error) {
-        console.error('Error loading meeting:', error);
-        return;
-      }
-
-      setMeeting(data);
-    } catch (error) {
-      console.error('Error loading meeting:', error);
-    }
-  };
-
-  const loadIsVPEClub = async () => {
-    if (!user?.currentClubId || !user?.id) {
-      setIsVPEClub(false);
-      return;
-    }
-    const { data, error } = await supabase
-      .from('club_profiles')
-      .select('vpe_id')
-      .eq('club_id', user.currentClubId)
-      .maybeSingle();
-    if (error) {
-      console.error('Error loading club VPE:', error);
-      setIsVPEClub(false);
-      return;
-    }
-    setIsVPEClub(data?.vpe_id === user.id);
-  };
 
   const loadExistingEvaluation = async (evaluatorUserId: string) => {
     if (!meetingId) return;
@@ -1410,7 +1359,7 @@ export default function GeneralEvaluatorReport() {
                 )}
               </View>
               <ScrollView style={styles.geAssignList} showsVerticalScrollIndicator={false}>
-                {assigningGeRole ? (
+                {assigningGeRole || clubMembersLoading ? (
                   <View style={styles.geAssignEmptyWrap}>
                     <ActivityIndicator color={theme.colors.primary} />
                   </View>
