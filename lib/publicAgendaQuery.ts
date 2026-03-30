@@ -28,6 +28,8 @@ export type PublicAgendaItemRow = {
   section_icon: string | null;
   section_order: number;
   duration_minutes: number | null;
+  start_time: string | null;
+  end_time: string | null;
   assigned_user_name: string | null;
   timer_user_name: string | null;
   ah_counter_user_name: string | null;

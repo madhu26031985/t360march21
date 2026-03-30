@@ -139,6 +139,7 @@ function MinimalLayout({
           <Text style={[styles.minClub, { color: theme.colors.textSecondary }]} numberOfLines={2}>
             {club.club_name}
             {club.club_number ? ` · #${club.club_number}` : ''}
+            {meeting.meeting_number ? ` · MEETING #${meeting.meeting_number}` : ''}
           </Text>
           <Text style={[styles.minTitle, { color: theme.colors.text }]} numberOfLines={3}>
             {meeting.meeting_title}
@@ -268,6 +269,22 @@ function AgendaSectionCard({
   const slots = preparedSlotsForPublic(item);
   const tagParts = [item.timer_user_name, item.ah_counter_user_name, item.grammarian_user_name].filter(Boolean);
 
+  const minimalTimeText =
+    item.start_time && item.end_time
+      ? `${item.start_time} - ${item.end_time}`
+      : item.start_time
+        ? item.start_time
+        : item.duration_minutes != null
+          ? `${item.duration_minutes} min`
+          : '';
+
+  const minimalRightText =
+    item.assigned_user_name ||
+    item.timer_user_name ||
+    item.ah_counter_user_name ||
+    item.grammarian_user_name ||
+    '';
+
   const body = (
     <>
       <View style={skin === 'minimal' ? styles.minCardHeader : styles.cardHeader}>
@@ -349,14 +366,57 @@ function AgendaSectionCard({
     return (
       <View
         style={[
-          styles.minCard,
+          styles.minRowCard,
           {
             backgroundColor: theme.colors.background,
             borderBottomColor: theme.colors.borderLight,
           },
         ]}
       >
-        {body}
+        <View style={styles.minRow}>
+          <View style={styles.minRowTimeCol}>
+            {minimalTimeText ? (
+              <Text style={[styles.minRowTimeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                {minimalTimeText}
+              </Text>
+            ) : null}
+          </View>
+
+          <View style={styles.minRowMid}>
+            <View style={styles.minRowTitleLine}>
+              {item.section_icon ? (
+                <Text style={[styles.minRowIcon, { color: theme.colors.text }]}>{item.section_icon}</Text>
+              ) : null}
+              <Text style={[styles.minRowTitle, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>
+                {item.section_name}
+              </Text>
+            </View>
+
+            {item.section_description ? (
+              <Text style={[styles.minRowDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                {item.section_description}
+              </Text>
+            ) : null}
+
+            {extraLines.slice(0, 2).map((line, i) => (
+              <Text
+                key={`${i}-${line.slice(0, 24)}`}
+                style={[styles.minRowExtraLine, { color: theme.colors.textSecondary }]}
+                maxFontSizeMultiplier={1.0}
+              >
+                {line}
+              </Text>
+            ))}
+          </View>
+
+          <View style={styles.minRowRightCol}>
+            {minimalRightText ? (
+              <Text style={[styles.minRowRightText, { color: theme.colors.textSecondary }]} numberOfLines={2} maxFontSizeMultiplier={1.1}>
+                {minimalRightText}
+              </Text>
+            ) : null}
+          </View>
+        </View>
       </View>
     );
   }
@@ -445,6 +505,66 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   minCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  // Notion-style minimal rows (time left, content middle, assignee right)
+  minRowCard: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  minRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  minRowTimeCol: {
+    width: 92,
+    paddingTop: 2,
+  },
+  minRowTimeText: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  minRowMid: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  minRowTitleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  minRowIcon: {
+    fontSize: 22,
+    lineHeight: 26,
+  },
+  minRowTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 20,
+    flexShrink: 1,
+  },
+  minRowDesc: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  minRowExtraLine: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  minRowRightCol: {
+    minWidth: 130,
+    paddingTop: 2,
+    alignItems: 'flex-end',
+  },
+  minRowRightText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    textAlign: 'right',
+  },
   minFooter: { textAlign: 'center', fontSize: 11, marginTop: 24, paddingHorizontal: 20 },
 
   vibScroll: { paddingBottom: 40 },
