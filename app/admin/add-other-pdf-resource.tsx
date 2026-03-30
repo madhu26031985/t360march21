@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, FileText, Save, Upload, Link as LinkIcon, X } from 'lucide-react-native';
+import { ArrowLeft, FileText, Save, Upload, X } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 
@@ -16,10 +16,7 @@ export default function AddOtherPdfResource() {
   const [isUploading, setIsUploading] = useState(false);
 
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [url, setUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<{name: string, size: number, uri: string} | null>(null);
-  const [inputMode, setInputMode] = useState<'link' | 'upload'>('link');
   const handlePickDocument = async () => {
     try {
       setIsUploading(true);
@@ -74,29 +71,9 @@ export default function AddOtherPdfResource() {
       return;
     }
 
-    if (!description.trim()) {
-      Alert.alert('Error', 'Please enter a resource description');
+    if (!selectedFile) {
+      Alert.alert('Error', 'Please select a PDF file to upload');
       return;
-    }
-
-    // Validate based on input mode
-    if (inputMode === 'link') {
-      if (!url.trim()) {
-        Alert.alert('Error', 'Please provide a resource link');
-        return;
-      }
-
-      try {
-        new URL(url.trim());
-      } catch {
-        Alert.alert('Error', 'Please enter a valid URL');
-        return;
-      }
-    } else {
-      if (!selectedFile) {
-        Alert.alert('Error', 'Please select a PDF file to upload');
-        return;
-      }
     }
 
     if (!user?.currentClubId) return;
@@ -104,11 +81,11 @@ export default function AddOtherPdfResource() {
     setIsSaving(true);
 
     try {
-      let pdfUrl = url.trim();
+      let pdfUrl = '';
       let fileData = null;
 
-      // If uploading file, upload to Supabase Storage
-      if (inputMode === 'upload' && selectedFile) {
+      // Upload selected file to Supabase Storage
+      if (selectedFile) {
         try {
           // Generate unique filename
           const timestamp = Date.now();
@@ -170,7 +147,6 @@ export default function AddOtherPdfResource() {
         .insert({
           club_id: user.currentClubId,
           title: title.trim(),
-          description: description.trim(),
           resource_type: 'other_pdf',
           url: pdfUrl,
           file_data: fileData,
@@ -208,16 +184,27 @@ export default function AddOtherPdfResource() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Add Other PDF</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}></Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.typeHeader, { backgroundColor: '#8b5cf6' + '15' }]}>
-          <View style={[styles.typeIcon, { backgroundColor: '#8b5cf6' }]}>
-            <FileText size={32} color="#ffffff" />
+        <View
+          style={[
+            styles.typeHeader,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <View style={[styles.typeIcon, { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border }]}>
+            <FileText size={28} color={theme.colors.text} strokeWidth={1.75} />
           </View>
-          <Text style={[styles.typeLabel, { color: '#8b5cf6' }]} maxFontSizeMultiplier={1.3}>Other PDF</Text>
+          <Text style={[styles.typeLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Article PDF</Text>
+          <Text style={[styles.typeSubLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Upload a PDF for members to open anytime.
+          </Text>
         </View>
 
         <View style={styles.form}>
@@ -233,131 +220,34 @@ export default function AddOtherPdfResource() {
           </View>
 
           <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Description *</Text>
-            <TextInput
-              style={[styles.textAreaInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
-              placeholder="Enter resource description"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-          </View>
-
-          {/* Mode Selector */}
-          <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Choose Input Method *</Text>
-            <View style={styles.modeSelector}>
+            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Upload PDF *</Text>
+            {!selectedFile ? (
               <TouchableOpacity
-                style={[
-                  styles.modeButton,
-                  inputMode === 'link' && styles.modeButtonActive,
-                  {
-                    backgroundColor: inputMode === 'link' ? theme.colors.primary : theme.colors.surface,
-                    borderColor: inputMode === 'link' ? theme.colors.primary : theme.colors.border,
-                  }
-                ]}
-                onPress={() => {
-                  setInputMode('link');
-                  setSelectedFile(null);
-                }}
+                style={[styles.filePickerButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                onPress={handlePickDocument}
+                disabled={isUploading}
               >
-                <LinkIcon size={18} color={inputMode === 'link' ? '#ffffff' : theme.colors.text} />
-                <Text style={[
-                  styles.modeButtonText,
-                  { color: inputMode === 'link' ? '#ffffff' : theme.colors.text }
-                ]} maxFontSizeMultiplier={1.3}>
-                  Provide Link
+                <Upload size={18} color={theme.colors.textSecondary} />
+                <Text style={[styles.filePickerText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {isUploading ? 'Selecting PDF...' : 'Upload PDF'}
                 </Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.modeButton,
-                  inputMode === 'upload' && styles.modeButtonActive,
-                  {
-                    backgroundColor: inputMode === 'upload' ? theme.colors.primary : theme.colors.surface,
-                    borderColor: inputMode === 'upload' ? theme.colors.primary : theme.colors.border,
-                  }
-                ]}
-                onPress={() => {
-                  setInputMode('upload');
-                  setUrl('');
-                }}
-              >
-                <Upload size={18} color={inputMode === 'upload' ? '#ffffff' : theme.colors.text} />
-                <Text style={[
-                  styles.modeButtonText,
-                  { color: inputMode === 'upload' ? '#ffffff' : theme.colors.text }
-                ]} maxFontSizeMultiplier={1.3}>
-                  Upload PDF
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Resource Link Input */}
-          {inputMode === 'link' && (
-            <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Resource Link *</Text>
-              <TextInput
-                style={[styles.textInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
-                placeholder="https://example.com/document.pdf"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={url}
-                onChangeText={setUrl}
-                keyboardType="url"
-                autoCapitalize="none"
-              />
-            </View>
-          )}
-
-          {/* PDF Upload */}
-          {inputMode === 'upload' && (
-            <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Upload PDF File *</Text>
-
-              {!selectedFile ? (
-                <TouchableOpacity
-                  style={[styles.uploadButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                  onPress={handlePickDocument}
-                  disabled={isUploading}
-                >
-                  <Upload size={24} color={theme.colors.primary} />
-                  <Text style={[styles.uploadButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {isUploading ? 'Loading...' : 'Choose PDF File'}
+            ) : (
+              <View style={[styles.fileSelectedWrap, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.fileSelectedName, { color: theme.colors.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+                    {selectedFile.name}
                   </Text>
-                  <Text style={[styles.uploadButtonHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Max size: 10MB
+                  <Text style={[styles.fileSelectedSize, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    {formatFileSize(selectedFile.size)}
                   </Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={[styles.selectedFileCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  <View style={styles.selectedFileInfo}>
-                    <View style={[styles.fileIcon, { backgroundColor: '#10b981' + '20' }]}>
-                      <FileText size={20} color="#10b981" />
-                    </View>
-                    <View style={styles.fileDetails}>
-                      <Text style={[styles.fileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
-                        {selectedFile.name}
-                      </Text>
-                      <Text style={[styles.fileSize, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        {formatFileSize(selectedFile.size)}
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.removeFileButton, { backgroundColor: '#ef4444' + '20' }]}
-                    onPress={handleRemoveFile}
-                  >
-                    <X size={18} color="#ef4444" />
-                  </TouchableOpacity>
                 </View>
-              )}
-            </View>
-          )}
+                <TouchableOpacity style={styles.removeFileBtn} onPress={handleRemoveFile}>
+                  <X size={16} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
 
           <TouchableOpacity
             style={[styles.saveButton, { backgroundColor: theme.colors.primary, opacity: isSaving ? 0.7 : 1 }]}
@@ -403,21 +293,29 @@ const styles = StyleSheet.create({
   },
   typeHeader: {
     margin: 16,
-    padding: 24,
+    padding: 20,
     borderRadius: 16,
     alignItems: 'center',
+    borderWidth: 1,
   },
   typeIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
+    borderWidth: 1,
   },
   typeLabel: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
+  },
+  typeSubLabel: {
+    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   form: {
     paddingHorizontal: 16,
@@ -460,90 +358,42 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     marginLeft: 8,
   },
-  modeSelector: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
+  filePickerButton: {
     borderWidth: 1,
-    gap: 8,
-  },
-  modeButtonActive: {
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  modeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  uploadButton: {
-    borderWidth: 2,
-    borderStyle: 'dashed',
     borderRadius: 12,
-    paddingVertical: 32,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 50,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  uploadButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  uploadButtonHint: {
-    fontSize: 13,
-    marginTop: 4,
-  },
-  selectedFileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  selectedFileInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
-  fileIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fileDetails: {
-    flex: 1,
-  },
-  fileName: {
+  filePickerText: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 2,
   },
-  fileSize: {
+  fileSelectedWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fileSelectedName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  fileSelectedSize: {
     fontSize: 12,
+    marginTop: 2,
   },
-  removeFileButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+  removeFileBtn: {
+    marginLeft: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },

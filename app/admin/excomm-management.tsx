@@ -34,11 +34,6 @@ import {
   FileText,
   Wallet,
   History,
-  Globe,
-  Map as MapIcon,
-  Landmark,
-  Award,
-  TrendingUp,
   Search,
   Calendar,
   Info,
@@ -103,12 +98,6 @@ const ROLE_ICONS: Record<string, LucideIcon> = {
   treasurer: Wallet,
   saa: Shield,
   ipp: History,
-  area_director: Globe,
-  division_director: MapIcon,
-  district_director: Landmark,
-  program_quality_director: Award,
-  club_growth_director: TrendingUp,
-  immediate_past_district_director: History,
 };
 
 function getRoleIconForKey(key: string): LucideIcon {
@@ -135,16 +124,6 @@ const EXCOMM_ROLE_DEFINITIONS: Omit<ExCommRole, 'member_id' | 'term_start' | 'te
   { key: 'treasurer', title: 'Treasurer', description: 'Manages club finances and dues' },
   { key: 'saa', title: 'Sergeant at Arms', description: 'Maintains order and manages club property' },
   { key: 'ipp', title: 'Immediate Past President', description: 'Former president providing guidance and continuity' },
-  { key: 'area_director', title: 'Area Director', description: 'Oversees clubs within a specific area' },
-  { key: 'division_director', title: 'Division Director', description: 'Manages multiple areas within a division' },
-  { key: 'district_director', title: 'District Director', description: 'Leads the entire district organization' },
-  { key: 'program_quality_director', title: 'Program Quality Director', description: 'Ensures quality of educational programs district-wide' },
-  { key: 'club_growth_director', title: 'Club Growth Director', description: 'Focuses on club growth and new club development' },
-  {
-    key: 'immediate_past_district_director',
-    title: 'Immediate Past District Director',
-    description: 'Former district director providing continuity and guidance',
-  },
 ];
 
 function emptyRolesFromDefinitions(): ExCommRole[] {
@@ -609,7 +588,7 @@ export default function ExCommManagement() {
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              ExComm Management
+              Club ExComm
             </Text>
             {saveState === 'saving' && (
               <Text style={[styles.saveHint, { color: theme.colors.textSecondary }]}>Saving…</Text>
@@ -626,7 +605,7 @@ export default function ExCommManagement() {
             onPress={() => setShowInfoModal(true)}
             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             accessibilityRole="button"
-            accessibilityLabel="About ExComm Management"
+            accessibilityLabel="About Club ExComm"
           >
             <Info size={21} color={theme.colors.textSecondary} strokeWidth={2} />
           </TouchableOpacity>
@@ -797,7 +776,7 @@ export default function ExCommManagement() {
             >
               <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
                 <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  ExComm Management
+                  Club ExComm
                 </Text>
                 <TouchableOpacity
                   style={styles.closeButton}

@@ -5,7 +5,9 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, BookOpen, Youtube, FileText, Building2, Crown, User, Shield, Eye, UserCheck, Home, Users, Calendar, Settings } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Youtube, FileText, Building2, Home, Users, Calendar, Settings } from 'lucide-react-native';
+
+const FOOTER_NAV_ICON_SIZE = 15;
 
 interface ClubInfo {
   id: string;
@@ -70,28 +72,6 @@ export default function ResourcesRepository() {
     }
   };
 
-  const getRoleIcon = (role: string) => {
-    switch (role.toLowerCase()) {
-      case 'excomm': return <Crown size={12} color="#ffffff" />;
-      case 'visiting_tm': return <UserCheck size={12} color="#ffffff" />;
-      case 'club_leader': return <Shield size={12} color="#ffffff" />;
-      case 'guest': return <Eye size={12} color="#ffffff" />;
-      case 'member': return <User size={12} color="#ffffff" />;
-      default: return <User size={12} color="#ffffff" />;
-    }
-  };
-
-  const getRoleColor = (role: string) => {
-    switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
-      case 'visiting_tm': return '#10b981';
-      case 'club_leader': return '#f59e0b';
-      case 'guest': return '#6b7280';
-      case 'member': return '#3b82f6';
-      default: return '#6b7280';
-    }
-  };
-
   const formatRole = (role: string) => {
     switch (role.toLowerCase()) {
       case 'excomm': return 'ExComm';
@@ -103,35 +83,16 @@ export default function ResourcesRepository() {
     }
   };
 
-  const resourceCategories = [
-    {
-      id: 'youtube',
-      title: 'YouTube Videos',
-      icon: <Youtube size={40} color="#ffffff" />,
-      color: '#4169E1',
-      route: '/resources-youtube',
-    },
-    {
-      id: 'evaluation_form',
-      title: 'Evaluation Forms',
-      icon: <FileText size={40} color="#ffffff" />,
-      color: '#f59e0b',
-      route: '/resources-evaluation-forms',
-    },
-    {
-      id: 'magazine',
-      title: 'Magazines',
-      icon: <BookOpen size={40} color="#ffffff" />,
-      color: '#10b981',
-      route: '/resources-magazines',
-    },
-    {
-      id: 'other_pdf',
-      title: 'Others',
-      icon: <FileText size={40} color="#ffffff" />,
-      color: '#8b5cf6',
-      route: '/resources-others',
-    },
+  const resourceCategories: {
+    id: string;
+    title: string;
+    route: '/resources-youtube' | '/resources-evaluation-forms' | '/resources-magazines' | '/resources-others';
+    Icon: typeof Youtube;
+  }[] = [
+    { id: 'youtube', title: 'YouTube Videos', Icon: Youtube, route: '/resources-youtube' },
+    { id: 'evaluation_form', title: 'Evaluation Forms', Icon: FileText, route: '/resources-evaluation-forms' },
+    { id: 'magazine', title: 'Magazines', Icon: BookOpen, route: '/resources-magazines' },
+    { id: 'other_pdf', title: 'Others', Icon: FileText, route: '/resources-others' },
   ];
 
   if (isLoading) {
@@ -158,10 +119,20 @@ export default function ResourcesRepository() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Club Card */}
         {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
+          <View
+            style={[
+              styles.clubCard,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            ]}
+          >
             <View style={styles.clubHeader}>
-              <View style={[styles.clubIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-                <Building2 size={20} color={theme.colors.primary} />
+              <View
+                style={[
+                  styles.clubIconContainer,
+                  { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border },
+                ]}
+              >
+                <Building2 size={20} color={theme.colors.textSecondary} />
               </View>
               <View style={styles.clubInfo}>
                 <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -174,9 +145,18 @@ export default function ResourcesRepository() {
                     </Text>
                   )}
                   {user?.clubRole && (
-                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
-                      {getRoleIcon(user.clubRole)}
-                      <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
+                    <View
+                      style={[
+                        styles.roleTagNeutral,
+                        { borderColor: theme.colors.border, backgroundColor: theme.colors.background },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.roleTagNeutralText, { color: theme.colors.textSecondary }]}
+                        maxFontSizeMultiplier={1.3}
+                      >
+                        {formatRole(user.clubRole)}
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -185,72 +165,88 @@ export default function ResourcesRepository() {
           </View>
         )}
 
-        {/* Info Card */}
-        <View style={[styles.infoCard, { backgroundColor: '#e0f2fe' }]}>
-          <Text style={[styles.infoTitle, { color: '#0369a1' }]} maxFontSizeMultiplier={1.3}>
-            Your club's knowledge, thoughtfully shared. 📚
+        <View
+          style={[
+            styles.infoCard,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+          ]}
+        >
+          <Text style={[styles.infoTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Your club&apos;s knowledge, thoughtfully shared.
           </Text>
         </View>
 
-        {/* Resource Categories Grid */}
         <View style={styles.categoriesGrid}>
-          {resourceCategories.map((category) => (
-            <TouchableOpacity
-              key={category.id}
-              style={[
-                styles.categoryTile,
-                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-              ]}
-              onPress={() => router.push(category.route as any)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.categoryIconCircle, { backgroundColor: category.color }]}>
-                {category.icon}
-              </View>
-              <Text style={[styles.categoryTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {category.title}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {resourceCategories.map((category) => {
+            const CatIcon = category.Icon;
+            return (
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.categoryTile,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+                onPress={() => router.push(category.route)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.categoryIconWell,
+                    { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border },
+                  ]}
+                >
+                  <CatIcon size={22} color={theme.colors.textSecondary} strokeWidth={1.75} />
+                </View>
+                <Text style={[styles.categoryTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {category.title}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <View style={styles.navSpacer} />
 
         {/* Navigation Icons */}
-        <View style={[styles.navigationSection, { backgroundColor: theme.colors.surface }]}>
+        <View
+          style={[
+            styles.navigationSection,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+          ]}
+        >
           <View style={styles.navigationBar}>
             <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)')}>
-              <View style={[styles.navIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Home size={16} color="#3b82f6" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/club')}>
-              <View style={[styles.navIcon, { backgroundColor: '#FEF3E7' }]}>
-                <Users size={16} color="#f59e0b" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/meetings')}>
-              <View style={[styles.navIcon, { backgroundColor: '#E0F2FE' }]}>
-                <Calendar size={16} color="#0ea5e9" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/settings')}>
-              <View style={[styles.navIcon, { backgroundColor: '#F3E8FF' }]}>
-                <Settings size={16} color="#8b5cf6" />
+              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
               </View>
               <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
             </TouchableOpacity>
 
             {isExComm && (
               <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/admin')}>
-                <View style={[styles.navIcon, { backgroundColor: '#FFE5E5' }]}>
-                  <Settings size={16} color="#dc2626" />
+                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
+                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
                 </View>
                 <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
               </TouchableOpacity>
@@ -302,16 +298,9 @@ const styles = StyleSheet.create({
   clubCard: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: 1,
   },
   clubHeader: {
     flexDirection: 'row',
@@ -320,10 +309,11 @@ const styles = StyleSheet.create({
   clubIconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+    borderWidth: 1,
   },
   clubInfo: {
     flex: 1,
@@ -341,36 +331,26 @@ const styles = StyleSheet.create({
   clubNumber: {
     fontSize: 13,
   },
-  roleTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  roleTagNeutral: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
   },
-  roleText: {
-    fontSize: 10,
+  roleTagNeutralText: {
+    fontSize: 11,
     fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 4,
   },
   infoCard: {
     marginHorizontal: 16,
-    marginTop: 16,
+    marginTop: 12,
     borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 14,
+    borderWidth: 1,
   },
   infoTitle: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '500',
     lineHeight: 20,
     textAlign: 'center',
   },
@@ -393,17 +373,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     minHeight: 95,
   },
-  categoryIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  categoryIconWell: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
+    borderWidth: 1,
   },
   categoryTitle: {
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: '600',
     textAlign: 'center',
     lineHeight: 14,
   },
@@ -416,11 +397,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     padding: 16,
     borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
   },
   navigationBar: {
     flexDirection: 'row',

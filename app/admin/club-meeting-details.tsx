@@ -42,6 +42,8 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
   const [showDayModal, setShowDayModal] = useState(false);
   const [showFrequencyModal, setShowFrequencyModal] = useState(false);
   const [showTypeModal, setShowTypeModal] = useState(false);
+  const [tempSelectedDay, setTempSelectedDay] = useState<string | null>(null);
+  const [tempSelectedFrequency, setTempSelectedFrequency] = useState<string | null>(null);
   const [showStartTimeModal, setShowStartTimeModal] = useState(false);
   const [showEndTimeModal, setShowEndTimeModal] = useState(false);
   const [tempSelectedType, setTempSelectedType] = useState<string | null>(null);
@@ -134,19 +136,20 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
 
   const formatTime = (timeString: string | null) => {
     if (!timeString) return 'Select time';
-
-    // Convert HH:MM:SS or HH:MM format to 12-hour format with AM/PM
-    const timeParts = timeString.split(':');
-    if (timeParts.length < 2) return timeString;
-
-    let hours = parseInt(timeParts[0]);
-    const minutes = timeParts[1];
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-
-    hours = hours % 12;
-    hours = hours ? hours : 12; // 0 should be 12
-
-    return `${hours}:${minutes} ${ampm}`;
+    try {
+      const raw = String(timeString).trim();
+      const hhmm = raw.match(/^(\d{1,2}):(\d{2})/);
+      if (!hhmm) return raw;
+      let hours = parseInt(hhmm[1], 10);
+      const minutes = hhmm[2];
+      if (Number.isNaN(hours)) return raw;
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours || 12;
+      return `${hours}:${minutes} ${ampm}`;
+    } catch {
+      return timeString;
+    }
   };
 
   const getDayLabel = () => {
@@ -304,33 +307,29 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        {embedded ? (
-          <View style={styles.backButtonPlaceholder} />
-        ) : (
+      {!embedded && (
+        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <ArrowLeft size={24} color={theme.colors.text} />
           </TouchableOpacity>
-        )}
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-          Club Meeting Details
-        </Text>
-        <TouchableOpacity
-          style={[styles.saveButton, { backgroundColor: theme.colors.primary }]}
-          onPress={handleSave}
-          disabled={isSaving}
-        >
-          <Save size={16} color="#ffffff" />
-          <Text style={styles.saveButtonText} maxFontSizeMultiplier={1.3}>
-            {isSaving ? 'Saving...' : 'Save'}
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Club Meeting Details
           </Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.saveButton, { backgroundColor: theme.colors.primary }]}
+            onPress={handleSave}
+            disabled={isSaving}
+          >
+            <Save size={16} color="#ffffff" />
+            <Text style={styles.saveButtonText} maxFontSizeMultiplier={1.3}>
+              {isSaving ? 'Saving...' : 'Save'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Club Card */}
-        {clubInfo && (
+        {!embedded && clubInfo && (
           <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.clubHeader}>
               <View style={styles.clubInfo}>
@@ -355,21 +354,22 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
           </View>
         )}
 
-        {/* Info Box */}
-        <View style={styles.infoBox}>
-          <View style={styles.infoHeader}>
-            <View style={styles.infoIconContainer}>
-              <Info size={20} color="#3B82F6" />
+        {!embedded && (
+          <View style={styles.infoBox}>
+            <View style={styles.infoHeader}>
+              <View style={styles.infoIconContainer}>
+                <Info size={20} color="#3B82F6" />
+              </View>
+              <Text style={styles.infoTitle} maxFontSizeMultiplier={1.3}>Why set this?</Text>
             </View>
-            <Text style={styles.infoTitle} maxFontSizeMultiplier={1.3}>Why set this?</Text>
+            <Text style={styles.infoText} maxFontSizeMultiplier={1.3}>
+              Your meeting schedule helps members & guests know your regular timings.
+            </Text>
+            <Text style={styles.infoText} maxFontSizeMultiplier={1.3}>
+              This will be visible under <Text style={styles.infoLink} maxFontSizeMultiplier={1.3}>Club → Club Info</Text>.
+            </Text>
           </View>
-          <Text style={styles.infoText} maxFontSizeMultiplier={1.3}>
-            Your meeting schedule helps members & guests know your regular timings.
-          </Text>
-          <Text style={styles.infoText} maxFontSizeMultiplier={1.3}>
-            This will be visible under <Text style={styles.infoLink} maxFontSizeMultiplier={1.3}>Club → Club Info</Text>.
-          </Text>
-        </View>
+        )}
 
         {/* Meeting Schedule Section */}
         <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
@@ -385,45 +385,64 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
             </View>
           </View>
 
-          <View style={[styles.settingsList, { borderColor: theme.colors.border }]}>
-            <TouchableOpacity style={styles.settingRow} onPress={() => setShowDayModal(true)}>
-              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Day</Text>
-              <View style={styles.settingValueWrap}>
-                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{getDayLabel()}</Text>
-                <ChevronDown size={16} color={theme.colors.textSecondary} />
-              </View>
-            </TouchableOpacity>
-            <View style={[styles.settingDivider, { backgroundColor: theme.colors.border }]} />
+          <View style={styles.meetingScheduleGrid}>
+            <View style={styles.meetingScheduleGridRow}>
+              <TouchableOpacity
+                style={[styles.meetingScheduleCell, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                onPress={() => {
+                  setTempSelectedDay(meetingDetails.meeting_day);
+                  setShowDayModal(true);
+                }}
+              >
+                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>Day</Text>
+                <View style={styles.meetingScheduleValueWrap}>
+                  <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>{getDayLabel()}</Text>
+                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                </View>
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingRow} onPress={() => setShowFrequencyModal(true)}>
-              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Frequency</Text>
-              <View style={styles.settingValueWrap}>
-                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{getFrequencyLabel()}</Text>
-                <ChevronDown size={16} color={theme.colors.textSecondary} />
-              </View>
-            </TouchableOpacity>
-            <View style={[styles.settingDivider, { backgroundColor: theme.colors.border }]} />
+              <TouchableOpacity
+                style={[styles.meetingScheduleCell, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                onPress={() => {
+                  setTempSelectedFrequency(meetingDetails.meeting_frequency);
+                  setShowFrequencyModal(true);
+                }}
+              >
+                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>Frequency</Text>
+                <View style={styles.meetingScheduleValueWrap}>
+                  <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>{getFrequencyLabel()}</Text>
+                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                </View>
+              </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity style={styles.settingRow} onPress={() => setShowStartTimeModal(true)}>
-              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Start Time</Text>
-              <View style={styles.settingValueWrap}>
-                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {formatTime(meetingDetails.meeting_start_time)}
-                </Text>
-                <ChevronDown size={16} color={theme.colors.textSecondary} />
-              </View>
-            </TouchableOpacity>
-            <View style={[styles.settingDivider, { backgroundColor: theme.colors.border }]} />
+            <View style={styles.meetingScheduleGridRow}>
+              <TouchableOpacity
+                style={[styles.meetingScheduleCell, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                onPress={() => setShowStartTimeModal(true)}
+              >
+                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>Start Time</Text>
+                <View style={styles.meetingScheduleValueWrap}>
+                  <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                    {formatTime(meetingDetails.meeting_start_time)}
+                  </Text>
+                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                </View>
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingRow} onPress={() => setShowEndTimeModal(true)}>
-              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>End Time</Text>
-              <View style={styles.settingValueWrap}>
-                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {formatTime(meetingDetails.meeting_end_time)}
-                </Text>
-                <ChevronDown size={16} color={theme.colors.textSecondary} />
-              </View>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.meetingScheduleCell, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                onPress={() => setShowEndTimeModal(true)}
+              >
+                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>End Time</Text>
+                <View style={styles.meetingScheduleValueWrap}>
+                  <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                    {formatTime(meetingDetails.meeting_end_time)}
+                  </Text>
+                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -451,7 +470,9 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
             >
               <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Type</Text>
               <View style={styles.settingValueWrap}>
-                <Text style={[styles.settingValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{getTypeLabel()}</Text>
+                <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  {getTypeLabel()}
+                </Text>
                 <ChevronDown size={16} color={theme.colors.textSecondary} />
               </View>
             </TouchableOpacity>
@@ -464,38 +485,82 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
         visible={showDayModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowDayModal(false)}
+        onRequestClose={() => {
+          setTempSelectedDay(null);
+          setShowDayModal(false);
+        }}
       >
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
-          onPress={() => setShowDayModal(false)}
+          onPress={() => {
+            setTempSelectedDay(null);
+            setShowDayModal(false);
+          }}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View style={[styles.dropdownModal, { backgroundColor: theme.colors.surface }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Meeting Day</Text>
-              <ScrollView style={styles.optionsList} showsVerticalScrollIndicator={false}>
-                {dayOptions.map((option) => (
+            <View style={[styles.typeDropdownModal, { backgroundColor: theme.colors.surface }]}>
+              <Text style={[styles.typeModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                Select Meeting Day
+              </Text>
+              <View style={[styles.typeOptionsListBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+                <ScrollView style={styles.optionsList} showsVerticalScrollIndicator={false}>
+                {dayOptions.map((option, idx) => (
                   <TouchableOpacity
                     key={option.value}
                     style={[
-                      styles.option,
-                      meetingDetails.meeting_day === option.value && { backgroundColor: theme.colors.primary + '20' }
+                      styles.typeOption,
+                      {
+                        backgroundColor:
+                          (tempSelectedDay || meetingDetails.meeting_day) === option.value ? theme.colors.primary + '20' : 'transparent',
+                        borderBottomColor: theme.colors.border,
+                        borderBottomWidth: idx === dayOptions.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                      },
                     ]}
                     onPress={() => {
-                      updateField('meeting_day', option.value);
-                      setShowDayModal(false);
+                      setTempSelectedDay(option.value);
                     }}
                   >
                     <Text style={[
-                      styles.optionText,
-                      { color: meetingDetails.meeting_day === option.value ? theme.colors.primary : theme.colors.text }
-                    ]} maxFontSizeMultiplier={1.3}>
+                      styles.typeOptionTitle,
+                      { color: (tempSelectedDay || meetingDetails.meeting_day) === option.value ? theme.colors.primary : theme.colors.text }
+                    ]} maxFontSizeMultiplier={1.2}>
                       {option.label}
                     </Text>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+                </ScrollView>
+              </View>
+              <View style={[styles.modalActions, styles.typeModalActions]}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => {
+                    setTempSelectedDay(null);
+                    setShowDayModal(false);
+                  }}
+                >
+                  <Text style={[styles.typeModalButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalButton,
+                    styles.confirmButton,
+                    { backgroundColor: tempSelectedDay ? theme.colors.primary : '#94A3B8' }
+                  ]}
+                  onPress={() => {
+                    if (tempSelectedDay) {
+                      updateField('meeting_day', tempSelectedDay);
+                      setTempSelectedDay(null);
+                      setShowDayModal(false);
+                    }
+                  }}
+                  disabled={!tempSelectedDay}
+                >
+                  <Text style={styles.typeModalConfirmButtonText} maxFontSizeMultiplier={1.3}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -506,43 +571,89 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
         visible={showFrequencyModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowFrequencyModal(false)}
+        onRequestClose={() => {
+          setTempSelectedFrequency(null);
+          setShowFrequencyModal(false);
+        }}
       >
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
-          onPress={() => setShowFrequencyModal(false)}
+          onPress={() => {
+            setTempSelectedFrequency(null);
+            setShowFrequencyModal(false);
+          }}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View style={[styles.dropdownModal, { backgroundColor: theme.colors.surface }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Meeting Frequency</Text>
-              <ScrollView style={styles.optionsList} showsVerticalScrollIndicator={false}>
-                {frequencyOptions.map((option) => (
+            <View style={[styles.typeDropdownModal, { backgroundColor: theme.colors.surface }]}>
+              <Text style={[styles.typeModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                Select Meeting Frequency
+              </Text>
+              <View style={[styles.typeOptionsListBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+                <ScrollView style={styles.optionsList} showsVerticalScrollIndicator={false}>
+                {frequencyOptions.map((option, idx) => (
                   <TouchableOpacity
                     key={option.value}
                     style={[
-                      styles.option,
-                      meetingDetails.meeting_frequency === option.value && { backgroundColor: theme.colors.primary + '20' }
+                      styles.typeOption,
+                      {
+                        backgroundColor:
+                          (tempSelectedFrequency || meetingDetails.meeting_frequency) === option.value
+                            ? theme.colors.primary + '20'
+                            : 'transparent',
+                        borderBottomColor: theme.colors.border,
+                        borderBottomWidth: idx === frequencyOptions.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                      },
                     ]}
                     onPress={() => {
-                      updateField('meeting_frequency', option.value);
-                      setShowFrequencyModal(false);
+                      setTempSelectedFrequency(option.value);
                     }}
                   >
                     <View style={styles.optionContent}>
                       <Text style={[
-                        styles.optionTitle,
-                        { color: meetingDetails.meeting_frequency === option.value ? theme.colors.primary : theme.colors.text }
-                      ]} maxFontSizeMultiplier={1.3}>
+                        styles.typeOptionTitle,
+                        { color: (tempSelectedFrequency || meetingDetails.meeting_frequency) === option.value ? theme.colors.primary : theme.colors.text }
+                      ]} maxFontSizeMultiplier={1.2}>
                         {option.label}
                       </Text>
-                      <Text style={[styles.optionDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      <Text style={[styles.selectorOptionDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
                         {option.description}
                       </Text>
                     </View>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+                </ScrollView>
+              </View>
+              <View style={[styles.modalActions, styles.typeModalActions]}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => {
+                    setTempSelectedFrequency(null);
+                    setShowFrequencyModal(false);
+                  }}
+                >
+                  <Text style={[styles.typeModalButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalButton,
+                    styles.confirmButton,
+                    { backgroundColor: tempSelectedFrequency ? theme.colors.primary : '#94A3B8' }
+                  ]}
+                  onPress={() => {
+                    if (tempSelectedFrequency) {
+                      updateField('meeting_frequency', tempSelectedFrequency);
+                      setTempSelectedFrequency(null);
+                      setShowFrequencyModal(false);
+                    }
+                  }}
+                  disabled={!tempSelectedFrequency}
+                >
+                  <Text style={styles.typeModalConfirmButtonText} maxFontSizeMultiplier={1.3}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -567,10 +678,12 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
           }}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View style={[styles.dropdownModal, { backgroundColor: theme.colors.surface }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Meeting Type</Text>
-              <View style={styles.optionsList}>
-                {typeOptions.map((option) => {
+            <View style={[styles.typeDropdownModal, { backgroundColor: theme.colors.surface }]}>
+              <Text style={[styles.typeModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Select Meeting Type
+              </Text>
+              <View style={[styles.typeOptionsListBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+                {typeOptions.map((option, idx) => {
                   const isSelected = (tempSelectedType || meetingDetails.meeting_type) === option.value;
 
                   return (
@@ -579,16 +692,16 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
                       style={[
                         styles.typeOption,
                         {
-                          backgroundColor: isSelected ? theme.colors.primary : '#F8FAFC',
-                          borderWidth: isSelected ? 0 : 1,
-                          borderColor: '#E2E8F0',
+                          backgroundColor: isSelected ? theme.colors.primary + '20' : 'transparent',
+                          borderBottomColor: theme.colors.border,
+                          borderBottomWidth: idx === typeOptions.length - 1 ? 0 : StyleSheet.hairlineWidth,
                         }
                       ]}
                       onPress={() => setTempSelectedType(option.value)}
                     >
                       <Text style={[
                         styles.typeOptionTitle,
-                        { color: isSelected ? '#FFFFFF' : theme.colors.text }
+                        { color: isSelected ? theme.colors.primary : theme.colors.text }
                       ]} maxFontSizeMultiplier={1.3}>
                         {option.label}
                       </Text>
@@ -597,7 +710,7 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
                 })}
               </View>
 
-              <View style={styles.modalActions}>
+              <View style={[styles.modalActions, styles.typeModalActions]}>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.cancelButton]}
                   onPress={() => {
@@ -605,7 +718,9 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
                     setShowTypeModal(false);
                   }}
                 >
-                  <Text style={[styles.cancelButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
+                  <Text style={[styles.typeModalButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
@@ -622,7 +737,7 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
                   }}
                   disabled={!tempSelectedType}
                 >
-                  <Text style={styles.confirmButtonText} maxFontSizeMultiplier={1.3}>Confirm</Text>
+                  <Text style={styles.typeModalConfirmButtonText} maxFontSizeMultiplier={1.3}>Confirm</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -834,12 +949,12 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
   },
   sectionSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     marginTop: 4,
   },
   settingsList: {
@@ -847,26 +962,68 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
+  meetingScheduleGrid: {
+    gap: 10,
+  },
+  meetingScheduleGridRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  meetingScheduleCell: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    minHeight: 54,
+    justifyContent: 'center',
+  },
+  meetingScheduleLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  meetingScheduleValueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  meetingScheduleValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
   settingRow: {
-    minHeight: 56,
+    minHeight: 52,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   settingLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
   },
   settingValueWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+  },
+  settingValueChip: {
+    minWidth: 110,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   settingValue: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
+    textAlign: 'right',
   },
   settingDivider: {
     height: 1,
@@ -936,14 +1093,40 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  typeDropdownModal: {
+    borderRadius: 14,
+    paddingTop: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+    marginHorizontal: 16,
+    width: '92%',
+    maxWidth: 420,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 20,
     textAlign: 'center',
   },
+  typeModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'left',
+  },
+  typeOptionsListBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
   optionsList: {
-    marginBottom: 4,
+    marginBottom: 0,
+    maxHeight: 280,
   },
   option: {
     paddingVertical: 16,
@@ -958,6 +1141,12 @@ const styles = StyleSheet.create({
   optionContent: {
     flex: 1,
   },
+  selectorOptionDescription: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
+    fontWeight: '500',
+  },
   optionTitle: {
     fontSize: 15,
     fontWeight: '600',
@@ -968,14 +1157,14 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   typeOption: {
-    alignItems: 'center',
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     justifyContent: 'center',
-    padding: 18,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   typeOptionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   modalActions: {
@@ -983,13 +1172,16 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 20,
   },
+  typeModalActions: {
+    marginTop: 12,
+  },
   modalButton: {
     flex: 1,
-    paddingVertical: 18,
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 56,
+    minHeight: 48,
   },
   cancelButton: {
     backgroundColor: '#E2E8F0',
@@ -1011,6 +1203,15 @@ const styles = StyleSheet.create({
   },
   confirmButtonText: {
     fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  typeModalButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  typeModalConfirmButtonText: {
+    fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },

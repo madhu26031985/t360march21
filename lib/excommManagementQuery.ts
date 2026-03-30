@@ -27,13 +27,7 @@ const CLUB_PROFILES_EXCOMM_SELECT = `
   vppr_id, vppr_term_start, vppr_term_end,
   secretary_id, secretary_term_start, secretary_term_end,
   treasurer_id, treasurer_term_start, treasurer_term_end,
-  saa_id, saa_term_start, saa_term_end,
-  area_director_id, area_director_term_start, area_director_term_end,
-  division_director_id, division_director_term_start, division_director_term_end,
-  district_director_id, district_director_term_start, district_director_term_end,
-  program_quality_director_id, program_quality_director_term_start, program_quality_director_term_end,
-  club_growth_director_id, club_growth_director_term_start, club_growth_director_term_end,
-  immediate_past_district_director_id, immediate_past_district_director_term_start, immediate_past_district_director_term_end
+  saa_id, saa_term_start, saa_term_end
 `;
 
 /**

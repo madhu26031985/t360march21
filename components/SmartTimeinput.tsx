@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform, ScrollView } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Clock } from 'lucide-react-native';
@@ -9,6 +9,27 @@ interface SmartTimeInputProps {
   onClose: () => void;
   onTimeSelect: (time: string) => void;
   initialTime?: string;
+}
+
+function timeLabelFrom24h(hhmm: string): string {
+  const m = hhmm.match(/^(\d{2}):(\d{2})$/);
+  if (!m) return hhmm;
+  let h = parseInt(m[1], 10);
+  const mm = m[2];
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${mm} ${ampm}`;
+}
+
+function buildTimeOptions(stepMinutes = 15): string[] {
+  const out: string[] = [];
+  for (let minutes = 0; minutes < 24 * 60; minutes += stepMinutes) {
+    const hh = String(Math.floor(minutes / 60)).padStart(2, '0');
+    const mm = String(minutes % 60).padStart(2, '0');
+    out.push(`${hh}:${mm}`);
+  }
+  return out;
 }
 
 export default function SmartTimeInput({
@@ -34,12 +55,19 @@ export default function SmartTimeInput({
 
   const [selectedDate, setSelectedDate] = useState<Date>(parseInitialTime(initialTime));
   const [showPicker, setShowPicker] = useState(false);
+  const [webTimeValue, setWebTimeValue] = useState<string>('');
+  const timeOptions = React.useMemo(() => buildTimeOptions(15), []);
 
   React.useEffect(() => {
     if (!visible) return;
 
     // Keep picker value in sync with latest field value whenever modal opens.
     setSelectedDate(parseInitialTime(initialTime));
+    setWebTimeValue(
+      initialTime && /^\d{1,2}:\d{2}/.test(initialTime)
+        ? initialTime.slice(0, 5)
+        : ''
+    );
 
     if (Platform.OS === 'android') {
       setShowPicker(true);
@@ -70,6 +98,19 @@ export default function SmartTimeInput({
   };
 
   const handleConfirm = () => {
+    if (Platform.OS === 'web') {
+      const value = webTimeValue.trim();
+      const m = value.match(/^(\d{1,2}):(\d{2})$/);
+      if (!m) {
+        onClose();
+        return;
+      }
+      const hh = Math.max(0, Math.min(23, parseInt(m[1], 10)));
+      const mm = Math.max(0, Math.min(59, parseInt(m[2], 10)));
+      onTimeSelect(`${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`);
+      onClose();
+      return;
+    }
     onTimeSelect(formatTimeToHHMM(selectedDate));
     onClose();
   };
@@ -108,14 +149,41 @@ export default function SmartTimeInput({
             </View>
 
             <View style={styles.pickerWrapper}>
-              <DateTimePicker
-                value={selectedDate}
-                mode="time"
-                is24Hour={false}
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleChange}
-                {...(Platform.OS === 'ios' ? { textColor: theme.colors.text } : {})}
-              />
+              {Platform.OS === 'web' ? (
+                <View style={styles.webPickerWrap}>
+                  <Text style={[styles.webPickerHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    Select a time
+                  </Text>
+                  <ScrollView style={[styles.webTimeList, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+                    {timeOptions.map((opt) => {
+                      const active = webTimeValue === opt;
+                      return (
+                        <TouchableOpacity
+                          key={opt}
+                          style={[
+                            styles.webTimeOption,
+                            active && { backgroundColor: theme.colors.primary + '20' },
+                          ]}
+                          onPress={() => setWebTimeValue(opt)}
+                        >
+                          <Text style={[styles.webTimeOptionText, { color: active ? theme.colors.primary : theme.colors.text }]}>
+                            {timeLabelFrom24h(opt)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              ) : (
+                <DateTimePicker
+                  value={selectedDate}
+                  mode="time"
+                  is24Hour={false}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleChange}
+                  {...(Platform.OS === 'ios' ? { textColor: theme.colors.text } : {})}
+                />
+              )}
             </View>
 
             <View style={styles.buttonContainer}>
@@ -144,14 +212,16 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
     width: '100%',
+    maxWidth: 420,
+    paddingHorizontal: 12,
   },
   pickerContainer: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 16,
     paddingBottom: 20,
   },
   header: {
@@ -170,6 +240,29 @@ const styles = StyleSheet.create({
   },
   pickerWrapper: {
     paddingVertical: 20,
+  },
+  webPickerWrap: {
+    paddingHorizontal: 20,
+  },
+  webPickerHint: {
+    fontSize: 13,
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+  webTimeList: {
+    borderWidth: 1,
+    borderRadius: 10,
+    maxHeight: 230,
+  },
+  webTimeOption: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
+  },
+  webTimeOptionText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   buttonContainer: {
     flexDirection: 'row',

@@ -16,7 +16,6 @@ import {
   Crown,
   FileText,
   Share2,
-  Calendar,
   ChevronRight,
 } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
@@ -28,31 +27,25 @@ import { prefetchExcommManagement } from '@/lib/prefetchExcommManagement';
 
 const CLUB_OPERATIONS_SUB_PAGES = [
   {
-    title: 'Club Info Management',
+    title: 'Club Info',
     route: '/admin/club-info-management' as const,
     Icon: Settings,
     accentColor: '#0a66c2',
   },
   {
-    title: 'ExComm Management',
+    title: 'Club ExComm',
     route: '/admin/excomm-management' as const,
     Icon: Crown,
     accentColor: '#0a66c2',
   },
   {
-    title: 'Social Media Management',
+    title: 'Club Social Media',
     route: '/admin/social-media-management' as const,
     Icon: Share2,
     accentColor: '#0a66c2',
   },
   {
-    title: 'Club Meeting Details',
-    route: '/admin/club-info-management?tab=meetingDetails' as const,
-    Icon: Calendar,
-    accentColor: '#0a66c2',
-  },
-  {
-    title: 'Member Resources',
+    title: 'Club Resources',
     route: '/admin/member-resources-management' as const,
     Icon: FileText,
     accentColor: '#0a66c2',

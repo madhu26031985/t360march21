@@ -169,7 +169,7 @@ export default function ClubOperations() {
 
         <View style={styles.featuresGrid}>
           <FeatureCard
-            title="Club Info Management"
+            title="Club Info"
             description="Update club information and preferences"
             icon={<Settings size={20} color="#0a66c2" />}
             onPress={() => {
@@ -179,7 +179,7 @@ export default function ClubOperations() {
           />
           
           <FeatureCard
-            title="ExComm Management"
+            title="Club ExComm"
             description="Manage Executive Committee roles and assignments"
             icon={<Crown size={20} color="#0a66c2" />}
             onPress={() => {
@@ -189,30 +189,19 @@ export default function ClubOperations() {
           />
           
           <FeatureCard
-            title="Member Resources"
+            title="Club Resources"
             description="Manage educational resources for club members"
             icon={<FileText size={20} color="#0a66c2" />}
             onPress={() => router.push('/admin/member-resources-management')}
           />
           
           <FeatureCard
-            title="Social Media Management"
+            title="Club Social Media"
             description="Manage club's social media links and online presence"
             icon={<Share2 size={20} color="#0a66c2" />}
             onPress={() => router.push('/admin/social-media-management')}
           />
           
-          <FeatureCard
-            title="Club Meeting Details"
-            description="Configure meeting schedule, frequency, and format"
-            icon={<Calendar size={20} color="#0a66c2" />}
-            onPress={() =>
-              router.push({
-                pathname: '/admin/club-info-management',
-                params: { tab: 'meetingDetails' },
-              })
-            }
-          />
         </View>
 
 
@@ -321,7 +310,7 @@ export default function ClubOperations() {
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                Club Info Management
+                Club Info
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -329,7 +318,7 @@ export default function ClubOperations() {
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                ExComm Management
+                Club ExComm
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -337,7 +326,7 @@ export default function ClubOperations() {
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                Member Resources
+                Club Resources
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -345,7 +334,7 @@ export default function ClubOperations() {
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                Social Media Management
+                Club Social Media
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>

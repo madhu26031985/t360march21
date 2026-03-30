@@ -13,17 +13,11 @@ export default function AddYoutubeResource() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
   const [url, setUrl] = useState('');
 
   const handleSave = async () => {
     if (!title.trim()) {
       Alert.alert('Error', 'Please enter a resource title');
-      return;
-    }
-
-    if (!description.trim()) {
-      Alert.alert('Error', 'Please enter a resource description');
       return;
     }
 
@@ -49,7 +43,6 @@ export default function AddYoutubeResource() {
         .insert({
           club_id: user.currentClubId,
           title: title.trim(),
-          description: description.trim(),
           resource_type: 'youtube',
           url: url.trim(),
           file_data: null,
@@ -87,16 +80,27 @@ export default function AddYoutubeResource() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Add YouTube Video</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}></Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.typeHeader, { backgroundColor: '#ff0000' + '15' }]}>
-          <View style={[styles.typeIcon, { backgroundColor: '#ff0000' }]}>
-            <Youtube size={32} color="#ffffff" />
+        <View
+          style={[
+            styles.typeHeader,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <View style={[styles.typeIcon, { backgroundColor: theme.colors.backgroundSecondary }]}>
+            <Youtube size={28} color={theme.colors.text} />
           </View>
-          <Text style={[styles.typeLabel, { color: '#ff0000' }]} maxFontSizeMultiplier={1.3}>YouTube Video</Text>
+          <Text style={[styles.typeLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>YouTube Video</Text>
+          <Text style={[styles.typeSubLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Add a video link for members to access quickly.
+          </Text>
         </View>
 
         <View style={styles.form}>
@@ -108,20 +112,6 @@ export default function AddYoutubeResource() {
               placeholderTextColor={theme.colors.textSecondary}
               value={title}
               onChangeText={setTitle}
-            />
-          </View>
-
-          <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Description *</Text>
-            <TextInput
-              style={[styles.textAreaInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
-              placeholder="Enter resource description"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
             />
           </View>
 
@@ -182,21 +172,27 @@ const styles = StyleSheet.create({
   },
   typeHeader: {
     margin: 16,
-    padding: 24,
+    padding: 20,
     borderRadius: 16,
     alignItems: 'center',
+    borderWidth: 1,
   },
   typeIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   typeLabel: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
+  },
+  typeSubLabel: {
+    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '500',
   },
   form: {
     paddingHorizontal: 16,
@@ -216,14 +212,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-  },
-  textAreaInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    minHeight: 100,
   },
   saveButton: {
     flexDirection: 'row',

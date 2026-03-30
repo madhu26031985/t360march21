@@ -1,5 +1,4 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -127,7 +126,6 @@ export default function ToastmasterCorner() {
   });
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
-  const [showCongratsModal, setShowCongratsModal] = useState(false);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [toastmasterOfDay, setToastmasterOfDay] = useState<ToastmasterOfDay | null>(null);
   const [toastmasterMeetingData, setToastmasterMeetingData] = useState<ToastmasterMeetingData | null>(null); // New state for consolidated data
@@ -198,29 +196,6 @@ export default function ToastmasterCorner() {
       queryKey: toastmasterCornerQueryKeys.detail(meetingId, user.currentClubId, user.id),
     });
   }, [meetingId, queryClient, user?.currentClubId, user?.id]);
-
-  const TMOD_CONGRATS_SEEN_KEY = meetingId ? `tmodCongratsSeen_${meetingId}` : null;
-
-  useEffect(() => {
-    if (isLoading || !meeting || !isToastmasterOfDay() || isThemeCompleted() || !TMOD_CONGRATS_SEEN_KEY) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const seen = await AsyncStorage.getItem(TMOD_CONGRATS_SEEN_KEY);
-        if (!cancelled && !seen) setShowCongratsModal(true);
-      } catch {
-        if (!cancelled) setShowCongratsModal(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isLoading, meeting, toastmasterOfDay?.assigned_user_id, toastmasterMeetingData?.theme_of_the_day, TMOD_CONGRATS_SEEN_KEY]);
-
-  const dismissCongratsModal = useCallback(() => {
-    if (TMOD_CONGRATS_SEEN_KEY) {
-      AsyncStorage.setItem(TMOD_CONGRATS_SEEN_KEY, '1').catch(() => {});
-    }
-    setShowCongratsModal(false);
-  }, [TMOD_CONGRATS_SEEN_KEY]);
 
   useEffect(() => {
     if (!canEditToastmasterTheme() || !effectiveToastmasterUserId) return;
@@ -1432,41 +1407,6 @@ export default function ToastmasterCorner() {
         )}
 
       </ScrollView>
-
-      {/* Congrats TMOD modal - shown once per meeting when TMOD has not added theme */}
-      <Modal
-        visible={showCongratsModal}
-        transparent
-        animationType="fade"
-        onRequestClose={dismissCongratsModal}
-      >
-        <TouchableOpacity
-          style={styles.congratsModalOverlay}
-          activeOpacity={1}
-          onPress={dismissCongratsModal}
-        >
-          <TouchableOpacity
-            style={[styles.congratsModalContent, { backgroundColor: theme.colors.surface }]}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
-            <Text style={[styles.congratsModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
-            </Text>
-            <Text style={[styles.congratsModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              You're the TMOD, leading the meeting as captain and host. Add your{' '}
-              <Text style={styles.congratsModalHighlight}>Theme of the Day</Text>
-              {' '}to set the stage!
-            </Text>
-            <TouchableOpacity
-              style={[styles.congratsModalButton, { backgroundColor: theme.colors.primary }]}
-              onPress={dismissCongratsModal}
-            >
-              <Text style={styles.congratsModalButtonText} maxFontSizeMultiplier={1.3}>Got it</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1483,45 +1423,6 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontWeight: '500',
-  },
-  congratsModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  congratsModalContent: {
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 340,
-  },
-  congratsModalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  congratsModalMessage: {
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  congratsModalHighlight: {
-    fontWeight: 'bold',
-    fontStyle: 'italic',
-  },
-  congratsModalButton: {
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  congratsModalButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',

@@ -40,7 +40,10 @@ import {
 } from '@/lib/journeyMeetingOpenData';
 import { prefetchEducationalCorner } from '@/lib/prefetchEducationalCorner';
 import { prefetchGrammarianCorner } from '@/lib/prefetchGrammarianCorner';
+import { prefetchMyMentorSnapshot } from '@/lib/myMentorSnapshot';
 import { prefetchToastmasterCorner } from '@/lib/prefetchToastmasterCorner';
+import { prefetchEvaluationCornerSnapshot } from '@/lib/evaluationCornerSnapshot';
+import { prefetchMeetingAgendaView } from '@/lib/meetingAgendaPrefetch';
 import { journeyHomeQueryKeys, fetchJourneyHomeSnapshot } from '@/lib/journeyHomeQuery';
 
 const ROLE_PLAYER_CONGRATS_STORAGE_PREFIX = 'journey_role_player_congrats_ack_v1_';
@@ -1297,6 +1300,7 @@ export default function MyJourney() {
           break;
         case 'prepared_speech':
           if (!currentOpenMeetingId) return;
+          prefetchEvaluationCornerSnapshot(currentOpenMeetingId);
           router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
           break;
         case 'vpe_nudge':
@@ -1317,6 +1321,11 @@ export default function MyJourney() {
     router.push('/profile');
   }, []);
 
+  const handleMyMentorPress = useCallback(() => {
+    prefetchMyMentorSnapshot(user?.currentClubId);
+    router.push('/my-growth-guidance');
+  }, [user?.currentClubId]);
+
   const goToReportsSection = useCallback(() => {
     router.push({ pathname: '/(tabs)/club', params: { section: 'reports' } });
   }, []);
@@ -1326,8 +1335,23 @@ export default function MyJourney() {
       Alert.alert('No open meeting', 'There is no current open meeting for prepared speeches.');
       return;
     }
+    prefetchEvaluationCornerSnapshot(currentOpenMeetingId);
     router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
   }, [currentOpenMeetingId]);
+
+  useEffect(() => {
+    if (!currentOpenMeetingId) return;
+    prefetchEvaluationCornerSnapshot(currentOpenMeetingId);
+  }, [currentOpenMeetingId]);
+
+  useEffect(() => {
+    if (!currentOpenMeetingId) return;
+    prefetchMeetingAgendaView(currentOpenMeetingId);
+  }, [currentOpenMeetingId]);
+
+  useEffect(() => {
+    prefetchMyMentorSnapshot(user?.currentClubId);
+  }, [user?.currentClubId]);
 
   const handleGrammarianPress = useCallback(() => {
     if (!currentOpenMeetingId) {
@@ -1512,7 +1536,7 @@ export default function MyJourney() {
                     description="Get guidance from your mentor"
                     icon={<Users size={18} color="#3b82f6" />}
                     color="#3b82f6"
-                    onPress={() => router.push('/my-growth-guidance')}
+                    onPress={handleMyMentorPress}
                     inline
                   />
                 ) : null}
@@ -1562,7 +1586,7 @@ export default function MyJourney() {
                         description="Get guidance from your mentor"
                         icon={<Users size={18} color="#3b82f6" />}
                         color="#3b82f6"
-                        onPress={() => router.push('/my-growth-guidance')}
+                        onPress={handleMyMentorPress}
                         inline
                       />
                     ) : null}
@@ -1850,6 +1874,7 @@ export default function MyJourney() {
                     Alert.alert('No open meeting', 'There is no current open meeting to view agenda.');
                     return;
                   }
+                  prefetchMeetingAgendaView(currentOpenMeetingId);
                   router.push(`/meeting-agenda-view?meetingId=${currentOpenMeetingId}`);
                 }}
                 activeOpacity={0.85}

@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, FileText, Youtube, BookOpen, Trash2, CreditCard as Edit3, Calendar, Info, X } from 'lucide-react-native';
+import { ArrowLeft, FileText, Youtube, BookOpen, Trash2, CreditCard as Edit3, Calendar, Info, X, Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
 
 interface Resource {
   id: string;
@@ -40,30 +40,20 @@ export default function MemberResourcesManagement() {
     {
       value: 'youtube',
       label: 'YouTube Video',
-      icon: <Youtube size={16} color="#ffffff" />,
-      iconLarge: <Youtube size={24} color="#ffffff" />,
-      color: '#ff0000'
+      icon: <Youtube size={16} color={theme.colors.textSecondary} />,
+      iconLarge: <Youtube size={22} color={theme.colors.textSecondary} />,
     },
     {
       value: 'magazine',
-      label: 'Magazine/Article',
-      icon: <BookOpen size={16} color="#ffffff" />,
-      iconLarge: <BookOpen size={24} color="#ffffff" />,
-      color: '#10b981'
-    },
-    {
-      value: 'evaluation_form',
-      label: 'Evaluation Form',
-      icon: <FileText size={16} color="#ffffff" />,
-      iconLarge: <FileText size={24} color="#ffffff" />,
-      color: '#f59e0b'
+      label: 'Magazine',
+      icon: <BookOpen size={16} color={theme.colors.textSecondary} />,
+      iconLarge: <BookOpen size={22} color={theme.colors.textSecondary} />,
     },
     {
       value: 'other_pdf',
-      label: 'Other PDF',
-      icon: <FileText size={16} color="#ffffff" />,
-      iconLarge: <FileText size={24} color="#ffffff" />,
-      color: '#8b5cf6'
+      label: 'Article PDF',
+      icon: <FileText size={16} color={theme.colors.textSecondary} />,
+      iconLarge: <FileText size={22} color={theme.colors.textSecondary} />,
     },
   ];
 
@@ -120,16 +110,13 @@ export default function MemberResourcesManagement() {
     }
   };
 
-  const handleNavigateToAddResource = (type: 'youtube' | 'magazine' | 'evaluation_form' | 'other_pdf') => {
+  const handleNavigateToAddResource = (type: 'youtube' | 'magazine' | 'other_pdf') => {
     switch (type) {
       case 'youtube':
         router.push('/admin/add-youtube-resource');
         break;
       case 'magazine':
         router.push('/admin/add-magazine-resource');
-        break;
-      case 'evaluation_form':
-        router.push('/admin/add-evaluation-resource');
         break;
       case 'other_pdf':
         router.push('/admin/add-other-pdf-resource');
@@ -181,14 +168,11 @@ export default function MemberResourcesManagement() {
     return resourceType?.icon || <FileText size={16} color="#ffffff" />;
   };
 
-  const getResourceTypeColor = (type: string) => {
-    const resourceType = resourceTypes.find(rt => rt.value === type);
-    return resourceType?.color || '#6b7280';
-  };
-
   const getResourceTypeLabel = (type: string) => {
     const resourceType = resourceTypes.find(rt => rt.value === type);
-    return resourceType?.label || type;
+    if (resourceType?.label) return resourceType.label;
+    if (type === 'evaluation_form') return 'Evaluation Form';
+    return type;
   };
 
   const getRoleIcon = (role: string) => {
@@ -229,7 +213,7 @@ export default function MemberResourcesManagement() {
       <View style={styles.resourceHeader}>
         <View style={styles.resourceInfo}>
           <View style={styles.resourceTitleRow}>
-            <View style={[styles.resourceTypeIcon, { backgroundColor: getResourceTypeColor(resource.resource_type) }]}>
+            <View style={[styles.resourceTypeIcon, { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border }]}>
               {getResourceTypeIcon(resource.resource_type)}
             </View>
             <Text style={[styles.resourceTitle, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
@@ -240,8 +224,8 @@ export default function MemberResourcesManagement() {
             {resource.description}
           </Text>
           <View style={styles.resourceMeta}>
-            <View style={[styles.typeTag, { backgroundColor: getResourceTypeColor(resource.resource_type) + '20' }]}>
-              <Text style={[styles.typeText, { color: getResourceTypeColor(resource.resource_type) }]} maxFontSizeMultiplier={1.3}>
+            <View style={[styles.typeTag, { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border }]}>
+              <Text style={[styles.typeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {getResourceTypeLabel(resource.resource_type)}
               </Text>
             </View>
@@ -292,61 +276,88 @@ export default function MemberResourcesManagement() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Member Resources</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Resources</Text>
         <TouchableOpacity style={styles.infoButton} onPress={() => setShowInfoModal(true)}>
           <Info size={24} color="#0a66c2" />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Add Resource Cards */}
-        <View style={styles.addResourceSection}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Add New Resource</Text>
-          <View style={styles.resourceTypeGrid}>
-            {resourceTypes.map((type) => (
-              <TouchableOpacity
-                key={type.value}
-                style={[styles.resourceTypeCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                onPress={() => handleNavigateToAddResource(type.value as any)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.resourceTypeCardIcon, { backgroundColor: type.color }]}>
-                  {type.iconLarge}
-                </View>
-                <Text style={[styles.resourceTypeCardLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {type.label}
+        <View style={[styles.notionPanel, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={[styles.notionPanelHeader, { borderBottomColor: theme.colors.border }]}>
+            <View style={styles.clubHeader}>
+              <View style={styles.clubInfo}>
+                <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {clubInfo?.name || 'Club'}
                 </Text>
-              </TouchableOpacity>
-            ))}
+                <View style={styles.clubMeta}>
+                  {clubInfo?.club_number ? (
+                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      Club #{clubInfo.club_number}
+                    </Text>
+                  ) : null}
+                  {user?.clubRole ? (
+                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
+                      {getRoleIcon(user.clubRole)}
+                      <Text style={styles.roleText} maxFontSizeMultiplier={1.2}>{formatRole(user.clubRole)}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.notionPanelBody}>
+            {/* Add Resource Cards */}
+            <View style={styles.addResourceSection}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Add New Resource</Text>
+              <View style={styles.resourceTypeGrid}>
+                {resourceTypes.map((type) => (
+                  <TouchableOpacity
+                    key={type.value}
+                    style={[styles.resourceTypeCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                    onPress={() => handleNavigateToAddResource(type.value as any)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.resourceTypeCardIcon, { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border }]}>
+                      {type.iconLarge}
+                    </View>
+                    <Text style={[styles.resourceTypeCardLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      {type.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Resources Count */}
+            <View style={styles.resourcesHeader}>
+              <Text style={[styles.resourcesCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                {resources.length} resources available
+              </Text>
+            </View>
+
+            {/* Resources List */}
+            <View style={styles.resourcesList}>
+              {resources.map((resource) => (
+                <ResourceCard key={resource.id} resource={resource} />
+              ))}
+            </View>
+
+            {/* Empty State */}
+            {resources.length === 0 && (
+              <View style={styles.emptyState}>
+                <BookOpen size={48} color={theme.colors.textSecondary} />
+                <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  No resources added yet
+                </Text>
+                <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Use the cards above to add your first resource
+                </Text>
+              </View>
+            )}
           </View>
         </View>
-
-        {/* Resources Count */}
-        <View style={styles.resourcesHeader}>
-          <Text style={[styles.resourcesCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            {resources.length} resources available
-          </Text>
-        </View>
-
-        {/* Resources List */}
-        <View style={styles.resourcesList}>
-          {resources.map((resource) => (
-            <ResourceCard key={resource.id} resource={resource} />
-          ))}
-        </View>
-
-        {/* Empty State */}
-        {resources.length === 0 && (
-          <View style={styles.emptyState}>
-            <BookOpen size={48} color={theme.colors.textSecondary} />
-            <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              No resources added yet
-            </Text>
-            <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Use the cards above to add your first resource
-            </Text>
-          </View>
-        )}
       </ScrollView>
 
       {/* Delete Confirmation Modal */}
@@ -422,13 +433,10 @@ export default function MemberResourcesManagement() {
                   📹 YouTube Videos – for quick learning and motivation
                 </Text>
                 <Text style={[styles.infoModalListItem, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  📖 Magazines / Articles – to spark new ideas
+                  📖 Magazines – to spark new ideas
                 </Text>
                 <Text style={[styles.infoModalListItem, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  📝 Evaluation Forms – to improve every speech
-                </Text>
-                <Text style={[styles.infoModalListItem, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  📄 Other PDFs – handbooks, checklists, or templates
+                  📄 Article PDFs – handbooks, checklists, or templates
                 </Text>
               </View>
 
@@ -500,9 +508,25 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  addResourceSection: {
+  notionPanel: {
+    marginHorizontal: 12,
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  notionPanelHeader: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  notionPanelBody: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  addResourceSection: {
+    paddingHorizontal: 4,
+    paddingTop: 4,
     paddingBottom: 8,
   },
   sectionTitle: {
@@ -516,33 +540,36 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   resourceTypeCard: {
-    width: '48%',
-    borderWidth: 2,
-    borderRadius: 16,
-    padding: 20,
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     alignItems: 'center',
-    marginBottom: 12,
+    flexDirection: 'row',
+    marginBottom: 0,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   resourceTypeCardIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginRight: 10,
+    borderWidth: 1,
   },
   resourceTypeCardLabel: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    textAlign: 'center',
+    textAlign: 'left',
   },
   clubCard: {
     marginHorizontal: 16,
@@ -600,8 +627,8 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   resourcesHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingHorizontal: 4,
+    paddingTop: 14,
     paddingBottom: 8,
   },
   resourcesCount: {
@@ -609,8 +636,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   resourcesList: {
-    paddingHorizontal: 16,
-    paddingBottom: 32,
+    paddingHorizontal: 4,
+    paddingBottom: 20,
   },
   resourceCard: {
     borderRadius: 12,
@@ -643,6 +670,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
@@ -667,6 +695,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 12,
+    borderWidth: 1,
   },
   typeText: {
     fontSize: 11,
@@ -771,7 +800,7 @@ const styles = StyleSheet.create({
     minHeight: 80,
   },
   resourceTypeGrid: {
-    gap: 8,
+    gap: 10,
   },
   resourceTypeOption: {
     flexDirection: 'row',

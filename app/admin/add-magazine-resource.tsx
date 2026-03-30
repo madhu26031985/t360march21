@@ -5,16 +5,62 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, BookOpen, Save } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Save, Upload, X } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 
 export default function AddMagazineResource() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [url, setUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState<{name: string, size: number, uri: string} | null>(null);
+
+  const handlePickDocument = async () => {
+    try {
+      setIsUploading(true);
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: false,
+      });
+
+      if (result.canceled) {
+        setIsUploading(false);
+        return;
+      }
+
+      const file = result.assets[0];
+      const maxSize = 10 * 1024 * 1024;
+      if (file.size && file.size > maxSize) {
+        Alert.alert('Error', 'File size must be less than 10MB');
+        setIsUploading(false);
+        return;
+      }
+
+      setSelectedFile({
+        name: file.name,
+        size: file.size || 0,
+        uri: file.uri,
+      });
+      setIsUploading(false);
+    } catch (error) {
+      console.error('Error picking document:', error);
+      Alert.alert('Error', 'Failed to pick document');
+      setIsUploading(false);
+    }
+  };
+
+  const handleRemoveFile = () => setSelectedFile(null);
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  };
 
 
   const handleSave = async () => {
@@ -23,23 +69,9 @@ export default function AddMagazineResource() {
       return;
     }
 
-    if (!description.trim()) {
-      Alert.alert('Error', 'Please enter a resource description');
+    if (!selectedFile) {
+      Alert.alert('Error', 'Please upload a PDF file');
       return;
-    }
-
-    if (!url.trim()) {
-      Alert.alert('Error', 'Please provide a resource link');
-      return;
-    }
-
-    if (url.trim()) {
-      try {
-        new URL(url.trim());
-      } catch {
-        Alert.alert('Error', 'Please enter a valid URL');
-        return;
-      }
     }
 
     if (!user?.currentClubId) return;
@@ -47,14 +79,50 @@ export default function AddMagazineResource() {
     setIsSaving(true);
 
     try {
+      let pdfUrl = '';
+      if (selectedFile) {
+        const timestamp = Date.now();
+        const fileName = `${timestamp}_${selectedFile.name}`;
+        const filePath = `${user.currentClubId}/${fileName}`;
+
+        let fileToUpload: Blob | ArrayBuffer;
+        if (Platform.OS === 'web') {
+          const response = await fetch(selectedFile.uri);
+          fileToUpload = await response.blob();
+        } else {
+          const base64 = await FileSystem.readAsStringAsync(selectedFile.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+          fileToUpload = bytes.buffer;
+        }
+
+        const { error: uploadError } = await supabase.storage
+          .from('other-pdfs')
+          .upload(filePath, fileToUpload, {
+            contentType: 'application/pdf',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          Alert.alert('Error', `Failed to upload file: ${uploadError.message}`);
+          setIsSaving(false);
+          return;
+        }
+
+        const { data: urlData } = supabase.storage.from('other-pdfs').getPublicUrl(filePath);
+        pdfUrl = urlData.publicUrl;
+      }
+
       const { error } = await supabase
         .from('resources')
         .insert({
           club_id: user.currentClubId,
           title: title.trim(),
-          description: description.trim(),
           resource_type: 'magazine',
-          url: url.trim(),
+          url: pdfUrl,
           file_data: null,
           created_by: user.id,
         } as any);
@@ -67,7 +135,7 @@ export default function AddMagazineResource() {
 
       Alert.alert(
         'Success',
-        'Magazine/Article added successfully.\n\nMembers will be able to see the file in Club → Club Resources.',
+        'Magazine added successfully.\n\nMembers will be able to see the file in Club → Club Resources.',
         [
           {
             text: 'OK',
@@ -90,16 +158,27 @@ export default function AddMagazineResource() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Add Magazine/Article</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}></Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.typeHeader, { backgroundColor: '#10b981' + '15' }]}>
-          <View style={[styles.typeIcon, { backgroundColor: '#10b981' }]}>
-            <BookOpen size={32} color="#ffffff" />
+        <View
+          style={[
+            styles.typeHeader,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <View style={[styles.typeIcon, { backgroundColor: theme.colors.backgroundSecondary }]}>
+            <BookOpen size={28} color={theme.colors.text} />
           </View>
-          <Text style={[styles.typeLabel, { color: '#10b981' }]} maxFontSizeMultiplier={1.3}>Magazine/Article</Text>
+          <Text style={[styles.typeLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Magazine</Text>
+          <Text style={[styles.typeSubLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Upload magazine PDFs for club members.
+          </Text>
         </View>
 
         <View style={styles.form}>
@@ -115,30 +194,33 @@ export default function AddMagazineResource() {
           </View>
 
           <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Description *</Text>
-            <TextInput
-              style={[styles.textAreaInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
-              placeholder="Enter resource description"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-          </View>
-
-          <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Resource Link *</Text>
-            <TextInput
-              style={[styles.textInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
-              placeholder="https://example.com/resource.pdf"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={url}
-              onChangeText={setUrl}
-              keyboardType="url"
-              autoCapitalize="none"
-            />
+            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Upload PDF *</Text>
+            {!selectedFile ? (
+              <TouchableOpacity
+                style={[styles.filePickerButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                onPress={handlePickDocument}
+                disabled={isUploading}
+              >
+                <Upload size={18} color={theme.colors.textSecondary} />
+                <Text style={[styles.filePickerText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {isUploading ? 'Selecting PDF...' : 'Upload PDF'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.fileSelectedWrap, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.fileSelectedName, { color: theme.colors.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+                    {selectedFile.name}
+                  </Text>
+                  <Text style={[styles.fileSelectedSize, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    {formatFileSize(selectedFile.size)}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.removeFileBtn} onPress={handleRemoveFile}>
+                  <X size={16} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <TouchableOpacity
@@ -185,21 +267,27 @@ const styles = StyleSheet.create({
   },
   typeHeader: {
     margin: 16,
-    padding: 24,
+    padding: 20,
     borderRadius: 16,
     alignItems: 'center',
+    borderWidth: 1,
   },
   typeIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   typeLabel: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
+  },
+  typeSubLabel: {
+    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '500',
   },
   form: {
     paddingHorizontal: 16,
@@ -220,13 +308,44 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
   },
-  textAreaInput: {
+  filePickerButton: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    minHeight: 100,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  filePickerText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  fileSelectedWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fileSelectedName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  fileSelectedSize: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  removeFileBtn: {
+    marginLeft: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   saveButton: {
     flexDirection: 'row',

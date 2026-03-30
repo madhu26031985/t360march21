@@ -434,7 +434,7 @@ export default function ClubInfoManagement() {
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <ArrowLeft size={24} color={theme.colors.text} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info Management</Text>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info</Text>
           <View style={styles.headerRightSpacer} />
         </View>
         <View style={styles.loadingContainer}>
@@ -454,7 +454,7 @@ export default function ClubInfoManagement() {
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <ArrowLeft size={24} color={theme.colors.text} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info Management</Text>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info</Text>
           <View style={styles.headerRightSpacer} />
         </View>
         <View style={styles.loadingContainer}>
@@ -480,7 +480,7 @@ export default function ClubInfoManagement() {
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <ArrowLeft size={24} color={theme.colors.text} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info Management</Text>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info</Text>
           <View style={[styles.headerRightSpacer, isFetching && styles.headerSpinnerWrap]}>
             {isFetching ? <Text style={[styles.headerFetchingDot, { color: theme.colors.primary }]}>●</Text> : null}
           </View>
@@ -523,7 +523,7 @@ export default function ClubInfoManagement() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info Management</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Info</Text>
         <View style={[styles.headerRightSpacer, isFetching && styles.headerSpinnerWrap]}>
           {isFetching ? <Text style={[styles.headerFetchingDot, { color: theme.colors.primary }]}>●</Text> : null}
         </View>
@@ -566,12 +566,16 @@ export default function ClubInfoManagement() {
             </View>
 
             <View style={[styles.notionTabStrip, { borderBottomColor: theme.colors.border }]}>
-            <View style={styles.tabBar}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabBar}
+            >
               <TouchableOpacity
                 style={[
                   styles.tab,
                   activeTab === 'info' && styles.activeTab,
-                  activeTab === 'info' && { borderBottomColor: theme.colors.primary }
+                  activeTab === 'info' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
                 ]}
                 onPress={() => switchTab('info')}
               >
@@ -589,7 +593,7 @@ export default function ClubInfoManagement() {
                 style={[
                   styles.tab,
                   activeTab === 'location' && styles.activeTab,
-                  activeTab === 'location' && { borderBottomColor: theme.colors.primary }
+                  activeTab === 'location' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
                 ]}
                 onPress={() => switchTab('location')}
               >
@@ -607,7 +611,7 @@ export default function ClubInfoManagement() {
                 style={[
                   styles.tab,
                   activeTab === 'meetingDetails' && styles.activeTab,
-                  activeTab === 'meetingDetails' && { borderBottomColor: theme.colors.primary }
+                  activeTab === 'meetingDetails' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
                 ]}
                 onPress={() => switchTab('meetingDetails')}
               >
@@ -625,7 +629,7 @@ export default function ClubInfoManagement() {
                 style={[
                   styles.tab,
                   activeTab === 'moreInfo' && styles.activeTab,
-                  activeTab === 'moreInfo' && { borderBottomColor: theme.colors.primary }
+                  activeTab === 'moreInfo' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
                 ]}
                 onPress={() => switchTab('moreInfo')}
               >
@@ -638,7 +642,7 @@ export default function ClubInfoManagement() {
                   Club More Details
                 </Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
             </View>
 
           <Animated.View
@@ -796,7 +800,7 @@ export default function ClubInfoManagement() {
             {/* Location Information Tab */}
             {activeTab === 'location' && (
               <View style={styles.locationTabWrap}>
-                  <Text style={[styles.locationSectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Location</Text>
+                  {/* Tab label already shows “Club Location”; avoid duplicate heading here */}
 
                   <View style={[styles.formField, styles.sectionBlock]}>
                     <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Country</Text>
@@ -838,6 +842,28 @@ export default function ClubInfoManagement() {
                         </Text>
                       </View>
                     )}
+                  </View>
+
+                  <View style={[styles.formField, styles.sectionBlock]}>
+                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      Club Address
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.locationInput,
+                        {
+                          backgroundColor: theme.colors.surface,
+                          borderColor: focusedField === 'address' ? theme.colors.primary : '#E5E7EB',
+                          color: theme.colors.text,
+                        },
+                      ]}
+                      placeholder="Type full address (e.g., No 19, 7B, 1st Main Rd...)"
+                      placeholderTextColor={theme.colors.textSecondary}
+                      value={clubData.address || ''}
+                      onChangeText={(text) => updateField('address', text)}
+                      onFocus={() => setFocusedField('address')}
+                      onBlur={() => setFocusedField(null)}
+                    />
                   </View>
 
                   <View style={[styles.formField, styles.sectionBlock]}>
@@ -1309,29 +1335,28 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    marginHorizontal: 0,
-    marginTop: 0,
-    borderWidth: 0,
-    borderRadius: 0,
-    overflow: 'hidden',
-    minHeight: 44,
-    maxHeight: 48,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
   },
   tab: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     gap: 6,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
+    borderRadius: 999,
+    minHeight: 36,
   },
   activeTab: {
-    borderBottomWidth: 3,
+    borderWidth: 1,
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
   },
   activeTabText: {
@@ -1345,7 +1370,7 @@ const styles = StyleSheet.create({
   },
   locationTabWrap: {
     padding: 0,
-    gap: 16,
+    gap: 12,
   },
   locationSectionTitle: {
     fontSize: 15,

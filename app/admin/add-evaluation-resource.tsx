@@ -39,9 +39,8 @@ export default function AddEvaluationResource() {
     setIsSaving(true);
 
     try {
-      // Generate title and description from pathway/project info
+      // Generate title from pathway/project info
       let generatedTitle = 'Evaluation Form';
-      let generatedDescription = 'Evaluation form resource';
 
       if (pathwayName.trim() || projectName.trim()) {
         const parts = [];
@@ -51,7 +50,6 @@ export default function AddEvaluationResource() {
         if (projectNumber.trim()) parts.push(`Project ${projectNumber.trim()}`);
 
         generatedTitle = parts.join(' - ') || 'Evaluation Form';
-        generatedDescription = `Evaluation form for ${parts.join(', ')}`;
       }
 
       const { error } = await supabase
@@ -59,7 +57,6 @@ export default function AddEvaluationResource() {
         .insert({
           club_id: user.currentClubId,
           title: generatedTitle,
-          description: generatedDescription,
           pathway_name: pathwayName.trim() || null,
           project_name: projectName.trim() || null,
           project_number: projectNumber.trim() ? parseInt(projectNumber.trim()) : null,

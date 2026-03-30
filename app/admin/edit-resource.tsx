@@ -10,7 +10,6 @@ import { ArrowLeft, Youtube, BookOpen, FileText, Save } from 'lucide-react-nativ
 interface Resource {
   id: string;
   title: string;
-  description: string;
   resource_type: string;
   url: string | null;
   file_data: string | null;
@@ -25,7 +24,6 @@ export default function EditResource() {
   const [resource, setResource] = useState<Resource | null>(null);
 
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
   const [url, setUrl] = useState('');
 
   useEffect(() => {
@@ -53,7 +51,6 @@ export default function EditResource() {
         const resourceData = data as Resource;
         setResource(resourceData);
         setTitle(resourceData.title);
-        setDescription(resourceData.description);
         setUrl(resourceData.url || '');
       }
     } catch (error) {
@@ -68,11 +65,6 @@ export default function EditResource() {
   const handleSave = async () => {
     if (!title.trim()) {
       Alert.alert('Error', 'Please enter a resource title');
-      return;
-    }
-
-    if (!description.trim()) {
-      Alert.alert('Error', 'Please enter a resource description');
       return;
     }
 
@@ -109,7 +101,6 @@ export default function EditResource() {
     try {
       const updateData = {
         title: title.trim(),
-        description: description.trim(),
         url: url.trim(),
         file_data: null as string | null,
       };
@@ -199,20 +190,6 @@ export default function EditResource() {
               onChangeText={setTitle}
               placeholder="Enter resource title"
               placeholderTextColor={theme.colors.textSecondary}
-            />
-          </View>
-
-          <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Description *</Text>
-            <TextInput
-              style={[styles.textArea, { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border }]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Enter resource description"
-              placeholderTextColor={theme.colors.textSecondary}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
             />
           </View>
 
@@ -338,14 +315,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-  },
-  textArea: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    minHeight: 120,
   },
   footer: {
     padding: 16,

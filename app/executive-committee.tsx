@@ -81,36 +81,6 @@ export default function ExecutiveCommittee() {
       key: 'ipp',
       title: 'Immediate Past President',
       description: 'Former president providing guidance and continuity'
-    },
-    {
-      key: 'area_director',
-      title: 'Area Director',
-      description: 'Oversees clubs within a specific area'
-    },
-    {
-      key: 'division_director',
-      title: 'Division Director',
-      description: 'Manages multiple areas within a division'
-    },
-    {
-      key: 'district_director',
-      title: 'District Director',
-      description: 'Leads the entire district organization'
-    },
-    {
-      key: 'program_quality_director',
-      title: 'Program Quality Director',
-      description: 'Ensures quality of educational programs district-wide'
-    },
-    {
-      key: 'club_growth_director',
-      title: 'Club Growth Director',
-      description: 'Focuses on club growth and new club development'
-    },
-    {
-      key: 'immediate_past_district_director',
-      title: 'Immediate Past District Director',
-      description: 'Former district director providing continuity and guidance'
     }
   ];
 
@@ -119,6 +89,12 @@ export default function ExecutiveCommittee() {
 
   // Club Leader roles (district-level)
   const clubLeaderRoles = excommRoleDefinitions.slice(8);
+
+  useEffect(() => {
+    if (clubLeaderRoles.length === 0 && selectedCategory === 'club_leaders') {
+      setSelectedCategory('excomm');
+    }
+  }, [clubLeaderRoles.length, selectedCategory]);
 
   // Memoize filtered roles by category
   const filteredRoles = useMemo(() => {
@@ -161,13 +137,7 @@ export default function ExecutiveCommittee() {
           vppr_id, vppr_term_start, vppr_term_end,
           secretary_id, secretary_term_start, secretary_term_end,
           treasurer_id, treasurer_term_start, treasurer_term_end,
-          saa_id, saa_term_start, saa_term_end,
-          area_director_id, area_director_term_start, area_director_term_end,
-          division_director_id, division_director_term_start, division_director_term_end,
-          district_director_id, district_director_term_start, district_director_term_end,
-          program_quality_director_id, program_quality_director_term_start, program_quality_director_term_end,
-          club_growth_director_id, club_growth_director_term_start, club_growth_director_term_end,
-          immediate_past_district_director_id, immediate_past_district_director_term_start, immediate_past_district_director_term_end
+          saa_id, saa_term_start, saa_term_end
         `)
         .eq('club_id', user.currentClubId)
         .maybeSingle();
@@ -486,35 +456,37 @@ export default function ExecutiveCommittee() {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.filterTab,
-                {
-                  backgroundColor: selectedCategory === 'club_leaders' ? theme.colors.warning : theme.colors.surface,
-                  borderColor: selectedCategory === 'club_leaders' ? theme.colors.warning : theme.colors.border,
-                }
-              ]}
-              onPress={() => setSelectedCategory('club_leaders')}
-            >
-              <Shield size={16} color={selectedCategory === 'club_leaders' ? '#ffffff' : theme.colors.textSecondary} />
-              <Text style={[
-                styles.filterTabText,
-                { color: selectedCategory === 'club_leaders' ? '#ffffff' : theme.colors.text }
-              ]}>
-                Club Leaders
-              </Text>
-              <View style={[
-                styles.filterTabCount,
-                { backgroundColor: selectedCategory === 'club_leaders' ? 'rgba(255, 255, 255, 0.2)' : theme.colors.background }
-              ]}>
+            {clubLeaderRoles.length > 0 ? (
+              <TouchableOpacity
+                style={[
+                  styles.filterTab,
+                  {
+                    backgroundColor: selectedCategory === 'club_leaders' ? theme.colors.warning : theme.colors.surface,
+                    borderColor: selectedCategory === 'club_leaders' ? theme.colors.warning : theme.colors.border,
+                  }
+                ]}
+                onPress={() => setSelectedCategory('club_leaders')}
+              >
+                <Shield size={16} color={selectedCategory === 'club_leaders' ? '#ffffff' : theme.colors.textSecondary} />
                 <Text style={[
-                  styles.filterTabCountText,
-                  { color: selectedCategory === 'club_leaders' ? '#ffffff' : theme.colors.textSecondary }
+                  styles.filterTabText,
+                  { color: selectedCategory === 'club_leaders' ? '#ffffff' : theme.colors.text }
                 ]}>
-                  {clubLeaderRoles.length}
+                  Club Leaders
                 </Text>
-              </View>
-            </TouchableOpacity>
+                <View style={[
+                  styles.filterTabCount,
+                  { backgroundColor: selectedCategory === 'club_leaders' ? 'rgba(255, 255, 255, 0.2)' : theme.colors.background }
+                ]}>
+                  <Text style={[
+                    styles.filterTabCountText,
+                    { color: selectedCategory === 'club_leaders' ? '#ffffff' : theme.colors.textSecondary }
+                  ]}>
+                    {clubLeaderRoles.length}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 

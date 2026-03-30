@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users, Timer, PenLine, BookOpen } from 'lucide-react-native';
 import { exportAgendaToPDF, generatePDFFilename } from '@/lib/pdfExportUtils';
 import { parseMemberPreparedAgenda } from '@/lib/preparedSpeechesAgendaParse';
+import { fetchMeetingAgendaSnapshot, evaluationsArrayToRecord } from '@/lib/meetingAgendaSnapshot';
 
 interface Meeting {
   id: string;
@@ -208,400 +209,104 @@ interface AgendaItem {
   grammarian_visible?: boolean;
 }
 
-interface TagTeamRole {
-  role_name: string;
-  assigned_user_name: string | null;
-  assigned_user_avatar: string | null;
-  assigned_user_id: string | null;
-  is_visible: boolean;
-}
+type AgendaProfileRow = { id: string; full_name: string; avatar_url: string | null };
 
-function AgendaScreenShell({
-  embedded,
-  backgroundColor,
-  children,
-}: {
-  embedded: boolean;
-  backgroundColor: string;
-  children: ReactNode;
-}) {
-  const baseStyle = [{ flex: 1 as const }, { backgroundColor }];
-  if (embedded) {
-    return <View style={[...baseStyle, { minHeight: 0 }]}>{children}</View>;
-  }
-  return (
-    <SafeAreaView style={baseStyle} edges={['top']}>
-      {children}
-    </SafeAreaView>
-  );
-}
-
-export function MeetingAgendaViewContent({
-  meetingId: meetingIdProp,
-  embedded = false,
-}: {
-  meetingId?: string;
-  embedded?: boolean;
-}) {
-  const { theme } = useTheme();
-  const { user } = useAuth();
-  const meetingId = meetingIdProp;
-
-  const [meeting, setMeeting] = useState<Meeting | null>(null);
-  const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
-  const [vpmInfo, setVpmInfo] = useState<VPMInfo | null>(null);
-  const [vpeInfo, setVpeInfo] = useState<VPEInfo | null>(null);
-  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
-  const [tagTeamRoles, setTagTeamRoles] = useState<TagTeamRole[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [isExcomm, setIsExcomm] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState(0);
-  const isInitialMount = useRef(true);
-
-  useEffect(() => {
-    if (!meetingId || typeof meetingId !== 'string') {
-      setLoading(false);
-      return;
-    }
-    loadData();
-    checkExcommStatus();
-  }, [meetingId]);
-
-  // Refresh all data when screen comes into focus (e.g., after editing)
-  // Skip on initial mount since useEffect already loads everything
-  useFocusEffect(
-    useCallback(() => {
-      if (isInitialMount.current) {
-        isInitialMount.current = false;
-        return;
-      }
-      if (meetingId) {
-        // Use the same loadData flow as refresh to ensure proper sequencing
-        loadData();
-      }
-    }, [meetingId])
+function buildAgendaItemsFromFetchedData(
+  themeOfTheDay: string | null,
+  data: any[] | null | undefined,
+  speakersData: any[] | null | undefined,
+  wordData: any,
+  idiomData: any,
+  quoteData: any,
+  bookedRolesData: any[] | null | undefined,
+  userProfiles: Record<string, AgendaProfileRow>,
+  evaluations: Record<string, { id: string; evaluation_pathway_id: string; evaluation_pdf_url: string | null }>
+): AgendaItem[] {
+  const bookedPreparedUserIds = new Set(
+    (bookedRolesData || []).map((r: any) => r.assigned_user_id).filter(Boolean)
   );
 
-  const checkExcommStatus = async () => {
-    if (!user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('club_id', user.currentClubId)
-        .eq('is_authenticated', true)
-        .single();
-
-      if (!error && data) {
-        setIsExcomm(data.role === 'excomm' || data.role === 'club_leader');
-      }
-    } catch (error) {
-      console.error('Error checking excomm status:', error);
-    }
-  };
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      // Load meeting first to get club_id
-      await loadMeeting();
-      // Load agenda items and tag team roles in parallel
-      await Promise.all([
-        loadAgendaItems(),
-        loadTagTeamRoles()
-      ]);
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadMeeting = async () => {
-    if (!meetingId) return;
-    try {
-      const { data, error } = await supabase
-        .from('app_club_meeting')
-        .select('*')
-        .eq('id', meetingId)
-        .single();
-
-      if (error) {
-        console.error('Error loading meeting:', error);
-        return;
-      }
-
-      setMeeting(data);
-
-      // Load club info after meeting is loaded
-      if (data?.club_id) {
-        const { data: clubData } = await supabase
-          .from('club_profiles')
-          .select('id, club_name, club_number, district, division, area, country, time_zone, vpm_id, vpe_id')
-          .eq('club_id', data.club_id)
-          .single();
-
-        if (clubData) {
-          setClubInfo(clubData);
-
-          // Load VPM and VPE info in parallel
-          const promises = [];
-          if (clubData.vpm_id) {
-            promises.push(
-              supabase
-                .from('app_user_profiles')
-                .select('full_name, phone_number')
-                .eq('id', clubData.vpm_id)
-                .single()
-                .then(({ data: vpmData }) => {
-                  if (vpmData) setVpmInfo(vpmData);
-                })
-            );
-          }
-
-          if (clubData.vpe_id) {
-            promises.push(
-              supabase
-                .from('app_user_profiles')
-                .select('full_name, phone_number')
-                .eq('id', clubData.vpe_id)
-                .single()
-                .then(({ data: vpeData }) => {
-                  if (vpeData) setVpeInfo(vpeData);
-                })
-            );
-          }
-
-          await Promise.all(promises);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading meeting:', error);
-    }
-  };
-
-  const loadAgendaItems = async () => {
-    if (!meetingId) return;
-    try {
-      // Load meeting theme along with other data for better performance
-      const [
-        { data, error },
-        { data: speakersData, error: speakersError },
-        { data: meetingData },
-        { data: wordData },
-        { data: idiomData },
-        { data: quoteData },
-        { data: bookedRolesData }
-      ] = await Promise.all([
-        supabase
-          .from('meeting_agenda_items')
-          .select(`
-            *,
-            agenda_item_templates!meeting_agenda_items_template_id_fkey(is_role_based)
-          `)
-          .eq('meeting_id', meetingId)
-          .eq('is_visible', true)
-          .order('section_order'),
-        supabase
-          .from('app_evaluation_pathway')
-          .select(`
-            id,
-            user_id,
-            role_name,
-            speech_title,
-            pathway_name,
-            project_name,
-            level,
-            project_number,
-            assigned_evaluator_id,
-            evaluation_form
-          `)
-          .eq('meeting_id', meetingId)
-          .order('role_name'),
-        supabase
-          .from('app_club_meeting')
-          .select('theme')
-          .eq('id', meetingId)
-          .single(),
-        supabase
-          .from('grammarian_word_of_the_day')
-          .select('*')
-          .eq('meeting_id', meetingId)
-          .eq('is_published', true)
-          .maybeSingle(),
-        supabase
-          .from('grammarian_idiom_of_the_day')
-          .select('*')
-          .eq('meeting_id', meetingId)
-          .eq('is_published', true)
-          .maybeSingle(),
-        supabase
-          .from('grammarian_quote_of_the_day')
-          .select('*')
-          .eq('meeting_id', meetingId)
-          .eq('is_published', true)
-          .maybeSingle(),
-        supabase
-          .from('app_meeting_roles_management')
-          .select('assigned_user_id, booking_status')
-          .eq('meeting_id', meetingId)
-          .ilike('role_name', '%prepared%speaker%')
-          .eq('booking_status', 'booked')
-      ]);
-
-      if (error) {
-        console.error('Error loading agenda items:', error);
-        return;
-      }
-
-      if (speakersError) {
-        console.error('Error loading speakers:', speakersError);
-      }
-
-      // Build set of user IDs that have a booked prepared speaker role
-      const bookedPreparedUserIds = new Set(
-        (bookedRolesData || []).map((r: any) => r.assigned_user_id).filter(Boolean)
-      );
-
-      // Filter speakers in JavaScript (much faster than ILIKE)
-      // Only include speakers whose booking_status is 'booked' in app_meeting_roles_management
-      const preparedSpeakersData = speakersData?.filter((s: any) =>
+  const preparedSpeakersData =
+    speakersData?.filter(
+      (s: any) =>
         s.role_name?.toLowerCase().includes('prepared') &&
         s.role_name?.toLowerCase().includes('speaker') &&
         bookedPreparedUserIds.has(s.user_id)
-      ) || [];
+    ) || [];
 
-      const iceBreakersData = speakersData?.filter((s: any) =>
-        s.role_name?.toLowerCase().includes('ice') &&
-        s.role_name?.toLowerCase().includes('breaker')
-      ) || [];
+  const iceBreakersData =
+    speakersData?.filter(
+      (s: any) => s.role_name?.toLowerCase().includes('ice') && s.role_name?.toLowerCase().includes('breaker')
+    ) || [];
 
-      // Collect all user IDs to fetch profiles
-      const userIds = new Set<string>();
-
-      // From agenda items
-      data?.forEach((item: any) => {
-        if (item.assigned_user_id) userIds.add(item.assigned_user_id);
-        if (item.timer_user_id) userIds.add(item.timer_user_id);
-        if (item.ah_counter_user_id) userIds.add(item.ah_counter_user_id);
-        if (item.grammarian_user_id) userIds.add(item.grammarian_user_id);
-      });
-
-      // From speakers and evaluators
-      preparedSpeakersData?.forEach((speaker: any) => {
-        if (speaker.user_id) userIds.add(speaker.user_id);
-        if (speaker.assigned_evaluator_id) userIds.add(speaker.assigned_evaluator_id);
-      });
-
-      iceBreakersData?.forEach((speaker: any) => {
-        if (speaker.user_id) userIds.add(speaker.user_id);
-        if (speaker.assigned_evaluator_id) userIds.add(speaker.assigned_evaluator_id);
-      });
-
-      // Fetch all user profiles in one query
-      let userProfiles: Record<string, any> = {};
-      if (userIds.size > 0) {
-        const { data: profilesData } = await supabase
-          .from('app_user_profiles')
-          .select('id, full_name, avatar_url')
-          .in('id', Array.from(userIds));
-
-        if (profilesData) {
-          profilesData.forEach(profile => {
-            userProfiles[profile.id] = profile;
-          });
-        }
+  const preparedSpeakers: PreparedSpeaker[] =
+    preparedSpeakersData?.map((speaker: any) => {
+      let projectNumber: number | null = null;
+      if (speaker.project_number) {
+        const parsed =
+          typeof speaker.project_number === 'string' ? parseInt(speaker.project_number, 10) : speaker.project_number;
+        projectNumber = !isNaN(parsed) ? parsed : null;
       }
 
-      // Fetch evaluation PDFs
-      const evaluationPathwayIds = [
-        ...(preparedSpeakersData?.map((s: any) => s.id) || []),
-        ...(iceBreakersData?.map((s: any) => s.id) || [])
-      ];
+      const speakerProfile = speaker.user_id ? userProfiles[speaker.user_id] : null;
+      const evaluatorProfile = speaker.assigned_evaluator_id ? userProfiles[speaker.assigned_evaluator_id] : null;
+      const evaluation = evaluations[speaker.id];
 
-      let evaluations: Record<string, any> = {};
-      if (evaluationPathwayIds.length > 0) {
-        const { data: evaluationsData } = await supabase
-          .from('app_prepared_speech_evaluations')
-          .select('id, evaluation_pathway_id, evaluation_pdf_url')
-          .in('evaluation_pathway_id', evaluationPathwayIds);
+      return {
+        id: speaker.id,
+        speaker_name: speakerProfile?.full_name || 'TBA',
+        speaker_id: speaker.user_id || null,
+        speaker_avatar: speakerProfile?.avatar_url || null,
+        speech_title: speaker.speech_title,
+        pathway_name: speaker.pathway_name,
+        pathway_level: speaker.level,
+        project_title: speaker.project_name,
+        project_number: projectNumber,
+        evaluator_name: evaluatorProfile?.full_name || null,
+        evaluator_id: speaker.assigned_evaluator_id || null,
+        evaluator_avatar: evaluatorProfile?.avatar_url || null,
+        evaluation_id: evaluation?.id || null,
+        evaluation_pdf_url: evaluation?.evaluation_pdf_url || null,
+        evaluation_form: speaker.evaluation_form || null,
+        role_name: speaker.role_name || undefined,
+      };
+    }) || [];
 
-        if (evaluationsData) {
-          evaluationsData.forEach(evaluation => {
-            evaluations[evaluation.evaluation_pathway_id] = evaluation;
-          });
-        }
+  const iceBreakers: PreparedSpeaker[] =
+    iceBreakersData?.map((speaker: any) => {
+      let projectNumber: number | null = null;
+      if (speaker.project_number) {
+        const parsed =
+          typeof speaker.project_number === 'string' ? parseInt(speaker.project_number, 10) : speaker.project_number;
+        projectNumber = !isNaN(parsed) ? parsed : null;
       }
 
-      // Map prepared speakers with pathway information
-      const preparedSpeakers: PreparedSpeaker[] = preparedSpeakersData?.map((speaker: any) => {
-        let projectNumber: number | null = null;
-        if (speaker.project_number) {
-          const parsed = typeof speaker.project_number === 'string' ? parseInt(speaker.project_number, 10) : speaker.project_number;
-          projectNumber = !isNaN(parsed) ? parsed : null;
-        }
+      const speakerProfile = speaker.user_id ? userProfiles[speaker.user_id] : null;
+      const evaluatorProfile = speaker.assigned_evaluator_id ? userProfiles[speaker.assigned_evaluator_id] : null;
+      const evaluation = evaluations[speaker.id];
 
-        const speakerProfile = speaker.user_id ? userProfiles[speaker.user_id] : null;
-        const evaluatorProfile = speaker.assigned_evaluator_id ? userProfiles[speaker.assigned_evaluator_id] : null;
-        const evaluation = evaluations[speaker.id];
+      return {
+        id: speaker.id,
+        speaker_name: speakerProfile?.full_name || 'TBA',
+        speaker_id: speaker.user_id || null,
+        speaker_avatar: speakerProfile?.avatar_url || null,
+        speech_title: speaker.speech_title,
+        pathway_name: speaker.pathway_name,
+        pathway_level: speaker.level,
+        project_title: speaker.project_name,
+        project_number: projectNumber,
+        evaluator_name: evaluatorProfile?.full_name || null,
+        evaluator_id: speaker.assigned_evaluator_id || null,
+        evaluator_avatar: evaluatorProfile?.avatar_url || null,
+        evaluation_id: evaluation?.id || null,
+        evaluation_pdf_url: evaluation?.evaluation_pdf_url || null,
+        evaluation_form: speaker.evaluation_form || null,
+      };
+    }) || [];
 
-        return {
-          id: speaker.id,
-          speaker_name: speakerProfile?.full_name || 'TBA',
-          speaker_id: speaker.user_id || null,
-          speaker_avatar: speakerProfile?.avatar_url || null,
-          speech_title: speaker.speech_title,
-          pathway_name: speaker.pathway_name,
-          pathway_level: speaker.level,
-          project_title: speaker.project_name,
-          project_number: projectNumber,
-          evaluator_name: evaluatorProfile?.full_name || null,
-          evaluator_id: speaker.assigned_evaluator_id || null,
-          evaluator_avatar: evaluatorProfile?.avatar_url || null,
-          evaluation_id: evaluation?.id || null,
-          evaluation_pdf_url: evaluation?.evaluation_pdf_url || null,
-          evaluation_form: speaker.evaluation_form || null,
-          role_name: speaker.role_name || undefined,
-        };
-      }) || [];
-
-      // Map ice breakers with pathway information
-      const iceBreakers: PreparedSpeaker[] = iceBreakersData?.map((speaker: any) => {
-        let projectNumber: number | null = null;
-        if (speaker.project_number) {
-          const parsed = typeof speaker.project_number === 'string' ? parseInt(speaker.project_number, 10) : speaker.project_number;
-          projectNumber = !isNaN(parsed) ? parsed : null;
-        }
-
-        const speakerProfile = speaker.user_id ? userProfiles[speaker.user_id] : null;
-        const evaluatorProfile = speaker.assigned_evaluator_id ? userProfiles[speaker.assigned_evaluator_id] : null;
-        const evaluation = evaluations[speaker.id];
-
-        return {
-          id: speaker.id,
-          speaker_name: speakerProfile?.full_name || 'TBA',
-          speaker_id: speaker.user_id || null,
-          speaker_avatar: speakerProfile?.avatar_url || null,
-          speech_title: speaker.speech_title,
-          pathway_name: speaker.pathway_name,
-          pathway_level: speaker.level,
-          project_title: speaker.project_name,
-          project_number: projectNumber,
-          evaluator_name: evaluatorProfile?.full_name || null,
-          evaluator_id: speaker.assigned_evaluator_id || null,
-          evaluator_avatar: evaluatorProfile?.avatar_url || null,
-          evaluation_id: evaluation?.id || null,
-          evaluation_pdf_url: evaluation?.evaluation_pdf_url || null,
-          evaluation_form: speaker.evaluation_form || null,
-        };
-      }) || [];
-
-      const items = data?.map((item: any) => {
-        // Normalize role_details (can arrive as object or JSON string depending on DB/client config)
+  const items =
+    data
+      ?.map((item: any) => {
         let normalizedRoleDetails: any = item.role_details;
         if (typeof normalizedRoleDetails === 'string') {
           try {
@@ -624,15 +329,13 @@ export function MeetingAgendaViewContent({
           assigned_user_name: assignedUserProfile?.full_name || item.assigned_user_name || null,
         };
 
-        // Add theme data to Toastmaster of the Day items (always add fields, even if null)
         if ((item.section_name || '').toLowerCase().includes('toastmaster of the day')) {
           return {
             ...baseItem,
-            theme_of_the_day: meetingData?.theme || null,
+            theme_of_the_day: themeOfTheDay,
           };
         }
 
-        // Add prepared speakers to Prepared Speeches Session
         if ((item.section_name || '').toLowerCase().includes('prepared speech')) {
           return {
             ...baseItem,
@@ -640,7 +343,6 @@ export function MeetingAgendaViewContent({
           };
         }
 
-        // Add prepared speakers to Speech Evaluation (same data: Evaluator, Speaker, Speech Title)
         if ((item.section_name || '').toLowerCase().includes('speech evaluation')) {
           return {
             ...baseItem,
@@ -648,7 +350,6 @@ export function MeetingAgendaViewContent({
           };
         }
 
-        // Add ice breakers to Ice Breaker Sessions
         if ((item.section_name || '').toLowerCase().includes('ice breaker')) {
           return {
             ...baseItem,
@@ -656,7 +357,6 @@ export function MeetingAgendaViewContent({
           };
         }
 
-        // Add educational topic to Educational Speaker items
         if ((item.section_name || '').toLowerCase().includes('educational speaker')) {
           return {
             ...baseItem,
@@ -664,7 +364,6 @@ export function MeetingAgendaViewContent({
           };
         }
 
-        // Add daily highlights data to Daily Highlights or Grammarian Corner section
         if (item.section_name === 'Daily Highlights' || item.section_name === 'Grammarian Corner') {
           const dailyHighlights: DailyHighlights = {};
 
@@ -680,7 +379,6 @@ export function MeetingAgendaViewContent({
           const storedQuote = readStoredText(stored?.quote_of_the_day, 'quote');
           const storedIdiom = readStoredText(stored?.idiom_of_the_day, 'idiom');
 
-          // Prefer agenda-saved values (Edit Agenda) over published tables.
           if (storedWord) {
             dailyHighlights.word_of_the_day = {
               word: storedWord,
@@ -731,7 +429,6 @@ export function MeetingAgendaViewContent({
           };
         }
 
-        // Add Tag Team user data
         if ((item.section_name || '').toLowerCase().includes('tag team')) {
           return {
             ...baseItem,
@@ -751,137 +448,332 @@ export function MeetingAgendaViewContent({
         }
 
         return baseItem;
-      }).filter((item: any) => !(item.section_name || '').toLowerCase().includes('ancillary')) || [];
+      })
+      .filter((item: any) => !(item.section_name || '').toLowerCase().includes('ancillary')) || [];
 
-      setAgendaItems(items);
+  return items as AgendaItem[];
+}
+
+function AgendaScreenShell({
+  embedded,
+  backgroundColor,
+  children,
+}: {
+  embedded: boolean;
+  backgroundColor: string;
+  children: ReactNode;
+}) {
+  const baseStyle = [{ flex: 1 as const }, { backgroundColor }];
+  if (embedded) {
+    return <View style={[...baseStyle, { minHeight: 0 }]}>{children}</View>;
+  }
+  return (
+    <SafeAreaView style={baseStyle} edges={['top']}>
+      {children}
+    </SafeAreaView>
+  );
+}
+
+export function MeetingAgendaViewContent({
+  meetingId: meetingIdProp,
+  embedded = false,
+}: {
+  meetingId?: string;
+  embedded?: boolean;
+}) {
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const meetingId = meetingIdProp;
+
+  const [meeting, setMeeting] = useState<Meeting | null>(null);
+  const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
+  const [vpmInfo, setVpmInfo] = useState<VPMInfo | null>(null);
+  const [vpeInfo, setVpeInfo] = useState<VPEInfo | null>(null);
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isExcomm, setIsExcomm] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const isInitialMount = useRef(true);
+
+  useEffect(() => {
+    if (!meetingId || typeof meetingId !== 'string') {
+      setLoading(false);
+      return;
+    }
+    void checkExcommStatus();
+    void loadData();
+  }, [meetingId]);
+
+  // Refresh all data when screen comes into focus (e.g., after editing)
+  // Skip on initial mount since useEffect already loads everything
+  useFocusEffect(
+    useCallback(() => {
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        return;
+      }
+      if (meetingId) {
+        // Use the same loadData flow as refresh to ensure proper sequencing
+        loadData();
+      }
+    }, [meetingId])
+  );
+
+  const checkExcommStatus = async () => {
+    if (!user?.currentClubId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('app_club_user_relationship')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('club_id', user.currentClubId)
+        .eq('is_authenticated', true)
+        .single();
+
+      if (!error && data) {
+        setIsExcomm(data.role === 'excomm' || data.role === 'club_leader');
+      }
     } catch (error) {
-      console.error('Error loading agenda items:', error);
+      console.error('Error checking excomm status:', error);
     }
   };
 
-  const loadTagTeamRoles = async () => {
+  const loadData = async () => {
     if (!meetingId) return;
     try {
-      // Try to load from agenda item first (just IDs)
-      const { data: agendaData, error: agendaError } = await supabase
-        .from('meeting_agenda_items')
-        .select('timer_user_id, ah_counter_user_id, grammarian_user_id, timer_visible, ah_counter_visible, grammarian_visible')
-        .eq('meeting_id', meetingId)
-        .ilike('section_name', '%tag%team%')
-        .maybeSingle();
-
-      if (!agendaError && agendaData) {
-        // Collect user IDs
-        const userIds = [
-          agendaData.timer_user_id,
-          agendaData.ah_counter_user_id,
-          agendaData.grammarian_user_id
-        ].filter(Boolean);
-
-        // Fetch profiles if there are user IDs
-        let userProfiles: Record<string, any> = {};
-        if (userIds.length > 0) {
-          const { data: profilesData } = await supabase
-            .from('app_user_profiles')
-            .select('id, full_name, avatar_url')
-            .in('id', userIds);
-
-          if (profilesData) {
-            profilesData.forEach(profile => {
-              userProfiles[profile.id] = profile;
-            });
-          }
+      setLoading(true);
+      const snap = await fetchMeetingAgendaSnapshot(meetingId);
+      if (snap?.meeting && typeof snap.meeting === 'object') {
+        setMeeting(snap.meeting as unknown as Meeting);
+        const themeOfTheDay = ((snap.meeting as Record<string, unknown>).theme as string | null) ?? null;
+        if (snap.club) {
+          setClubInfo(snap.club as unknown as ClubInfo);
+        } else {
+          setClubInfo(null);
         }
-
-        const timerProfile = agendaData.timer_user_id ? userProfiles[agendaData.timer_user_id] : null;
-        const ahCounterProfile = agendaData.ah_counter_user_id ? userProfiles[agendaData.ah_counter_user_id] : null;
-        const grammarianProfile = agendaData.grammarian_user_id ? userProfiles[agendaData.grammarian_user_id] : null;
-
-        const roles: TagTeamRole[] = [
-          {
-            role_name: 'Timer',
-            assigned_user_name: timerProfile?.full_name || null,
-            assigned_user_avatar: timerProfile?.avatar_url || null,
-            assigned_user_id: agendaData.timer_user_id,
-            is_visible: agendaData.timer_visible ?? true,
-          },
-          {
-            role_name: 'Ah Counter',
-            assigned_user_name: ahCounterProfile?.full_name || null,
-            assigned_user_avatar: ahCounterProfile?.avatar_url || null,
-            assigned_user_id: agendaData.ah_counter_user_id,
-            is_visible: agendaData.ah_counter_visible ?? true,
-          },
-          {
-            role_name: 'Grammarian',
-            assigned_user_name: grammarianProfile?.full_name || null,
-            assigned_user_avatar: grammarianProfile?.avatar_url || null,
-            assigned_user_id: agendaData.grammarian_user_id,
-            is_visible: agendaData.grammarian_visible ?? true,
-          },
-        ];
-        setTagTeamRoles(roles);
+        setVpmInfo(snap.vpm);
+        setVpeInfo(snap.vpe);
+        setAgendaItems(
+          buildAgendaItemsFromFetchedData(
+            themeOfTheDay,
+            (snap.agenda_items as any[]) || [],
+            (snap.pathways as any[]) || [],
+            snap.grammarian_word_of_the_day,
+            snap.grammarian_idiom_of_the_day,
+            snap.grammarian_quote_of_the_day,
+            snap.booked_prepared_roles || [],
+            snap.profiles || {},
+            evaluationsArrayToRecord(snap.evaluations)
+          )
+        );
         return;
       }
 
-      // Fallback to app_meeting_roles_management
-      const { data, error } = await supabase
-        .from('app_meeting_roles_management')
-        .select('role_name, assigned_user_id')
-        .eq('meeting_id', meetingId)
-        .eq('role_classification', 'Tag roles')
-        .in('role_name', ['Timer', 'Ah Counter', 'Grammarian'])
-        .order('role_name');
+      const { data: meetingRow, error: meetingErr } = await supabase
+        .from('app_club_meeting')
+        .select('*')
+        .eq('id', meetingId)
+        .single();
+
+      if (meetingErr || !meetingRow) {
+        console.error('Error loading meeting:', meetingErr);
+        return;
+      }
+
+      setMeeting(meetingRow as Meeting);
+      const themeOfTheDay = (meetingRow as Meeting).theme ?? null;
+      const clubId = (meetingRow as Meeting).club_id;
+
+      await Promise.all([
+        clubId ? hydrateClubInfo(clubId) : Promise.resolve(),
+        loadAgendaItems(themeOfTheDay),
+      ]);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const hydrateClubInfo = async (clubId: string) => {
+    try {
+      const { data: clubData } = await supabase
+        .from('club_profiles')
+        .select('id, club_name, club_number, district, division, area, country, time_zone, vpm_id, vpe_id')
+        .eq('club_id', clubId)
+        .single();
+
+      if (!clubData) return;
+
+      setClubInfo(clubData);
+
+      const officerIds = [clubData.vpm_id, clubData.vpe_id].filter(Boolean);
+      if (officerIds.length === 0) {
+        setVpmInfo(null);
+        setVpeInfo(null);
+        return;
+      }
+
+      const { data: officers } = await supabase
+        .from('app_user_profiles')
+        .select('id, full_name, phone_number')
+        .in('id', officerIds);
+      const vpm = officers?.find((o) => o.id === clubData.vpm_id) ?? null;
+      const vpe = officers?.find((o) => o.id === clubData.vpe_id) ?? null;
+      setVpmInfo(vpm ? { full_name: vpm.full_name, phone_number: vpm.phone_number } : null);
+      setVpeInfo(vpe ? { full_name: vpe.full_name, phone_number: vpe.phone_number } : null);
+    } catch (error) {
+      console.error('Error loading club info:', error);
+    }
+  };
+
+  const loadAgendaItems = async (themeOfTheDay: string | null) => {
+    if (!meetingId) return;
+    try {
+      const [
+        { data, error },
+        { data: speakersData, error: speakersError },
+        { data: wordData },
+        { data: idiomData },
+        { data: quoteData },
+        { data: bookedRolesData }
+      ] = await Promise.all([
+        supabase
+          .from('meeting_agenda_items')
+          .select(`
+            *,
+            agenda_item_templates!meeting_agenda_items_template_id_fkey(is_role_based)
+          `)
+          .eq('meeting_id', meetingId)
+          .eq('is_visible', true)
+          .order('section_order'),
+        supabase
+          .from('app_evaluation_pathway')
+          .select(`
+            id,
+            user_id,
+            role_name,
+            speech_title,
+            pathway_name,
+            project_name,
+            level,
+            project_number,
+            assigned_evaluator_id,
+            evaluation_form
+          `)
+          .eq('meeting_id', meetingId)
+          .order('role_name'),
+        supabase
+          .from('grammarian_word_of_the_day')
+          .select('*')
+          .eq('meeting_id', meetingId)
+          .eq('is_published', true)
+          .maybeSingle(),
+        supabase
+          .from('grammarian_idiom_of_the_day')
+          .select('*')
+          .eq('meeting_id', meetingId)
+          .eq('is_published', true)
+          .maybeSingle(),
+        supabase
+          .from('grammarian_quote_of_the_day')
+          .select('*')
+          .eq('meeting_id', meetingId)
+          .eq('is_published', true)
+          .maybeSingle(),
+        supabase
+          .from('app_meeting_roles_management')
+          .select('assigned_user_id, booking_status')
+          .eq('meeting_id', meetingId)
+          .ilike('role_name', '%prepared%speaker%')
+          .eq('booking_status', 'booked')
+      ]);
 
       if (error) {
-        console.error('Error loading tag team roles:', error);
+        console.error('Error loading agenda items:', error);
         return;
       }
 
-      // Fetch profiles for assigned users
-      const userIds = data?.map((role: any) => role.assigned_user_id).filter(Boolean) || [];
-      let userProfiles: Record<string, any> = {};
-
-      if (userIds.length > 0) {
-        const { data: profilesData } = await supabase
-          .from('app_user_profiles')
-          .select('id, full_name, avatar_url')
-          .in('id', userIds);
-
-        if (profilesData) {
-          profilesData.forEach(profile => {
-            userProfiles[profile.id] = profile;
-          });
-        }
+      if (speakersError) {
+        console.error('Error loading speakers:', speakersError);
       }
 
-      const roles: TagTeamRole[] = data?.map((role: any) => {
-        const profile = role.assigned_user_id ? userProfiles[role.assigned_user_id] : null;
-        return {
-          role_name: role.role_name,
-          assigned_user_name: profile?.full_name || null,
-          assigned_user_avatar: profile?.avatar_url || null,
-          assigned_user_id: role.assigned_user_id,
-          is_visible: true,
-        };
-      }) || [];
+      const bookedPreparedUserIds = new Set(
+        (bookedRolesData || []).map((r: any) => r.assigned_user_id).filter(Boolean)
+      );
+      const preparedSpeakersData =
+        speakersData?.filter(
+          (s: any) =>
+            s.role_name?.toLowerCase().includes('prepared') &&
+            s.role_name?.toLowerCase().includes('speaker') &&
+            bookedPreparedUserIds.has(s.user_id)
+        ) || [];
+      const iceBreakersData =
+        speakersData?.filter(
+          (s: any) => s.role_name?.toLowerCase().includes('ice') && s.role_name?.toLowerCase().includes('breaker')
+        ) || [];
 
-      // Ensure all three roles are present
-      const roleNames = ['Timer', 'Ah Counter', 'Grammarian'];
-      const allRoles = roleNames.map(roleName => {
-        const existingRole = roles.find(r => r.role_name === roleName);
-        return existingRole || {
-          role_name: roleName,
-          assigned_user_name: null,
-          assigned_user_avatar: null,
-          assigned_user_id: null,
-          is_visible: true,
-        };
+      const userIds = new Set<string>();
+      data?.forEach((item: any) => {
+        if (item.assigned_user_id) userIds.add(item.assigned_user_id);
+        if (item.timer_user_id) userIds.add(item.timer_user_id);
+        if (item.ah_counter_user_id) userIds.add(item.ah_counter_user_id);
+        if (item.grammarian_user_id) userIds.add(item.grammarian_user_id);
+      });
+      preparedSpeakersData?.forEach((speaker: any) => {
+        if (speaker.user_id) userIds.add(speaker.user_id);
+        if (speaker.assigned_evaluator_id) userIds.add(speaker.assigned_evaluator_id);
+      });
+      iceBreakersData?.forEach((speaker: any) => {
+        if (speaker.user_id) userIds.add(speaker.user_id);
+        if (speaker.assigned_evaluator_id) userIds.add(speaker.assigned_evaluator_id);
       });
 
-      setTagTeamRoles(allRoles);
+      const evaluationPathwayIds = [
+        ...(preparedSpeakersData?.map((s: any) => s.id) || []),
+        ...(iceBreakersData?.map((s: any) => s.id) || []),
+      ];
+
+      const userProfiles: Record<string, AgendaProfileRow> = {};
+      const evaluations: Record<string, { id: string; evaluation_pathway_id: string; evaluation_pdf_url: string | null }> =
+        {};
+      const [profilesRes, evaluationsRes] = await Promise.all([
+        userIds.size > 0
+          ? supabase.from('app_user_profiles').select('id, full_name, avatar_url').in('id', Array.from(userIds))
+          : Promise.resolve({ data: [] as { id: string; full_name: string; avatar_url: string | null }[] }),
+        evaluationPathwayIds.length > 0
+          ? supabase
+              .from('app_prepared_speech_evaluations')
+              .select('id, evaluation_pathway_id, evaluation_pdf_url')
+              .in('evaluation_pathway_id', evaluationPathwayIds)
+          : Promise.resolve({ data: [] as { id: string; evaluation_pathway_id: string; evaluation_pdf_url: string | null }[] }),
+      ]);
+
+      (profilesRes.data || []).forEach((profile) => {
+        userProfiles[profile.id] = profile;
+      });
+      (evaluationsRes.data || []).forEach((evaluation) => {
+        evaluations[evaluation.evaluation_pathway_id] = evaluation;
+      });
+
+      setAgendaItems(
+        buildAgendaItemsFromFetchedData(
+          themeOfTheDay,
+          data,
+          speakersData,
+          wordData,
+          idiomData,
+          quoteData,
+          bookedRolesData,
+          userProfiles,
+          evaluations
+        )
+      );
     } catch (error) {
-      console.error('Error loading tag team roles:', error);
+      console.error('Error loading agenda items:', error);
     }
   };
 

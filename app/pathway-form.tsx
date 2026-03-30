@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -6,7 +6,7 @@ import { Linking } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, Building2, User, BookOpen, GraduationCap, Target, MessageSquare, Save, Star, ChevronDown, X, Link as LinkIcon, Upload, FileText, Search } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Building2, User, BookOpen, GraduationCap, Target, MessageSquare, Save, Star, X, Link as LinkIcon, Upload, FileText } from 'lucide-react-native';
 import { Image } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -36,13 +36,6 @@ interface RoleBooking {
     email: string;
     avatar_url: string | null;
   };
-}
-
-interface ClubMember {
-  id: string;
-  full_name: string;
-  email: string;
-  avatar_url: string | null;
 }
 
 interface ExistingEvaluationPathway {
@@ -84,15 +77,12 @@ export default function PathwayForm() {
   
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [roleBooking, setRoleBooking] = useState<RoleBooking | null>(null);
-  const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [showEvaluatorModal, setShowEvaluatorModal] = useState(false);
   const [selectedTab, setSelectedTab] = useState('speeches_delivered');
   const [evaluationFormType, setEvaluationFormType] = useState<'link' | 'pdf'>('link');
   const [isUploadingPDF, setIsUploadingPDF] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [evaluatorSearchQuery, setEvaluatorSearchQuery] = useState('');
   const [vpeApprovalRequested, setVpeApprovalRequested] = useState(false);
 
   const [editForm, setEditForm] = useState({
@@ -104,8 +94,7 @@ export default function PathwayForm() {
     evaluation_title: '',
     table_topics_title: '',
     evaluation_form: '',
-    comments_for_evaluator: '',
-    assigned_evaluator: ''
+    comments_for_evaluator: ''
   });
 
   const tabs = [
@@ -141,8 +130,6 @@ export default function PathwayForm() {
         loadRoleBooking()
       ]);
 
-      // Then load speech evaluators (depends on meetingId)
-      await loadClubMembers();
     } catch (error) {
       console.error('Error loading data:', error);
       Alert.alert('Error', 'Failed to load pathway data');
@@ -221,51 +208,6 @@ export default function PathwayForm() {
     }
   };
 
-  const loadClubMembers = async () => {
-    if (!user?.currentClubId || !meetingId) return;
-
-    try {
-      // Load only users who have booked the "Speech Evaluvator" role (Evaluator 1-5) for this meeting
-      const { data, error } = await supabase
-        .from('app_meeting_roles_management')
-        .select(`
-          assigned_user_id,
-          role_name,
-          app_user_profiles (
-            id,
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-        .eq('meeting_id', meetingId)
-        .eq('role_classification', 'Speech evaluvator')
-        .eq('booking_status', 'booked')
-        .not('assigned_user_id', 'is', null);
-
-      if (error) {
-        console.error('Error loading speech evaluators:', error);
-        return;
-      }
-
-      console.log('📋 Loaded evaluators:', data?.length || 0);
-
-      const members = (data || [])
-        .filter(item => item.app_user_profiles)
-        .map(item => ({
-          id: (item as any).app_user_profiles.id,
-          full_name: (item as any).app_user_profiles.full_name,
-          email: (item as any).app_user_profiles.email,
-          avatar_url: (item as any).app_user_profiles.avatar_url,
-        }));
-
-      setClubMembers(members);
-      console.log('✅ Speech evaluators loaded:', members.length);
-    } catch (error) {
-      console.error('Error loading speech evaluators:', error);
-    }
-  };
-
   const loadExistingPathway = async () => {
     if (!meetingId || !roleBooking?.user_id || !roleBooking?.role_name) {
       console.log('Missing data for loading pathway:', { meetingId, userId: roleBooking?.user_id, roleName: roleBooking?.role_name });
@@ -339,8 +281,7 @@ export default function PathwayForm() {
           evaluation_title: pathway.evaluation_title || '',
           table_topics_title: pathway.table_topics_title || '',
           evaluation_form: pathway.evaluation_form || '',
-          comments_for_evaluator: pathway.comments_for_evaluator || '',
-          assigned_evaluator: pathway.assigned_evaluator_id || ''
+          comments_for_evaluator: pathway.comments_for_evaluator || ''
         });
 
         // Detect if existing form is a PDF or link
@@ -354,9 +295,7 @@ export default function PathwayForm() {
           }
         }
 
-        console.log('✅ Form populated with existing data:', {
-          assigned_evaluator: pathway.assigned_evaluator_id || 'empty'
-        });
+        console.log('✅ Form populated with existing data');
       } else {
         console.log('No existing pathway found, using empty form');
       }
@@ -455,9 +394,6 @@ export default function PathwayForm() {
         updated_at: new Date().toISOString()
       };
 
-      // Add the new fields with proper null handling
-      saveData.assigned_evaluator_id = editForm.assigned_evaluator.trim() || null;
-
       console.log('🔄 Final save data being sent to database:', saveData);
 
       // Add speech title
@@ -542,21 +478,6 @@ export default function PathwayForm() {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const getSelectedEvaluatorName = () => {
-    if (!editForm.assigned_evaluator) return 'Select evaluator';
-    const evaluator = clubMembers.find(m => m.id === editForm.assigned_evaluator);
-    return evaluator?.full_name || 'Unknown evaluator';
-  };
-
-  const getFilteredEvaluators = () => {
-    if (!evaluatorSearchQuery.trim()) return clubMembers;
-
-    const query = evaluatorSearchQuery.toLowerCase();
-    return clubMembers.filter(member =>
-      member.full_name.toLowerCase().includes(query)
-    );
   };
 
   const handlePickPDF = async () => {
@@ -1010,22 +931,6 @@ export default function PathwayForm() {
             </Text>
           </View>
 
-          {/* Assigned Evaluator Field */}
-          <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              👤 Assigned Evaluator
-            </Text>
-            <TouchableOpacity
-              style={[styles.dropdown, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-              onPress={() => setShowEvaluatorModal(true)}
-            >
-              <Text style={[styles.dropdownText, { color: editForm.assigned_evaluator ? theme.colors.text : '#BEBEBE' }]} maxFontSizeMultiplier={1.3}>
-                {getSelectedEvaluatorName()}
-              </Text>
-              <ChevronDown size={16} color={theme.colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
           {/* Save Button */}
           <TouchableOpacity
             style={[styles.saveFormButton, {
@@ -1042,109 +947,6 @@ export default function PathwayForm() {
         </View>
       </ScrollView>
 
-      {/* Evaluator Selection Modal */}
-      <Modal
-        visible={showEvaluatorModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => {
-          setShowEvaluatorModal(false);
-          setEvaluatorSearchQuery('');
-        }}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          onPress={() => {
-            setShowEvaluatorModal(false);
-            setEvaluatorSearchQuery('');
-          }}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.evaluatorModal, { backgroundColor: theme.colors.surface }]}
-          >
-            <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Evaluator</Text>
-
-            {/* Search Box */}
-            <View style={[styles.searchContainer, {
-              backgroundColor: theme.colors.background,
-              borderColor: theme.colors.border
-            }]}>
-              <Search size={20} color={theme.colors.textSecondary} />
-              <TextInput
-                style={[styles.searchInput, { color: theme.colors.text }]}
-                placeholder="Search by name"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={evaluatorSearchQuery}
-                onChangeText={setEvaluatorSearchQuery}
-              />
-              {evaluatorSearchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setEvaluatorSearchQuery('')}>
-                  <X size={20} color={theme.colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <ScrollView style={styles.evaluatorsList} showsVerticalScrollIndicator={false}>
-              {/* None Option */}
-              <TouchableOpacity
-                style={[styles.evaluatorOption, { backgroundColor: theme.colors.background }]}
-                onPress={() => {
-                  setEditForm(prev => ({ ...prev, assigned_evaluator: '' }));
-                  setShowEvaluatorModal(false);
-                  setEvaluatorSearchQuery('');
-                }}
-              >
-                <View style={[styles.evaluatorAvatar, { backgroundColor: theme.colors.textSecondary }]}>
-                  <User size={20} color="#ffffff" />
-                </View>
-                <Text style={[styles.evaluatorName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  No evaluator assigned
-                </Text>
-              </TouchableOpacity>
-
-              {getFilteredEvaluators().map((member) => (
-                <TouchableOpacity
-                  key={member.id}
-                  style={[
-                    styles.evaluatorOption,
-                    {
-                      backgroundColor: editForm.assigned_evaluator === member.id ? theme.colors.primary + '20' : theme.colors.background
-                    }
-                  ]}
-                  onPress={() => {
-                    setEditForm(prev => ({ ...prev, assigned_evaluator: member.id }));
-                    setShowEvaluatorModal(false);
-                    setEvaluatorSearchQuery('');
-                  }}
-                >
-                  <View style={styles.evaluatorAvatar}>
-                    {member.avatar_url ? (
-                      <Image source={{ uri: member.avatar_url }} style={styles.evaluatorAvatarImage} />
-                    ) : (
-                      <User size={20} color="#ffffff" />
-                    )}
-                  </View>
-                  <Text style={[
-                    styles.evaluatorName,
-                    { color: editForm.assigned_evaluator === member.id ? theme.colors.primary : theme.colors.text }
-                  ]} maxFontSizeMultiplier={1.3}>
-                    {member.full_name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-
-              {getFilteredEvaluators().length === 0 && (
-                <View style={styles.noResultsContainer}>
-                  <Text style={[styles.noResultsText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    No evaluators found
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1387,20 +1189,6 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
   },
-  dropdown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 2,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  dropdownText: {
-    fontSize: 16,
-    fontWeight: '500',
-    flex: 1,
-  },
   characterCount: {
     fontSize: 12,
     textAlign: 'right',
@@ -1421,85 +1209,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     marginLeft: 8,
     letterSpacing: 0.5,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  evaluatorModal: {
-    borderRadius: 16,
-    padding: 20,
-    margin: 20,
-    maxHeight: '70%',
-    minWidth: 320,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 16,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  evaluatorsList: {
-    maxHeight: 400,
-  },
-  noResultsContainer: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  noResultsText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  evaluatorOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-  },
-  evaluatorAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#3b82f6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    overflow: 'hidden',
-  },
-  evaluatorAvatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  evaluatorName: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   backButtonText: {
     fontSize: 14,

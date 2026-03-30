@@ -1,13 +1,13 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Mail, Phone, CheckCircle2, UserX, Copy, UsersRound, Info, X, Home, Calendar, Users, Settings } from 'lucide-react-native';
 import { useCallback } from 'react';
 import * as Clipboard from 'expo-clipboard';
+import { fetchMyMentorSnapshot, getCachedMyMentorSnapshot, type MyMentorSnapshot } from '@/lib/myMentorSnapshot';
 
 const FOOTER_NAV_ICON_SIZE = 15;
 
@@ -32,95 +32,63 @@ export default function MyGrowthGuidance() {
   const [mentor, setMentor] = useState<ContactPerson | null>(null);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [vpeContact, setVpeContact] = useState<VpeContactInfo | null>(null);
+  const latestLoadId = useRef(0);
 
-  useEffect(() => {
-    if (user?.currentClubId && user?.id) {
-      loadData();
-    } else {
-      setLoading(false);
+  const applySnapshot = useCallback((snap: MyMentorSnapshot | null) => {
+    if (!snap) {
+      setMentor(null);
+      setVpeContact({ firstName: 'VPE', phoneNumber: null, clubName: 'Your Club' });
+      return;
     }
-  }, [user?.currentClubId, user?.id]);
+    setMentor((snap.mentor as ContactPerson | null) ?? null);
+    const fullName = (snap.vpe?.full_name || 'VPE').trim();
+    const firstName = fullName.split(/\s+/).filter(Boolean)[0] || 'VPE';
+    const phoneNumber = (snap.vpe?.phone_number || '').trim() || null;
+    const clubName = (snap.club_name || 'Your Club').trim() || 'Your Club';
+    setVpeContact({ firstName, phoneNumber, clubName });
+  }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (user?.currentClubId && user?.id) {
-        loadData();
-      }
-    }, [user?.currentClubId, user?.id])
-  );
+  const loadData = useCallback(async () => {
+    if (!user?.currentClubId || !user?.id) return;
 
-  const loadData = async () => {
-    if (!user?.currentClubId || !user?.id) {
+    const loadId = ++latestLoadId.current;
+    const clubId = user.currentClubId;
+    const cached = getCachedMyMentorSnapshot(clubId);
+    if (cached) {
+      applySnapshot(cached);
+      setLoading(false);
+      const fresh = await fetchMyMentorSnapshot(clubId);
+      if (loadId !== latestLoadId.current) return;
+      if (fresh) applySnapshot(fresh);
       return;
     }
 
     try {
       setLoading(true);
-
-      // Fetch mentor assignment with profile data in a single query
-      const { data, error } = await supabase
-        .from('mentor_assignments')
-        .select(`
-          mentor_id,
-          mentor:app_user_profiles!mentor_id (
-            id,
-            full_name,
-            email,
-            phone_number,
-            avatar_url
-          )
-        `)
-        .eq('club_id', user.currentClubId)
-        .eq('mentee_id', user.id)
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading mentor:', error);
-        setMentor(null);
-      } else if (data?.mentor) {
-        setMentor(data.mentor as ContactPerson);
-      } else {
-        setMentor(null);
-      }
-
-      const [{ data: clubProfile }, { data: clubRow }] = await Promise.all([
-        supabase
-          .from('club_profiles')
-          .select('vpe_id')
-          .eq('club_id', user.currentClubId)
-          .maybeSingle(),
-        supabase
-          .from('clubs')
-          .select('name')
-          .eq('id', user.currentClubId)
-          .maybeSingle(),
-      ]);
-
-      const vpeId = (clubProfile as any)?.vpe_id as string | undefined;
-      const clubName = ((clubRow as any)?.name as string | undefined)?.trim() || 'Your Club';
-
-      if (vpeId) {
-        const { data: vpeProfile } = await supabase
-          .from('app_user_profiles')
-          .select('full_name, phone_number')
-          .eq('id', vpeId)
-          .maybeSingle();
-        const fullName = ((vpeProfile as any)?.full_name as string | undefined)?.trim() || 'VPE';
-        const firstName = fullName.split(/\s+/).filter(Boolean)[0] || 'VPE';
-        const phoneNumber = ((vpeProfile as any)?.phone_number as string | undefined)?.trim() || null;
-        setVpeContact({ firstName, phoneNumber, clubName });
-      } else {
-        setVpeContact({ firstName: 'VPE', phoneNumber: null, clubName });
-      }
+      const fresh = await fetchMyMentorSnapshot(clubId);
+      if (loadId !== latestLoadId.current) return;
+      applySnapshot(fresh);
     } catch (err) {
+      if (loadId !== latestLoadId.current) return;
       console.error('Error loading mentor data:', err);
       setMentor(null);
-      setVpeContact(null);
+      setVpeContact({ firstName: 'VPE', phoneNumber: null, clubName: 'Your Club' });
     } finally {
-      setLoading(false);
+      if (loadId === latestLoadId.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, [applySnapshot, user?.currentClubId, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.currentClubId && user?.id) {
+        void loadData();
+      } else {
+        setLoading(false);
+      }
+    }, [user?.currentClubId, user?.id, loadData])
+  );
 
   const handleCopy = async (text: string, type: string) => {
     try {

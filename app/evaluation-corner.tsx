@@ -6,6 +6,7 @@ import { Linking } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchEvaluationCornerSnapshot, getCachedEvaluationCornerSnapshot, type EvaluationCornerSnapshot } from '@/lib/evaluationCornerSnapshot';
 import { ArrowLeft, Calendar, User, BookOpen, GraduationCap, Target, MessageSquare, NotebookPen, X, ChevronDown, Plus, Info, FileText, Bell, Users, Star, Mic, CheckSquare, FileBarChart, Clock, CheckCircle, Link as LinkIcon } from 'lucide-react-native';
 import { RefreshCw, RotateCcw } from 'lucide-react-native';
 import { Image } from 'react-native';
@@ -377,37 +378,13 @@ export default function EvaluationCorner() {
     }
   };
 
-  /** One DB round-trip for pathways + roles when migration is applied; else REST fallback. */
-  const tryLoadRolesAndPathwaysViaRpc = async (): Promise<
-    | {
-        ok: true;
-        roleRows: RoleBooking[];
-        pathwaysRecord: Record<string, ExistingEvaluationPathway>;
-        /** False if server RPC predates `meeting` in payload — caller should loadMeeting(). */
-        hasMeetingInSnapshot: boolean;
-      }
-    | { ok: false }
-  > => {
-    if (!meetingId) return { ok: false };
-
-    const { data, error } = await supabase.rpc('get_evaluation_corner_snapshot', {
-      p_meeting_id: meetingId,
-    });
-
-    if (error) {
-      console.warn('get_evaluation_corner_snapshot failed, using REST:', error.message);
-      return { ok: false };
-    }
-    if (data == null || typeof data !== 'object') {
-      console.warn('get_evaluation_corner_snapshot returned empty, using REST');
-      return { ok: false };
-    }
-
-    const snap = data as {
-      pathways?: unknown[];
-      roles?: unknown[];
-      meeting?: Meeting | null;
-    };
+  const applySnapshotPayload = (
+    snap: EvaluationCornerSnapshot
+  ): {
+    roleRows: RoleBooking[];
+    pathwaysRecord: Record<string, ExistingEvaluationPathway>;
+    hasMeetingInSnapshot: boolean;
+  } => {
     const pathwaysArr = Array.isArray(snap.pathways) ? snap.pathways : [];
     const rolesArr = Array.isArray(snap.roles) ? snap.roles : [];
 
@@ -422,7 +399,7 @@ export default function EvaluationCorner() {
 
     const pathwaysRecord: Record<string, ExistingEvaluationPathway> = {};
     pathwaysArr.forEach((raw) => {
-      const pathway = raw as ExistingEvaluationPathway;
+      const pathway = raw as unknown as ExistingEvaluationPathway;
       pathwaysRecord[`${pathway.user_id}_${pathway.role_name}`] = pathway;
     });
     setExistingEvaluationPathways(pathwaysRecord);
@@ -458,16 +435,50 @@ export default function EvaluationCorner() {
     setAvailableRoles(available);
 
     return {
-      ok: true,
       roleRows: [...booked, ...available],
       pathwaysRecord,
       hasMeetingInSnapshot,
     };
   };
 
+  /** One DB round-trip for pathways + roles when migration is applied; else REST fallback. */
+  const tryLoadRolesAndPathwaysViaRpc = async (): Promise<
+    | {
+        ok: true;
+        roleRows: RoleBooking[];
+        pathwaysRecord: Record<string, ExistingEvaluationPathway>;
+        /** False if server RPC predates `meeting` in payload — caller should loadMeeting(). */
+        hasMeetingInSnapshot: boolean;
+      }
+    | { ok: false }
+  > => {
+    if (!meetingId) return { ok: false };
+
+    const snap = await fetchEvaluationCornerSnapshot(meetingId);
+    if (!snap) return { ok: false };
+    const applied = applySnapshotPayload(snap);
+
+    return {
+      ok: true,
+      roleRows: applied.roleRows,
+      pathwaysRecord: applied.pathwaysRecord,
+      hasMeetingInSnapshot: applied.hasMeetingInSnapshot,
+    };
+  };
+
   const loadData = async () => {
     if (!meetingId || !user?.currentClubId) {
       setIsLoading(false);
+      return;
+    }
+
+    const cached = getCachedEvaluationCornerSnapshot(meetingId);
+    if (cached) {
+      const applied = applySnapshotPayload(cached);
+      hydrateUserProfilesForScreen(applied.roleRows, applied.pathwaysRecord);
+      setIsLoading(false);
+      // Refresh in background to keep data current without blocking first paint.
+      void refreshRolesPathwaysAndProfiles();
       return;
     }
 
@@ -478,14 +489,14 @@ export default function EvaluationCorner() {
         if (!rpc.hasMeetingInSnapshot) {
           await loadMeeting();
         }
-        await hydrateUserProfilesForScreen(rpc.roleRows, rpc.pathwaysRecord);
+        hydrateUserProfilesForScreen(rpc.roleRows, rpc.pathwaysRecord);
       } else {
         const [, roleRows, pathwaysRecord] = await Promise.all([
           loadMeeting(),
           loadRoleBookings(),
           loadExistingEvaluationPathways(),
         ]);
-        await hydrateUserProfilesForScreen(roleRows, pathwaysRecord);
+        hydrateUserProfilesForScreen(roleRows, pathwaysRecord);
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -637,7 +648,7 @@ export default function EvaluationCorner() {
   };
 
   /** Main list: profiles from role rows + any assigned evaluators not on those rows (one small IN query). */
-  const hydrateUserProfilesForScreen = async (
+  const hydrateUserProfilesForScreen = (
     roles: RoleBooking[],
     pathways: Record<string, ExistingEvaluationPathway>
   ) => {
@@ -655,18 +666,23 @@ export default function EvaluationCorner() {
         missing.add(eid);
       }
     }
+    setUserProfiles(Object.fromEntries(byId));
     if (missing.size > 0) {
-      const { data, error } = await supabase
+      void supabase
         .from('app_user_profiles')
         .select('id, full_name, email, avatar_url')
-        .in('id', [...missing]);
-      if (!error && data) {
-        for (const row of data as UserProfile[]) {
-          byId.set(row.id, row);
-        }
-      }
+        .in('id', [...missing])
+        .then(({ data, error }) => {
+          if (error || !data) return;
+          setUserProfiles((prev) => {
+            const next = { ...prev };
+            for (const row of data as UserProfile[]) {
+              next[row.id] = row;
+            }
+            return next;
+          });
+        });
     }
-    setUserProfiles(Object.fromEntries(byId));
   };
 
   const refreshRolesPathwaysAndProfiles = async () => {
@@ -675,14 +691,14 @@ export default function EvaluationCorner() {
       if (!rpc.hasMeetingInSnapshot) {
         await loadMeeting();
       }
-      await hydrateUserProfilesForScreen(rpc.roleRows, rpc.pathwaysRecord);
+      hydrateUserProfilesForScreen(rpc.roleRows, rpc.pathwaysRecord);
       return;
     }
     const [roleRows, pathwaysRecord] = await Promise.all([
       loadRoleBookings(),
       loadExistingEvaluationPathways(),
     ]);
-    await hydrateUserProfilesForScreen(roleRows, pathwaysRecord);
+    hydrateUserProfilesForScreen(roleRows, pathwaysRecord);
   };
 
   /** Full club roster for “Assign evaluator” modal only (RPC — avoids heavy relationship embed). */
