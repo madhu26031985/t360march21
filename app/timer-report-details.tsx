@@ -6,6 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
+import { fetchTimerReportSnapshot, fetchTimerReportCategoryBundle } from '@/lib/timerReportSnapshot';
 import { ArrowLeft, Timer, Calendar, User, ChevronDown, Save, Trash2, X, FileText, Search, Lock, MessageCircle, Snowflake, Mic, MessageSquare, Lightbulb, NotebookPen, Plus, Bell, Users, BookOpen, Star, CheckSquare, ClipboardCheck, FileBarChart, Clock, Info, HelpCircle, Upload, RotateCcw, UserPlus } from 'lucide-react-native';
 import { Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -270,6 +271,23 @@ export default function TimerReportDetails() {
     setIsVPEClub(data?.vpe_id === user.id);
   };
 
+  const applyCategoryBundleToState = (
+    categoryRoles: CategoryRole[],
+    booked: { id: string; full_name: string; email: string; avatar_url: string | null }[]
+  ) => {
+    const rows = [...categoryRoles];
+    rows.sort((a, b) => slotNumberFromRoleName(a.role_name) - slotNumberFromRoleName(b.role_name));
+    setCategoryRoles(rows);
+
+    const uniqueSpeakers = [...booked];
+    uniqueSpeakers.sort((a, b) => a.full_name.localeCompare(b.full_name));
+    setBookedSpeakers(uniqueSpeakers);
+    setSelectedSpeaker((prev) => {
+      if (prev && uniqueSpeakers.some((s) => s.id === prev.id)) return prev;
+      return uniqueSpeakers.length > 0 ? uniqueSpeakers[0] : null;
+    });
+  };
+
   const loadData = async () => {
     if (!meetingId || !user?.currentClubId) {
       setIsLoading(false);
@@ -277,18 +295,66 @@ export default function TimerReportDetails() {
     }
 
     try {
-      await Promise.all([
-        loadMeeting(),
-        loadClubMembers(),
-        loadAssignedTimer(),
-        loadIsVPEClub(),
-        loadSavedReports(),
-        loadBookedSpeakersForCategory(reportData.speech_category),
-        loadCategoryRolesForCategory(reportData.speech_category),
-      ]);
+      setIsLoading(true);
+      const snap = await fetchTimerReportSnapshot(meetingId, reportData.speech_category);
+      if (snap?.meeting && Object.keys(snap.meeting).length > 0 && snap.club_id) {
+        setMeeting(snap.meeting as unknown as Meeting);
+
+        const allMembers: ClubMember[] = snap.member_directory.map((m) => ({
+          id: m.user_id,
+          full_name: m.full_name || '',
+          email: m.email || '',
+          avatar_url: m.avatar_url ?? null,
+        }));
+        let membersToShow = allMembers;
+        if (snap.selected_member_ids.length > 0) {
+          const selectedSet = new Set(snap.selected_member_ids);
+          membersToShow = allMembers.filter((m) => selectedSet.has(m.id));
+        }
+        membersToShow.sort((a, b) => a.full_name.localeCompare(b.full_name));
+        setClubMembers(membersToShow);
+
+        if (snap.assigned_timer) {
+          setAssignedTimer({
+            id: snap.assigned_timer.id,
+            full_name: snap.assigned_timer.full_name,
+            email: snap.assigned_timer.email,
+            avatar_url: snap.assigned_timer.avatar_url,
+          });
+        } else {
+          setAssignedTimer(null);
+        }
+
+        setIsVPEClub(snap.is_vpe);
+        setSavedReports((snap.timer_reports || []) as TimerReport[]);
+        applyCategoryBundleToState(snap.category_roles as CategoryRole[], snap.booked_speakers);
+      } else {
+        await Promise.all([
+          loadMeeting(),
+          loadClubMembers(),
+          loadAssignedTimer(),
+          loadIsVPEClub(),
+          loadSavedReports(),
+          loadBookedSpeakersForCategory(reportData.speech_category),
+          loadCategoryRolesForCategory(reportData.speech_category),
+        ]);
+      }
     } catch (error) {
-      console.error('Error loading data:', error);
-      Alert.alert('Error', 'Failed to load meeting data');
+      console.error('Error loading timer snapshot:', error);
+      try {
+        await Promise.all([
+          loadMeeting(),
+          loadClubMembers(),
+          loadAssignedTimer(),
+          loadIsVPEClub(),
+          loadSavedReports(),
+          loadBookedSpeakersForCategory(reportData.speech_category),
+          loadCategoryRolesForCategory(reportData.speech_category),
+        ]);
+      } catch (fallbackError) {
+        console.error('Error loading data:', fallbackError);
+        Alert.alert('Error', 'Failed to load meeting data');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -319,31 +385,51 @@ export default function TimerReportDetails() {
     if (!user?.currentClubId || !meetingId) return;
 
     try {
-      // First, load all club members
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select(`
-          app_user_profiles (
-            id,
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-        .eq('club_id', user.currentClubId)
-        .eq('is_authenticated', true);
+      // Prefer RPC: PostgREST embed on app_club_user_relationship is very slow on large clubs / slow networks.
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_club_member_directory', {
+        target_club_id: user.currentClubId,
+      });
 
-      if (error) {
-        console.error('Error loading club members:', error);
-        return;
+      let allMembers: ClubMember[] = [];
+
+      if (!rpcError && rpcData && Array.isArray(rpcData)) {
+        allMembers = (rpcData as { user_id: string; full_name: string; email: string; avatar_url: string | null }[])
+          .map((row) => ({
+            id: row.user_id,
+            full_name: row.full_name || '',
+            email: row.email || '',
+            avatar_url: row.avatar_url ?? null,
+          }))
+          .filter((m) => m.id);
+      } else {
+        if (rpcError) {
+          console.warn('get_club_member_directory failed, falling back to embed query:', rpcError);
+        }
+        const { data, error } = await supabase
+          .from('app_club_user_relationship')
+          .select(`
+            app_user_profiles (
+              id,
+              full_name,
+              email,
+              avatar_url
+            )
+          `)
+          .eq('club_id', user.currentClubId)
+          .eq('is_authenticated', true);
+
+        if (error) {
+          console.error('Error loading club members:', error);
+          return;
+        }
+
+        allMembers = (data || []).map((item) => ({
+          id: (item as any).app_user_profiles.id,
+          full_name: (item as any).app_user_profiles.full_name,
+          email: (item as any).app_user_profiles.email,
+          avatar_url: (item as any).app_user_profiles.avatar_url,
+        }));
       }
-
-      const allMembers = (data || []).map(item => ({
-        id: (item as any).app_user_profiles.id,
-        full_name: (item as any).app_user_profiles.full_name,
-        email: (item as any).app_user_profiles.email,
-        avatar_url: (item as any).app_user_profiles.avatar_url,
-      }));
 
       // Then, load the timer's selected members for this meeting
       const { data: selectedData, error: selectedError } = await supabase
@@ -533,6 +619,19 @@ export default function TimerReportDetails() {
     }
   };
 
+  const refreshCategoryBundleForCategory = async (category: string) => {
+    if (!meetingId) return;
+    const bundle = await fetchTimerReportCategoryBundle(meetingId, category);
+    if (bundle) {
+      applyCategoryBundleToState(bundle.category_roles as CategoryRole[], bundle.booked_speakers);
+    } else {
+      await Promise.all([
+        loadCategoryRolesForCategory(category),
+        loadBookedSpeakersForCategory(category),
+      ]);
+    }
+  };
+
   const handleAssignCategoryRole = async (member: ClubMember) => {
     if (!canEditTimerCorner || !roleToAssign) return;
     try {
@@ -558,10 +657,7 @@ export default function TimerReportDetails() {
       setSpeakerSearchQuery('');
       setRoleToAssign(null);
       setGuestAssignNameInput('');
-      await Promise.all([
-        loadCategoryRolesForCategory(reportData.speech_category),
-        loadBookedSpeakersForCategory(reportData.speech_category),
-      ]);
+      await refreshCategoryBundleForCategory(reportData.speech_category);
     } catch (error) {
       console.error('Error assigning category role:', error);
       Alert.alert('Error', 'Failed to assign speaker to role');
@@ -600,10 +696,7 @@ export default function TimerReportDetails() {
       setShowSpeakerModal(false);
       setSpeakerSearchQuery('');
       setRoleToAssign(null);
-      await Promise.all([
-        loadCategoryRolesForCategory(reportData.speech_category),
-        loadBookedSpeakersForCategory(reportData.speech_category),
-      ]);
+      await refreshCategoryBundleForCategory(reportData.speech_category);
     } catch (error) {
       console.error('Error assigning guest to role:', error);
       Alert.alert('Error', 'Failed to assign guest to role');
@@ -812,8 +905,7 @@ export default function TimerReportDetails() {
     setSelectedCategoryRoleId(null);
     setManualNameEntry(false);
     setManualNameText('');
-    loadBookedSpeakersForCategory(category);
-    loadCategoryRolesForCategory(category);
+    void refreshCategoryBundleForCategory(category);
   };
 
   const updateQualification = (qualified: boolean) => {
