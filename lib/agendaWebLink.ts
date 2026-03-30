@@ -1,6 +1,9 @@
 /** Public web host for shareable meeting agenda URLs (must match hosting / routing). */
 export const AGENDA_WEB_HOST = 'https://app.t360.in';
 
+/** Expo `experiments.baseUrl` and Netlify publish path — links must include this prefix. */
+export const AGENDA_WEB_PATH_PREFIX = '/weblogin';
+
 /**
  * URL-safe club segment: lowercase alphanumerics only, e.g. "T-360 Training Club" → "t360trainingclub".
  */
@@ -27,5 +30,6 @@ export function buildAgendaWebUrl(params: {
 }): string {
   const slug = slugifyClubNameForAgendaUrl(params.clubName);
   const num = sanitizeMeetingNumberSegment(params.meetingNumber);
-  return `${AGENDA_WEB_HOST}/${slug}/${num}/${params.meetingId}`;
+  const path = `${AGENDA_WEB_PATH_PREFIX}/${slug}/${num}/${params.meetingId}`;
+  return `${AGENDA_WEB_HOST}${path}`;
 }

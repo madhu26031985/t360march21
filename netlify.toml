@@ -7,6 +7,12 @@
   SECRETS_SCAN_ENABLED = "false"
   EXPO_PUBLIC_SUPABASE_WEB_URL = "https://chtkcretrpygqmwtyonx.supabase.co"
 
+# Share links without /weblogin/ (legacy) → SPA route under baseUrl
+[[redirects]]
+  from = "/:clubSlug/:meetingNo/:meetingId"
+  to = "/weblogin/:clubSlug/:meetingNo/:meetingId"
+  status = 302
+
 # Root → app lives under /weblogin (Expo baseUrl)
 [[redirects]]
   from = "/"
