@@ -30,6 +30,10 @@ interface ClubInfo {
   club_number: string | null;
 }
 
+/** List view only — avoids select * overhead on clubs with long meeting notes / future columns */
+const MEETING_LIST_COLUMNS =
+  'id, meeting_title, meeting_date, meeting_number, meeting_start_time, meeting_end_time, meeting_mode, meeting_location, meeting_link, meeting_status';
+
 export default function MeetingManagement() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -65,33 +69,18 @@ export default function MeetingManagement() {
   };
 
   useEffect(() => {
-    loadMeetings();
-    loadClubInfo();
-  }, []);
-
-  useEffect(() => {
     filterMeetings();
   }, [meetings, selectedTab]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadMeetings();
-    }, [user?.currentClubId])
-  );
-
-  const loadMeetings = async () => {
-    if (!user?.currentClubId) {
-      setIsLoading(false);
-      return;
-    }
+  const refreshMeetingsOnly = async () => {
+    const clubId = user?.currentClubId;
+    if (!clubId) return;
 
     try {
-      console.log('Loading meetings for club:', user.currentClubId);
-      
       const { data, error } = await supabase
         .from('app_club_meeting')
-        .select('*')
-        .eq('club_id', user.currentClubId)
+        .select(MEETING_LIST_COLUMNS)
+        .eq('club_id', clubId)
         .order('meeting_date', { ascending: true });
 
       if (error) {
@@ -104,31 +93,60 @@ export default function MeetingManagement() {
     } catch (error) {
       console.error('Error loading meetings:', error);
       showAlert('Error', 'An unexpected error occurred while loading meetings');
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  const loadClubInfo = async () => {
-    if (!user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('clubs')
-        .select('id, name, club_number')
-        .eq('id', user.currentClubId)
-        .single();
-
-      if (error) {
-        console.error('Error loading club info:', error);
+  useFocusEffect(
+    useCallback(() => {
+      const clubId = user?.currentClubId;
+      if (!clubId) {
+        setIsLoading(false);
         return;
       }
 
-      setClubInfo(data);
-    } catch (error) {
-      console.error('Error loading club info:', error);
-    }
-  };
+      let active = true;
+
+      (async () => {
+        setIsLoading(true);
+        try {
+          const [meetingsRes, clubRes] = await Promise.all([
+            supabase
+              .from('app_club_meeting')
+              .select(MEETING_LIST_COLUMNS)
+              .eq('club_id', clubId)
+              .order('meeting_date', { ascending: true }),
+            supabase.from('clubs').select('id, name, club_number').eq('id', clubId).single(),
+          ]);
+
+          if (!active) return;
+
+          if (meetingsRes.error) {
+            console.error('Error loading meetings:', meetingsRes.error);
+            showAlert('Error', `Failed to load meetings: ${meetingsRes.error.message}`);
+            return;
+          }
+
+          setMeetings(meetingsRes.data || []);
+
+          if (clubRes.error) {
+            console.error('Error loading club info:', clubRes.error);
+          } else if (clubRes.data) {
+            setClubInfo(clubRes.data);
+          }
+        } catch (error) {
+          if (!active) return;
+          console.error('Error loading meeting management:', error);
+          showAlert('Error', 'An unexpected error occurred while loading meetings');
+        } finally {
+          if (active) setIsLoading(false);
+        }
+      })();
+
+      return () => {
+        active = false;
+      };
+    }, [user?.currentClubId])
+  );
 
   const filterMeetings = () => {
     if (selectedTab === 'open') {
@@ -212,7 +230,7 @@ export default function MeetingManagement() {
               }
 
               showAlert('Success', 'Meeting closed successfully');
-              loadMeetings();
+              refreshMeetingsOnly();
             } catch (error) {
               console.error('Error closing meeting:', error);
               showAlert('Error', 'An unexpected error occurred');
@@ -248,7 +266,7 @@ export default function MeetingManagement() {
               }
 
               showAlert('Success', 'Meeting reopened successfully');
-              loadMeetings();
+              refreshMeetingsOnly();
             } catch (error) {
               console.error('Error reopening meeting:', error);
               showAlert('Error', 'An unexpected error occurred');

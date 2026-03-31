@@ -2,12 +2,45 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, CreditCard as Edit3, Trash2, Users, User, Crown, Shield, Eye, UserCheck, Building2, X, Save, CircleCheck as CheckCircle } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  CreditCard as Edit3,
+  Trash2,
+  Users,
+  User,
+  Crown,
+  Shield,
+  Eye,
+  UserCheck,
+  Building2,
+  CircleCheck as CheckCircle,
+} from 'lucide-react-native';
 import { Image } from 'react-native';
 import React from 'react';
+
+/** Notion-like neutrals (match manage-club-users / invite-new-user) */
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  border: 'rgba(55, 53, 47, 0.09)',
+  borderStrong: 'rgba(55, 53, 47, 0.16)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  textTertiary: 'rgba(55, 53, 47, 0.45)',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.1)',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+  iconTile: 'rgba(55, 53, 47, 0.06)',
+  success: '#0F7B6C',
+  successSoft: 'rgba(15, 123, 108, 0.12)',
+  danger: '#E03E3E',
+  dangerSoft: 'rgba(224, 62, 62, 0.1)',
+  pillExCommBg: '#F4F0FA',
+  pillExCommText: '#6940A5',
+  pillBg: '#F0EFED',
+};
 
 interface ClubUser {
   id: string;
@@ -31,22 +64,35 @@ interface ClubInfo {
   club_number: string | null;
 }
 
+/** RPC get_manage_existing_users_rows (slim payload; avoids slow PostgREST embed). */
+interface ManageExistingUsersRpcRow {
+  club_user_id: string;
+  user_id: string;
+  club_id: string;
+  role: string;
+  is_authenticated: boolean;
+  created_at: string | null;
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
+  is_active: boolean;
+}
+
+type TabVariant = 'all' | 'excomm' | 'member' | 'other';
+
 interface RoleTab {
   value: string;
   label: string;
   count: number;
-  color: string;
-  icon: React.ReactNode;
+  variant: TabVariant;
 }
 
 export default function ManageExistingUsers() {
-  const { theme } = useTheme();
   const { user } = useAuth();
-  
+
   const [clubUsers, setClubUsers] = useState<ClubUser[]>([]);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -54,25 +100,12 @@ export default function ManageExistingUsers() {
   const [selectedRoleFilter, setSelectedRoleFilter] = useState('all');
   const [filteredUsers, setFilteredUsers] = useState<ClubUser[]>([]);
   const [roleTabs, setRoleTabs] = useState<RoleTab[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<ClubUser | null>(null);
-  const [selectedRole, setSelectedRole] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-
-  const roleOptions = [
-    { value: 'member', label: 'Member', description: 'Regular club member with standard access' },
-    { value: 'excomm', label: 'ExComm', description: 'Executive committee member with administrative privileges' },
-    { value: 'club_leader', label: 'Club Leader', description: 'Club leadership role with management access' },
-    { value: 'visiting_tm', label: 'Visiting TM', description: 'Visiting Toastmaster from another club' },
-    { value: 'guest', label: 'Guest', description: 'Guest attendee with limited access' },
-  ];
 
   useEffect(() => {
     loadClubUsers();
   }, []);
 
   useEffect(() => {
-    if (isRefreshing) return; // Skip filtering during refresh
     filterUsers();
     updateRoleTabs();
   }, [clubUsers, selectedRoleFilter]);
@@ -81,101 +114,118 @@ export default function ManageExistingUsers() {
     if (selectedRoleFilter === 'all') {
       setFilteredUsers(clubUsers);
     } else {
-      setFilteredUsers(clubUsers.filter(user => user.role.toLowerCase() === selectedRoleFilter.toLowerCase()));
+      setFilteredUsers(
+        clubUsers.filter((u) => u.role.toLowerCase() === selectedRoleFilter.toLowerCase())
+      );
     }
   };
 
   const updateRoleTabs = () => {
-    const roleCounts = clubUsers.reduce((acc, user) => {
-      const role = user.role.toLowerCase();
-      acc[role] = (acc[role] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const roleCounts = clubUsers.reduce(
+      (acc, u) => {
+        const role = u.role.toLowerCase();
+        acc[role] = (acc[role] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
 
-    const tabs: RoleTab[] = [
-      { 
-        value: 'all', 
-        label: 'All', 
-        count: clubUsers.length, 
-        color: '#10b981',
-        icon: <Users size={14} color="#ffffff" />
-      }
+    const primary: RoleTab[] = [
+      { value: 'all', label: 'All', count: clubUsers.length, variant: 'all' },
+      { value: 'excomm', label: 'ExComm', count: roleCounts.excomm || 0, variant: 'excomm' },
+      { value: 'member', label: 'Members', count: roleCounts.member || 0, variant: 'member' },
     ];
 
-    // Define role order and styling
-    const roleDefinitions = [
-      { key: 'excomm', label: 'ExComm', color: '#8b5cf6', icon: <Crown size={14} color="#ffffff" /> },
-      { key: 'member', label: 'Members', color: '#3b82f6', icon: <User size={14} color="#ffffff" /> },
-      { key: 'visiting_tm', label: 'Visiting TM', color: '#10b981', icon: <UserCheck size={14} color="#ffffff" /> },
-      { key: 'club_leader', label: 'Club Leaders', color: '#f59e0b', icon: <Shield size={14} color="#ffffff" /> },
-      { key: 'guest', label: 'Guests', color: '#6b7280', icon: <Eye size={14} color="#ffffff" /> },
+    const otherDefs = [
+      { key: 'visiting_tm', label: 'Visiting TM' },
+      { key: 'club_leader', label: 'Club Leaders' },
+      { key: 'guest', label: 'Guests' },
     ];
 
-    roleDefinitions.forEach(roleDef => {
-      const count = roleCounts[roleDef.key] || 0;
-      if (count > 0) {
-        tabs.push({
-          value: roleDef.key,
-          label: roleDef.label,
-          count: count,
-          color: roleDef.color,
-          icon: roleDef.icon
-        });
-      }
-    });
+    const secondary: RoleTab[] = otherDefs
+      .filter((d) => (roleCounts[d.key] || 0) > 0)
+      .map((d) => ({
+        value: d.key,
+        label: d.label,
+        count: roleCounts[d.key] || 0,
+        variant: 'other' as const,
+      }));
 
-    setRoleTabs(tabs);
+    setRoleTabs([...primary, ...secondary]);
   };
 
   const loadClubUsers = async () => {
-    if (!user?.currentClubId) {
+    const clubId = user?.currentClubId;
+    if (!clubId) {
       setIsLoading(false);
       return;
     }
 
     try {
-      console.log('Loading club users for club:', user.currentClubId);
-
-      // Use Promise.all to load club info and users in parallel
-      const [usersResult, clubInfoResult] = await Promise.all([
-        supabase
-          .from('app_club_user_relationship')
-          .select(`
-            id,
-            user_id,
-            club_id,
-            role,
-            is_authenticated,
-            created_at,
-            app_user_profiles!inner (
-              id,
-              full_name,
-              email,
-              avatar_url,
-              is_active
-            )
-          `)
-          .eq('club_id', user.currentClubId)
-          .eq('is_authenticated', true)
-          .order('created_at', { ascending: false }),
-        clubInfo ? Promise.resolve({ data: clubInfo, error: null }) : supabase
-          .from('clubs')
-          .select('id, name, club_number')
-          .eq('id', user.currentClubId)
-          .single()
+      const [rpcResult, clubInfoResult] = await Promise.all([
+        supabase.rpc('get_manage_existing_users_rows', { target_club_id: clubId }),
+        clubInfo
+          ? Promise.resolve({ data: clubInfo, error: null })
+          : supabase.from('clubs').select('id, name, club_number').eq('id', clubId).single(),
       ]);
 
-      const { data, error } = usersResult;
+      if (clubInfoResult.data && !clubInfo) {
+        setClubInfo(clubInfoResult.data);
+      }
+
+      const { data: rpcData, error: rpcError } = rpcResult;
+
+      if (!rpcError && rpcData && Array.isArray(rpcData)) {
+        const mapped: ClubUser[] = (rpcData as ManageExistingUsersRpcRow[]).map((row) => ({
+          id: row.club_user_id,
+          user_id: row.user_id,
+          club_id: row.club_id,
+          role: row.role,
+          is_authenticated: row.is_authenticated,
+          created_at: row.created_at ?? '',
+          app_user_profiles: {
+            id: row.user_id,
+            full_name: row.full_name,
+            email: row.email,
+            avatar_url: row.avatar_url,
+            is_active: row.is_active,
+          },
+        }));
+        setClubUsers(mapped);
+        return;
+      }
+
+      if (rpcError) {
+        console.warn('get_manage_existing_users_rows failed, falling back to embed query:', rpcError);
+      }
+
+      const { data, error } = await supabase
+        .from('app_club_user_relationship')
+        .select(
+          `
+          id,
+          user_id,
+          club_id,
+          role,
+          is_authenticated,
+          created_at,
+          app_user_profiles!inner (
+            id,
+            full_name,
+            email,
+            avatar_url,
+            is_active
+          )
+        `
+        )
+        .eq('club_id', clubId)
+        .eq('is_authenticated', true)
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error loading club users:', error);
         Alert.alert('Error', 'Failed to load club users');
         return;
-      }
-
-      // Set club info if we loaded it
-      if (clubInfoResult.data && !clubInfo) {
-        setClubInfo(clubInfoResult.data);
       }
 
       setClubUsers(data || []);
@@ -184,27 +234,6 @@ export default function ManageExistingUsers() {
       Alert.alert('Error', 'An unexpected error occurred while loading users');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const loadClubInfo = async () => {
-    if (!user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('clubs')
-        .select('id, name, club_number')
-        .eq('id', user.currentClubId)
-        .single();
-
-      if (error) {
-        console.error('Error loading club info:', error);
-        return;
-      }
-
-      setClubInfo(data);
-    } catch (error) {
-      console.error('Error loading club info:', error);
     }
   };
 
@@ -230,176 +259,194 @@ export default function ManageExistingUsers() {
     setUserToDelete(null);
   };
 
-  const handleSaveRole = async () => {
-    if (!selectedUser || !selectedRole || selectedRole === selectedUser.role) return;
-
-    setIsSaving(true);
-    try {
-      const { error } = await supabase
-        .from('app_club_user_relationship')
-        .update({ role: selectedRole })
-        .eq('id', selectedUser.id);
-
-      if (error) {
-        console.error('Error updating user role:', error);
-        Alert.alert('Error', 'Failed to update user role');
-        return;
-      }
-
-      // Update local state
-      setClubUsers(prev => prev.map(user => 
-        user.id === selectedUser.id ? { ...user, role: selectedRole } : user
-      ));
-
-      setSuccessMessage(`${selectedUser.app_user_profiles.full_name}'s role updated to ${formatRole(selectedRole)}`);
-      setShowSuccessModal(true);
-      setShowEditModal(false);
-      
-      setTimeout(() => {
-        setShowSuccessModal(false);
-      }, 2000);
-    } catch (error) {
-      console.error('Error updating user role:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const confirmDeleteUser = async (clubUser: ClubUser) => {
     try {
-      console.log('Soft deleting user from club:', clubUser.app_user_profiles.full_name);
-      
-      // Optimistic update - remove user immediately from UI
-      setClubUsers(prev => prev.filter(u => u.id !== clubUser.id));
-      
-      // Soft delete by setting is_authenticated to false instead of hard delete
+      setClubUsers((prev) => prev.filter((u) => u.id !== clubUser.id));
+
       const { error } = await supabase
         .from('app_club_user_relationship')
-        .update({ 
+        .update({
           is_authenticated: false,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         } as any)
         .eq('id', clubUser.id);
 
       if (error) {
         console.error('Error soft deleting user:', error);
-        // Revert optimistic update on error
         loadClubUsers();
         Alert.alert('Error', 'Failed to remove user from club');
         return;
       }
 
-      // Show success popup
       setSuccessMessage(`${clubUser.app_user_profiles.full_name} removed from club`);
       setShowSuccessModal(true);
-      
-      // Auto-hide success popup after 2 seconds
-      setTimeout(() => {
-        setShowSuccessModal(false);
-      }, 2000);
+      setTimeout(() => setShowSuccessModal(false), 2000);
     } catch (error) {
       console.error('Error soft deleting user:', error);
-      // Revert optimistic update on error
       loadClubUsers();
       Alert.alert('Error', 'An unexpected error occurred');
     }
   };
 
-  const getRoleIcon = (role: string) => {
+  const getRoleIcon = (role: string, iconColor: string = N.text) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return <Crown size={12} color="#ffffff" />;
-      case 'visiting_tm': return <UserCheck size={12} color="#ffffff" />;
-      case 'club_leader': return <Shield size={12} color="#ffffff" />;
-      case 'guest': return <Eye size={12} color="#ffffff" />;
-      case 'member': return <User size={12} color="#ffffff" />;
-      default: return <User size={12} color="#ffffff" />;
+      case 'excomm':
+        return <Crown size={12} color={iconColor} strokeWidth={2} />;
+      case 'visiting_tm':
+        return <UserCheck size={12} color={iconColor} strokeWidth={2} />;
+      case 'club_leader':
+        return <Shield size={12} color={iconColor} strokeWidth={2} />;
+      case 'guest':
+        return <Eye size={12} color={iconColor} strokeWidth={2} />;
+      case 'member':
+        return <User size={12} color={iconColor} strokeWidth={2} />;
+      default:
+        return <User size={12} color={iconColor} strokeWidth={2} />;
     }
   };
 
-  const getRoleColor = (role: string) => {
+  const notionRolePill = (role: string): { bg: string; fg: string } => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
-      case 'visiting_tm': return '#10b981';
-      case 'club_leader': return '#f59e0b';
-      case 'guest': return '#6b7280';
-      case 'member': return '#3b82f6';
-      default: return '#6b7280';
+      case 'excomm':
+        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+      case 'visiting_tm':
+        return { bg: 'rgba(16, 185, 129, 0.12)', fg: '#047857' };
+      case 'club_leader':
+        return { bg: 'rgba(245, 158, 11, 0.14)', fg: '#B45309' };
+      case 'guest':
+        return { bg: N.pillBg, fg: N.textSecondary };
+      case 'member':
+        return { bg: N.accentSoft, fg: N.accent };
+      default:
+        return { bg: N.pillBg, fg: N.textSecondary };
     }
   };
 
   const formatRole = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return 'ExComm';
-      case 'visiting_tm': return 'Visiting TM';
-      case 'club_leader': return 'Club Leader';
-      case 'guest': return 'Guest';
-      case 'member': return 'Member';
-      default: return role;
+      case 'excomm':
+        return 'ExComm';
+      case 'visiting_tm':
+        return 'Visiting TM';
+      case 'club_leader':
+        return 'Club Leader';
+      case 'guest':
+        return 'Guest';
+      case 'member':
+        return 'Member';
+      default:
+        return role;
     }
   };
 
-  const UserCard = ({ clubUser }: { clubUser: ClubUser }) => (
-    <View style={[styles.userCard, { backgroundColor: theme.colors.surface }]}>
-      <View style={styles.userInfo}>
-        <View style={styles.userAvatar}>
-          {clubUser.app_user_profiles.avatar_url ? (
-            <Image source={{ uri: clubUser.app_user_profiles.avatar_url }} style={styles.userAvatarImage} />
-          ) : (
-            <User size={20} color="#ffffff" />
-          )}
-        </View>
-        
-        <View style={styles.userDetails}>
-          <Text style={[styles.userName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            {clubUser.app_user_profiles.full_name}
-          </Text>
-          <Text style={[styles.userEmail, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            {clubUser.app_user_profiles.email}
-          </Text>
-          <View style={[styles.roleTag, { backgroundColor: getRoleColor(clubUser.role) }]}>
-            {getRoleIcon(clubUser.role)}
-            <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(clubUser.role)}</Text>
+  const segmentStyle = (tab: RoleTab, selected: boolean) => {
+    if (!selected) {
+      return {
+        bg: 'transparent' as const,
+        fg: N.textSecondary,
+        countBg: N.iconTile,
+        countFg: N.textTertiary,
+      };
+    }
+    switch (tab.variant) {
+      case 'all':
+        return { bg: N.pillBg, fg: N.text, countBg: 'rgba(55, 53, 47, 0.08)', countFg: N.text };
+      case 'excomm':
+        return {
+          bg: N.pillExCommBg,
+          fg: N.pillExCommText,
+          countBg: 'rgba(105, 64, 165, 0.15)',
+          countFg: N.pillExCommText,
+        };
+      case 'member':
+        return {
+          bg: N.accentSoft,
+          fg: N.accent,
+          countBg: 'rgba(35, 131, 226, 0.2)',
+          countFg: N.accent,
+        };
+      default:
+        return { bg: N.pillBg, fg: N.text, countBg: 'rgba(55, 53, 47, 0.08)', countFg: N.text };
+    }
+  };
+
+  const segmentIcon = (tab: RoleTab, color: string) => {
+    const size = 14;
+    switch (tab.variant) {
+      case 'all':
+        return <Users size={size} color={color} strokeWidth={2} />;
+      case 'excomm':
+        return <Crown size={size} color={color} strokeWidth={2} />;
+      case 'member':
+        return <User size={size} color={color} strokeWidth={2} />;
+      default:
+        return <User size={size} color={color} strokeWidth={2} />;
+    }
+  };
+
+  const UserCard = ({ clubUser }: { clubUser: ClubUser }) => {
+    const pill = notionRolePill(clubUser.role);
+    return (
+      <View style={[styles.userCard, { backgroundColor: N.surface, borderColor: N.border }]}>
+        <View style={styles.userInfo}>
+          <View style={[styles.userAvatar, { backgroundColor: N.iconTile }]}>
+            {clubUser.app_user_profiles.avatar_url ? (
+              <Image source={{ uri: clubUser.app_user_profiles.avatar_url }} style={styles.userAvatarImage} />
+            ) : (
+              <User size={20} color={N.iconMuted} strokeWidth={2} />
+            )}
+          </View>
+
+          <View style={styles.userDetails}>
+            <Text style={[styles.userName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+              {clubUser.app_user_profiles.full_name}
+            </Text>
+            <Text style={[styles.userEmail, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              {clubUser.app_user_profiles.email}
+            </Text>
+            <View style={[styles.roleTag, { backgroundColor: pill.bg }]}>
+              {getRoleIcon(clubUser.role, pill.fg)}
+              <Text style={[styles.roleText, { color: pill.fg }]} maxFontSizeMultiplier={1.3}>
+                {formatRole(clubUser.role)}
+              </Text>
+            </View>
           </View>
         </View>
+
+        <View style={styles.userActions}>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: N.accentSoft }]}
+            onPress={() => handleEditUser(clubUser)}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            activeOpacity={0.65}
+          >
+            <Edit3 size={16} color={N.accent} strokeWidth={2} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: N.dangerSoft }]}
+            onPress={() => handleDeleteUser(clubUser)}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            activeOpacity={0.65}
+          >
+            <Trash2 size={16} color={N.danger} strokeWidth={2} />
+          </TouchableOpacity>
+        </View>
       </View>
-      
-      <View style={styles.userActions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => handleEditUser(clubUser)}
-          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          activeOpacity={0.6}
-        >
-          <Edit3 size={16} color="#3b82f6" />
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
-          onPress={() => handleDeleteUser(clubUser)}
-          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          activeOpacity={0.6}
-        >
-          <Trash2 size={16} color="#ef4444" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   const SuccessPopup = () => (
-    <Modal
-      visible={showSuccessModal}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={() => setShowSuccessModal(false)}
-    >
+    <Modal visible={showSuccessModal} transparent animationType="fade" onRequestClose={() => setShowSuccessModal(false)}>
       <View style={styles.successOverlay}>
-        <View style={[styles.successPopup, { backgroundColor: theme.colors.surface }]}>
-          <View style={[styles.successIcon, { backgroundColor: theme.colors.success + '20' }]}>
-            <CheckCircle size={24} color={theme.colors.success} />
+        <View style={[styles.successPopup, { backgroundColor: N.surface, borderColor: N.border }]}>
+          <View style={[styles.successIcon, { backgroundColor: N.successSoft }]}>
+            <CheckCircle size={24} color={N.success} strokeWidth={2} />
           </View>
-          <Text style={[styles.successTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Changes Saved</Text>
-          <Text style={[styles.successText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.successTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            Changes saved
+          </Text>
+          <Text style={[styles.successText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
             {successMessage}
           </Text>
         </View>
@@ -408,135 +455,30 @@ export default function ManageExistingUsers() {
   );
 
   const DeleteConfirmationModal = () => (
-    <Modal
-      visible={showDeleteModal}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={handleCancelDelete}
-    >
+    <Modal visible={showDeleteModal} transparent animationType="fade" onRequestClose={handleCancelDelete}>
       <View style={styles.deleteModalOverlay}>
-        <View style={[styles.deleteModal, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.deleteModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Remove User</Text>
-          <Text style={[styles.deleteModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Are you sure you want to remove {userToDelete?.app_user_profiles.full_name} from the club?
+        <View style={[styles.deleteModal, { backgroundColor: N.surface, borderColor: N.border }]}>
+          <Text style={[styles.deleteModalTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            Remove user
           </Text>
-          
+          <Text style={[styles.deleteModalMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Remove {userToDelete?.app_user_profiles.full_name} from this club? They will lose access until invited
+            again.
+          </Text>
+
           <View style={styles.deleteModalButtons}>
             <TouchableOpacity
-              style={[styles.deleteModalButton, styles.cancelButton, { borderColor: theme.colors.border }]}
+              style={[styles.deleteModalButton, styles.cancelButton, { borderColor: N.border }]}
               onPress={handleCancelDelete}
             >
-              <Text style={[styles.cancelButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
+              <Text style={[styles.cancelButtonText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                Cancel
+              </Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.deleteModalButton, styles.removeButton]}
-              onPress={handleConfirmDelete}
-            >
-              <Text style={styles.removeButtonText} maxFontSizeMultiplier={1.3}>Remove</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
 
-  const EditRoleModal = () => (
-    <Modal
-      visible={showEditModal}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={() => setShowEditModal(false)}
-    >
-      <View style={styles.centerModalOverlay}>
-        <View style={[styles.centerEditModal, { backgroundColor: theme.colors.background }]}>
-          {/* Modal Header */}
-          <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-            <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Edit User Role</Text>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowEditModal(false)}
-            >
-              <X size={24} color={theme.colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          {/* User Info */}
-          {selectedUser && (
-            <View style={[styles.modalUserInfo, { backgroundColor: theme.colors.surface }]}>
-              <View style={styles.modalUserAvatar}>
-                {selectedUser.app_user_profiles.avatar_url ? (
-                  <Image source={{ uri: selectedUser.app_user_profiles.avatar_url }} style={styles.modalUserAvatarImage} />
-                ) : (
-                  <User size={24} color="#ffffff" />
-                )}
-              </View>
-              <View style={styles.modalUserDetails}>
-                <Text style={[styles.modalUserName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {selectedUser.app_user_profiles.full_name}
-                </Text>
-                <Text style={[styles.modalUserEmail, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  {selectedUser.app_user_profiles.email}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Role Selection */}
-          <View style={styles.modalContent}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select New Role</Text>
-            
-            <ScrollView style={styles.rolesList} showsVerticalScrollIndicator={false}>
-              {roleOptions.map((option) => (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[
-                    styles.roleOption,
-                    {
-                      backgroundColor: selectedRole === option.value ? theme.colors.primary + '20' : theme.colors.surface,
-                      borderColor: selectedRole === option.value ? theme.colors.primary : theme.colors.border,
-                    }
-                  ]}
-                  onPress={() => setSelectedRole(option.value)}
-                >
-                  <View style={styles.roleOptionContent}>
-                    <View style={styles.roleOptionHeader}>
-                      <View style={[styles.roleOptionIcon, { backgroundColor: getRoleColor(option.value) }]}>
-                        {getRoleIcon(option.value)}
-                      </View>
-                      <Text style={[
-                        styles.roleOptionTitle,
-                        { color: selectedRole === option.value ? theme.colors.primary : theme.colors.text }
-                      ]} maxFontSizeMultiplier={1.3}>
-                        {option.label}
-                      </Text>
-                    </View>
-                    <Text style={[styles.roleOptionDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      {option.description}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Save Button */}
-            <TouchableOpacity
-              style={[
-                styles.saveButton,
-                {
-                  backgroundColor: selectedRole && selectedRole !== selectedUser?.role ? theme.colors.primary : theme.colors.surface,
-                  borderColor: theme.colors.border,
-                }
-              ]}
-              onPress={handleSaveRole}
-              disabled={!selectedRole || selectedRole === selectedUser?.role || isSaving}
-            >
-              <Save size={16} color={selectedRole && selectedRole !== selectedUser?.role ? "#ffffff" : theme.colors.textSecondary} />
-              <Text style={[
-                styles.saveButtonText,
-                { color: selectedRole && selectedRole !== selectedUser?.role ? "#ffffff" : theme.colors.textSecondary }
-              ]} maxFontSizeMultiplier={1.3}>
-                {isSaving ? 'Saving...' : 'Save Changes'}
+            <TouchableOpacity style={[styles.deleteModalButton, styles.removeButton]} onPress={handleConfirmDelete}>
+              <Text style={styles.removeButtonText} maxFontSizeMultiplier={1.3}>
+                Remove
               </Text>
             </TouchableOpacity>
           </View>
@@ -545,128 +487,179 @@ export default function ManageExistingUsers() {
     </Modal>
   );
 
+  const primaryTabs = roleTabs.slice(0, 3);
+  const secondaryTabs = roleTabs.slice(3);
+
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading club users...</Text>
+          <Text style={[styles.loadingText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Loading club users…
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <ArrowLeft size={22} color={N.iconMuted} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Manage Existing Users</Text>
+        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+          Manage existing users
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Club Card */}
-        {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.clubHeader}>
-              <View style={styles.clubInfo}>
-                <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {clubInfo.name}
-                </Text>
-                <View style={styles.clubMeta}>
-                  {clubInfo.club_number && (
-                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Club #{clubInfo.club_number}
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+        <View style={[styles.pageInset, { backgroundColor: N.surface, borderColor: N.border }]}>
+          {clubInfo && (
+            <>
+              <View style={styles.clubBlock}>
+                <View style={styles.clubHeader}>
+                  <View style={[styles.clubIcon, { backgroundColor: N.iconTile }]}>
+                    <Building2 size={18} color={N.iconMuted} strokeWidth={1.75} />
+                  </View>
+                  <View style={styles.clubInfo}>
+                    <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                      {clubInfo.name}
                     </Text>
-                  )}
-                  {user?.clubRole && (
-                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
-                      {getRoleIcon(user.clubRole)}
-                      <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
+                    <View style={styles.clubMeta}>
+                      {clubInfo.club_number && (
+                        <Text style={[styles.clubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                          Club #{clubInfo.club_number}
+                        </Text>
+                      )}
+                      {user?.clubRole && (() => {
+                        const pill = notionRolePill(user.clubRole);
+                        return (
+                          <View style={[styles.roleTag, { backgroundColor: pill.bg }]}>
+                            {getRoleIcon(user.clubRole, pill.fg)}
+                            <Text style={[styles.roleText, { color: pill.fg }]} maxFontSizeMultiplier={1.3}>
+                              {formatRole(user.clubRole)}
+                            </Text>
+                          </View>
+                        );
+                      })()}
                     </View>
-                  )}
+                  </View>
                 </View>
               </View>
+              <View style={[styles.insetDivider, { backgroundColor: N.border }]} />
+            </>
+          )}
+
+          <Text style={[styles.hint, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            Organize members, roles, and access in one place.
+          </Text>
+
+          <Text style={[styles.sectionLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            Filter by role
+          </Text>
+
+          <View style={[styles.segmentShell, { borderColor: N.border, backgroundColor: N.iconTile }]}>
+            <View style={styles.segmentRow}>
+              {primaryTabs.map((tab, index) => {
+                const selected = selectedRoleFilter === tab.value;
+                const s = segmentStyle(tab, selected);
+                const showDivider = index < primaryTabs.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={tab.value}
+                    style={[
+                      styles.segmentCell,
+                      showDivider && { borderRightWidth: 1, borderRightColor: N.border },
+                      { backgroundColor: s.bg },
+                    ]}
+                    onPress={() => setSelectedRoleFilter(tab.value)}
+                    activeOpacity={0.7}
+                  >
+                    {segmentIcon(tab, s.fg)}
+                    <Text style={[styles.segmentLabel, { color: s.fg }]} maxFontSizeMultiplier={1.2}>
+                      {tab.label}
+                    </Text>
+                    <View style={[styles.segmentCount, { backgroundColor: s.countBg }]}>
+                      <Text style={[styles.segmentCountText, { color: s.countFg }]} maxFontSizeMultiplier={1.15}>
+                        {tab.count}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
-        )}
 
-        {/* Role Tabs */}
-        <View style={styles.roleTabsContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.roleTabsContent}>
-            {roleTabs.map((tab) => (
-              <TouchableOpacity
-                key={tab.value}
-                style={[
-                  styles.roleTab,
-                  {
-                    backgroundColor: selectedRoleFilter === tab.value ? tab.color : theme.colors.surface,
-                    borderColor: selectedRoleFilter === tab.value ? tab.color : theme.colors.border,
-                  }
-                ]}
-                onPress={() => setSelectedRoleFilter(tab.value)}
-              >
-                <View style={[styles.roleTabIcon, { backgroundColor: tab.color }]}>
-                  {tab.icon}
+          {secondaryTabs.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.secondaryTabsContent}
+              style={styles.secondaryTabsScroll}
+            >
+              {secondaryTabs.map((tab) => {
+                const selected = selectedRoleFilter === tab.value;
+                const s = segmentStyle(tab, selected);
+                return (
+                  <TouchableOpacity
+                    key={tab.value}
+                    style={[
+                      styles.secondaryTab,
+                      { borderColor: selected ? N.borderStrong : N.border, backgroundColor: s.bg },
+                    ]}
+                    onPress={() => setSelectedRoleFilter(tab.value)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.secondaryTabText, { color: s.fg }]} maxFontSizeMultiplier={1.2}>
+                      {tab.label}
+                    </Text>
+                    <View style={[styles.segmentCount, { backgroundColor: s.countBg }]}>
+                      <Text style={[styles.segmentCountText, { color: s.countFg }]} maxFontSizeMultiplier={1.15}>
+                        {tab.count}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : null}
+
+          <View style={styles.usersHeader}>
+            <Text style={[styles.usersCount, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              {filteredUsers.length} {filteredUsers.length === 1 ? 'user' : 'users'}
+            </Text>
+          </View>
+
+          <View style={styles.usersList}>
+            {filteredUsers.length > 0 ? (
+              filteredUsers.map((clubUser) => <UserCard key={clubUser.id} clubUser={clubUser} />)
+            ) : (
+              <View style={styles.emptyState}>
+                <View style={[styles.emptyIconWrap, { backgroundColor: N.iconTile }]}>
+                  <Users size={28} color={N.iconMuted} strokeWidth={1.75} />
                 </View>
-                <Text style={[
-                  styles.roleTabText,
-                  { color: selectedRoleFilter === tab.value ? '#ffffff' : theme.colors.text }
-                ]} maxFontSizeMultiplier={1.3}>
-                  {tab.label}
+                <Text style={[styles.emptyStateText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                  No users found
                 </Text>
-                <View style={[
-                  styles.roleTabCount,
-                  { backgroundColor: selectedRoleFilter === tab.value ? 'rgba(255,255,255,0.2)' : theme.colors.primary + '20' }
-                ]}>
-                  <Text style={[
-                    styles.roleTabCountText,
-                    { color: selectedRoleFilter === tab.value ? '#ffffff' : theme.colors.primary }
-                  ]} maxFontSizeMultiplier={1.3}>
-                    {tab.count}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Users Count */}
-        <View style={styles.usersHeader}>
-          <Text style={[styles.usersCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            {filteredUsers.length} {filteredUsers.length === 1 ? 'user' : 'users'}
-          </Text>
-        </View>
-
-        {/* Users List */}
-        <View style={styles.usersList}>
-          {filteredUsers.length > 0 ? (
-            filteredUsers.map((clubUser) => (
-              <UserCard key={clubUser.id} clubUser={clubUser} />
-            ))
-          ) : (
-            <View style={styles.emptyState}>
-              <Users size={48} color={theme.colors.textSecondary} />
-              <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                No users found
-              </Text>
-              <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {selectedRoleFilter === 'all' 
-                  ? 'There are no authenticated users in this club yet.'
-                  : `No users with the role "${formatRole(selectedRoleFilter)}" found.`
-                }
-              </Text>
-            </View>
-          )}
+                <Text style={[styles.emptyStateSubtext, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {selectedRoleFilter === 'all'
+                    ? 'There are no authenticated users in this club yet.'
+                    : `No users with the role "${formatRole(selectedRoleFilter)}".`}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
       </ScrollView>
 
-      {/* Modals */}
       <SuccessPopup />
       <DeleteConfirmationModal />
-      <EditRoleModal />
     </SafeAreaView>
   );
 }
@@ -681,55 +674,71 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
   backButton: {
     padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: 16,
+    marginHorizontal: 12,
+    letterSpacing: -0.2,
   },
   headerSpacer: {
-    width: 40,
+    width: 38,
   },
   content: {
     flex: 1,
   },
-  clubCard: {
+  contentContainer: {
+    paddingBottom: 32,
+  },
+  pageInset: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 8,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  clubBlock: {
+    marginBottom: 0,
+  },
+  insetDivider: {
+    height: 1,
+    marginVertical: 16,
+  },
+  hint: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 16,
+    fontWeight: '400',
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.04,
+    marginBottom: 8,
   },
   clubHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  clubIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  clubIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -738,349 +747,208 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clubName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     marginBottom: 4,
+    letterSpacing: -0.2,
   },
   clubMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
   },
   clubNumber: {
     fontSize: 13,
   },
-  roleTag: {
+  segmentShell: {
+    borderRadius: 4,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  segmentRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    alignItems: 'stretch',
   },
-  roleText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 4,
-  },
-  usersHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  usersCount: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  roleTabsContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
-  roleTabsContent: {
-    paddingHorizontal: 0,
-    gap: 8,
-  },
-  roleTab: {
+  segmentCell: {
+    flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 25,
-    borderWidth: 2,
-    marginRight: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  roleTabIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
   },
-  roleTabText: {
-    fontSize: 13,
+  segmentLabel: {
+    fontSize: 12,
     fontWeight: '600',
-    marginRight: 6,
+    letterSpacing: -0.1,
   },
-  roleTabCount: {
+  segmentCount: {
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 10,
-    minWidth: 20,
+    minWidth: 22,
     alignItems: 'center',
   },
-  roleTabCountText: {
+  segmentCountText: {
     fontSize: 11,
     fontWeight: '600',
   },
+  secondaryTabsScroll: {
+    marginTop: 10,
+    maxHeight: 40,
+  },
+  secondaryTabsContent: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  secondaryTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  secondaryTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  usersHeader: {
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+  usersCount: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
   usersList: {
-    paddingHorizontal: 16,
-    paddingBottom: 32,
+    gap: 8,
   },
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderRadius: 4,
+    padding: 12,
+    borderWidth: 1,
   },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
   },
   userAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#3b82f6',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
     overflow: 'hidden',
   },
   userAvatarImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   userDetails: {
     flex: 1,
+    minWidth: 0,
   },
   userName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     marginBottom: 2,
+    letterSpacing: -0.2,
   },
   userEmail: {
     fontSize: 13,
     marginBottom: 6,
+    lineHeight: 18,
+  },
+  roleTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  roleText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   userActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginLeft: 8,
   },
   actionButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  editButton: {
-    backgroundColor: '#eff6ff',
-  },
-  deleteButton: {
-    backgroundColor: '#fef2f2',
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 32,
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyStateText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    marginTop: 16,
+    marginTop: 14,
     textAlign: 'center',
+    letterSpacing: -0.2,
   },
   emptyStateSubtext: {
-    fontSize: 14,
-    marginTop: 8,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  centerModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  centerEditModal: {
-    borderRadius: 20,
-    width: '100%',
-    maxHeight: '90%',
-    minHeight: '60%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 25,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  modalUserInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-  },
-  modalUserAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#3b82f6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-    overflow: 'hidden',
-  },
-  modalUserAvatarImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  modalUserDetails: {
-    flex: 1,
-  },
-  modalUserName: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  modalUserEmail: {
-    fontSize: 14,
-  },
-  modalContent: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 20,
-  },
-  rolesList: {
-    maxHeight: 300,
-    marginBottom: 24,
-  },
-  roleOption: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 2,
-  },
-  roleOptionContent: {
-    flex: 1,
-  },
-  roleOptionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  roleOptionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  roleOptionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  roleOptionDescription: {
     fontSize: 13,
+    marginTop: 6,
+    textAlign: 'center',
     lineHeight: 18,
-  },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    paddingVertical: 16,
-    borderWidth: 1,
-    marginTop: 8,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
   },
   successOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   successPopup: {
-    borderRadius: 16,
+    borderRadius: 4,
     padding: 24,
     alignItems: 'center',
     marginHorizontal: 40,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
+    borderWidth: 1,
+    maxWidth: 320,
   },
   successIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 52,
+    height: 52,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   successTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 6,
     textAlign: 'center',
+    letterSpacing: -0.2,
   },
   successText: {
     fontSize: 14,
@@ -1089,45 +957,40 @@ const styles = StyleSheet.create({
   },
   deleteModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
   },
   deleteModal: {
-    borderRadius: 16,
-    padding: 24,
-    marginHorizontal: 40,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
-    minWidth: 300,
+    borderRadius: 4,
+    padding: 22,
+    borderWidth: 1,
+    width: '100%',
+    maxWidth: 360,
   },
   deleteModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
     textAlign: 'center',
+    letterSpacing: -0.2,
   },
   deleteModalMessage: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   deleteModalButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   deleteModalButton: {
     flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    borderRadius: 4,
     alignItems: 'center',
   },
   cancelButton: {
@@ -1135,7 +998,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   removeButton: {
-    backgroundColor: '#ef4444',
+    backgroundColor: N.danger,
   },
   cancelButtonText: {
     fontSize: 14,

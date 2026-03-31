@@ -1,11 +1,45 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  InteractionManager,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Plus, Vote, Calendar, Users, X, Save, Trash2, ChartBar as BarChart3, Building2, Crown, User, Shield, Eye, UserCheck, Search, Sparkles } from 'lucide-react-native';
+
+/** Notion-like palette: flat surfaces, hairline borders, muted text, single accent blue */
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  border: 'rgba(55, 53, 47, 0.09)',
+  borderStrong: 'rgba(55, 53, 47, 0.16)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  textTertiary: 'rgba(55, 53, 47, 0.45)',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.1)',
+  accentSoftBorder: 'rgba(35, 131, 226, 0.28)',
+  segmentTrack: '#E8E7E5',
+  rowSelected: 'rgba(35, 131, 226, 0.07)',
+  pillBg: '#F0EFED',
+  pillExCommBg: '#F4F0FA',
+  pillExCommText: '#6940A5',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+};
 
 interface Poll {
   id: string;
@@ -43,7 +77,6 @@ interface ClubMember {
   full_name: string;
   email: string;
   avatar_url: string | null;
-  role: string;
 }
 
 export default function VotingOperations() {
@@ -55,6 +88,8 @@ export default function VotingOperations() {
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  /** Create-tab question list; may still load after main shell (club + polls) is shown */
+  const [isPollQuestionsLoading, setIsPollQuestionsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedTab, setSelectedTab] = useState<'create' | 'published' | 'completed'>('create');
   const [filteredPolls, setFilteredPolls] = useState<Poll[]>([]);
@@ -67,6 +102,9 @@ export default function VotingOperations() {
   const [openMeetings, setOpenMeetings] = useState<Array<{ id: string; meeting_date: string; meeting_title: string }>>([]);
   const [closePollConfirm, setClosePollConfirm] = useState<Poll | null>(null);
   const [isClosingPoll, setIsClosingPoll] = useState(false);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  /** Avoid refetching roster on every modal open for the same club */
+  const membersLoadedClubIdRef = useRef<string | null>(null);
 
   const [pollForm, setPollForm] = useState<PollForm>({
     title: '',
@@ -111,21 +149,30 @@ export default function VotingOperations() {
   const loadData = async () => {
     if (!user?.currentClubId) {
       setIsLoading(false);
+      setIsPollQuestionsLoading(false);
       return;
     }
 
+    membersLoadedClubIdRef.current = null;
+    setClubMembers([]);
+    setIsPollQuestionsLoading(true);
+
+    // Questions run in parallel with club + polls so total time ≈ max(not sum) of the two groups.
+    const questionsPromise = loadPollQuestions().finally(() => setIsPollQuestionsLoading(false));
+
     try {
-      await Promise.all([
-        loadClubInfo(),
-        loadPolls(),
-        loadPollQuestions(),
-        loadClubMembers()
-      ]);
+      await Promise.all([loadClubInfo(), loadPolls()]);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
       setIsLoading(false);
     }
+
+    await questionsPromise;
+
+    InteractionManager.runAfterInteractions(() => {
+      void loadClubMembers();
+    });
   };
 
   const loadClubInfo = async () => {
@@ -155,7 +202,7 @@ export default function VotingOperations() {
     try {
       const { data, error } = await supabase
         .from('polls')
-        .select('*')
+        .select('id, title, description, status, created_at, end_time')
         .eq('club_id', user.currentClubId)
         .order('created_at', { ascending: false });
 
@@ -172,10 +219,9 @@ export default function VotingOperations() {
 
   const loadPollQuestions = async () => {
     try {
-      console.log('Loading poll questions...');
       const { data, error } = await supabase
         .from('polls_questions')
-        .select('*')
+        .select('id, question_text, question_type, min_options, max_options, order_index, is_active')
         .eq('is_active', true)
         .order('order_index');
 
@@ -184,7 +230,6 @@ export default function VotingOperations() {
         return;
       }
 
-      console.log('Poll questions loaded:', data?.length || 0);
       setPollQuestions(data || []);
     } catch (error) {
       console.error('Error loading poll questions:', error);
@@ -192,34 +237,67 @@ export default function VotingOperations() {
   };
 
   const loadClubMembers = async () => {
-    if (!user?.currentClubId) return;
+    const clubId = user?.currentClubId;
+    if (!clubId) return;
 
+    if (membersLoadedClubIdRef.current === clubId) return;
+
+    setIsLoadingMembers(true);
     try {
-      console.log('Loading club members...');
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('user_id, role, app_user_profiles!inner(id, full_name, email, avatar_url)')
-        .eq('club_id', user.currentClubId)
-        .eq('is_authenticated', true);
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_club_member_directory', {
+        target_club_id: clubId,
+      });
 
-      if (error) {
-        console.error('Error loading club members:', error);
-        return;
+      let members: ClubMember[] = [];
+
+      if (!rpcError && rpcData && Array.isArray(rpcData)) {
+        members = (rpcData as { user_id: string; full_name: string; email: string; avatar_url: string | null }[])
+          .map((row) => ({
+            id: row.user_id,
+            full_name: row.full_name || '',
+            email: row.email || '',
+            avatar_url: row.avatar_url ?? null,
+          }))
+          .filter((m) => m.id);
+      } else {
+        if (rpcError) {
+          console.warn('get_club_member_directory failed, falling back to embed query:', rpcError);
+        }
+        const { data, error } = await supabase
+          .from('app_club_user_relationship')
+          .select('app_user_profiles!inner(id, full_name, email, avatar_url)')
+          .eq('club_id', clubId)
+          .eq('is_authenticated', true);
+
+        if (error) {
+          console.error('Error loading club members:', error);
+          return;
+        }
+
+        members = (data || [])
+          .map((item) => ({
+            id: (item as any).app_user_profiles.id,
+            full_name: (item as any).app_user_profiles.full_name,
+            email: (item as any).app_user_profiles.email,
+            avatar_url: (item as any).app_user_profiles.avatar_url || null,
+          }))
+          .filter((m) => m.id);
       }
 
-      const members = (data || []).map(item => ({
-        id: (item as any).app_user_profiles.id,
-        full_name: (item as any).app_user_profiles.full_name,
-        email: (item as any).app_user_profiles.email,
-        avatar_url: (item as any).app_user_profiles.avatar_url || null,
-        role: (item as any).role,
-      })).sort((a, b) => a.full_name.localeCompare(b.full_name));
-
-      console.log('Club members loaded:', members.length);
+      members.sort((a, b) => a.full_name.localeCompare(b.full_name));
       setClubMembers(members);
+      membersLoadedClubIdRef.current = clubId;
     } catch (error) {
       console.error('Error loading club members:', error);
+    } finally {
+      setIsLoadingMembers(false);
     }
+  };
+
+  const openMemberPicker = (questionId: string) => {
+    setSelectedQuestionForOptions(questionId);
+    setShowMemberModal(true);
+    void loadClubMembers();
   };
 
   const filterPolls = () => {
@@ -295,8 +373,7 @@ export default function VotingOperations() {
   };
 
   const addQuestionOption = (questionId: string) => {
-    setSelectedQuestionForOptions(questionId);
-    setShowMemberModal(true);
+    openMemberPicker(questionId);
   };
 
   const handleMemberSelect = (member: ClubMember) => {
@@ -316,9 +393,7 @@ export default function VotingOperations() {
   };
 
   const handleAddMemberOption = (questionId: string) => {
-    console.log('Add Member button pressed for question:', questionId);
-    setSelectedQuestionForOptions(questionId);
-    setShowMemberModal(true);
+    openMemberPicker(questionId);
   };
 
   const removeQuestionOption = (questionId: string, optionIndex: number) => {
@@ -634,25 +709,32 @@ export default function VotingOperations() {
     }
   };
 
-  const getRoleIcon = (role: string) => {
+  const getRoleIcon = (role: string, iconColor: string = N.text) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return <Crown size={12} color="#ffffff" />;
-      case 'visiting_tm': return <UserCheck size={12} color="#ffffff" />;
-      case 'club_leader': return <Shield size={12} color="#ffffff" />;
-      case 'guest': return <Eye size={12} color="#ffffff" />;
-      case 'member': return <User size={12} color="#ffffff" />;
-      default: return <User size={12} color="#ffffff" />;
+      case 'excomm': return <Crown size={12} color={iconColor} />;
+      case 'visiting_tm': return <UserCheck size={12} color={iconColor} />;
+      case 'club_leader': return <Shield size={12} color={iconColor} />;
+      case 'guest': return <Eye size={12} color={iconColor} />;
+      case 'member': return <User size={12} color={iconColor} />;
+      default: return <User size={12} color={iconColor} />;
     }
   };
 
-  const getRoleColor = (role: string) => {
+  /** Soft Notion-style role chips (text + icon on tinted ground) */
+  const notionRolePill = (role: string): { bg: string; fg: string } => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
-      case 'visiting_tm': return '#10b981';
-      case 'club_leader': return '#f59e0b';
-      case 'guest': return '#6b7280';
-      case 'member': return '#3b82f6';
-      default: return '#6b7280';
+      case 'excomm':
+        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+      case 'visiting_tm':
+        return { bg: 'rgba(16, 185, 129, 0.12)', fg: '#047857' };
+      case 'club_leader':
+        return { bg: 'rgba(245, 158, 11, 0.14)', fg: '#B45309' };
+      case 'guest':
+        return { bg: N.pillBg, fg: N.textSecondary };
+      case 'member':
+        return { bg: N.accentSoft, fg: N.accent };
+      default:
+        return { bg: N.pillBg, fg: N.textSecondary };
     }
   };
 
@@ -668,32 +750,40 @@ export default function VotingOperations() {
   };
 
   const PollCard = ({ poll }: { poll: Poll }) => (
-    <View style={[styles.pollCard, { backgroundColor: theme.colors.surface }]}>
+    <View style={[styles.pollCard, { backgroundColor: N.surface, borderColor: N.border }]}>
       <View style={styles.pollContent}>
-        <Text style={[styles.pollTitle, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.pollTitle, { color: N.text }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
           {poll.title}
         </Text>
         {poll.description && (
-          <Text style={[styles.pollDescription, { color: theme.colors.textSecondary }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.pollDescription, { color: N.textSecondary }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
             {poll.description}
           </Text>
         )}
         <View style={styles.pollMeta}>
           <View style={styles.pollDate}>
-            <Calendar size={12} color={theme.colors.textSecondary} />
-            <Text style={[styles.pollDateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            <Calendar size={12} color={N.textTertiary} strokeWidth={2} />
+            <Text style={[styles.pollDateText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
               {new Date(poll.created_at).toLocaleDateString()}
             </Text>
           </View>
-          <View style={[
-            styles.statusTag,
-            { backgroundColor: poll.status === 'published' ? '#10b981' + '20' : '#6b7280' + '20' }
-          ]}>
-            <Text style={[
-              styles.statusText,
-              { color: poll.status === 'published' ? '#10b981' : '#6b7280' }
-            ]} maxFontSizeMultiplier={1.3}>
-              {poll.status === 'published' ? 'Active' : 'Results'}
+          <View
+            style={[
+              styles.statusTag,
+              {
+                backgroundColor:
+                  poll.status === 'published' ? 'rgba(16, 185, 129, 0.12)' : N.pillBg,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusText,
+                { color: poll.status === 'published' ? '#047857' : N.textSecondary },
+              ]}
+              maxFontSizeMultiplier={1.3}
+            >
+              {poll.status === 'published' ? 'Active' : 'Done'}
             </Text>
           </View>
         </View>
@@ -702,20 +792,20 @@ export default function VotingOperations() {
       <View style={styles.pollActions}>
         {poll.status === 'completed' && (
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#eff6ff' }]}
+            style={[styles.actionButton, { backgroundColor: N.accentSoft, borderWidth: 1, borderColor: N.accentSoftBorder }]}
             onPress={() => handleViewResults(poll)}
             activeOpacity={0.7}
           >
-            <BarChart3 size={14} color="#3b82f6" />
+            <BarChart3 size={14} color={N.accent} strokeWidth={2} />
           </TouchableOpacity>
         )}
         {poll.status === 'published' && (
           <TouchableOpacity
-            style={[styles.closePollsButton, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
+            style={[styles.closePollsButton, { backgroundColor: N.page, borderColor: N.borderStrong }]}
             onPress={() => handleClosePollClick(poll)}
             activeOpacity={0.7}
           >
-            <Text style={styles.closePollsButtonText}>Close polls</Text>
+            <Text style={[styles.closePollsButtonText, { color: N.textSecondary }]}>Close</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -724,103 +814,100 @@ export default function VotingOperations() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading voting operations...</Text>
+          <Text style={[styles.loadingText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>Loading voting operations...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+      {/* Header — minimal doc title */}
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ArrowLeft size={22} color={N.iconMuted} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting Operations</Text>
+        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Voting Operations</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Club Card */}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {/* Club — flat callout block */}
         {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.clubCard, { backgroundColor: N.surface, borderColor: N.border }]}>
             <View style={styles.clubHeader}>
-              <View style={[styles.clubIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-                <Building2 size={20} color={theme.colors.primary} />
+              <View style={[styles.clubIcon, { backgroundColor: 'rgba(55, 53, 47, 0.06)' }]}>
+                <Building2 size={18} color={N.iconMuted} strokeWidth={1.75} />
               </View>
               <View style={styles.clubInfo}>
-                <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                   {clubInfo.name}
                 </Text>
                 <View style={styles.clubMeta}>
                   {clubInfo.club_number && (
-                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.clubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Club #{clubInfo.club_number}
                     </Text>
                   )}
-                  {user?.clubRole && (
-                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
-                      {getRoleIcon(user.clubRole)}
-                      <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
-                    </View>
-                  )}
+                  {user?.clubRole && (() => {
+                    const pill = notionRolePill(user.clubRole);
+                    return (
+                      <View style={[styles.roleTag, { backgroundColor: pill.bg }]}>
+                        {getRoleIcon(user.clubRole, pill.fg)}
+                        <Text style={[styles.roleText, { color: pill.fg }]} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
             </View>
           </View>
         )}
 
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
+        {/* Tabs — segment control (Notion-style) */}
+        <View style={[styles.tabsSegmentWrap, { backgroundColor: N.segmentTrack }]}>
           {!hasActivePoll && (
             <TouchableOpacity
               style={[
-                styles.tab,
-                {
-                  backgroundColor: selectedTab === 'create' ? theme.colors.primary : theme.colors.surface,
-                  borderColor: selectedTab === 'create' ? theme.colors.primary : theme.colors.border,
-                }
+                styles.tabSegment,
+                selectedTab === 'create' && styles.tabSegmentActive,
+                { backgroundColor: selectedTab === 'create' ? N.surface : 'transparent' },
               ]}
               onPress={() => setSelectedTab('create')}
+              activeOpacity={0.85}
             >
-              <Text style={[
-                styles.tabText,
-                { color: selectedTab === 'create' ? '#ffffff' : theme.colors.text }
-              ]} maxFontSizeMultiplier={1.3}>
-                Create Poll
+              <Text
+                style={[styles.tabSegmentText, { color: selectedTab === 'create' ? N.text : N.textSecondary }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+              >
+                Create poll
               </Text>
-              <Plus size={16} color={selectedTab === 'create' ? '#ffffff' : theme.colors.text} />
+              <Plus size={14} color={selectedTab === 'create' ? N.text : N.textSecondary} strokeWidth={2} />
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
             style={[
-              hasActivePoll ? styles.tabWide : styles.tab,
-              {
-                backgroundColor: selectedTab === 'published' ? theme.colors.primary : theme.colors.surface,
-                borderColor: selectedTab === 'published' ? theme.colors.primary : theme.colors.border,
-              }
+              styles.tabSegment,
+              hasActivePoll && styles.tabSegmentWide,
+              selectedTab === 'published' && styles.tabSegmentActive,
+              { backgroundColor: selectedTab === 'published' ? N.surface : 'transparent' },
             ]}
             onPress={() => setSelectedTab('published')}
+            activeOpacity={0.85}
           >
-            <Text style={[
-              styles.tabText,
-              { color: selectedTab === 'published' ? '#ffffff' : theme.colors.text }
-            ]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[styles.tabSegmentText, { color: selectedTab === 'published' ? N.text : N.textSecondary }]}
+              maxFontSizeMultiplier={1.3}
+            >
               Active
             </Text>
-            <View style={[
-              styles.tabCount,
-              { backgroundColor: selectedTab === 'published' ? '#ffffff' + '20' : theme.colors.primary + '20' }
-            ]}>
-              <Text style={[
-                styles.tabCountText,
-                { color: selectedTab === 'published' ? '#ffffff' : theme.colors.primary }
-              ]} maxFontSizeMultiplier={1.3}>
+            <View style={[styles.tabCountNotion, { backgroundColor: N.pillBg }]}>
+              <Text style={[styles.tabCountNotionText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {publishedCount}
               </Text>
             </View>
@@ -828,28 +915,22 @@ export default function VotingOperations() {
 
           <TouchableOpacity
             style={[
-              hasActivePoll ? styles.tabWide : styles.tab,
-              {
-                backgroundColor: selectedTab === 'completed' ? theme.colors.primary : theme.colors.surface,
-                borderColor: selectedTab === 'completed' ? theme.colors.primary : theme.colors.border,
-              }
+              styles.tabSegment,
+              hasActivePoll && styles.tabSegmentWide,
+              selectedTab === 'completed' && styles.tabSegmentActive,
+              { backgroundColor: selectedTab === 'completed' ? N.surface : 'transparent' },
             ]}
             onPress={() => setSelectedTab('completed')}
+            activeOpacity={0.85}
           >
-            <Text style={[
-              styles.tabText,
-              { color: selectedTab === 'completed' ? '#ffffff' : theme.colors.text }
-            ]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[styles.tabSegmentText, { color: selectedTab === 'completed' ? N.text : N.textSecondary }]}
+              maxFontSizeMultiplier={1.3}
+            >
               Results
             </Text>
-            <View style={[
-              styles.tabCount,
-              { backgroundColor: selectedTab === 'completed' ? '#ffffff' + '20' : theme.colors.primary + '20' }
-            ]}>
-              <Text style={[
-                styles.tabCountText,
-                { color: selectedTab === 'completed' ? '#ffffff' : theme.colors.primary }
-              ]} maxFontSizeMultiplier={1.3}>
+            <View style={[styles.tabCountNotion, { backgroundColor: N.pillBg }]}>
+              <Text style={[styles.tabCountNotionText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {completedCount}
               </Text>
             </View>
@@ -858,16 +939,46 @@ export default function VotingOperations() {
 
         {/* Tab Content */}
         {selectedTab === 'create' && !hasActivePoll && (
-          <View style={[styles.createPollCard, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.formTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Create New Poll</Text>
-            
+          <View style={[styles.createPollCard, { backgroundColor: N.surface, borderColor: N.border }]}>
+            <TouchableOpacity
+              style={[
+                styles.autoFillHero,
+                {
+                  backgroundColor: isAutoFilling || isPollQuestionsLoading ? N.pillBg : N.page,
+                  borderColor: N.border,
+                },
+              ]}
+              onPress={handleAutoFill}
+              disabled={isAutoFilling || isPollQuestionsLoading}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="Auto fill polls"
+            >
+              <View style={[styles.autoFillHeroIconWrap, { backgroundColor: N.iconTile }]}>
+                <Sparkles
+                  size={18}
+                  color={isAutoFilling || isPollQuestionsLoading ? N.textTertiary : N.accent}
+                  strokeWidth={1.75}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.autoFillHeroLabel,
+                  { color: isAutoFilling || isPollQuestionsLoading ? N.textSecondary : N.text },
+                ]}
+                maxFontSizeMultiplier={1.25}
+              >
+                {isAutoFilling ? 'Filling…' : 'Auto fill polls'}
+              </Text>
+            </TouchableOpacity>
+
             {/* Poll Title */}
             <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Poll Title *</Text>
+              <Text style={[styles.fieldLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>Title</Text>
               <TextInput
-                style={[styles.textInput, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, color: theme.colors.text }]}
-                placeholder="Enter poll title"
-                placeholderTextColor={theme.colors.textSecondary}
+                style={[styles.textInput, { backgroundColor: N.page, borderColor: N.border, color: N.text }]}
+                placeholder="Untitled poll"
+                placeholderTextColor={N.textTertiary}
                 value={pollForm.title}
                 onChangeText={(text) => updatePollField('title', text)}
               />
@@ -875,40 +986,48 @@ export default function VotingOperations() {
 
             {/* Available Questions */}
             <View style={styles.questionsSection}>
-              <Text style={[styles.questionsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Select Questions ({pollForm.selectedQuestions.length} selected)
+              <Text style={[styles.questionsTitle, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Questions · {pollForm.selectedQuestions.length} selected
               </Text>
-              
-              {pollQuestions.map((question) => {
+
+              {isPollQuestionsLoading ? (
+                <View style={styles.questionsLoadingRow}>
+                  <ActivityIndicator size="small" color={N.accent} />
+                  <Text style={[styles.questionsLoadingText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    Loading questions…
+                  </Text>
+                </View>
+              ) : null}
+
+              {!isPollQuestionsLoading &&
+                pollQuestions.map((question) => {
                 const isSelected = pollForm.selectedQuestions.includes(question.id);
                 
                 return (
-                  <View key={question.id} style={[styles.questionCard, { backgroundColor: theme.colors.background }]}>
+                  <View key={question.id} style={[styles.questionCard, { borderColor: N.border }]}>
                     <TouchableOpacity
                       style={[
                         styles.questionSelector,
                         {
-                          backgroundColor: isSelected ? theme.colors.primary + '20' : 'transparent',
-                          borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+                          backgroundColor: isSelected ? N.rowSelected : N.surface,
+                          borderColor: isSelected ? N.accentSoftBorder : N.border,
                         }
                       ]}
                       onPress={() => toggleQuestion(question.id)}
+                      activeOpacity={0.7}
                     >
                       <View style={[
                         styles.questionCheckbox,
                         {
-                          backgroundColor: isSelected ? theme.colors.primary : 'transparent',
-                          borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+                          backgroundColor: isSelected ? N.accent : 'transparent',
+                          borderColor: isSelected ? N.accent : N.borderStrong,
                         }
                       ]}>
                         {isSelected && (
                           <Text style={styles.checkmark} maxFontSizeMultiplier={1.3}>✓</Text>
                         )}
                       </View>
-                      <Text style={[
-                        styles.questionText,
-                        { color: isSelected ? theme.colors.primary : theme.colors.text }
-                      ]} maxFontSizeMultiplier={1.3}>
+                      <Text style={[styles.questionText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                         {question.question_text}
                       </Text>
                     </TouchableOpacity>
@@ -916,25 +1035,25 @@ export default function VotingOperations() {
                     {/* Options for selected questions */}
                     {isSelected && (
                       <View style={styles.optionsSection}>
-                        <Text style={[styles.optionsLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                          Options (min {question.min_options}, max {question.max_options}):
+                        <Text style={[styles.optionsLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                          Options · min {question.min_options}, max {question.max_options}
                         </Text>
                         
                         {(pollForm.questionOptions[question.id] || []).map((option, optionIndex) => (
                           <View key={optionIndex} style={styles.optionRow}>
                             <TextInput
-                              style={[styles.optionInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
+                              style={[styles.optionInput, { backgroundColor: N.page, borderColor: N.border, color: N.text }]}
                               placeholder={`Option ${optionIndex + 1}`}
-                              placeholderTextColor={theme.colors.textSecondary}
+                              placeholderTextColor={N.textTertiary}
                               value={option}
                               onChangeText={(text) => updateQuestionOption(question.id, optionIndex, text)}
                             />
                             {(pollForm.questionOptions[question.id]?.length || 0) > question.min_options && (
                               <TouchableOpacity
-                                style={[styles.removeOptionButton, { backgroundColor: '#fef2f2' }]}
+                                style={[styles.removeOptionButton, { backgroundColor: 'rgba(239, 68, 68, 0.08)' }]}
                                 onPress={() => removeQuestionOption(question.id, optionIndex)}
                               >
-                                <Trash2 size={14} color="#ef4444" />
+                                <Trash2 size={14} color="#DC2626" strokeWidth={2} />
                               </TouchableOpacity>
                             )}
                           </View>
@@ -943,20 +1062,20 @@ export default function VotingOperations() {
                         {(pollForm.questionOptions[question.id]?.length || 0) < question.max_options && (
                           <View style={styles.addOptionsContainer}>
                             <TouchableOpacity
-                              style={[styles.addOptionButton, { backgroundColor: theme.colors.success + '20', borderColor: theme.colors.success }]}
+                              style={[styles.addOptionButton, { backgroundColor: N.page, borderColor: N.border }]}
                               onPress={() => addTextOption(question.id)}
                             >
-                              <Plus size={14} color={theme.colors.success} />
-                              <Text style={[styles.addOptionText, { color: theme.colors.success }]} maxFontSizeMultiplier={1.3}>Add Option</Text>
+                              <Plus size={14} color={N.textSecondary} strokeWidth={2} />
+                              <Text style={[styles.addOptionText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>Add option</Text>
                             </TouchableOpacity>
                             
                             {isQuestionAboutMembers(question.question_text) && (
                               <TouchableOpacity
-                                style={[styles.addOptionButton, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}
+                                style={[styles.addOptionButton, { backgroundColor: N.accentSoft, borderColor: N.accentSoftBorder }]}
                                 onPress={() => handleAddMemberOption(question.id)}
                               >
-                                <Plus size={14} color={theme.colors.primary} />
-                                <Text style={[styles.addOptionText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>Add Member</Text>
+                                <Plus size={14} color={N.accent} strokeWidth={2} />
+                                <Text style={[styles.addOptionText, { color: N.accent }]} maxFontSizeMultiplier={1.3}>Add member</Text>
                               </TouchableOpacity>
                             )}
                           </View>
@@ -967,53 +1086,43 @@ export default function VotingOperations() {
                 );
               })}
 
-              {pollQuestions.length === 0 && (
+              {!isPollQuestionsLoading && pollQuestions.length === 0 ? (
                 <View style={styles.noQuestionsState}>
-                  <Vote size={32} color={theme.colors.textSecondary} />
-                  <Text style={[styles.noQuestionsText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    No poll questions available
+                  <Vote size={28} color={N.textTertiary} strokeWidth={1.5} />
+                  <Text style={[styles.noQuestionsText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    No questions yet
                   </Text>
-                  <Text style={[styles.noQuestionsSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Contact your system administrator to add poll questions
+                  <Text style={[styles.noQuestionsSubtext, { color: N.textTertiary }]} maxFontSizeMultiplier={1.3}>
+                    Ask an admin to add poll questions in the system.
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
 
-            {/* Create Poll and Auto Fill Buttons Row */}
+            {/* Primary actions */}
             <View style={styles.pollActionsRow}>
               <TouchableOpacity
                 style={[
                   styles.createPollButton,
                   {
-                    backgroundColor: isSaving ? theme.colors.surface : theme.colors.primary,
-                    borderColor: theme.colors.border,
-                  }
+                    backgroundColor: isSaving ? N.pillBg : N.text,
+                    borderColor: isSaving ? N.border : N.text,
+                  },
                 ]}
                 onPress={handleSavePoll}
-                disabled={isSaving}
+                disabled={isSaving || isPollQuestionsLoading}
+                activeOpacity={0.85}
               >
-                <Save size={16} color={isSaving ? theme.colors.textSecondary : "#ffffff"} />
-                <Text style={[
-                  styles.createPollButtonText,
-                  { color: isSaving ? theme.colors.textSecondary : "#ffffff" }
-                ]} maxFontSizeMultiplier={1.3}>
-                  {isSaving ? 'Creating...' : 'Create Poll'}
+                <Save size={16} color={isSaving || isPollQuestionsLoading ? N.textSecondary : N.surface} strokeWidth={2} />
+                <Text
+                  style={[
+                    styles.createPollButtonText,
+                    { color: isSaving || isPollQuestionsLoading ? N.textSecondary : N.surface },
+                  ]}
+                  maxFontSizeMultiplier={1.3}
+                >
+                  {isSaving ? 'Creating…' : isPollQuestionsLoading ? 'Loading…' : 'Create poll'}
                 </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.autoFillIconButton,
-                  {
-                    backgroundColor: isAutoFilling ? theme.colors.surface : '#8b5cf6' + '20',
-                    borderColor: '#8b5cf6',
-                  }
-                ]}
-                onPress={handleAutoFill}
-                disabled={isAutoFilling}
-              >
-                <Sparkles size={20} color={isAutoFilling ? theme.colors.textSecondary : "#8b5cf6"} />
               </TouchableOpacity>
             </View>
           </View>
@@ -1021,32 +1130,33 @@ export default function VotingOperations() {
 
         {/* Active Poll Notice */}
         {hasActivePoll && selectedTab === 'create' && (
-          <View style={[styles.activePollNotice, { backgroundColor: theme.colors.surface }]}>
-            <View style={[styles.noticeIcon, { backgroundColor: theme.colors.warning + '20' }]}>
-              <Vote size={24} color={theme.colors.warning} />
+          <View style={[styles.activePollNotice, { backgroundColor: N.surface, borderLeftColor: N.accent, borderColor: N.border }]}>
+            <View style={[styles.noticeIcon, { backgroundColor: N.accentSoft }]}>
+              <Vote size={22} color={N.accent} strokeWidth={2} />
             </View>
-            <Text style={[styles.noticeTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Poll Creation Disabled
+            <Text style={[styles.noticeTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+              One poll at a time
             </Text>
-            <Text style={[styles.noticeMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Only one poll can be active at a time. Please close the current active poll before creating a new one.
+            <Text style={[styles.noticeMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Close the current poll before creating another.
             </Text>
             <TouchableOpacity
-              style={[styles.viewActivePollButton, { backgroundColor: theme.colors.primary }]}
+              style={[styles.viewActivePollButton, { backgroundColor: N.text }]}
               onPress={() => setSelectedTab('published')}
+              activeOpacity={0.85}
             >
-              <Text style={styles.viewActivePollButtonText} maxFontSizeMultiplier={1.3}>View Active Poll</Text>
+              <Text style={[styles.viewActivePollButtonText, { color: N.surface }]} maxFontSizeMultiplier={1.3}>View active poll</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* Active / Results (completed) polls list */}
         {(selectedTab === 'published' || selectedTab === 'completed') && (
-          <View style={[styles.pollsSection, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          <View style={[styles.pollsSection, { backgroundColor: N.surface, borderColor: N.border }]}>
+            <Text style={[styles.sectionTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
               {selectedTab === 'published'
-                ? `Active Polls (${filteredPolls.length})`
-                : `Poll Results (${filteredPolls.length})`}
+                ? `Active · ${filteredPolls.length}`
+                : `Results · ${filteredPolls.length}`}
             </Text>
             
             {filteredPolls.map((poll) => (
@@ -1055,16 +1165,16 @@ export default function VotingOperations() {
 
             {filteredPolls.length === 0 && (
               <View style={styles.emptyState}>
-                <Vote size={32} color={theme.colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                <Vote size={28} color={N.textTertiary} strokeWidth={1.5} />
+                <Text style={[styles.emptyText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {selectedTab === 'published'
                     ? 'No active polls'
-                    : 'No poll results yet'}
+                    : 'No results yet'}
                 </Text>
-                <Text style={[styles.emptySubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.emptySubtext, { color: N.textTertiary }]} maxFontSizeMultiplier={1.3}>
                   {selectedTab === 'published' 
-                    ? 'Active polls will appear here'
-                    : 'Finished polls with results will appear here'
+                    ? 'When you publish a poll, it shows up here.'
+                    : 'Closed polls appear in this list.'
                   }
                 </Text>
               </View>
@@ -1217,6 +1327,14 @@ export default function VotingOperations() {
               showsVerticalScrollIndicator={true}
               contentContainerStyle={styles.membersListContent}
             >
+              {isLoadingMembers && filteredClubMembers.length === 0 ? (
+                <View style={styles.membersLoading}>
+                  <ActivityIndicator size="small" color={N.accent} />
+                  <Text style={[styles.membersLoadingText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    Loading members…
+                  </Text>
+                </View>
+              ) : null}
               {filteredClubMembers.map((member) => (
                 <TouchableOpacity
                   key={member.id}
@@ -1276,19 +1394,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
   backButton: {
     padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 16,
+    letterSpacing: -0.2,
   },
   headerSpacer: {
     width: 40,
@@ -1296,28 +1415,24 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 40,
+  },
   clubCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 4,
+    padding: 14,
+    borderWidth: 1,
   },
   clubHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   clubIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1326,9 +1441,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clubName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     marginBottom: 4,
+    letterSpacing: -0.2,
   },
   clubMeta: {
     flexDirection: 'row',
@@ -1342,141 +1458,146 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
   roleText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#ffffff',
     marginLeft: 4,
   },
-  tabsContainer: {
+  tabsSegmentWrap: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    gap: 8,
+    marginHorizontal: 20,
+    marginTop: 16,
+    padding: 4,
+    borderRadius: 6,
+    gap: 2,
   },
-  tab: {
+  tabSegment: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    gap: 6,
   },
-  tabWide: {
+  tabSegmentWide: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  tabText: {
+  tabSegmentActive: {
+    shadowColor: 'rgba(55, 53, 47, 0.12)',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  tabSegmentText: {
     fontSize: 13,
     fontWeight: '600',
-    marginRight: 6,
+    letterSpacing: -0.15,
   },
-  tabCount: {
-    paddingHorizontal: 6,
+  tabCountNotion: {
+    paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 10,
-    minWidth: 20,
+    borderRadius: 4,
+    minWidth: 22,
     alignItems: 'center',
   },
-  tabCountText: {
+  tabCountNotionText: {
     fontSize: 11,
     fontWeight: '600',
   },
   createPollCard: {
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     marginTop: 16,
-    borderRadius: 12,
+    borderRadius: 4,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
   },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 20,
+  autoFillHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginBottom: 14,
+    gap: 8,
+  },
+  autoFillHeroIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  autoFillHeroLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    letterSpacing: -0.15,
   },
   formField: {
     marginBottom: 20,
   },
   fieldLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 6,
+    letterSpacing: 0.02,
   },
   textInput: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 4,
     paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 14,
+    paddingVertical: 11,
+    fontSize: 15,
+    lineHeight: 20,
   },
   questionsSection: {
     marginBottom: 20,
   },
   questionsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 16,
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 12,
+    letterSpacing: -0.1,
+  },
+  questionsLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 20,
+    paddingHorizontal: 4,
+  },
+  questionsLoadingText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   questionCard: {
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderRadius: 4,
+    padding: 0,
+    marginBottom: 10,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   questionSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    borderRadius: 8,
+    borderWidth: 0,
+    borderRadius: 0,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: 0,
   },
   questionCheckbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
+    width: 18,
+    height: 18,
+    borderRadius: 3,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1487,9 +1608,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   questionText: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '400',
     flex: 1,
+    lineHeight: 22,
+    letterSpacing: -0.15,
   },
   optionsSection: {
     paddingLeft: 16,
@@ -1508,9 +1631,9 @@ const styles = StyleSheet.create({
   optionInput: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
     marginRight: 8,
     fontSize: 14,
   },
@@ -1533,7 +1656,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderRadius: 8,
+    borderRadius: 4,
     paddingVertical: 10,
   },
   addOptionText: {
@@ -1559,7 +1682,6 @@ const styles = StyleSheet.create({
   },
   pollActionsRow: {
     flexDirection: 'row',
-    gap: 12,
     alignItems: 'center',
   },
   createPollButton: {
@@ -1567,67 +1689,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderRadius: 4,
+    paddingVertical: 12,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  autoFillIconButton: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   createPollButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     marginLeft: 8,
+    letterSpacing: -0.2,
   },
   pollsSection: {
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     marginTop: 16,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 4,
+    padding: 18,
+    borderWidth: 1,
     marginBottom: 32,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 16,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 14,
+    letterSpacing: -0.3,
   },
   pollCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    borderRadius: 8,
+    borderRadius: 4,
     padding: 12,
     marginBottom: 8,
-    backgroundColor: '#f8fafc',
+    borderWidth: 1,
   },
   pollContent: {
     flex: 1,
@@ -1658,12 +1751,12 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   statusTag: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
   statusText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
   },
   pollActions: {
@@ -1678,9 +1771,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closePollsButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 4,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1688,7 +1781,6 @@ const styles = StyleSheet.create({
   closePollsButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#ef4444',
   },
   closePollModalOverlay: {
     flex: 1,
@@ -1759,49 +1851,44 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   activePollNotice: {
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     marginTop: 16,
-    borderRadius: 12,
-    padding: 24,
+    borderRadius: 4,
+    padding: 20,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderLeftWidth: 4,
   },
   noticeIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 44,
+    height: 44,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   noticeTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 6,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   noticeMessage: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   viewActivePollButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 4,
   },
   viewActivePollButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#ffffff',
+    letterSpacing: -0.15,
   },
   modalOverlay: {
     flex: 1,
@@ -1880,6 +1967,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 24,
+  },
+  membersLoading: {
+    paddingVertical: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  membersLoadingText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   memberOption: {
     flexDirection: 'row',

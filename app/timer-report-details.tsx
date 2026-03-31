@@ -82,6 +82,7 @@ interface TimerReport {
   notes: string | null;
   recorded_by: string;
   recorded_at?: string;
+  updated_at?: string;
 }
 
 interface CategoryRole {

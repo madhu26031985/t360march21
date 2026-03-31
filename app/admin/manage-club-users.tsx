@@ -1,11 +1,38 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, type ReactNode } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, UserPlus, Settings, Building2, Crown, User, Shield, Eye, UserCheck, Home, Users, Calendar } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  UserPlus,
+  Building2,
+  Crown,
+  User,
+  Shield,
+  Eye,
+  UserCheck,
+  Users,
+  ChevronRight,
+} from 'lucide-react-native';
+
+/** Notion-like neutrals (match admin panel) */
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  border: 'rgba(55, 53, 47, 0.09)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  textTertiary: 'rgba(55, 53, 47, 0.45)',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.1)',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+  iconTile: 'rgba(55, 53, 47, 0.06)',
+  pillExCommBg: '#F4F0FA',
+  pillExCommText: '#6940A5',
+  pillBg: '#F0EFED',
+};
 
 interface ClubInfo {
   id: string;
@@ -13,10 +40,44 @@ interface ClubInfo {
   club_number: string | null;
 }
 
+function NotionActionRow({
+  title,
+  description,
+  icon,
+  onPress,
+  isLast,
+}: {
+  title: string;
+  description?: string;
+  icon: ReactNode;
+  onPress: () => void;
+  isLast?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.notionRow, !isLast && { borderBottomWidth: 1, borderBottomColor: N.border }]}
+      onPress={onPress}
+      activeOpacity={0.65}
+    >
+      <View style={[styles.notionRowIconWrap, { backgroundColor: N.iconTile }]}>{icon}</View>
+      <View style={styles.notionRowTextCol}>
+        <Text style={[styles.notionRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.25} numberOfLines={2}>
+          {title}
+        </Text>
+        {description ? (
+          <Text style={[styles.notionRowDesc, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2} numberOfLines={2}>
+            {description}
+          </Text>
+        ) : null}
+      </View>
+      <ChevronRight size={16} color={N.textTertiary} strokeWidth={2} />
+    </TouchableOpacity>
+  );
+}
+
 export default function ManageClubUsers() {
-  const { theme } = useTheme();
   const { user } = useAuth();
-  
+
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -50,57 +111,78 @@ export default function ManageClubUsers() {
     }
   };
 
-  const getRoleIcon = (role: string) => {
+  const getRoleIcon = (role: string, iconColor: string = N.text) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return <Crown size={12} color="#ffffff" />;
-      case 'visiting_tm': return <UserCheck size={12} color="#ffffff" />;
-      case 'club_leader': return <Shield size={12} color="#ffffff" />;
-      case 'guest': return <Eye size={12} color="#ffffff" />;
-      case 'member': return <User size={12} color="#ffffff" />;
-      default: return <User size={12} color="#ffffff" />;
+      case 'excomm':
+        return <Crown size={12} color={iconColor} />;
+      case 'visiting_tm':
+        return <UserCheck size={12} color={iconColor} />;
+      case 'club_leader':
+        return <Shield size={12} color={iconColor} />;
+      case 'guest':
+        return <Eye size={12} color={iconColor} />;
+      case 'member':
+        return <User size={12} color={iconColor} />;
+      default:
+        return <User size={12} color={iconColor} />;
     }
   };
 
-  const getRoleColor = (role: string) => {
+  const notionRolePill = (role: string): { bg: string; fg: string } => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
-      case 'visiting_tm': return '#10b981';
-      case 'club_leader': return '#f59e0b';
-      case 'guest': return '#6b7280';
-      case 'member': return '#3b82f6';
-      default: return '#6b7280';
+      case 'excomm':
+        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+      case 'visiting_tm':
+        return { bg: 'rgba(16, 185, 129, 0.12)', fg: '#047857' };
+      case 'club_leader':
+        return { bg: 'rgba(245, 158, 11, 0.14)', fg: '#B45309' };
+      case 'guest':
+        return { bg: N.pillBg, fg: N.textSecondary };
+      case 'member':
+        return { bg: N.accentSoft, fg: N.accent };
+      default:
+        return { bg: N.pillBg, fg: N.textSecondary };
     }
   };
 
   const formatRole = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return 'ExComm';
-      case 'visiting_tm': return 'Visiting TM';
-      case 'club_leader': return 'Club Leader';
-      case 'guest': return 'Guest';
-      case 'member': return 'Member';
-      default: return role;
+      case 'excomm':
+        return 'ExComm';
+      case 'visiting_tm':
+        return 'Visiting TM';
+      case 'club_leader':
+        return 'Club Leader';
+      case 'guest':
+        return 'Guest';
+      case 'member':
+        return 'Member';
+      default:
+        return role;
     }
   };
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Loading…
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ArrowLeft size={22} color={N.iconMuted} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Manage Club Users</Text>
+        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+          Club members
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -109,124 +191,62 @@ export default function ManageClubUsers() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Club Card */}
-        {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.clubHeader}>
-              <View style={[styles.clubIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-                <Building2 size={20} color={theme.colors.primary} />
-              </View>
-              <View style={styles.clubInfo}>
-                <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {clubInfo.name}
-                </Text>
-                <View style={styles.clubMeta}>
-                  {clubInfo.club_number && (
-                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Club #{clubInfo.club_number}
+        <View style={[styles.pageInset, { backgroundColor: N.surface, borderColor: N.border }]}>
+          {clubInfo && (
+            <>
+              <View style={styles.clubBlock}>
+                <View style={styles.clubHeader}>
+                  <View style={[styles.clubIcon, { backgroundColor: N.iconTile }]}>
+                    <Building2 size={18} color={N.iconMuted} strokeWidth={1.75} />
+                  </View>
+                  <View style={styles.clubInfo}>
+                    <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                      {clubInfo.name}
                     </Text>
-                  )}
-                  {user?.clubRole && (
-                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
-                      {getRoleIcon(user.clubRole)}
-                      <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
+                    <View style={styles.clubMeta}>
+                      {clubInfo.club_number && (
+                        <Text style={[styles.clubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                          Club #{clubInfo.club_number}
+                        </Text>
+                      )}
+                      {user?.clubRole && (() => {
+                        const pill = notionRolePill(user.clubRole);
+                        return (
+                          <View style={[styles.roleTag, { backgroundColor: pill.bg }]}>
+                            {getRoleIcon(user.clubRole, pill.fg)}
+                            <Text style={[styles.roleText, { color: pill.fg }]} maxFontSizeMultiplier={1.3}>
+                              {formatRole(user.clubRole)}
+                            </Text>
+                          </View>
+                        );
+                      })()}
                     </View>
-                  )}
+                  </View>
                 </View>
               </View>
-            </View>
-          </View>
-        )}
 
-        {/* Management Cards */}
-        <View style={styles.cardsSection}>
-          <TouchableOpacity
-            style={[styles.actionCard, { backgroundColor: theme.colors.surface }]}
-            onPress={() => router.push('/admin/invite-new-user')}
-          >
-            <View style={[styles.cardIcon, { backgroundColor: '#10b981' + '20' }]}>
-              <UserPlus size={20} color="#10b981" />
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={[styles.cardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Invite New User</Text>
-              <Text style={[styles.cardDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Send invitation to new members to join your club
-              </Text>
-            </View>
-          </TouchableOpacity>
+              <View style={[styles.insetDivider, { backgroundColor: N.border }]} />
+            </>
+          )}
 
-          <TouchableOpacity
-            style={[styles.actionCard, { backgroundColor: theme.colors.surface }]}
-            onPress={() => router.push('/admin/manage-existing-users')}
-          >
-            <View style={[styles.cardIcon, { backgroundColor: '#3b82f6' + '20' }]}>
-              <Settings size={20} color="#3b82f6" />
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={[styles.cardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Manage Existing Users</Text>
-              <Text style={[styles.cardDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Edit roles and manage current club members
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+          <Text style={[styles.sectionLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            Actions
+          </Text>
 
-        <View style={styles.navSpacer} />
-
-        {/* Navigation Icons */}
-        <View style={[styles.navigationSection, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.navigationBar}>
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Home size={16} color="#3b82f6" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/club')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#FEF3E7' }]}>
-                <Users size={16} color="#f59e0b" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/meetings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#E0F2FE' }]}>
-                <Calendar size={16} color="#0ea5e9" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/settings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#F3E8FF' }]}>
-                <Settings size={16} color="#8b5cf6" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
-            </TouchableOpacity>
-
-            {user?.clubRole === 'excomm' && (
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/admin')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: '#FFE5E5' }]}>
-                  <Settings size={16} color="#dc2626" />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-              </TouchableOpacity>
-            )}
+          <View style={[styles.notionGroup, { borderColor: N.border }]}>
+            <NotionActionRow
+              title="Invite club members"
+              description="Send invites and grow your club community."
+              icon={<UserPlus size={18} color={N.iconMuted} strokeWidth={1.75} />}
+              onPress={() => router.push('/admin/invite-new-user')}
+            />
+            <NotionActionRow
+              title="Manage members"
+              description="Organize members, roles, and access in one place."
+              icon={<Users size={18} color={N.iconMuted} strokeWidth={1.75} />}
+              onPress={() => router.push('/admin/manage-existing-users')}
+              isLast
+            />
           </View>
         </View>
       </ScrollView>
@@ -244,63 +264,101 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
   backButton: {
     padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: 16,
+    marginHorizontal: 12,
+    letterSpacing: -0.2,
   },
   headerSpacer: {
-    width: 40,
+    width: 38,
   },
   content: {
     flex: 1,
   },
   contentContainer: {
-    paddingBottom: 16,
-    flexGrow: 1,
+    paddingBottom: 32,
   },
-  navSpacer: {
-    flex: 1,
-    minHeight: 24,
-  },
-  clubCard: {
+  pageInset: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  clubBlock: {
+    marginBottom: 0,
+  },
+  insetDivider: {
+    height: 1,
+    marginVertical: 16,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.04,
+    marginBottom: 8,
+  },
+  notionGroup: {
+    borderWidth: 1,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: N.surface,
+  },
+  notionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 12,
+  },
+  notionRowIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notionRowTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  notionRowTitle: {
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: -0.2,
+    lineHeight: 20,
+  },
+  notionRowDesc: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+    fontWeight: '400',
   },
   clubHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   clubIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -309,13 +367,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clubName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     marginBottom: 4,
+    letterSpacing: -0.2,
   },
   clubMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
   },
   clubNumber: {
@@ -325,88 +385,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
   roleText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#ffffff',
     marginLeft: 4,
-  },
-  cardsSection: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  actionCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  cardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  cardContent: {
-    flex: 1,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  cardDescription: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  navigationSection: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  navigationBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  navItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  navIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  navLabel: {
-    fontSize: 9,
-    fontWeight: '500',
-    textAlign: 'center',
   },
 });

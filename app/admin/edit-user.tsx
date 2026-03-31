@@ -2,11 +2,47 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Save, User, Crown, Shield, Eye, UserCheck, Building2, CircleCheck as CheckCircle } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Save,
+  User,
+  Crown,
+  Shield,
+  Eye,
+  UserCheck,
+  Building2,
+  CircleCheck as CheckCircle,
+} from 'lucide-react-native';
 import { Image } from 'react-native';
+
+/** Notion-like neutrals (match manage-existing-users / invite-new-user) */
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  border: 'rgba(55, 53, 47, 0.09)',
+  borderStrong: 'rgba(55, 53, 47, 0.16)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  textTertiary: 'rgba(55, 53, 47, 0.45)',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.1)',
+  accentSoftBorder: 'rgba(35, 131, 226, 0.28)',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+  iconTile: 'rgba(55, 53, 47, 0.06)',
+  success: '#0F7B6C',
+  successSoft: 'rgba(15, 123, 108, 0.12)',
+  pillExCommBg: '#F4F0FA',
+  pillExCommText: '#6940A5',
+  pillBg: '#F0EFED',
+  /** Saturated circles for role picker (readable at small size) */
+  roleMember: '#2383E2',
+  roleExComm: '#6940A5',
+  roleVisiting: '#0D9488',
+  roleLeader: '#D97706',
+  roleGuest: '#787774',
+};
 
 interface ClubUser {
   id: string;
@@ -30,27 +66,26 @@ interface ClubInfo {
   club_number: string | null;
 }
 
+const ROLE_OPTIONS = [
+  { value: 'member', label: 'Member', description: 'Regular club member' },
+  { value: 'excomm', label: 'ExComm', description: 'Executive Committee member' },
+  { value: 'visiting_tm', label: 'Visiting Toastmaster', description: 'Visiting member from another club' },
+  { value: 'club_leader', label: 'Club Leader', description: 'Club leadership role' },
+  { value: 'guest', label: 'Guest', description: 'Guest member' },
+] as const;
+
 export default function EditUser() {
-  const { theme } = useTheme();
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const userId = typeof params.userId === 'string' ? params.userId : params.userId?.[0];
   const clubUserId = typeof params.clubUserId === 'string' ? params.clubUserId : params.clubUserId?.[0];
-  
+
   const [clubUser, setClubUser] = useState<ClubUser | null>(null);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [selectedRole, setSelectedRole] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-
-  const roleOptions = [
-    { value: 'member', label: 'Member', description: 'Regular club member' },
-    { value: 'excomm', label: 'ExComm', description: 'Executive Committee member' },
-    { value: 'visiting_tm', label: 'Visiting Toastmaster', description: 'Visiting member from another club' },
-    { value: 'club_leader', label: 'Club Leader', description: 'Club leadership role' },
-    { value: 'guest', label: 'Guest', description: 'Guest member' },
-  ];
 
   useEffect(() => {
     if (userId && clubUserId) {
@@ -65,7 +100,8 @@ export default function EditUser() {
     try {
       const { data, error } = await supabase
         .from('app_club_user_relationship')
-        .select(`
+        .select(
+          `
           id,
           user_id,
           club_id,
@@ -79,7 +115,8 @@ export default function EditUser() {
             avatar_url,
             is_active
           )
-        `)
+        `
+        )
         .eq('id', clubUserId)
         .single();
 
@@ -90,7 +127,7 @@ export default function EditUser() {
       }
 
       setClubUser(data);
-      setSelectedRole(data.role);
+      setSelectedRole((data.role || '').toLowerCase());
     } catch (error) {
       console.error('Error loading user data:', error);
     } finally {
@@ -122,27 +159,19 @@ export default function EditUser() {
   const handleSaveRole = async () => {
     if (!clubUser || !selectedRole) return;
 
-    if (selectedRole === clubUser.role) {
-      Alert.alert('No Changes', 'The role is already set to this value.');
+    if (selectedRole.toLowerCase() === clubUser.role.toLowerCase()) {
+      Alert.alert('No changes', 'The role is already set to this value.');
       return;
     }
 
     setIsSaving(true);
-    
+
     try {
-      console.log('Updating user role:', {
-        userId: clubUser.app_user_profiles.full_name,
-        oldRole: clubUser.role,
-        newRole: selectedRole
-      });
-      
-      const oldRole = clubUser.role;
-      
       const { error } = await supabase
         .from('app_club_user_relationship')
-        .update({ 
+        .update({
           role: selectedRole,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         } as any)
         .eq('id', clubUser.id);
 
@@ -152,13 +181,9 @@ export default function EditUser() {
         return;
       }
 
-      // Update local state
-      setClubUser(prev => prev ? { ...prev, role: selectedRole } : null);
-
-      // Show success message
+      setClubUser((prev) => (prev ? { ...prev, role: selectedRole } : null));
       setShowSuccessMessage(true);
-      
-      // Auto-hide success message and navigate back
+
       setTimeout(() => {
         setShowSuccessMessage(false);
         router.back();
@@ -171,44 +196,87 @@ export default function EditUser() {
     }
   };
 
-  const getRoleIcon = (role: string) => {
+  const getRoleIcon = (role: string, iconColor = '#ffffff') => {
     switch (role.toLowerCase()) {
-      case 'excomm': return <Crown size={12} color="#ffffff" />;
-      case 'visiting_tm': return <UserCheck size={12} color="#ffffff" />;
-      case 'club_leader': return <Shield size={12} color="#ffffff" />;
-      case 'guest': return <Eye size={12} color="#ffffff" />;
-      case 'member': return <User size={12} color="#ffffff" />;
-      default: return <User size={12} color="#ffffff" />;
+      case 'excomm':
+        return <Crown size={14} color={iconColor} strokeWidth={2} />;
+      case 'visiting_tm':
+        return <UserCheck size={14} color={iconColor} strokeWidth={2} />;
+      case 'club_leader':
+        return <Shield size={14} color={iconColor} strokeWidth={2} />;
+      case 'guest':
+        return <Eye size={14} color={iconColor} strokeWidth={2} />;
+      case 'member':
+        return <User size={14} color={iconColor} strokeWidth={2} />;
+      default:
+        return <User size={14} color={iconColor} strokeWidth={2} />;
     }
   };
 
-  const getRoleColor = (role: string) => {
+  const getRoleCircleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
-      case 'visiting_tm': return '#10b981';
-      case 'club_leader': return '#f59e0b';
-      case 'guest': return '#6b7280';
-      case 'member': return '#3b82f6';
-      default: return '#6b7280';
+      case 'excomm':
+        return N.roleExComm;
+      case 'visiting_tm':
+        return N.roleVisiting;
+      case 'club_leader':
+        return N.roleLeader;
+      case 'guest':
+        return N.roleGuest;
+      case 'member':
+        return N.roleMember;
+      default:
+        return N.roleGuest;
+    }
+  };
+
+  const notionRolePill = (role: string): { bg: string; fg: string } => {
+    switch (role.toLowerCase()) {
+      case 'excomm':
+        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+      case 'visiting_tm':
+        return { bg: 'rgba(13, 148, 136, 0.12)', fg: '#0F766E' };
+      case 'club_leader':
+        return { bg: 'rgba(217, 119, 6, 0.14)', fg: '#B45309' };
+      case 'guest':
+        return { bg: N.pillBg, fg: N.textSecondary };
+      case 'member':
+        return { bg: N.accentSoft, fg: N.accent };
+      default:
+        return { bg: N.pillBg, fg: N.textSecondary };
     }
   };
 
   const formatRole = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return 'ExComm';
-      case 'visiting_tm': return 'Visiting TM';
-      case 'club_leader': return 'Club Leader';
-      case 'guest': return 'Guest';
-      case 'member': return 'Member';
-      default: return role;
+      case 'excomm':
+        return 'ExComm';
+      case 'visiting_tm':
+        return 'Visiting TM';
+      case 'club_leader':
+        return 'Club Leader';
+      case 'guest':
+        return 'Guest';
+      case 'member':
+        return 'Member';
+      default:
+        return role;
     }
   };
 
+  const canSave =
+    !!selectedRole &&
+    clubUser &&
+    selectedRole.toLowerCase() !== clubUser.role.toLowerCase() &&
+    !isSaving;
+
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading user data...</Text>
+          <Text style={[styles.loadingText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Loading user…
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -216,14 +284,18 @@ export default function EditUser() {
 
   if (!clubUser) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>User not found</Text>
-          <TouchableOpacity 
-            style={[styles.backButton, { backgroundColor: theme.colors.primary, marginTop: 16 }]}
+          <Text style={[styles.loadingText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            User not found
+          </Text>
+          <TouchableOpacity
+            style={[styles.primaryGhostButton, { borderColor: N.border, marginTop: 16 }]}
             onPress={() => router.back()}
           >
-            <Text style={styles.backButtonText} maxFontSizeMultiplier={1.3}>Go Back</Text>
+            <Text style={[styles.primaryGhostButtonText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+              Go back
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -231,132 +303,154 @@ export default function EditUser() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
+        <TouchableOpacity
+          style={styles.headerIconButton}
+          onPress={() => router.back()}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <ArrowLeft size={22} color={N.iconMuted} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Edit User Role</Text>
-        <TouchableOpacity 
+        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+          Edit user role
+        </Text>
+        <TouchableOpacity
           style={[
-            styles.saveButton,
+            styles.saveIconWrap,
             {
-              backgroundColor: selectedRole && selectedRole !== clubUser.role ? theme.colors.primary : theme.colors.surface,
-              borderColor: theme.colors.border,
-            }
+              backgroundColor: canSave ? N.accent : N.surface,
+              borderColor: canSave ? N.accent : N.border,
+            },
           ]}
           onPress={handleSaveRole}
-          disabled={!selectedRole || selectedRole === clubUser.role || isSaving}
+          disabled={!canSave}
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
         >
-          <Save size={16} color={selectedRole && selectedRole !== clubUser.role ? "#ffffff" : theme.colors.textSecondary} />
+          <Save size={18} color={canSave ? '#FFFFFF' : N.textTertiary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Club Card */}
-        {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.clubHeader}>
-              <View style={[styles.clubIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-                <Building2 size={20} color={theme.colors.primary} />
-              </View>
-              <View style={styles.clubInfo}>
-                <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {clubInfo.name}
-                </Text>
-                <View style={styles.clubMeta}>
-                  {clubInfo.club_number && (
-                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Club #{clubInfo.club_number}
-                    </Text>
-                  )}
-                  {user?.clubRole && (
-                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
-                      {getRoleIcon(user.clubRole)}
-                      <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
-                    </View>
-                  )}
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.pageInset, { backgroundColor: N.surface, borderColor: N.border }]}>
+          {clubInfo ? (
+            <View style={[styles.infoCard, { borderColor: N.border }]}>
+              <View style={styles.clubHeader}>
+                <View style={[styles.clubIcon, { backgroundColor: N.accentSoft }]}>
+                  <Building2 size={20} color={N.accent} strokeWidth={1.75} />
+                </View>
+                <View style={styles.clubInfo}>
+                  <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                    {clubInfo.name}
+                  </Text>
+                  <View style={styles.clubMeta}>
+                    {clubInfo.club_number ? (
+                      <Text style={[styles.clubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                        Club #{clubInfo.club_number}
+                      </Text>
+                    ) : null}
+                    {user?.clubRole ? (() => {
+                      const pill = notionRolePill(user.clubRole);
+                      return (
+                        <View style={[styles.rolePill, { backgroundColor: pill.bg }]}>
+                          {getRoleIcon(user.clubRole, pill.fg)}
+                          <Text style={[styles.rolePillText, { color: pill.fg }]} maxFontSizeMultiplier={1.2}>
+                            {formatRole(user.clubRole)}
+                          </Text>
+                        </View>
+                      );
+                    })() : null}
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
-        )}
+          ) : null}
 
-        {/* User Info Card */}
-        <View style={[styles.userInfoCard, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.userHeader}>
-            <View style={styles.userAvatar}>
-              {clubUser.app_user_profiles.avatar_url ? (
-                <Image source={{ uri: clubUser.app_user_profiles.avatar_url }} style={styles.userAvatarImage} />
-              ) : (
-                <User size={24} color="#ffffff" />
-              )}
-            </View>
-            <View style={styles.userDetails}>
-              <Text style={[styles.userName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {clubUser.app_user_profiles.full_name}
-              </Text>
-              <Text style={[styles.userEmail, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {clubUser.app_user_profiles.email}
-              </Text>
-              <View style={[styles.currentRoleTag, { backgroundColor: getRoleColor(clubUser.role) }]}>
-                {getRoleIcon(clubUser.role)}
-                <Text style={styles.currentRoleText} maxFontSizeMultiplier={1.3}>Current: {formatRole(clubUser.role)}</Text>
+          <View style={[styles.infoCard, { borderColor: N.border, marginTop: clubInfo ? 12 : 0 }]}>
+            <View style={styles.userHeader}>
+              <View style={[styles.userAvatar, { backgroundColor: N.iconTile }]}>
+                {clubUser.app_user_profiles.avatar_url ? (
+                  <Image source={{ uri: clubUser.app_user_profiles.avatar_url }} style={styles.userAvatarImage} />
+                ) : (
+                  <User size={24} color={N.iconMuted} strokeWidth={2} />
+                )}
+              </View>
+              <View style={styles.userDetails}>
+                <Text style={[styles.userName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                  {clubUser.app_user_profiles.full_name}
+                </Text>
+                <Text style={[styles.userEmail, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {clubUser.app_user_profiles.email}
+                </Text>
+                {(() => {
+                  const pill = notionRolePill(clubUser.role);
+                  return (
+                    <View style={[styles.rolePill, styles.currentRolePill, { backgroundColor: pill.bg }]}>
+                      {getRoleIcon(clubUser.role, pill.fg)}
+                      <Text style={[styles.rolePillText, { color: pill.fg }]} maxFontSizeMultiplier={1.2}>
+                        Current: {formatRole(clubUser.role)}
+                      </Text>
+                    </View>
+                  );
+                })()}
               </View>
             </View>
           </View>
-        </View>
 
-        {/* Role Selection */}
-        <View style={[styles.roleSelectionCard, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select New Role</Text>
-          
+          <View style={[styles.insetDivider, { backgroundColor: N.border }]} />
+
+          <Text style={[styles.sectionTitle, { color: N.text }]} maxFontSizeMultiplier={1.25}>
+            Select new role
+          </Text>
+
           <View style={styles.rolesList}>
-            {roleOptions.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.roleOption,
-                  {
-                    backgroundColor: selectedRole === option.value ? theme.colors.primary + '20' : theme.colors.background,
-                    borderColor: selectedRole === option.value ? theme.colors.primary : theme.colors.border,
-                  }
-                ]}
-                onPress={() => setSelectedRole(option.value)}
-              >
-                <View style={styles.roleOptionContent}>
+            {ROLE_OPTIONS.map((option) => {
+              const selected = selectedRole.toLowerCase() === option.value.toLowerCase();
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.roleOption,
+                    {
+                      backgroundColor: selected ? N.accentSoft : N.surface,
+                      borderColor: selected ? N.accentSoftBorder : N.border,
+                    },
+                  ]}
+                  onPress={() => setSelectedRole(option.value)}
+                  activeOpacity={0.65}
+                >
                   <View style={styles.roleOptionHeader}>
-                    <View style={[styles.roleOptionIcon, { backgroundColor: getRoleColor(option.value) }]}>
-                      {getRoleIcon(option.value)}
+                    <View style={[styles.roleOptionIcon, { backgroundColor: getRoleCircleColor(option.value) }]}>
+                      {getRoleIcon(option.value, '#FFFFFF')}
                     </View>
-                    <Text style={[
-                      styles.roleOptionTitle,
-                      { color: selectedRole === option.value ? theme.colors.primary : theme.colors.text }
-                    ]} maxFontSizeMultiplier={1.3}>
+                    <Text
+                      style={[styles.roleOptionTitle, { color: selected ? N.accent : N.text }]}
+                      maxFontSizeMultiplier={1.3}
+                    >
                       {option.label}
                     </Text>
                   </View>
-                  <Text style={[styles.roleOptionDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  <Text style={[styles.roleOptionDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {option.description}
                   </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        </View>
 
-        {/* Success Message */}
-        {showSuccessMessage && (
-          <View style={[styles.successCard, { backgroundColor: theme.colors.success + '20' }]}>
-            <View style={styles.successContent}>
-              <CheckCircle size={24} color={theme.colors.success} />
-              <Text style={[styles.successText, { color: theme.colors.success }]} maxFontSizeMultiplier={1.3}>
-                Role updated successfully!
+          {showSuccessMessage ? (
+            <View style={[styles.successBanner, { backgroundColor: N.successSoft, borderColor: N.border }]}>
+              <CheckCircle size={20} color={N.success} strokeWidth={2} />
+              <Text style={[styles.successText, { color: N.success }]} maxFontSizeMultiplier={1.3}>
+                Role updated successfully
               </Text>
             </View>
-          </View>
-        )}
+          ) : null}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -370,233 +464,203 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
   },
   loadingText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
-  backButton: {
+  headerIconButton: {
     padding: 8,
+    width: 38,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: 16,
+    marginHorizontal: 8,
+    letterSpacing: -0.2,
   },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+  saveIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 4,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,
   },
-  clubCard: {
+  contentContainer: {
+    paddingBottom: 32,
+  },
+  pageInset: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  infoCard: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 16,
+    backgroundColor: N.surface,
   },
   clubHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   clubIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   clubInfo: {
     flex: 1,
+    minWidth: 0,
   },
   clubName: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 6,
+    letterSpacing: -0.2,
   },
   clubMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
   },
   clubNumber: {
     fontSize: 13,
   },
-  roleTag: {
+  rolePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+    gap: 4,
   },
-  roleText: {
-    fontSize: 10,
+  currentRolePill: {
+    marginTop: 10,
+  },
+  rolePillText: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 4,
-  },
-  userInfoCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   userHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   userAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#3b82f6',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 14,
     overflow: 'hidden',
   },
   userAvatarImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   userDetails: {
     flex: 1,
+    minWidth: 0,
   },
   userName: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '600',
     marginBottom: 4,
+    letterSpacing: -0.2,
   },
   userEmail: {
     fontSize: 14,
-    marginBottom: 8,
+    lineHeight: 20,
   },
-  currentRoleTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  currentRoleText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 6,
-  },
-  roleSelectionCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  insetDivider: {
+    height: 1,
+    marginVertical: 20,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 20,
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 14,
+    letterSpacing: -0.2,
   },
   rolesList: {
-    gap: 12,
+    gap: 10,
   },
   roleOption: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 2,
-  },
-  roleOptionContent: {
-    flex: 1,
+    borderRadius: 8,
+    padding: 14,
+    borderWidth: 1,
   },
   roleOptionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
+    gap: 12,
   },
   roleOptionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
   roleOptionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+    letterSpacing: -0.2,
+    flex: 1,
   },
   roleOptionDescription: {
     fontSize: 13,
     lineHeight: 18,
+    paddingLeft: 48,
   },
-  successCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 32,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  successContent: {
+  successBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
+    marginTop: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
   },
   successText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  backButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#ffffff',
+  },
+  primaryGhostButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  primaryGhostButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

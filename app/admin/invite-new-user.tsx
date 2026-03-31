@@ -2,10 +2,30 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, supabaseUrl } from '@/lib/supabase';
-import { ArrowLeft, Plus, Mail, User, Crown, Shield, Eye, UserCheck, Clock, Send, Trash2, CircleCheck as CheckCircle, X, Building2 } from 'lucide-react-native';
+import { ArrowLeft, Mail, User, Crown, Shield, Eye, UserCheck, Clock, Send, Trash2, CircleCheck as CheckCircle, Building2 } from 'lucide-react-native';
+
+/** Notion-like neutrals */
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  border: 'rgba(55, 53, 47, 0.09)',
+  borderStrong: 'rgba(55, 53, 47, 0.16)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  textTertiary: 'rgba(55, 53, 47, 0.45)',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.1)',
+  accentSoftBorder: 'rgba(35, 131, 226, 0.28)',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+  iconTile: 'rgba(55, 53, 47, 0.06)',
+  success: '#0F7B6C',
+  successSoft: 'rgba(15, 123, 108, 0.12)',
+  pillExCommBg: '#F4F0FA',
+  pillExCommText: '#6940A5',
+  pillBg: '#F0EFED',
+};
 
 interface InviteForm {
   email: string;
@@ -34,8 +54,15 @@ interface ClubInfo {
   club_number: string | null;
 }
 
+const ROLE_OPTIONS = [
+  { value: 'member', label: 'Member', description: 'Regular club member', Icon: User },
+  { value: 'excomm', label: 'ExComm', description: 'Executive Committee member', Icon: Crown },
+  { value: 'visiting_tm', label: 'Visiting Toastmaster', description: 'Visiting member from another club', Icon: UserCheck },
+  { value: 'club_leader', label: 'Club Leader', description: 'Club leadership role', Icon: Shield },
+  { value: 'guest', label: 'Guest', description: 'Guest member', Icon: Eye },
+] as const;
+
 export default function InviteNewUser() {
-  const { theme } = useTheme();
   const { user, refreshUserProfile } = useAuth();
   const params = useLocalSearchParams();
 
@@ -52,14 +79,6 @@ export default function InviteNewUser() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
-
-  const roleOptions = [
-    { value: 'member', label: 'Member', description: 'Regular club member', icon: <User size={16} color="#ffffff" />, color: '#3b82f6' },
-    { value: 'excomm', label: 'ExComm', description: 'Executive Committee member', icon: <Crown size={16} color="#ffffff" />, color: '#8b5cf6' },
-    { value: 'visiting_tm', label: 'Visiting Toastmaster', description: 'Visiting member from another club', icon: <UserCheck size={16} color="#ffffff" />, color: '#10b981' },
-    { value: 'club_leader', label: 'Club Leader', description: 'Club leadership role', icon: <Shield size={16} color="#ffffff" />, color: '#f59e0b' },
-    { value: 'guest', label: 'Guest', description: 'Guest member', icon: <Eye size={16} color="#ffffff" />, color: '#6b7280' },
-  ];
 
   useEffect(() => {
     loadPendingInvites();
@@ -403,18 +422,26 @@ export default function InviteNewUser() {
     );
   };
 
-  const getRoleIcon = (role: string) => {
-    const roleOption = roleOptions.find(r => r.value === role);
-    return roleOption?.icon || <User size={16} color="#ffffff" />;
-  };
-
-  const getRoleColor = (role: string) => {
-    const roleOption = roleOptions.find(r => r.value === role);
-    return roleOption?.color || '#6b7280';
+  const notionRolePill = (role: string): { bg: string; fg: string } => {
+    switch (role.toLowerCase()) {
+      case 'excomm':
+        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+      case 'visiting_tm':
+        return { bg: 'rgba(16, 185, 129, 0.12)', fg: '#047857' };
+      case 'club_leader':
+        return { bg: 'rgba(245, 158, 11, 0.14)', fg: '#B45309' };
+      case 'guest':
+        return { bg: N.pillBg, fg: N.textSecondary };
+      case 'member':
+        return { bg: N.accentSoft, fg: N.accent };
+      default:
+        return { bg: N.pillBg, fg: N.textSecondary };
+    }
   };
 
   const formatRole = (role: string) => {
-    const roleOption = roleOptions.find(r => r.value === role);
+    const r = (role || '').toLowerCase();
+    const roleOption = ROLE_OPTIONS.find((x) => x.value === r);
     return roleOption?.label || role;
   };
 
@@ -436,40 +463,47 @@ export default function InviteNewUser() {
       onRequestClose={() => setShowRoleModal(false)}
     >
       <View style={styles.modalOverlay}>
-        <View style={[styles.roleModal, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Role</Text>
+        <View style={[styles.roleModal, { backgroundColor: N.surface, borderColor: N.border }]}>
+          <Text style={[styles.modalTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            Select role
+          </Text>
           <ScrollView style={styles.rolesList} showsVerticalScrollIndicator={false}>
-            {roleOptions.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.roleOption,
-                  {
-                    backgroundColor: inviteForm.role === option.value ? theme.colors.primary + '20' : 'transparent',
-                    borderColor: inviteForm.role === option.value ? theme.colors.primary : theme.colors.border,
-                  }
-                ]}
-                onPress={() => {
-                  updateFormField('role', option.value);
-                  setShowRoleModal(false);
-                }}
-              >
-                <View style={[styles.roleOptionIcon, { backgroundColor: option.color }]}>
-                  {option.icon}
-                </View>
-                <View style={styles.roleOptionContent}>
-                  <Text style={[
-                    styles.roleOptionTitle,
-                    { color: inviteForm.role === option.value ? theme.colors.primary : theme.colors.text }
-                  ]} maxFontSizeMultiplier={1.3}>
-                    {option.label}
-                  </Text>
-                  <Text style={[styles.roleOptionDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {option.description}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+            {ROLE_OPTIONS.map((option) => {
+              const selected = (inviteForm.role || '').toLowerCase() === option.value;
+              const pill = notionRolePill(option.value);
+              const IconC = option.Icon;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.roleOption,
+                    {
+                      backgroundColor: selected ? N.accentSoft : N.surface,
+                      borderColor: selected ? N.accentSoftBorder : N.border,
+                    },
+                  ]}
+                  onPress={() => {
+                    updateFormField('role', option.value);
+                    setShowRoleModal(false);
+                  }}
+                >
+                  <View style={[styles.roleOptionIconTile, { backgroundColor: pill.bg }]}>
+                    <IconC size={16} color={pill.fg} strokeWidth={2} />
+                  </View>
+                  <View style={styles.roleOptionContent}>
+                    <Text
+                      style={[styles.roleOptionTitle, { color: selected ? N.accent : N.text }]}
+                      maxFontSizeMultiplier={1.3}
+                    >
+                      {option.label}
+                    </Text>
+                    <Text style={[styles.roleOptionDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      {option.description}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
       </View>
@@ -484,12 +518,14 @@ export default function InviteNewUser() {
       onRequestClose={() => setShowSuccessModal(false)}
     >
       <View style={styles.successOverlay}>
-        <View style={[styles.successPopup, { backgroundColor: theme.colors.surface }]}>
-          <View style={[styles.successIcon, { backgroundColor: theme.colors.success + '20' }]}>
-            <CheckCircle size={24} color={theme.colors.success} />
+        <View style={[styles.successPopup, { backgroundColor: N.surface, borderColor: N.border }]}>
+          <View style={[styles.successIcon, { backgroundColor: N.successSoft }]}>
+            <CheckCircle size={22} color={N.success} strokeWidth={2} />
           </View>
-          <Text style={[styles.successTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Success</Text>
-          <Text style={[styles.successText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.successTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            Done
+          </Text>
+          <Text style={[styles.successText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
             {successMessage}
           </Text>
         </View>
@@ -497,197 +533,243 @@ export default function InviteNewUser() {
     </Modal>
   );
 
-  const InviteCard = ({ invite }: { invite: PendingInvite }) => (
-    <View style={[styles.inviteCard, { backgroundColor: theme.colors.surface }]}>
-      <View style={styles.inviteInfo}>
-        <View style={styles.inviteAvatar}>
-          <User size={20} color="#ffffff" />
-        </View>
-        
-        <View style={styles.inviteDetails}>
-          <Text style={[styles.inviteName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            {invite.invitee_full_name}
-          </Text>
-          <Text style={[styles.inviteEmail, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            {invite.invitee_email}
-          </Text>
-          <View style={styles.inviteMeta}>
-            <View style={[styles.roleTag, { backgroundColor: getRoleColor(invite.invitee_role) }]}>
-              {getRoleIcon(invite.invitee_role)}
-              <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(invite.invitee_role)}</Text>
-            </View>
-            <View style={styles.timeRemaining}>
-              <Clock size={12} color={theme.colors.textSecondary} />
-              <Text style={[styles.timeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {getTimeRemaining(invite.expires_at)}
-              </Text>
+  const InviteCard = ({ invite, isLast }: { invite: PendingInvite; isLast?: boolean }) => {
+    const pill = notionRolePill(invite.invitee_role);
+    const opt = ROLE_OPTIONS.find((r) => r.value === (invite.invitee_role || '').toLowerCase());
+    const RoleIcon = opt?.Icon ?? User;
+    return (
+      <View style={[styles.inviteCard, !isLast && { borderBottomWidth: 1, borderBottomColor: N.border }]}>
+        <View style={styles.inviteInfo}>
+          <View style={[styles.inviteAvatar, { backgroundColor: N.iconTile }]}>
+            <User size={18} color={N.iconMuted} strokeWidth={1.75} />
+          </View>
+
+          <View style={styles.inviteDetails}>
+            <Text style={[styles.inviteName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+              {invite.invitee_full_name}
+            </Text>
+            <Text style={[styles.inviteEmail, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              {invite.invitee_email}
+            </Text>
+            <View style={styles.inviteMeta}>
+              <View style={[styles.inviteRolePill, { backgroundColor: pill.bg }]}>
+                <RoleIcon size={11} color={pill.fg} strokeWidth={2} />
+                <Text style={[styles.inviteRolePillText, { color: pill.fg }]} maxFontSizeMultiplier={1.3}>
+                  {formatRole(invite.invitee_role)}
+                </Text>
+              </View>
+              <View style={styles.timeRemaining}>
+                <Clock size={12} color={N.textTertiary} strokeWidth={2} />
+                <Text style={[styles.timeText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {getTimeRemaining(invite.expires_at)}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={[styles.deleteInviteButton, { borderColor: N.border, backgroundColor: N.page }]}
+          onPress={(e) => {
+            e?.stopPropagation();
+            handleDeleteInvite(invite.id, invite.invitee_full_name, e);
+          }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Trash2 size={16} color={N.textSecondary} strokeWidth={2} />
+        </TouchableOpacity>
       </View>
-      
-      <TouchableOpacity
-        style={[styles.deleteInviteButton, { backgroundColor: '#fef2f2' }]}
-        onPress={(e) => {
-          e?.stopPropagation();
-          handleDeleteInvite(invite.id, invite.invitee_full_name, e);
-        }}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Trash2 size={18} color="#ef4444" />
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
+
+  const canSend = Boolean(inviteForm.email.trim() && inviteForm.fullName.trim());
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Invite New User</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Club Card */}
-        {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.clubHeader}>
-              <View style={styles.clubInfo}>
-                <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {clubInfo.name}
-                </Text>
-                <View style={styles.clubMeta}>
-                  {clubInfo.club_number && (
-                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Club #{clubInfo.club_number}
-                    </Text>
-                  )}
-                  {user?.clubRole && (
-                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
-                      {getRoleIcon(user.clubRole)}
-                      <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Invite Form */}
-        <View style={[styles.inviteFormCard, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.formTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Send Invitation</Text>
-
-          {/* Full Name Field */}
-          <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Full Name *</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-              <User size={16} color={theme.colors.textSecondary} />
-              <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
-                placeholder="Enter full name"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={inviteForm.fullName}
-                onChangeText={(text) => updateFormField('fullName', text)}
-                autoCapitalize="words"
-              />
-            </View>
-          </View>
-
-          {/* Email Field */}
-          <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Email Address *</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-              <Mail size={16} color={theme.colors.textSecondary} />
-              <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
-                placeholder="Enter email address"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={inviteForm.email}
-                onChangeText={(text) => updateFormField('email', text)}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-          </View>
-
-          {/* Role Selection */}
-          <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role *</Text>
-            <TouchableOpacity
-              style={[styles.roleSelector, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-              onPress={() => setShowRoleModal(true)}
-            >
-              <View style={styles.roleSelectorContent}>
-                <View style={[styles.selectedRoleIcon, { backgroundColor: getRoleColor(inviteForm.role) }]}>
-                  {getRoleIcon(inviteForm.role)}
-                </View>
-                <Text style={[styles.selectedRoleText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {formatRole(inviteForm.role)}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          {/* Send Invite Button */}
-          <TouchableOpacity
-            style={[
-              styles.sendInviteButton,
-              {
-                backgroundColor: (inviteForm.email.trim() && inviteForm.fullName.trim()) ? theme.colors.primary : theme.colors.surface,
-                borderColor: theme.colors.border,
-              }
-            ]}
-            onPress={handleSendInvite}
-            disabled={!inviteForm.email.trim() || !inviteForm.fullName.trim() || isLoading}
-          >
-            <Send size={16} color={(inviteForm.email.trim() && inviteForm.fullName.trim()) ? "#ffffff" : theme.colors.textSecondary} />
-            <Text style={[
-              styles.sendInviteButtonText,
-              { color: (inviteForm.email.trim() && inviteForm.fullName.trim()) ? "#ffffff" : theme.colors.textSecondary }
-            ]} maxFontSizeMultiplier={1.3}>
-              {isLoading ? 'Sending...' : 'Send Invitation'}
-            </Text>
+        <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <ArrowLeft size={22} color={N.iconMuted} strokeWidth={2} />
           </TouchableOpacity>
-        </View>
-
-        {/* Pending Invitations */}
-        <View style={[styles.pendingSection, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Pending Invitations ({pendingInvites.length})
+          <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            Invite members
           </Text>
-          
-          {isLoadingInvites ? (
-            <View style={styles.loadingContainer}>
-              <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Loading invitations...</Text>
-            </View>
-          ) : pendingInvites.length > 0 ? (
-            <View style={styles.invitesList}>
-              {pendingInvites.map((invite) => (
-                <InviteCard key={invite.id} invite={invite} />
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyInvites}>
-              <Mail size={32} color={theme.colors.textSecondary} />
-              <Text style={[styles.emptyInvitesText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                No pending invitations
-              </Text>
-            </View>
-          )}
+          <View style={styles.headerSpacer} />
         </View>
-      </ScrollView>
 
-      {/* Role Selection Modal */}
-      <RoleSelectionModal />
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={[styles.pageInset, { backgroundColor: N.surface, borderColor: N.border }]}>
+            {clubInfo && (
+              <>
+                <View style={styles.clubBlock}>
+                  <View style={styles.clubHeader}>
+                    <View style={[styles.clubIconWrap, { backgroundColor: N.iconTile }]}>
+                      <Building2 size={18} color={N.iconMuted} strokeWidth={1.75} />
+                    </View>
+                    <View style={styles.clubInfo}>
+                      <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                        {clubInfo.name}
+                      </Text>
+                      <View style={styles.clubMeta}>
+                        {clubInfo.club_number && (
+                          <Text style={[styles.clubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                            Club #{clubInfo.club_number}
+                          </Text>
+                        )}
+                        {user?.clubRole && (() => {
+                          const pill = notionRolePill(user.clubRole);
+                          const opt = ROLE_OPTIONS.find(
+                            (r) => r.value === (user.clubRole || '').toLowerCase()
+                          );
+                          const ClubRoleIcon = opt?.Icon ?? User;
+                          return (
+                            <View style={[styles.clubRolePill, { backgroundColor: pill.bg }]}>
+                              <ClubRoleIcon size={11} color={pill.fg} strokeWidth={2} />
+                              <Text style={[styles.clubRolePillText, { color: pill.fg }]} maxFontSizeMultiplier={1.3}>
+                                {formatRole(user.clubRole)}
+                              </Text>
+                            </View>
+                          );
+                        })()}
+                      </View>
+                    </View>
+                  </View>
+                </View>
+                <View style={[styles.insetDivider, { backgroundColor: N.border }]} />
+              </>
+            )}
 
-      {/* Success Modal */}
-      <SuccessModal />
+            <Text style={[styles.sectionLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              Send invitation
+            </Text>
+            <Text style={[styles.sectionHint, { color: N.textTertiary }]} maxFontSizeMultiplier={1.2}>
+              Send invites and grow your club community.
+            </Text>
+
+            <View style={styles.formField}>
+              <Text style={[styles.fieldLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Full name
+              </Text>
+              <View style={[styles.inputContainer, { backgroundColor: N.page, borderColor: N.border }]}>
+                <User size={16} color={N.iconMuted} strokeWidth={1.75} />
+                <TextInput
+                  style={[styles.textInput, { color: N.text }]}
+                  placeholder="Name"
+                  placeholderTextColor={N.textTertiary}
+                  value={inviteForm.fullName}
+                  onChangeText={(text) => updateFormField('fullName', text)}
+                  autoCapitalize="words"
+                />
+              </View>
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={[styles.fieldLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Email
+              </Text>
+              <View style={[styles.inputContainer, { backgroundColor: N.page, borderColor: N.border }]}>
+                <Mail size={16} color={N.iconMuted} strokeWidth={1.75} />
+                <TextInput
+                  style={[styles.textInput, { color: N.text }]}
+                  placeholder="email@example.com"
+                  placeholderTextColor={N.textTertiary}
+                  value={inviteForm.email}
+                  onChangeText={(text) => updateFormField('email', text)}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={[styles.fieldLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                Role
+              </Text>
+              <TouchableOpacity
+                style={[styles.roleSelector, { backgroundColor: N.page, borderColor: N.border }]}
+                onPress={() => setShowRoleModal(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.roleSelectorContent}>
+                  {(() => {
+                    const pill = notionRolePill(inviteForm.role);
+                    const opt = ROLE_OPTIONS.find((r) => r.value === (inviteForm.role || '').toLowerCase());
+                    const SelIcon = opt?.Icon ?? User;
+                    return (
+                      <View style={[styles.selectedRoleIconTile, { backgroundColor: pill.bg }]}>
+                        <SelIcon size={16} color={pill.fg} strokeWidth={2} />
+                      </View>
+                    );
+                  })()}
+                  <Text style={[styles.selectedRoleText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                    {formatRole(inviteForm.role)}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.sendInviteButton,
+                {
+                  backgroundColor: canSend ? N.text : N.surface,
+                  borderColor: canSend ? N.text : N.border,
+                },
+              ]}
+              onPress={handleSendInvite}
+              disabled={!canSend || isLoading}
+              activeOpacity={0.85}
+            >
+              <Send size={16} color={canSend ? N.surface : N.textTertiary} strokeWidth={2} />
+              <Text
+                style={[styles.sendInviteButtonText, { color: canSend ? N.surface : N.textSecondary }]}
+                maxFontSizeMultiplier={1.3}
+              >
+                {isLoading ? 'Sending…' : 'Send invitation'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={[styles.insetDivider, { backgroundColor: N.border, marginTop: 20 }]} />
+
+            <Text style={[styles.sectionLabel, { color: N.textSecondary, marginTop: 4 }]} maxFontSizeMultiplier={1.2}>
+              Pending · {pendingInvites.length}
+            </Text>
+
+            {isLoadingInvites ? (
+              <View style={styles.loadingContainer}>
+                <Text style={[styles.loadingText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Loading…
+                </Text>
+              </View>
+            ) : pendingInvites.length > 0 ? (
+              <View style={[styles.invitesGroup, { borderColor: N.border }]}>
+                {pendingInvites.map((invite, index) => (
+                  <InviteCard
+                    key={invite.id}
+                    invite={invite}
+                    isLast={index === pendingInvites.length - 1}
+                  />
+                ))}
+              </View>
+            ) : (
+              <View style={styles.emptyInvites}>
+                <Mail size={26} color={N.textTertiary} strokeWidth={1.5} />
+                <Text style={[styles.emptyInvitesText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  No pending invitations
+                </Text>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+
+        <RoleSelectionModal />
+        <SuccessModal />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -701,237 +783,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
   backButton: {
     padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: 16,
+    marginHorizontal: 12,
+    letterSpacing: -0.2,
   },
   headerSpacer: {
-    width: 40,
+    width: 38,
   },
   content: {
     flex: 1,
   },
-  inviteFormCard: {
+  scrollContent: {
+    paddingBottom: 32,
+  },
+  pageInset: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  formTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 20,
-  },
-  formField: {
-    marginBottom: 20,
-  },
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  textInput: {
-    flex: 1,
-    fontSize: 14,
-  },
-  roleSelector: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  roleSelectorContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  selectedRoleIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  selectedRoleText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  sendInviteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    paddingVertical: 14,
-    borderWidth: 1,
-    marginTop: 8,
-  },
-  sendInviteButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  pendingSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 32,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 16,
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  loadingText: {
-    fontSize: 14,
-  },
-  invitesList: {
-    gap: 8,
-  },
-  inviteCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 8,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  inviteInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  inviteAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#3b82f6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  inviteDetails: {
-    flex: 1,
-  },
-  inviteName: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  inviteEmail: {
-    fontSize: 12,
-    marginBottom: 6,
-  },
-  inviteMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  roleTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  roleText: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 3,
-  },
-  timeRemaining: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  timeText: {
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  deleteInviteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyInvites: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  emptyInvitesText: {
-    fontSize: 14,
-    marginTop: 8,
-  },
-  clubCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 8,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  clubBlock: {
+    marginBottom: 0,
   },
   clubHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  clubIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  clubIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -940,44 +833,219 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clubName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     marginBottom: 4,
+    letterSpacing: -0.2,
   },
   clubMeta: {
     flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  clubNumber: {
+    fontSize: 13,
+  },
+  clubRolePill: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 4,
+    gap: 4,
+  },
+  clubRolePillText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  insetDivider: {
+    height: 1,
+    marginVertical: 16,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.04,
+    marginBottom: 4,
+  },
+  sectionHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  formField: {
+    marginBottom: 16,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    gap: 10,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  roleSelector: {
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  roleSelectorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  selectedRoleIconTile: {
+    width: 32,
+    height: 32,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedRoleText: {
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: -0.15,
+  },
+  sendInviteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 4,
+    paddingVertical: 12,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  sendInviteButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 8,
+    letterSpacing: -0.2,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  loadingText: {
+    fontSize: 14,
+  },
+  invitesGroup: {
+    borderWidth: 1,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  inviteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  inviteInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+  },
+  inviteAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  inviteDetails: {
+    flex: 1,
+    minWidth: 0,
+  },
+  inviteName: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+    letterSpacing: -0.1,
+  },
+  inviteEmail: {
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  inviteMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  inviteRolePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    gap: 4,
+  },
+  inviteRolePillText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  timeRemaining: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  deleteInviteButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    marginLeft: 8,
+  },
+  emptyInvites: {
+    alignItems: 'center',
+    paddingVertical: 28,
+  },
+  emptyInvitesText: {
+    fontSize: 14,
+    marginTop: 10,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
   },
   roleModal: {
-    borderRadius: 12,
+    borderRadius: 4,
     padding: 16,
-    margin: 20,
-    maxHeight: '70%',
-    minWidth: 300,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
+    maxHeight: '75%',
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 1,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
+    marginBottom: 14,
+    letterSpacing: -0.2,
   },
   rolesList: {
     maxHeight: 400,
@@ -985,26 +1053,28 @@ const styles = StyleSheet.create({
   roleOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 4,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
   },
-  roleOptionIcon: {
+  roleOptionIconTile: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   roleOptionContent: {
     flex: 1,
+    minWidth: 0,
   },
   roleOptionTitle: {
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 2,
+    letterSpacing: -0.1,
   },
   roleOptionDescription: {
     fontSize: 12,
@@ -1012,37 +1082,33 @@ const styles = StyleSheet.create({
   },
   successOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
   },
   successPopup: {
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 4,
+    padding: 22,
     alignItems: 'center',
-    marginHorizontal: 40,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
+    width: '100%',
+    maxWidth: 320,
+    borderWidth: 1,
   },
   successIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 44,
+    height: 44,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   successTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '600',
     marginBottom: 8,
     textAlign: 'center',
+    letterSpacing: -0.2,
   },
   successText: {
     fontSize: 14,

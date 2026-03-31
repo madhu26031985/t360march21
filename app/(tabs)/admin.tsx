@@ -1,95 +1,123 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Settings,
   Vote,
-  Users,
+  UserPlus,
   Building2,
   CalendarPlus,
-  UserPlus,
-  Archive,
-  GraduationCap,
   Crown,
   FileText,
   Share2,
   ChevronRight,
 } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { prefetchClubInfoManagement } from '@/lib/prefetchClubInfoManagement';
 import { prefetchExcommManagement } from '@/lib/prefetchExcommManagement';
+
+/** Notion-like neutrals — flat blocks, hairline borders */
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  border: 'rgba(55, 53, 47, 0.09)',
+  borderStrong: 'rgba(55, 53, 47, 0.16)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  textTertiary: 'rgba(55, 53, 47, 0.45)',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.1)',
+  accentSoftBorder: 'rgba(35, 131, 226, 0.28)',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+  iconTile: 'rgba(55, 53, 47, 0.06)',
+  success: '#0F7B6C',
+  successSoft: 'rgba(15, 123, 108, 0.12)',
+};
 
 const CLUB_OPERATIONS_SUB_PAGES = [
   {
     title: 'Club Info',
     route: '/admin/club-info-management' as const,
     Icon: Settings,
-    accentColor: '#0a66c2',
   },
   {
     title: 'Club ExComm',
     route: '/admin/excomm-management' as const,
     Icon: Crown,
-    accentColor: '#0a66c2',
   },
   {
     title: 'Club Social Media',
     route: '/admin/social-media-management' as const,
     Icon: Share2,
-    accentColor: '#0a66c2',
   },
   {
     title: 'Club Resources',
     route: '/admin/member-resources-management' as const,
     Icon: FileText,
-    accentColor: '#0a66c2',
   },
 ];
 
-interface QuickActionProps {
+function NotionRow({
+  label,
+  icon,
+  onPress,
+  isLast,
+}: {
   label: string;
-  icon: React.ReactNode;
+  icon?: ReactNode | null;
   onPress: () => void;
-  accentColor: string;
-}
-
-function QuickActionTile({ label, icon, onPress, accentColor }: QuickActionProps) {
-  const { theme } = useTheme();
+  isLast?: boolean;
+}) {
   return (
     <TouchableOpacity
-      style={[
-        styles.quickActionCard,
-        {
-          backgroundColor: theme.colors.background,
-          borderColor: theme.colors.border,
-        },
-      ]}
+      style={[styles.notionRow, !isLast && { borderBottomWidth: 1, borderBottomColor: N.border }]}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={0.65}
     >
-      <View style={[styles.quickActionIconCircle, { backgroundColor: accentColor }]}>
-        {icon}
-      </View>
-      <Text style={[styles.quickActionCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25} numberOfLines={3}>
+      {icon ? (
+        <View style={[styles.notionRowIconWrap, { backgroundColor: N.iconTile }]}>{icon}</View>
+      ) : (
+        <View style={styles.notionRowIconSpacer} />
+      )}
+      <Text style={[styles.notionRowLabel, { color: N.text }]} maxFontSizeMultiplier={1.25} numberOfLines={2}>
         {label}
       </Text>
+      <ChevronRight size={16} color={N.textTertiary} strokeWidth={2} />
     </TouchableOpacity>
   );
 }
 
+function NotionActionList({
+  items,
+}: {
+  items: { key: string; label: string; icon?: ReactNode | null; onPress: () => void }[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <View style={[styles.notionGroup, { borderColor: N.border, backgroundColor: N.surface }]}>
+      {items.map((item, i) => (
+        <NotionRow
+          key={item.key}
+          label={item.label}
+          icon={item.icon}
+          onPress={item.onPress}
+          isLast={i === items.length - 1}
+        />
+      ))}
+    </View>
+  );
+}
+
 export default function AdminPanel() {
-  const { theme } = useTheme();
   const { user, isAuthenticated, refreshUserProfile } = useAuth();
   const queryClient = useQueryClient();
 
   const [onboardingLoading, setOnboardingLoading] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [onboardingStep, setOnboardingStep] = useState<0 | 1 | 2 | 3>(0);
   const [shouldShowOnboarding, setShouldShowOnboarding] = useState(false);
   const [openMeetingCount, setOpenMeetingCount] = useState(0);
 
@@ -153,17 +181,11 @@ export default function AdminPanel() {
       }
 
       // Step completion is derived from existing records.
-      const [meetingRow, inviteRow, roleBookedRow, closedMeetingRow] = await Promise.all([
+      const [meetingRow, roleBookedRow, closedMeetingRow] = await Promise.all([
         supabase
           .from('app_club_meeting')
           .select('id')
           .eq('club_id', clubId)
-          .limit(1),
-        supabase
-          .from('app_user_invitation')
-          .select('id')
-          .eq('club_id', clubId)
-          .in('status', ['pending', 'accepted', 'rejected'])
           .limit(1),
         supabase
           .from('app_meeting_roles_management')
@@ -180,14 +202,12 @@ export default function AdminPanel() {
       ]);
 
       const step1Done = Boolean(meetingRow.data?.length);
-      const step2Done = Boolean(inviteRow.data?.length);
-      const step3Done = Boolean(roleBookedRow.data?.length);
-      const step4Done = Boolean(closedMeetingRow.data?.length);
+      const step2Done = Boolean(roleBookedRow.data?.length);
+      const step3Done = Boolean(closedMeetingRow.data?.length);
 
-      // Use the last completed step as the "current" step.
-      const completedStep = step4Done ? 4 : step3Done ? 3 : step2Done ? 2 : step1Done ? 1 : 0;
+      const completedStep = step3Done ? 3 : step2Done ? 2 : step1Done ? 1 : 0;
       setOnboardingStep(completedStep);
-      setShouldShowOnboarding(completedStep < 4);
+      setShouldShowOnboarding(completedStep < 3);
     } catch (e) {
       console.error('Onboarding: unexpected error:', e);
     } finally {
@@ -237,93 +257,147 @@ export default function AdminPanel() {
   // If user doesn't have excomm access, show access denied with create club option
   if (!isAuthenticated || getUserRole() !== 'excomm') {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.accessDeniedContainer}>
-          <Settings size={48} color={theme.colors.textSecondary} />
-          <Text style={[styles.accessDeniedTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Access Restricted</Text>
-          <Text style={[styles.accessDeniedMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            You need Executive Committee (ExComm) privileges to access the Admin Panel.
+          <Settings size={40} color={N.iconMuted} strokeWidth={1.5} />
+          <Text style={[styles.accessDeniedTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Access restricted</Text>
+          <Text style={[styles.accessDeniedMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Executive Committee (ExComm) access is required for the Admin panel.
           </Text>
           <TouchableOpacity
-            style={[styles.createClubButton, { backgroundColor: theme.colors.primary }]}
+            style={[styles.createClubButton, { backgroundColor: N.text, borderColor: N.text }]}
             onPress={() => router.push('/create-club')}
+            activeOpacity={0.85}
           >
-            <Building2 size={20} color="#ffffff" />
-            <Text style={styles.createClubButtonText} maxFontSizeMultiplier={1.3}>Create a Club</Text>
+            <Building2 size={18} color={N.surface} strokeWidth={2} />
+            <Text style={[styles.createClubButtonText, { color: N.surface }]} maxFontSizeMultiplier={1.3}>Create a club</Text>
           </TouchableOpacity>
-          <Text style={[styles.helpText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Or reach out to your ExComm to get invited
+          <Text style={[styles.helpText, { color: N.textTertiary }]} maxFontSizeMultiplier={1.3}>
+            Or ask your ExComm to invite you
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  const startHereItems = [
+    ...(canSeeAdminFeature('user_management')
+      ? [
+          {
+            key: 'users',
+            label: 'Invite club members',
+            icon: <UserPlus size={18} color={N.iconMuted} strokeWidth={1.75} />,
+            onPress: () => router.push('/admin/manage-club-users'),
+          },
+        ]
+      : []),
+    ...(canSeeAdminFeature('meeting_operations')
+      ? [
+          {
+            key: 'meeting',
+            label: openMeetingCount > 0 ? 'Manage meetings' : 'Create meetings',
+            icon: <CalendarPlus size={18} color={N.iconMuted} strokeWidth={1.75} />,
+            onPress: () => router.push('/admin/meeting-management'),
+          },
+        ]
+      : []),
+    ...(canSeeAdminFeature('voting_operations')
+      ? [
+          {
+            key: 'voting',
+            label: 'Voting operations',
+            icon: <Vote size={18} color={N.iconMuted} strokeWidth={1.75} />,
+            onPress: () => router.push('/admin/voting-operations'),
+          },
+        ]
+      : []),
+  ];
+
+  const clubOpsItems = CLUB_OPERATIONS_SUB_PAGES.map(({ title, route, Icon }) => ({
+    key: route,
+    label: title,
+    icon: <Icon size={18} color={N.iconMuted} strokeWidth={1.75} />,
+    onPress: () => {
+      if (route.startsWith('/admin/club-info-management')) {
+        prefetchClubInfoManagement(queryClient, user?.currentClubId);
+      }
+      if (route.startsWith('/admin/excomm-management')) {
+        prefetchExcommManagement(queryClient, user?.currentClubId);
+      }
+      router.push(route);
+    },
+  }));
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
         <View style={styles.headerLeft}>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin Panel</Text>
+          <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            Admin
+          </Text>
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.adminMasterBox, { backgroundColor: theme.colors.surface }]}>
-          {/* Club Switcher - integrated into master box (premium design like Journey) */}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <View style={[styles.adminPageInset, { backgroundColor: N.surface, borderColor: N.border }]}>
           <ClubSwitcher showRole={true} embedded />
-          <View style={[styles.adminMasterDivider, { backgroundColor: theme.colors.border }]} />
+          <View style={[styles.adminMasterDivider, { backgroundColor: N.border }]} />
           {(canSeeAdminFeature('meeting_operations') ||
             canSeeAdminFeature('user_management') ||
-            canSeeAdminFeature('voting_operations') ||
-            canSeeAdminFeature('excomm_corner')) && (
+            canSeeAdminFeature('voting_operations')) && (
             <>
-              {shouldShowOnboarding && onboardingStep < 4 && (
-                <View style={[styles.onboardingCard, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+              {shouldShowOnboarding && onboardingStep < 3 && (
+                <View style={[styles.onboardingCard, { backgroundColor: N.page, borderColor: N.border }]}>
                   <View style={styles.onboardingHeaderRow}>
-                    <View style={[styles.onboardingBadge, { backgroundColor: theme.colors.primary + '1a', borderColor: theme.colors.primary }]}>
-                      <Text style={[styles.onboardingBadgeText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
-                        {Math.min(4, onboardingStep + 1)}
+                    <View style={[styles.onboardingBadge, { backgroundColor: N.accentSoft, borderColor: N.accentSoftBorder }]}>
+                      <Text style={[styles.onboardingBadgeText, { color: N.accent }]} maxFontSizeMultiplier={1.2}>
+                        {Math.min(3, onboardingStep + 1)}
                       </Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.onboardingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>Onboarding Progress</Text>
-                      <Text style={[styles.onboardingSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                        {onboardingLoading ? 'Loading...' : 'Complete each step to unlock the next.'}
+                      <Text style={[styles.onboardingTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>
+                        Getting started
+                      </Text>
+                      <Text style={[styles.onboardingSubtitle, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                        {onboardingLoading ? 'Loading…' : 'Complete each step in order.'}
                       </Text>
                     </View>
                   </View>
 
                   <View style={styles.timeline}>
                     {[
-                      { n: 1 as const, label: 'Create Meeting' },
-                      { n: 2 as const, label: 'Invite User' },
-                      { n: 3 as const, label: 'Book a Role' },
-                      { n: 4 as const, label: 'Close Meeting' },
+                      { n: 1 as const, label: 'Create meeting' },
+                      { n: 2 as const, label: 'Book a role' },
+                      { n: 3 as const, label: 'Close meeting' },
                     ].map((step) => {
                       const done = onboardingStep >= step.n;
-                      const isActive = onboardingStep < 4 && step.n === onboardingStep + 1;
-                      const circleBackground = done
-                        ? '#22c55e'
-                        : isActive
-                          ? theme.colors.primary
-                          : theme.colors.border;
+                      const isActive = onboardingStep < 3 && step.n === onboardingStep + 1;
+                      const circleBackground = done ? N.success : isActive ? N.accent : N.surface;
                       const circleText = done ? '✓' : String(step.n);
-                      const circleTextColor = done ? '#ffffff' : isActive ? '#ffffff' : theme.colors.textSecondary;
+                      const circleTextColor = done || isActive ? N.surface : N.textSecondary;
 
                       return (
                         <View key={step.n} style={styles.timelineRow}>
                           <View style={styles.timelineIconCol}>
-                            <View style={[styles.timelineCircle, { backgroundColor: circleBackground }]}>
+                            <View
+                              style={[
+                                styles.timelineCircle,
+                                { backgroundColor: circleBackground },
+                                !done && !isActive && {
+                                  borderWidth: 1,
+                                  borderColor: N.borderStrong,
+                                },
+                              ]}
+                            >
                               <Text style={[styles.timelineCircleText, { color: circleTextColor }]} maxFontSizeMultiplier={1.3}>
                                 {circleText}
                               </Text>
                             </View>
-                            {step.n !== 4 && (
+                            {step.n !== 3 && (
                               <View
                                 style={[
                                   styles.timelineLine,
-                                  { backgroundColor: onboardingStep >= step.n ? theme.colors.primary : theme.colors.border },
+                                  { backgroundColor: onboardingStep >= step.n ? N.accent : N.border },
                                 ]}
                               />
                             )}
@@ -332,15 +406,18 @@ export default function AdminPanel() {
                             <Text
                               style={[
                                 styles.timelineLabel,
-                                { color: done ? theme.colors.primary : isActive ? theme.colors.text : theme.colors.textSecondary },
+                                {
+                                  color: done ? N.success : isActive ? N.text : N.textSecondary,
+                                  fontWeight: isActive ? '600' : '500',
+                                },
                               ]}
                               maxFontSizeMultiplier={1.2}
                               numberOfLines={2}
                             >
                               {step.label}
                             </Text>
-                            <Text style={[styles.timelineMeta, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                              {done ? 'Completed' : step.n === onboardingStep + 1 ? 'In progress' : 'Not started'}
+                            <Text style={[styles.timelineMeta, { color: N.textTertiary }]} maxFontSizeMultiplier={1.2}>
+                              {done ? 'Done' : step.n === onboardingStep + 1 ? 'In progress' : 'Not started'}
                             </Text>
                           </View>
                         </View>
@@ -350,100 +427,23 @@ export default function AdminPanel() {
                 </View>
               )}
 
-              <Text style={[styles.adminMasterSectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Start Here
+              <Text style={[styles.adminMasterSectionTitle, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Start here
               </Text>
-              <View style={styles.quickActionsGrid}>
-                {canSeeAdminFeature('meeting_operations') && (
-                  <QuickActionTile
-                    label={openMeetingCount > 0 ? 'Manage meeting' : 'Create meetings'}
-                    accentColor="#0a66c2"
-                    icon={<CalendarPlus size={18} color="#ffffff" />}
-                    onPress={() => router.push('/admin/meeting-management')}
-                  />
-                )}
-                {canSeeAdminFeature('user_management') && (
-                  <QuickActionTile
-                    label="Invite users"
-                    accentColor="#7c3aed"
-                    icon={<UserPlus size={18} color="#ffffff" />}
-                    onPress={() => router.push('/admin/invite-new-user')}
-                  />
-                )}
-                {canSeeAdminFeature('voting_operations') && (
-                  <QuickActionTile
-                    label="Voting operations"
-                    accentColor="#059669"
-                    icon={<Vote size={18} color="#ffffff" />}
-                    onPress={() => router.push('/admin/voting-operations')}
-                  />
-                )}
-                {canSeeAdminFeature('meeting_operations') && (
-                  <QuickActionTile
-                    label="Meeting history"
-                    accentColor="#f97316"
-                    icon={<Archive size={18} color="#ffffff" />}
-                    onPress={() => router.push('/meeting-records')}
-                  />
-                )}
-                {canSeeAdminFeature('user_management') && (
-                  <QuickActionTile
-                    label="Manage existing users"
-                    accentColor="#06b6d4"
-                    icon={<Users size={18} color="#ffffff" />}
-                    onPress={() => router.push('/admin/manage-club-users')}
-                  />
-                )}
-                {canSeeAdminFeature('excomm_corner') && (
-                  <QuickActionTile
-                    label="Vpe corner"
-                    accentColor="#db2777"
-                    icon={<GraduationCap size={18} color="#ffffff" />}
-                    onPress={() => router.push('/admin/excomm-corner/vpe')}
-                  />
-                )}
-              </View>
+              <NotionActionList items={startHereItems} />
             </>
           )}
           {canSeeAdminFeature('club_operations') && (
             <>
               {(canSeeAdminFeature('meeting_operations') ||
                 canSeeAdminFeature('user_management') ||
-                canSeeAdminFeature('voting_operations') ||
-                canSeeAdminFeature('excomm_corner')) && (
-                <View style={[styles.adminMasterDivider, { backgroundColor: theme.colors.border }]} />
+                canSeeAdminFeature('voting_operations')) && (
+                <View style={[styles.sectionSpacer, { backgroundColor: 'transparent' }]} />
               )}
-              <Text style={[styles.adminMasterSectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Club Operations
+              <Text style={[styles.adminMasterSectionTitle, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Club operations
               </Text>
-              <View style={styles.clubOpsList}>
-                {CLUB_OPERATIONS_SUB_PAGES.map(({ title, route, Icon, accentColor }, index) => (
-                  <View key={route}>
-                    {index > 0 && <View style={[styles.clubOpsRowDivider, { backgroundColor: theme.colors.border }]} />}
-                    <TouchableOpacity
-                      style={styles.clubOpsRow}
-                      onPress={() => {
-                        if (route.startsWith('/admin/club-info-management')) {
-                          prefetchClubInfoManagement(queryClient, user?.currentClubId);
-                        }
-                        if (route.startsWith('/admin/excomm-management')) {
-                          prefetchExcommManagement(queryClient, user?.currentClubId);
-                        }
-                        router.push(route);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.clubOpsRowIcon, { backgroundColor: accentColor + '20' }]}>
-                        <Icon size={20} color={accentColor} />
-                      </View>
-                      <Text style={[styles.clubOpsRowTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2} numberOfLines={1}>
-                        {title}
-                      </Text>
-                      <ChevronRight size={18} color={theme.colors.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
+              <NotionActionList items={clubOpsItems} />
             </>
           )}
         </View>
@@ -460,97 +460,76 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
   headerLeft: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
   content: {
     flex: 1,
   },
-  adminMasterBox: {
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  adminPageInset: {
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 32,
-    padding: 20,
-    borderRadius: 24,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 4,
+    padding: 16,
+    borderRadius: 4,
+    borderWidth: 1,
   },
   adminMasterSectionTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    letterSpacing: 0.2,
-    textTransform: 'uppercase',
-    marginBottom: 14,
+    letterSpacing: 0.04,
+    marginBottom: 8,
+    marginTop: 4,
   },
   adminMasterDivider: {
     height: 1,
-    marginVertical: 18,
+    marginVertical: 16,
   },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+  sectionSpacer: {
+    height: 8,
+  },
+  notionGroup: {
+    borderWidth: 1,
+    borderRadius: 4,
+    overflow: 'hidden',
     marginBottom: 4,
   },
-  quickActionCard: {
-    width: '31%',
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    minHeight: 102,
-    justifyContent: 'center',
-  },
-  quickActionIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  quickActionCardTitle: {
-    fontSize: 10.5,
-    fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 15,
-  },
-  clubOpsList: {
-    marginTop: 4,
-  },
-  clubOpsRow: {
+  notionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     gap: 12,
   },
-  clubOpsRowIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  notionRowIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  clubOpsRowTitle: {
+  notionRowIconSpacer: {
+    width: 32,
+    height: 32,
+  },
+  notionRowLabel: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
-  },
-  clubOpsRowDivider: {
-    height: 1,
+    fontWeight: '400',
+    letterSpacing: -0.2,
+    lineHeight: 20,
   },
   accessDeniedContainer: {
     flex: 1,
@@ -559,8 +538,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   accessDeniedTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '600',
+    letterSpacing: -0.4,
     marginTop: 16,
     marginBottom: 8,
     textAlign: 'center',
@@ -575,16 +555,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 20,
+    borderRadius: 4,
     marginTop: 16,
     gap: 8,
+    borderWidth: 1,
   },
   createClubButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#ffffff',
+    letterSpacing: -0.15,
   },
   helpText: {
     fontSize: 14,
@@ -593,9 +574,9 @@ const styles = StyleSheet.create({
   },
 
   onboardingCard: {
-    marginBottom: 18,
+    marginBottom: 16,
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 4,
     paddingHorizontal: 14,
     paddingVertical: 14,
   },
@@ -606,26 +587,27 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   onboardingBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 4,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   onboardingBadgeText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   onboardingTitle: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.2,
     marginBottom: 2,
   },
   onboardingSubtitle: {
-    fontSize: 12.5,
+    fontSize: 13,
     lineHeight: 18,
-    fontWeight: '600',
+    fontWeight: '400',
   },
 
   timeline: {
@@ -643,13 +625,13 @@ const styles = StyleSheet.create({
   timelineCircle: {
     width: 26,
     height: 26,
-    borderRadius: 13,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
   timelineCircleText: {
-    fontSize: 12.5,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '700',
   },
   timelineLine: {
     width: 3,
@@ -662,13 +644,12 @@ const styles = StyleSheet.create({
     paddingTop: 1,
   },
   timelineLabel: {
-    fontSize: 13.5,
-    fontWeight: '800',
-    letterSpacing: -0.1,
+    fontSize: 14,
+    letterSpacing: -0.15,
   },
   timelineMeta: {
-    fontSize: 12.5,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '400',
     marginTop: 2,
   },
 });
