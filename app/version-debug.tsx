@@ -4,8 +4,24 @@ import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import Constants from 'expo-constants';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, CheckCircle2, AlertTriangle, Download, ChevronDown, ChevronUp, Info, Smartphone, Package, Code } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, AlertTriangle, Download, Smartphone, Package, Code } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  surfaceSoft: '#F7F6F3',
+  border: 'rgba(55, 53, 47, 0.10)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+  iconTile: 'rgba(55, 53, 47, 0.06)',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.10)',
+  successSoft: '#F3F8F5',
+  warningSoft: '#FBF8F1',
+  dangerSoft: '#FBF3F3',
+};
 
 export default function VersionCheckScreen() {
   const router = useRouter();
@@ -14,9 +30,9 @@ export default function VersionCheckScreen() {
   const [updateStatus, setUpdateStatus] = useState<'up-to-date' | 'optional' | 'required' | 'error'>('up-to-date');
   const [dbConfig, setDbConfig] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [queryLogs, setQueryLogs] = useState<string[]>([]);
   const installedVersion = Constants.expoConfig?.version || '1.0.0';
+  const platformLabel = Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : 'Web';
 
   useEffect(() => {
     checkVersionConfig();
@@ -125,12 +141,12 @@ export default function VersionCheckScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+          <ArrowLeft size={22} color={N.text} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>App Version Check</Text>
+        <Text style={[styles.title, { color: N.text }]} maxFontSizeMultiplier={1.3}>App Version Check</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -145,44 +161,44 @@ export default function VersionCheckScreen() {
         ) : (
           <>
             {updateStatus === 'up-to-date' && (
-              <View style={[styles.statusCard, styles.upToDateCard]}>
-                <CheckCircle2 size={64} color="#10b981" />
-                <Text style={styles.statusTitle} maxFontSizeMultiplier={1.3}>You're up to date!</Text>
-                <Text style={styles.statusDescription} maxFontSizeMultiplier={1.3}>
+              <View style={[styles.statusCard, styles.upToDateCard, { borderColor: N.border }]}>
+                <CheckCircle2 size={52} color={N.textSecondary} />
+                <Text style={[styles.statusTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>You're up to date!</Text>
+                <Text style={[styles.statusDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   You're using the latest version of T360
                 </Text>
-                <View style={styles.versionBadge}>
+                <View style={[styles.versionBadge, { backgroundColor: N.iconMuted }]}>
                   <Text style={styles.versionText} maxFontSizeMultiplier={1.3}>v{installedVersion}</Text>
                 </View>
               </View>
             )}
 
             {updateStatus === 'optional' && (
-              <View style={[styles.statusCard, styles.optionalCard]}>
-                <Download size={64} color="#f59e0b" />
-                <Text style={styles.statusTitle} maxFontSizeMultiplier={1.3}>Update Available</Text>
-                <Text style={styles.statusDescription} maxFontSizeMultiplier={1.3}>
+              <View style={[styles.statusCard, styles.optionalCard, { borderColor: N.border }]}>
+                <Download size={52} color={N.textSecondary} />
+                <Text style={[styles.statusTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Update Available</Text>
+                <Text style={[styles.statusDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {dbConfig?.update_message || 'A new version is available with improvements and bug fixes.'}
                 </Text>
-                <View style={styles.versionInfo}>
+                <View style={[styles.versionInfo, { borderColor: N.border }]}>
                   <View style={styles.versionRow}>
-                    <Text style={[styles.versionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.versionLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Current Version:
                     </Text>
-                    <Text style={[styles.versionValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.versionValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                       v{installedVersion}
                     </Text>
                   </View>
                   <View style={styles.versionRow}>
-                    <Text style={[styles.versionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.versionLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Latest Version:
                     </Text>
-                    <Text style={[styles.versionValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.versionValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                       v{dbConfig?.current_version}
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.updateButton} onPress={handleUpdatePress}>
+                <TouchableOpacity style={[styles.updateButton, { backgroundColor: N.text }]} onPress={handleUpdatePress}>
                   <Download size={20} color="#ffffff" />
                   <Text style={styles.updateButtonText} maxFontSizeMultiplier={1.3}>Update Now</Text>
                 </TouchableOpacity>
@@ -190,31 +206,31 @@ export default function VersionCheckScreen() {
             )}
 
             {updateStatus === 'required' && (
-              <View style={[styles.statusCard, styles.requiredCard]}>
-                <AlertTriangle size={64} color="#ef4444" />
-                <Text style={styles.statusTitle} maxFontSizeMultiplier={1.3}>Update Required</Text>
-                <Text style={styles.statusDescription} maxFontSizeMultiplier={1.3}>
+              <View style={[styles.statusCard, styles.requiredCard, { borderColor: N.border }]}>
+                <AlertTriangle size={52} color={N.textSecondary} />
+                <Text style={[styles.statusTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Update Required</Text>
+                <Text style={[styles.statusDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {dbConfig?.update_message || 'This version is no longer supported. Please update to continue using T360.'}
                 </Text>
-                <View style={styles.versionInfo}>
+                <View style={[styles.versionInfo, { borderColor: N.border }]}>
                   <View style={styles.versionRow}>
-                    <Text style={[styles.versionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.versionLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Current Version:
                     </Text>
-                    <Text style={[styles.versionValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.versionValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                       v{installedVersion}
                     </Text>
                   </View>
                   <View style={styles.versionRow}>
-                    <Text style={[styles.versionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.versionLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Required Version:
                     </Text>
-                    <Text style={[styles.versionValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.versionValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                       v{dbConfig?.minimum_version}
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity style={[styles.updateButton, styles.requiredButton]} onPress={handleUpdatePress}>
+                <TouchableOpacity style={[styles.updateButton, styles.requiredButton, { backgroundColor: N.text }]} onPress={handleUpdatePress}>
                   <Download size={20} color="#ffffff" />
                   <Text style={styles.updateButtonText} maxFontSizeMultiplier={1.3}>Update Required</Text>
                 </TouchableOpacity>
@@ -222,53 +238,53 @@ export default function VersionCheckScreen() {
             )}
 
             {updateStatus === 'error' && (
-              <View style={[styles.statusCard, styles.errorCard]}>
-                <AlertTriangle size={64} color="#ef4444" />
-                <Text style={styles.statusTitle} maxFontSizeMultiplier={1.3}>Unable to Check</Text>
-                <Text style={styles.statusDescription} maxFontSizeMultiplier={1.3}>
+              <View style={[styles.statusCard, styles.errorCard, { borderColor: N.border }]}>
+                <AlertTriangle size={52} color={N.textSecondary} />
+                <Text style={[styles.statusTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Unable to Check</Text>
+                <Text style={[styles.statusDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {error || 'Could not check for updates. Please try again later.'}
                 </Text>
-                <TouchableOpacity style={styles.retryButton} onPress={checkVersionConfig}>
+                <TouchableOpacity style={[styles.retryButton, { backgroundColor: N.text }]} onPress={checkVersionConfig}>
                   <Text style={styles.retryButtonText} maxFontSizeMultiplier={1.3}>Retry</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            <View style={[styles.infoSection, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.infoSection, { backgroundColor: N.surface, borderColor: N.border }]}>
               <View style={styles.infoGrid}>
-                <View style={[styles.infoCard, { backgroundColor: theme.colors.background }]}>
-                  <View style={[styles.iconCircle, { backgroundColor: '#eff6ff' }]}>
-                    <Smartphone size={24} color="#3b82f6" />
+                <View style={[styles.infoCard, { backgroundColor: N.surfaceSoft }]}>
+                  <View style={[styles.iconCircle, { backgroundColor: N.iconTile }]}>
+                    <Smartphone size={22} color={N.iconMuted} />
                   </View>
-                  <Text style={[styles.infoCardLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  <Text style={[styles.infoCardLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     Platform
                   </Text>
-                  <Text style={[styles.infoCardValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : 'Web'}
+                  <Text style={[styles.infoCardValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                    {platformLabel}
                   </Text>
                 </View>
 
-                <View style={[styles.infoCard, { backgroundColor: theme.colors.background }]}>
-                  <View style={[styles.iconCircle, { backgroundColor: '#f0fdf4' }]}>
-                    <Package size={24} color="#10b981" />
+                <View style={[styles.infoCard, { backgroundColor: N.surfaceSoft }]}>
+                  <View style={[styles.iconCircle, { backgroundColor: N.iconTile }]}>
+                    <Package size={22} color={N.iconMuted} />
                   </View>
-                  <Text style={[styles.infoCardLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  <Text style={[styles.infoCardLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     Version
                   </Text>
-                  <Text style={[styles.infoCardValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  <Text style={[styles.infoCardValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                     {installedVersion}
                   </Text>
                 </View>
 
                 {Constants.nativeBuildVersion && (
-                  <View style={[styles.infoCard, { backgroundColor: theme.colors.background }]}>
-                    <View style={[styles.iconCircle, { backgroundColor: '#fef3c7' }]}>
-                      <Code size={24} color="#f59e0b" />
+                  <View style={[styles.infoCard, { backgroundColor: N.surfaceSoft }]}>
+                    <View style={[styles.iconCircle, { backgroundColor: N.iconTile }]}>
+                      <Code size={22} color={N.iconMuted} />
                     </View>
-                    <Text style={[styles.infoCardLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.infoCardLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Build
                     </Text>
-                    <Text style={[styles.infoCardValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.infoCardValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                       {Constants.nativeBuildVersion}
                     </Text>
                   </View>
@@ -276,95 +292,6 @@ export default function VersionCheckScreen() {
               </View>
             </View>
 
-            <TouchableOpacity
-              style={[styles.debugToggle, { backgroundColor: theme.colors.surface }]}
-              onPress={() => setShowDebugInfo(!showDebugInfo)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.debugToggleLeft}>
-                <Info size={20} color={theme.colors.textSecondary} />
-                <Text style={[styles.debugToggleText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Developer Information
-                </Text>
-              </View>
-              {showDebugInfo ? (
-                <ChevronUp size={20} color={theme.colors.textSecondary} />
-              ) : (
-                <ChevronDown size={20} color={theme.colors.textSecondary} />
-              )}
-            </TouchableOpacity>
-
-            {showDebugInfo && (
-              <View style={[styles.debugSection, { backgroundColor: theme.colors.surface }]}>
-                <View style={styles.debugBlock}>
-                  <Text style={[styles.debugTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    App Information
-                  </Text>
-                  <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                    Version: {Constants.expoConfig?.version || 'UNKNOWN'}
-                  </Text>
-                  <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                    Platform: {Platform.OS}
-                  </Text>
-                  <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                    Native Build Version: {Constants.nativeAppVersion || 'N/A'}
-                  </Text>
-                  <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                    Native Build Number: {Constants.nativeBuildVersion || 'N/A'}
-                  </Text>
-                </View>
-
-                {dbConfig && (
-                  <View style={styles.debugBlock}>
-                    <Text style={[styles.debugTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Database Configuration
-                    </Text>
-                    <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      Current Version: {dbConfig.current_version}
-                    </Text>
-                    <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      Minimum Version: {dbConfig.minimum_version}
-                    </Text>
-                    <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      Force Update: {dbConfig.force_update ? 'YES' : 'NO'}
-                    </Text>
-                    <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      Store URL: {dbConfig.store_url || 'N/A'}
-                    </Text>
-                    <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      Message: {dbConfig.update_message || 'N/A'}
-                    </Text>
-                  </View>
-                )}
-
-                <View style={styles.debugBlock}>
-                  <Text style={[styles.debugTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Query Logs
-                  </Text>
-                  {queryLogs.length === 0 ? (
-                    <Text style={[styles.debugText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      No logs available
-                    </Text>
-                  ) : (
-                    queryLogs.map((log, index) => (
-                      <Text key={index} style={[styles.logText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
-                        {log}
-                      </Text>
-                    ))
-                  )}
-                </View>
-
-                <TouchableOpacity
-                  style={styles.refreshButton}
-                  onPress={checkVersionConfig}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.refreshButtonText} maxFontSizeMultiplier={1.3}>
-                    Refresh Check
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
           </>
         )}
       </ScrollView>
@@ -411,30 +338,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   statusCard: {
-    borderRadius: 16,
-    padding: 32,
+    borderRadius: 4,
+    borderWidth: 1,
+    padding: 24,
     alignItems: 'center',
     marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   upToDateCard: {
-    backgroundColor: '#f0fdf4',
+    backgroundColor: N.successSoft,
   },
   optionalCard: {
-    backgroundColor: '#fffbeb',
+    backgroundColor: N.warningSoft,
   },
   requiredCard: {
-    backgroundColor: '#fef2f2',
+    backgroundColor: N.dangerSoft,
   },
   errorCard: {
-    backgroundColor: '#fef2f2',
+    backgroundColor: N.dangerSoft,
   },
   statusTitle: {
     fontSize: 24,
@@ -464,8 +384,9 @@ const styles = StyleSheet.create({
   },
   versionInfo: {
     width: '100%',
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
+    backgroundColor: N.surface,
+    borderRadius: 4,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 20,
   },
@@ -483,21 +404,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   updateButton: {
-    backgroundColor: '#f59e0b',
+    backgroundColor: N.text,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingVertical: 14,
     paddingHorizontal: 32,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 4,
   },
   requiredButton: {
     backgroundColor: '#ef4444',
@@ -508,28 +421,21 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   retryButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: N.text,
     paddingVertical: 12,
     paddingHorizontal: 32,
-    borderRadius: 12,
+    borderRadius: 4,
   },
   retryButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#ffffff',
   },
   infoSection: {
-    borderRadius: 16,
+    borderRadius: 4,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
   },
   infoGrid: {
     flexDirection: 'row',
@@ -540,14 +446,16 @@ const styles = StyleSheet.create({
   infoCard: {
     flex: 1,
     minWidth: 100,
-    borderRadius: 12,
+    borderRadius: 4,
     padding: 16,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: N.border,
   },
   iconCircle: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -567,16 +475,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 4,
+    borderWidth: 1,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
   },
   debugToggleLeft: {
     flexDirection: 'row',
@@ -588,17 +489,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   debugSection: {
-    borderRadius: 12,
+    borderRadius: 4,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
   },
   debugBlock: {
     marginBottom: 20,

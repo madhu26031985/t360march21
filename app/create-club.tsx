@@ -16,6 +16,16 @@ interface ClubForm {
   charter_date: string;
 }
 
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  border: 'rgba(55, 53, 47, 0.10)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.10)',
+};
+
 export default function CreateClub() {
   const { theme } = useTheme();
   const { user, refreshUserProfile } = useAuth();
@@ -282,46 +292,46 @@ export default function CreateClub() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+          <ArrowLeft size={22} color={N.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Create New Club</Text>
+        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Create New Club</Text>
         <View style={styles.helpButton} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Hero Section */}
-        <View style={[styles.heroSection, { backgroundColor: theme.colors.surface }]}>
+        <View style={[styles.heroSection, { backgroundColor: N.surface, borderColor: N.border }]}>
           <Image
             source={require('@/assets/images/yy.png')}
             style={styles.logoImage}
             resizeMode="contain"
           />
-          <Text style={[styles.tagline, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.tagline, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
             Club automation tool
           </Text>
-          <Text style={[styles.heroTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.heroTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
             Start Your Journey
           </Text>
         </View>
 
         {/* Form Section */}
-        <View style={[styles.formSection, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.formTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Information</Text>
+        <View style={[styles.formSection, { backgroundColor: N.surface, borderColor: N.border }]}>
+          <Text style={[styles.formTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Club Information</Text>
           
           {/* Club Name */}
           <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Name *</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-              <Building2 size={16} color={theme.colors.textSecondary} />
+            <Text style={[styles.fieldLabel, { color: N.text }]} maxFontSizeMultiplier={1.3}>Club Name *</Text>
+            <View style={[styles.inputContainer, { backgroundColor: N.surface, borderColor: N.border }]}>
+              <Building2 size={15} color={N.textSecondary} />
               <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
+                style={[styles.textInput, { color: N.text }]}
                 placeholder="Enter club name"
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor={N.textSecondary}
                 value={clubForm.name}
                 onChangeText={(text) => updateFormField('name', text)}
                 autoCapitalize="words"
@@ -331,13 +341,13 @@ export default function CreateClub() {
 
           {/* Club Number */}
           <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Number *</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-              <Hash size={16} color={theme.colors.textSecondary} />
+            <Text style={[styles.fieldLabel, { color: N.text }]} maxFontSizeMultiplier={1.3}>Club Number *</Text>
+            <View style={[styles.inputContainer, { backgroundColor: N.surface, borderColor: N.border }]}>
+              <Hash size={15} color={N.textSecondary} />
               <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
+                style={[styles.textInput, { color: N.text }]}
                 placeholder="Enter club number"
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor={N.textSecondary}
                 value={clubForm.club_number}
                 onChangeText={(text) => updateFormField('club_number', text)}
                 keyboardType="numeric"
@@ -347,10 +357,10 @@ export default function CreateClub() {
 
           {/* Charter Date */}
           <View style={styles.formField}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Charter Date *</Text>
+            <Text style={[styles.fieldLabel, { color: N.text }]} maxFontSizeMultiplier={1.3}>Charter Date *</Text>
             {Platform.OS === 'web' ? (
-              <View style={[styles.inputContainer, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                <Calendar size={16} color={theme.colors.textSecondary} />
+              <View style={[styles.inputContainer, { backgroundColor: N.surface, borderColor: N.border }]}>
+                <Calendar size={15} color={N.textSecondary} />
                 <input
                   type="date"
                   style={{
@@ -358,8 +368,8 @@ export default function CreateClub() {
                     border: 'none',
                     outline: 'none',
                     backgroundColor: 'transparent',
-                    color: theme.colors.text,
-                    fontSize: 16,
+                    color: N.text,
+                    fontSize: 14,
                     fontWeight: '500',
                     padding: 0,
                     margin: 0,
@@ -371,13 +381,13 @@ export default function CreateClub() {
               </View>
             ) : (
               <TouchableOpacity
-                style={[styles.inputContainer, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                style={[styles.inputContainer, { backgroundColor: N.surface, borderColor: N.border }]}
                 onPress={() => setShowDatePicker(true)}
               >
-                <Calendar size={16} color={theme.colors.textSecondary} />
+                <Calendar size={15} color={N.textSecondary} />
                 <Text style={[
                   styles.datePickerText,
-                  { color: clubForm.charter_date ? theme.colors.text : theme.colors.textSecondary }
+                  { color: clubForm.charter_date ? N.text : N.textSecondary }
                 ]} maxFontSizeMultiplier={1.3}>
                   {formatDisplayDate(clubForm.charter_date)}
                 </Text>
@@ -390,15 +400,15 @@ export default function CreateClub() {
             style={[
               styles.submitButton,
               {
-                backgroundColor: '#3b82f6',
-                borderColor: '#3b82f6',
+                backgroundColor: N.text,
+                borderColor: N.text,
                 opacity: (clubForm.name.trim() && clubForm.club_number.trim() && clubForm.charter_date) ? 1 : 0.5,
               }
             ]}
             onPress={handleSubmit}
             disabled={!clubForm.name.trim() || !clubForm.club_number.trim() || !clubForm.charter_date}
           >
-            <Save size={16} color="#ffffff" />
+            <Save size={15} color="#ffffff" />
             <Text style={[
               styles.submitButtonText,
               { color: "#ffffff" }
@@ -408,138 +418,6 @@ export default function CreateClub() {
           </TouchableOpacity>
         </View>
 
-        {/* Info Section */}
-        <View style={[styles.infoSection, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.congratsText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            🚀 Congratulations on taking your first step towards a smarter, fully digital club experience! 🌟🤝📱
-          </Text>
-
-          <View style={styles.infoHeader}>
-            <View style={[styles.infoIcon, { backgroundColor: '#8b5cf6' + '20' }]}>
-              <Crown size={20} color="#8b5cf6" />
-            </View>
-            <Text style={[styles.infoTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>What happens next?</Text>
-          </View>
-
-          <View style={styles.infoList}>
-            <View style={styles.infoItem}>
-              <View style={[styles.stepNumber, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.stepNumberText} maxFontSizeMultiplier={1.3}>1</Text>
-              </View>
-              <Text style={[styles.infoItemText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Your club will be created in the system
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <View style={[styles.stepNumber, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.stepNumberText} maxFontSizeMultiplier={1.3}>2</Text>
-              </View>
-              <Text style={[styles.infoItemText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                You'll become the ExCom of this club
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <View style={[styles.stepNumber, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.stepNumberText} maxFontSizeMultiplier={1.3}>3</Text>
-              </View>
-              <Text style={[styles.infoItemText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Explore the Admin Panel to get started
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <View style={[styles.stepNumber, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.stepNumberText} maxFontSizeMultiplier={1.3}>4</Text>
-              </View>
-              <Text style={[styles.infoItemText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Update your club details in Club Operations. These details will be visible to members in the Club tab
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <View style={[styles.stepNumber, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.stepNumberText} maxFontSizeMultiplier={1.3}>5</Text>
-              </View>
-              <Text style={[styles.infoItemText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Add users using Manage Club Members
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <View style={[styles.stepNumber, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.stepNumberText} maxFontSizeMultiplier={1.3}>6</Text>
-              </View>
-              <Text style={[styles.infoItemText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Create meetings using Meeting Operations. Meetings will appear under the Meetings tab for members
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <View style={[styles.stepNumber, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.stepNumberText} maxFontSizeMultiplier={1.3}>7</Text>
-              </View>
-              <Text style={[styles.infoItemText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Seamlessly manage meetings from the Meeting tab
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <View style={[styles.stepNumber, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.stepNumberText} maxFontSizeMultiplier={1.3}>8</Text>
-              </View>
-              <Text style={[styles.infoItemText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Create polls using Voting Operations. Members can participate through Live Voting during the meeting
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <View style={[styles.stepNumber, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.stepNumberText} maxFontSizeMultiplier={1.3}>9</Text>
-              </View>
-              <Text style={[styles.infoItemText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Close the voting and publish results instantly
-              </Text>
-            </View>
-          </View>
-
-          <Text style={[styles.helpTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Need help getting started?
-          </Text>
-
-          <View style={styles.supportLinks}>
-            <TouchableOpacity
-              style={[styles.supportLink, { backgroundColor: theme.colors.background }]}
-              onPress={() => Linking.openURL('https://calendly.com/t360-support/demo')}
-            >
-              <Calendar size={20} color={theme.colors.primary} />
-              <Text style={[styles.supportLinkText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                Book an onboarding call
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.supportLink, { backgroundColor: theme.colors.background }]}
-              onPress={() => Linking.openURL('https://t360.in/demo')}
-            >
-              <Video size={20} color={theme.colors.primary} />
-              <Text style={[styles.supportLinkText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                Watch product demo
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.supportLink, { backgroundColor: theme.colors.background }]}
-              onPress={() => Linking.openURL('https://api.whatsapp.com/send/?phone=9597491113&text&type=phone_number&app_absent=0')}
-            >
-              <MessageCircle size={20} color={theme.colors.primary} />
-              <Text style={[styles.supportLinkText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                WhatsApp support
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
       </ScrollView>
 
       {/* Confirmation Modal */}
@@ -550,7 +428,7 @@ export default function CreateClub() {
         onRequestClose={() => setShowConfirmModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.confirmModal, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.confirmModal, { backgroundColor: N.surface, borderColor: N.border }]}>
             <View style={styles.confirmIconWrapper}>
               <Image
                 source={require('@/assets/images/icon.png')}
@@ -559,48 +437,48 @@ export default function CreateClub() {
               />
             </View>
 
-            <Text style={[styles.confirmTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text style={[styles.confirmTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
               Confirm Club Creation
             </Text>
 
-            <Text style={[styles.confirmMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            <Text style={[styles.confirmMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Please verify all information is correct:
             </Text>
 
-            <View style={[styles.confirmDetails, { backgroundColor: theme.colors.background }]}>
+            <View style={[styles.confirmDetails, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
               <View style={styles.confirmRow}>
-                <Text style={[styles.confirmLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Club Name:</Text>
-                <Text style={[styles.confirmValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{clubForm.name}</Text>
+                <Text style={[styles.confirmLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>Club Name:</Text>
+                <Text style={[styles.confirmValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>{clubForm.name}</Text>
               </View>
 
               <View style={styles.confirmRow}>
-                <Text style={[styles.confirmLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Club Number:</Text>
-                <Text style={[styles.confirmValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>#{clubForm.club_number}</Text>
+                <Text style={[styles.confirmLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>Club Number:</Text>
+                <Text style={[styles.confirmValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>#{clubForm.club_number}</Text>
               </View>
 
               <View style={styles.confirmRow}>
-                <Text style={[styles.confirmLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Charter Date:</Text>
-                <Text style={[styles.confirmValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{clubForm.charter_date}</Text>
+                <Text style={[styles.confirmLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>Charter Date:</Text>
+                <Text style={[styles.confirmValue, { color: N.text }]} maxFontSizeMultiplier={1.3}>{clubForm.charter_date}</Text>
               </View>
             </View>
 
-            <View style={[styles.roleNotice, { backgroundColor: '#8b5cf6' + '10' }]}>
-              <Crown size={16} color="#8b5cf6" />
-              <Text style={[styles.roleNoticeText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <View style={[styles.roleNotice, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
+              <Crown size={13} color={N.textSecondary} />
+              <Text style={[styles.roleNoticeText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                 You will become the Executive Committee member of this club
               </Text>
             </View>
 
             <View style={styles.confirmButtons}>
               <TouchableOpacity
-                style={[styles.confirmButton, styles.cancelButton]}
+                style={[styles.confirmButton, styles.cancelButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
                 onPress={() => setShowConfirmModal(false)}
               >
-                <Text style={styles.cancelButtonText} maxFontSizeMultiplier={1.3}>Cancel</Text>
+                <Text style={[styles.cancelButtonText, { color: N.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.confirmButton, styles.createButton, { backgroundColor: theme.colors.primary }]}
+                style={[styles.confirmButton, styles.createButton, { backgroundColor: N.text, borderColor: N.text }]}
                 onPress={handleConfirmCreation}
                 disabled={isLoading}
               >
@@ -725,8 +603,8 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 16,
@@ -740,33 +618,26 @@ const styles = StyleSheet.create({
   heroSection: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 4,
+    borderWidth: 1,
+    padding: 20,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   logoImage: {
-    width: 90,
-    height: 90,
+    width: 82,
+    height: 82,
     marginBottom: 8,
   },
   tagline: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
     textAlign: 'center',
     marginBottom: 16,
     letterSpacing: 0.3,
   },
   heroTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
     marginBottom: 6,
     letterSpacing: -0.5,
@@ -774,27 +645,20 @@ const styles = StyleSheet.create({
   formSection: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    padding: 20,
   },
   formTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 24,
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 20,
   },
   formField: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   fieldLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
     letterSpacing: -0.2,
@@ -802,42 +666,34 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     gap: 12,
   },
   textInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
   },
   datePickerText: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
   },
   submitButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
-    paddingVertical: 18,
+    borderRadius: 4,
+    paddingVertical: 14,
     borderWidth: 1,
     marginTop: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   submitButtonText: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     marginLeft: 8,
     letterSpacing: 0.3,
   },
@@ -935,7 +791,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   confirmModal: {
-    borderRadius: 20,
+    borderRadius: 6,
+    borderWidth: 1,
     padding: 32,
     width: '100%',
     maxWidth: 400,
@@ -952,6 +809,8 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
+    borderWidth: 1,
+    borderColor: N.border,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -971,20 +830,21 @@ const styles = StyleSheet.create({
     height: 70,
   },
   confirmTitle: {
-    fontSize: 22,
+    fontSize: 17.6,
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 12,
     letterSpacing: -0.3,
   },
   confirmMessage: {
-    fontSize: 16,
+    fontSize: 12.8,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 19.2,
     marginBottom: 24,
   },
   confirmDetails: {
-    borderRadius: 12,
+    borderRadius: 4,
+    borderWidth: 1,
     padding: 20,
     marginBottom: 20,
   },
@@ -995,22 +855,23 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   confirmLabel: {
-    fontSize: 14,
+    fontSize: 11.2,
     fontWeight: '500',
   },
   confirmValue: {
-    fontSize: 16,
+    fontSize: 12.8,
     fontWeight: '600',
   },
   roleNotice: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 4,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 24,
   },
   roleNoticeText: {
-    fontSize: 14,
+    fontSize: 11.2,
     fontWeight: '600',
     marginLeft: 8,
     flex: 1,
@@ -1024,7 +885,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 18,
     paddingHorizontal: 24,
-    borderRadius: 12,
+    borderRadius: 4,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 56,
@@ -1033,22 +895,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
   },
   createButton: {
-    shadowColor: '#3b82f6',
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
   },
   cancelButtonText: {
-    fontSize: 16,
+    fontSize: 12.8,
     fontWeight: '700',
     color: '#1E293B',
   },
   createButtonText: {
-    fontSize: 16,
+    fontSize: 12.8,
     fontWeight: '700',
     color: '#FFFFFF',
   },
@@ -1076,16 +938,16 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   successTitle: {
-    fontSize: 24,
+    fontSize: 19.2,
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 12,
     letterSpacing: -0.5,
   },
   successMessage: {
-    fontSize: 16,
+    fontSize: 12.8,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 19.2,
     marginBottom: 24,
   },
   successDetails: {
@@ -1099,7 +961,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   successDetailText: {
-    fontSize: 16,
+    fontSize: 12.8,
     fontWeight: '600',
     marginLeft: 12,
   },
@@ -1117,7 +979,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   continueButtonText: {
-    fontSize: 18,
+    fontSize: 14.4,
     fontWeight: '700',
     color: '#ffffff',
     letterSpacing: 0.5,
