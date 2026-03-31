@@ -41,6 +41,7 @@ export default function CreateClub() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isWebDateFocused, setIsWebDateFocused] = useState(false);
 
   const updateFormField = (field: keyof ClubForm, value: string) => {
     setClubForm(prev => ({ ...prev, [field]: value }));
@@ -312,7 +313,7 @@ export default function CreateClub() {
             resizeMode="contain"
           />
           <Text style={[styles.tagline, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Club automation tool
+            We Salute Toastmasters.
           </Text>
           <Text style={[styles.heroTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
             Start Your Journey
@@ -359,23 +360,32 @@ export default function CreateClub() {
           <View style={styles.formField}>
             <Text style={[styles.fieldLabel, { color: N.text }]} maxFontSizeMultiplier={1.3}>Charter Date *</Text>
             {Platform.OS === 'web' ? (
-              <View style={[styles.inputContainer, { backgroundColor: N.surface, borderColor: N.border }]}>
+              <View style={[styles.inputContainer, { backgroundColor: N.surface, borderColor: isWebDateFocused ? '#D7CEC0' : N.border }]}>
                 <Calendar size={15} color={N.textSecondary} />
                 <input
                   type="date"
                   style={{
                     flex: 1,
                     border: 'none',
+                    borderRadius: 0,
                     outline: 'none',
+                    boxShadow: 'none',
+                    appearance: 'none',
+                    WebkitAppearance: 'none',
                     backgroundColor: 'transparent',
                     color: N.text,
                     fontSize: 14,
                     fontWeight: '500',
                     padding: 0,
                     margin: 0,
+                    accentColor: '#8B6F4E',
+                    colorScheme: 'light',
+                    caretColor: '#8B6F4E',
                   }}
                   value={clubForm.charter_date.match(/^\d{4}-\d{2}-\d{2}$/) ? clubForm.charter_date : ''}
                   onChange={(e) => updateFormField('charter_date', e.target.value)}
+                  onFocus={() => setIsWebDateFocused(true)}
+                  onBlur={() => setIsWebDateFocused(false)}
                   max={new Date().toISOString().split('T')[0]}
                 />
               </View>
@@ -499,44 +509,53 @@ export default function CreateClub() {
         onRequestClose={handleSuccessClose}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.successModal, { backgroundColor: theme.colors.surface }]}>
-            <View style={[styles.successIcon, { backgroundColor: theme.colors.success + '20' }]}>
-              <CheckCircle size={32} color={theme.colors.success} />
+          <View style={[styles.successModal, { backgroundColor: N.surface, borderColor: N.border }]}>
+            <Image
+              source={require('@/assets/images/yy.png')}
+              style={styles.successLogo}
+              resizeMode="contain"
+            />
+            <Text style={[styles.successTagline, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              We Salute Toastmasters.
+            </Text>
+
+            <View style={[styles.successIcon, { backgroundColor: N.accentSoft, borderColor: N.border }]}>
+              <CheckCircle size={30} color={N.textSecondary} />
             </View>
             
-            <Text style={[styles.successTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text style={[styles.successTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
               Club Created Successfully!
             </Text>
             
-            <Text style={[styles.successMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            <Text style={[styles.successMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Congratulations! {clubForm.name} has been created and you are now the Executive Committee member.
             </Text>
 
-            <View style={[styles.successDetails, { backgroundColor: theme.colors.background }]}>
+            <View style={[styles.successDetails, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
               <View style={styles.successRow}>
-                <Building2 size={16} color={theme.colors.primary} />
-                <Text style={[styles.successDetailText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                <Building2 size={16} color={N.textSecondary} />
+                <Text style={[styles.successDetailText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                   {clubForm.name}
                 </Text>
               </View>
               
               <View style={styles.successRow}>
-                <Hash size={16} color={theme.colors.primary} />
-                <Text style={[styles.successDetailText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                <Hash size={16} color={N.textSecondary} />
+                <Text style={[styles.successDetailText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                   Club #{clubForm.club_number}
                 </Text>
               </View>
               
               <View style={styles.successRow}>
-                <Crown size={16} color="#8b5cf6" />
-                <Text style={[styles.successDetailText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                <Crown size={16} color={N.textSecondary} />
+                <Text style={[styles.successDetailText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                   Executive Committee Member
                 </Text>
               </View>
             </View>
 
             <TouchableOpacity
-              style={[styles.continueButton, { backgroundColor: theme.colors.primary }]}
+              style={[styles.continueButton, { backgroundColor: N.text, borderColor: N.text }]}
               onPress={handleSuccessClose}
             >
               <Text style={styles.continueButtonText} maxFontSizeMultiplier={1.3}>Continue to Admin panel</Text>
@@ -915,23 +934,30 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   successModal: {
-    borderRadius: 20,
+    borderRadius: 6,
+    borderWidth: 1,
     padding: 32,
     width: '100%',
     maxWidth: 400,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 12,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    elevation: 24,
+  },
+  successLogo: {
+    width: 72,
+    height: 72,
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+  successTagline: {
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 16,
+    letterSpacing: 0.3,
   },
   successIcon: {
     width: 80,
     height: 80,
-    borderRadius: 40,
+    borderRadius: 6,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -951,7 +977,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   successDetails: {
-    borderRadius: 12,
+    borderRadius: 4,
+    borderWidth: 1,
     padding: 20,
     marginBottom: 24,
   },
@@ -966,17 +993,10 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   continueButton: {
-    borderRadius: 12,
+    borderRadius: 4,
+    borderWidth: 1,
     paddingVertical: 18,
     alignItems: 'center',
-    shadowColor: '#3b82f6',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
   },
   continueButtonText: {
     fontSize: 14.4,

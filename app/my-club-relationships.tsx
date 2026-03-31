@@ -2,10 +2,9 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState } from 'react';
 import { router } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Building2, Crown, Shield, Eye, UserCheck, User, X, Mail, Check, Clock, Info, Home, Calendar, Users, Settings } from 'lucide-react-native';
+import { ArrowLeft, Building2, Crown, Shield, Eye, UserCheck, User, X, Mail, Check, Clock, Info } from 'lucide-react-native';
 
 interface PendingInvite {
   id: string;
@@ -25,8 +24,17 @@ interface PendingInvite {
 }
 
 export default function MyClubRelationships() {
-  const { theme } = useTheme();
   const { user, refreshUserProfile } = useAuth();
+  const N = {
+    bg: '#F7F6F3',
+    surface: '#FFFFFF',
+    surfaceSoft: '#F1EFEB',
+    border: '#E6E1D8',
+    text: '#2F2A25',
+    textSecondary: '#6B635C',
+    accent: '#8B6F4E',
+  };
+
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
   const [clubToDisconnect, setClubToDisconnect] = useState<any>(null);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
@@ -229,23 +237,12 @@ export default function MyClubRelationships() {
 
   const getRoleIcon = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return <Crown size={16} color="#ffffff" />;
-      case 'visiting_tm': return <UserCheck size={16} color="#ffffff" />;
-      case 'club_leader': return <Shield size={16} color="#ffffff" />;
-      case 'guest': return <Eye size={16} color="#ffffff" />;
-      case 'member': return <User size={16} color="#ffffff" />;
-      default: return <User size={16} color="#ffffff" />;
-    }
-  };
-
-  const getRoleColor = (role: string) => {
-    switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
-      case 'visiting_tm': return '#10b981';
-      case 'club_leader': return '#f59e0b';
-      case 'guest': return '#6b7280';
-      case 'member': return '#3b82f6';
-      default: return '#6b7280';
+      case 'excomm': return <Crown size={14} color="#6B635C" />;
+      case 'visiting_tm': return <UserCheck size={14} color="#6B635C" />;
+      case 'club_leader': return <Shield size={14} color="#6B635C" />;
+      case 'guest': return <Eye size={14} color="#6B635C" />;
+      case 'member': return <User size={14} color="#6B635C" />;
+      default: return <User size={14} color="#6B635C" />;
     }
   };
 
@@ -275,11 +272,11 @@ export default function MyClubRelationships() {
   const renderJoinedTab = () => (
     <>
       {/* Summary Card */}
-      <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface }]}>
-        <Text style={[styles.summaryCount, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+      <View style={[styles.summaryCard, { backgroundColor: N.surface, borderColor: N.border }]}>
+        <Text style={[styles.summaryCount, { color: N.text }]} maxFontSizeMultiplier={1.3}>
           {user?.clubs?.length || 0}
         </Text>
-        <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.summaryLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
           {user?.clubs?.length === 1 ? 'Active Club' : 'Active Clubs'}
         </Text>
       </View>
@@ -288,27 +285,27 @@ export default function MyClubRelationships() {
       <View style={styles.clubsSection}>
         {user?.clubs && user.clubs.length > 0 ? (
           user.clubs.map((club) => (
-            <View key={club.id} style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
+            <View key={club.id} style={[styles.clubCard, { backgroundColor: N.surface, borderColor: N.border }]}>
               {/* Club Header */}
               <View style={styles.clubHeader}>
-                <View style={[styles.clubIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-                  <Building2 size={24} color={theme.colors.primary} />
+                <View style={[styles.clubIconContainer, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
+                  <Building2 size={20} color={N.textSecondary} />
                 </View>
                 <View style={styles.clubInfo}>
-                  <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                     {club.name}
                   </Text>
                   {club.club_number && (
-                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.clubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Club #{club.club_number}
                     </Text>
                   )}
                 </View>
                 <TouchableOpacity
-                  style={[styles.disconnectButton, { backgroundColor: '#fef2f2' }]}
+                  style={[styles.disconnectButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
                   onPress={() => handleDisconnectClub(club)}
                 >
-                  <X size={16} color="#ef4444" />
+                  <X size={16} color={N.textSecondary} />
                 </TouchableOpacity>
               </View>
 
@@ -316,24 +313,24 @@ export default function MyClubRelationships() {
               <View style={styles.clubDetails}>
                 {/* Role Badge */}
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  <Text style={[styles.detailLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     Role
                   </Text>
-                  <View style={[styles.roleBadge, { backgroundColor: getRoleColor(club.role) }]}>
+                  <View style={[styles.roleBadge, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
                     {getRoleIcon(club.role)}
-                    <Text style={styles.roleBadgeText} maxFontSizeMultiplier={1.3}>{formatRole(club.role)}</Text>
+                    <Text style={[styles.roleBadgeText, { color: N.text }]} maxFontSizeMultiplier={1.3}>{formatRole(club.role)}</Text>
                   </View>
                 </View>
               </View>
             </View>
           ))
         ) : (
-          <View style={[styles.emptyState, { backgroundColor: theme.colors.surface }]}>
-            <Building2 size={48} color={theme.colors.textSecondary} />
-            <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          <View style={[styles.emptyState, { backgroundColor: N.surface, borderColor: N.border }]}>
+            <Building2 size={48} color={N.textSecondary} />
+            <Text style={[styles.emptyStateTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
               No Joined Clubs
             </Text>
-            <Text style={[styles.emptyStateDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            <Text style={[styles.emptyStateDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
               You haven't joined any clubs yet. Contact your club administrator for an invitation.
             </Text>
           </View>
@@ -345,24 +342,24 @@ export default function MyClubRelationships() {
   const renderInvitesTab = () => (
     <View style={styles.invitesSection}>
       {isLoadingInvites ? (
-        <View style={[styles.emptyState, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.emptyStateDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+        <View style={[styles.emptyState, { backgroundColor: N.surface, borderColor: N.border }]}>
+          <Text style={[styles.emptyStateDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
             Loading invitations...
           </Text>
         </View>
       ) : pendingInvites.length > 0 ? (
         pendingInvites.map((invite) => (
-          <View key={invite.id} style={[styles.inviteCard, { backgroundColor: theme.colors.surface }]}>
+          <View key={invite.id} style={[styles.inviteCard, { backgroundColor: N.surface, borderColor: N.border }]}>
             <View style={styles.inviteHeader}>
-              <View style={[styles.inviteIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-                <Mail size={24} color={theme.colors.primary} />
+              <View style={[styles.inviteIconContainer, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
+                <Mail size={20} color={N.textSecondary} />
               </View>
               <View style={styles.inviteInfo}>
-                <Text style={[styles.inviteClubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.inviteClubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                   {invite.club?.name || 'Unknown Club'}
                 </Text>
                 {invite.club?.club_number && (
-                  <Text style={[styles.inviteClubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  <Text style={[styles.inviteClubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     Club #{invite.club.club_number}
                   </Text>
                 )}
@@ -371,22 +368,22 @@ export default function MyClubRelationships() {
 
             <View style={styles.inviteDetails}>
               <View style={styles.inviteDetailRow}>
-                <Text style={[styles.inviteDetailLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.inviteDetailLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   Role Offered
                 </Text>
-                <View style={[styles.roleBadge, { backgroundColor: getRoleColor(invite.invitee_role) }]}>
+                <View style={[styles.roleBadge, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
                   {getRoleIcon(invite.invitee_role)}
-                  <Text style={styles.roleBadgeText} maxFontSizeMultiplier={1.3}>{formatRole(invite.invitee_role)}</Text>
+                  <Text style={[styles.roleBadgeText, { color: N.text }]} maxFontSizeMultiplier={1.3}>{formatRole(invite.invitee_role)}</Text>
                 </View>
               </View>
 
               <View style={styles.inviteDetailRow}>
-                <Text style={[styles.inviteDetailLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.inviteDetailLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   Expires
                 </Text>
                 <View style={styles.detailValue}>
-                  <Clock size={14} color={theme.colors.textSecondary} />
-                  <Text style={[styles.detailText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  <Clock size={14} color={N.textSecondary} />
+                  <Text style={[styles.detailText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                     {getTimeRemaining(invite.expires_at)}
                   </Text>
                 </View>
@@ -395,15 +392,15 @@ export default function MyClubRelationships() {
 
             <View style={styles.inviteActions}>
               <TouchableOpacity
-                style={[styles.inviteActionButton, styles.rejectButton, { borderColor: theme.colors.border }]}
+                style={[styles.inviteActionButton, styles.rejectButton, { borderColor: N.border, backgroundColor: N.surfaceSoft }]}
                 onPress={() => handleRejectInvite(invite)}
               >
-                <X size={16} color="#ef4444" />
-                <Text style={[styles.inviteActionText, { color: '#ef4444' }]} maxFontSizeMultiplier={1.3}>Reject</Text>
+                <X size={16} color={N.textSecondary} />
+                <Text style={[styles.inviteActionText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>Reject</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.inviteActionButton, styles.acceptButton, { backgroundColor: theme.colors.primary }]}
+                style={[styles.inviteActionButton, styles.acceptButton, { backgroundColor: N.text, borderColor: N.text }]}
                 onPress={() => handleAcceptInvite(invite)}
               >
                 <Check size={16} color="#ffffff" />
@@ -413,12 +410,12 @@ export default function MyClubRelationships() {
           </View>
         ))
       ) : (
-        <View style={[styles.emptyState, { backgroundColor: theme.colors.surface }]}>
-          <Mail size={48} color={theme.colors.textSecondary} />
-          <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+        <View style={[styles.emptyState, { backgroundColor: N.surface, borderColor: N.border }]}>
+          <Mail size={48} color={N.textSecondary} />
+          <Text style={[styles.emptyStateTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
             No Pending Invites
           </Text>
-          <Text style={[styles.emptyStateDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.emptyStateDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
             You don't have any pending club invitations at the moment.
           </Text>
         </View>
@@ -428,15 +425,15 @@ export default function MyClubRelationships() {
 
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: N.bg }]}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+      <View style={[styles.header, { backgroundColor: N.bg, borderBottomColor: N.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+          <ArrowLeft size={24} color={N.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>My Club Relationships</Text>
+        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>My Club Relationships</Text>
         <TouchableOpacity style={styles.backButton} onPress={() => setShowInfoModal(true)}>
-          <Info size={24} color={theme.colors.primary} />
+          <Info size={22} color={N.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -444,63 +441,6 @@ export default function MyClubRelationships() {
         {renderJoinedTab()}
 
         <View style={styles.navSpacer} />
-
-        {/* Navigation Icons */}
-        <View style={[styles.navigationSection, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.navigationBar}>
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Home size={16} color="#3b82f6" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/club')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#FEF3E7' }]}>
-                <Users size={16} color="#f59e0b" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/meetings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#E0F2FE' }]}>
-                <Calendar size={16} color="#0ea5e9" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/settings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#F3E8FF' }]}>
-                <Settings size={16} color="#8b5cf6" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
-            </TouchableOpacity>
-
-            {user?.clubRole === 'excomm' && (
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/admin')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: '#FFE5E5' }]}>
-                  <Settings size={16} color="#dc2626" />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
       </ScrollView>
 
       {/* Info Modal */}
@@ -511,16 +451,16 @@ export default function MyClubRelationships() {
         onRequestClose={() => setShowInfoModal(false)}
       >
         <View style={styles.infoModalOverlay}>
-          <View style={[styles.infoModalContainer, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.infoModalContainer, { backgroundColor: N.surface, borderColor: N.border }]}>
             <View style={styles.infoModalHeader}>
-              <Text style={[styles.infoModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.infoModalTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                 My Club Relationships
               </Text>
               <TouchableOpacity
                 style={styles.infoModalCloseButton}
                 onPress={() => setShowInfoModal(false)}
               >
-                <X size={24} color={theme.colors.textSecondary} />
+                <X size={24} color={N.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -528,29 +468,29 @@ export default function MyClubRelationships() {
               style={styles.infoModalContent}
               showsVerticalScrollIndicator={false}
             >
-              <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.infoModalText, { color: N.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
                 🤝 My Club Relationships
               </Text>
 
-              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.infoModalText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                 Your choice, your community 🌍 View the clubs you're part of and the role you hold in each one 🎯
               </Text>
 
-              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.infoModalText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                 Each card shows a club you selected. You can disconnect anytime 🔄 and remain in full control of your memberships.
               </Text>
 
-              <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.infoModalText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                 Want to rejoin a club later? 📩 Reach out to that club's ExCom team.
               </Text>
 
-              <Text style={[styles.infoModalText, { color: theme.colors.text, marginBottom: 0 }]} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.infoModalText, { color: N.text, marginBottom: 0 }]} maxFontSizeMultiplier={1.3}>
                 Your network. Your growth. 🌱
               </Text>
             </ScrollView>
 
             <TouchableOpacity
-              style={[styles.infoModalButton, { backgroundColor: theme.colors.primary }]}
+              style={[styles.infoModalButton, { backgroundColor: N.text }]}
               onPress={() => setShowInfoModal(false)}
             >
               <Text style={styles.infoModalButtonText} maxFontSizeMultiplier={1.3}>Got it</Text>
@@ -567,20 +507,20 @@ export default function MyClubRelationships() {
         onRequestClose={() => setShowDisconnectModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modal, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          <View style={[styles.modal, { backgroundColor: N.surface, borderColor: N.border }]}>
+            <Text style={[styles.modalTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
               Disconnect from Club
             </Text>
-            <Text style={[styles.modalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            <Text style={[styles.modalMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Are you sure you want to disconnect from {clubToDisconnect?.name}? You will lose access to this club's features and data.
             </Text>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                style={[styles.modalButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
                 onPress={() => setShowDisconnectModal(false)}
               >
-                <Text style={[styles.modalButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
+                <Text style={[styles.modalButtonText, { color: N.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -613,7 +553,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     flex: 1,
     textAlign: 'center',
@@ -626,7 +566,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    paddingBottom: 0,
+    paddingBottom: 24,
     flexGrow: 1,
   },
   navSpacer: {
@@ -636,25 +576,18 @@ const styles = StyleSheet.create({
   summaryCard: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 16,
+    borderRadius: 6,
+    borderWidth: 1,
     padding: 24,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   summaryCount: {
-    fontSize: 40,
+    fontSize: 36,
     fontWeight: '700',
     marginBottom: 4,
   },
   summaryLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
   },
   clubsSection: {
@@ -662,17 +595,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   clubCard: {
-    borderRadius: 12,
+    borderRadius: 6,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   clubHeader: {
     flexDirection: 'row',
@@ -682,7 +608,8 @@ const styles = StyleSheet.create({
   clubIconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 6,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -691,17 +618,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clubName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     marginBottom: 2,
   },
   clubNumber: {
-    fontSize: 13,
+    fontSize: 12,
   },
   disconnectButton: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 4,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -714,7 +642,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   detailLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   detailValue: {
@@ -723,37 +651,30 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   detailText: {
-    fontSize: 14,
+    fontSize: 13,
   },
   roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 999,
+    borderWidth: 1,
     gap: 6,
   },
   roleBadgeText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#ffffff',
   },
   invitesSection: {
     marginTop: 16,
     paddingHorizontal: 16,
   },
   inviteCard: {
-    borderRadius: 12,
+    borderRadius: 6,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   inviteHeader: {
     flexDirection: 'row',
@@ -763,7 +684,8 @@ const styles = StyleSheet.create({
   inviteIconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 6,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -772,12 +694,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inviteClubName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     marginBottom: 2,
   },
   inviteClubNumber: {
-    fontSize: 13,
+    fontSize: 12,
   },
   inviteDetails: {
     gap: 12,
@@ -789,7 +711,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   inviteDetailLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   inviteActions: {
@@ -810,25 +732,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   acceptButton: {
-    borderWidth: 0,
+    borderWidth: 1,
   },
   inviteActionText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   emptyState: {
-    borderRadius: 12,
+    borderRadius: 6,
+    borderWidth: 1,
     padding: 32,
     alignItems: 'center',
   },
   emptyStateTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     marginTop: 16,
     textAlign: 'center',
   },
   emptyStateDescription: {
-    fontSize: 14,
+    fontSize: 13,
     marginTop: 8,
     textAlign: 'center',
     lineHeight: 20,
@@ -841,24 +764,17 @@ const styles = StyleSheet.create({
   },
   modal: {
     width: '85%',
-    borderRadius: 16,
+    borderRadius: 6,
+    borderWidth: 1,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     marginBottom: 12,
   },
   modalMessage: {
-    fontSize: 15,
+    fontSize: 14,
     marginBottom: 20,
     lineHeight: 22,
   },
@@ -874,7 +790,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   infoModalOverlay: {
@@ -885,18 +801,11 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   infoModalContainer: {
-    borderRadius: 20,
+    borderRadius: 6,
+    borderWidth: 1,
     width: '100%',
     maxWidth: 500,
     maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
   },
   infoModalHeader: {
     flexDirection: 'row',
@@ -908,7 +817,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
   },
   infoModalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     flex: 1,
   },
@@ -920,8 +829,8 @@ const styles = StyleSheet.create({
     maxHeight: 500,
   },
   infoModalText: {
-    fontSize: 15,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 22,
     marginBottom: 16,
   },
   infoModalButton: {
@@ -932,45 +841,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   infoModalButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: '#ffffff',
-  },
-  navigationSection: {
-    marginTop: 24,
-    marginBottom: 16,
-    marginHorizontal: 16,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  navigationBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  navItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  navIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  navLabel: {
-    fontSize: 9,
-    fontWeight: '500',
-    textAlign: 'center',
   },
 });

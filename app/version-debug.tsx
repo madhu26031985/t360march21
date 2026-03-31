@@ -167,7 +167,7 @@ export default function VersionCheckScreen() {
                 <Text style={[styles.statusDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   You're using the latest version of T360
                 </Text>
-                <View style={[styles.versionBadge, { backgroundColor: N.iconMuted }]}>
+                <View style={[styles.versionBadge, { backgroundColor: N.text }]}>
                   <Text style={styles.versionText} maxFontSizeMultiplier={1.3}>v{installedVersion}</Text>
                 </View>
               </View>
@@ -372,15 +372,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   versionBadge: {
-    backgroundColor: '#10b981',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 22,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
   versionText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: '#ffffff',
+    letterSpacing: 0.2,
   },
   versionInfo: {
     width: '100%',
