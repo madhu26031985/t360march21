@@ -2,11 +2,28 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Vote, CircleCheck as CheckCircle, Calendar, Clock, Building2, Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
+import { ArrowLeft, Vote, CircleCheck as CheckCircle, User } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
+
+/** Notion-style neutrals (no red required badge; muted live state) */
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  border: 'rgba(55, 53, 47, 0.09)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  textTertiary: 'rgba(55, 53, 47, 0.45)',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.1)',
+  accentSoftBorder: 'rgba(35, 131, 226, 0.28)',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+  iconTile: 'rgba(55, 53, 47, 0.06)',
+  success: '#0F7B6C',
+  successSoft: 'rgba(15, 123, 108, 0.12)',
+  pillBg: '#F0EFED',
+};
 
 interface Poll {
   id: string;
@@ -36,7 +53,6 @@ interface UserVote {
 }
 
 export default function LiveVoting() {
-  const { theme } = useTheme();
   const { user } = useAuth();
   
   const [activePolls, setActivePolls] = useState<Poll[]>([]);
@@ -274,44 +290,13 @@ export default function LiveVoting() {
       }));
   };
 
-  const getRoleIcon = (role: string) => {
-    switch (role.toLowerCase()) {
-      case 'excomm': return <Crown size={12} color="#ffffff" />;
-      case 'visiting_tm': return <UserCheck size={12} color="#ffffff" />;
-      case 'club_leader': return <Shield size={12} color="#ffffff" />;
-      case 'guest': return <Eye size={12} color="#ffffff" />;
-      case 'member': return <User size={12} color="#ffffff" />;
-      default: return <User size={12} color="#ffffff" />;
-    }
-  };
-
-  const getRoleColor = (role: string) => {
-    switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
-      case 'visiting_tm': return '#10b981';
-      case 'club_leader': return '#f59e0b';
-      case 'guest': return '#6b7280';
-      case 'member': return '#3b82f6';
-      default: return '#6b7280';
-    }
-  };
-
-  const formatRole = (role: string) => {
-    switch (role.toLowerCase()) {
-      case 'excomm': return 'ExComm';
-      case 'visiting_tm': return 'Visiting TM';
-      case 'club_leader': return 'Club Leader';
-      case 'guest': return 'Guest';
-      case 'member': return 'Member';
-      default: return role;
-    }
-  };
-
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading polls...</Text>
+          <Text style={[styles.loadingText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Loading polls…
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -319,18 +304,19 @@ export default function LiveVoting() {
 
   if (!user?.isAuthenticated) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.accessDeniedContainer}>
-          <Vote size={48} color={theme.colors.textSecondary} />
-          <Text style={[styles.accessDeniedTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Access Required</Text>
-          <Text style={[styles.accessDeniedMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+          <Vote size={48} color={N.iconMuted} strokeWidth={1.5} />
+          <Text style={[styles.accessDeniedTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            Club access required
+          </Text>
+          <Text style={[styles.accessDeniedMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
             You need to be an authenticated club member to participate in voting.
           </Text>
-          <TouchableOpacity
-            style={[styles.signInButton, { backgroundColor: theme.colors.primary }]}
-            onPress={() => router.replace('/login')}
-          >
-            <Text style={styles.signInButtonText} maxFontSizeMultiplier={1.3}>Sign In</Text>
+          <TouchableOpacity style={[styles.signInButton, { backgroundColor: N.text }]} onPress={() => router.replace('/login')}>
+            <Text style={styles.signInButtonText} maxFontSizeMultiplier={1.3}>
+              Sign in
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -338,50 +324,54 @@ export default function LiveVoting() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ArrowLeft size={22} color={N.iconMuted} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live Voting</Text>
+        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+          Live voting
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Club Switcher */}
-        <ClubSwitcher showRole={true} />
+        <ClubSwitcher showRole variant="notion" />
 
         {/* Check if user has voted for current poll */}
         {selectedPoll && hasVoted ? (
           <View style={styles.thankYouSection}>
-            <View style={[styles.thankYouCard, { backgroundColor: theme.colors.surface }]}>
-              <View style={[styles.thankYouIcon, { backgroundColor: theme.colors.success + '20' }]}>
-                <CheckCircle size={32} color={theme.colors.success} />
+            <View style={[styles.thankYouCard, { backgroundColor: N.surface, borderColor: N.border }]}>
+              <View style={[styles.thankYouIcon, { backgroundColor: N.successSoft }]}>
+                <CheckCircle size={28} color={N.success} strokeWidth={2} />
               </View>
-              <Text style={[styles.thankYouTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Thanks for Voting!
+              <Text style={[styles.thankYouTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                Thanks for voting
               </Text>
-              <Text style={[styles.thankYouMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.thankYouMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 Your votes for "{selectedPoll.title}" have been submitted successfully.
               </Text>
-              
-              {/* Show other available polls */}
-              {activePolls.filter(p => !votedPolls.has(p.id)).length > 0 && (
+
+              {activePolls.filter((p) => !votedPolls.has(p.id)).length > 0 && (
                 <View style={styles.otherPollsSection}>
-                  <Text style={[styles.otherPollsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Other Available Polls:
+                  <Text style={[styles.otherPollsTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                    Other polls
                   </Text>
-                  {activePolls.filter(p => !votedPolls.has(p.id)).map((poll) => (
-                    <TouchableOpacity
-                      key={poll.id}
-                      style={[styles.otherPollButton, { backgroundColor: theme.colors.primary }]}
-                      onPress={() => setSelectedPoll(poll)}
-                    >
-                      <Vote size={16} color="#ffffff" />
-                      <Text style={styles.otherPollButtonText} maxFontSizeMultiplier={1.3}>{poll.title}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {activePolls
+                    .filter((p) => !votedPolls.has(p.id))
+                    .map((poll) => (
+                      <TouchableOpacity
+                        key={poll.id}
+                        style={[styles.otherPollButton, { backgroundColor: N.text, borderColor: N.text }]}
+                        onPress={() => setSelectedPoll(poll)}
+                        activeOpacity={0.85}
+                      >
+                        <Vote size={16} color={N.surface} strokeWidth={2} />
+                        <Text style={styles.otherPollButtonText} maxFontSizeMultiplier={1.3}>
+                          {poll.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                 </View>
               )}
             </View>
@@ -390,9 +380,9 @@ export default function LiveVoting() {
           <>
             {/* Poll Selection */}
             {activePolls.length > 1 && (
-              <View style={[styles.pollSelectionCard, { backgroundColor: theme.colors.surface }]}>
-                <Text style={[styles.pollSelectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Select Poll to Vote
+              <View style={[styles.pollSelectionCard, { backgroundColor: N.surface, borderColor: N.border, borderWidth: 1 }]}>
+                <Text style={[styles.pollSelectionTitle, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                  Select poll
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {activePolls.map((poll) => (
@@ -401,16 +391,17 @@ export default function LiveVoting() {
                       style={[
                         styles.pollTab,
                         {
-                          backgroundColor: selectedPoll?.id === poll.id ? theme.colors.primary : theme.colors.background,
-                          borderColor: selectedPoll?.id === poll.id ? theme.colors.primary : theme.colors.border,
-                        }
+                          backgroundColor: selectedPoll?.id === poll.id ? N.text : N.page,
+                          borderColor: selectedPoll?.id === poll.id ? N.text : N.border,
+                        },
                       ]}
                       onPress={() => setSelectedPoll(poll)}
+                      activeOpacity={0.85}
                     >
-                      <Text style={[
-                        styles.pollTabText,
-                        { color: selectedPoll?.id === poll.id ? '#ffffff' : theme.colors.text }
-                      ]} maxFontSizeMultiplier={1.3}>
+                      <Text
+                        style={[styles.pollTabText, { color: selectedPoll?.id === poll.id ? N.surface : N.text }]}
+                        maxFontSizeMultiplier={1.3}
+                      >
                         {poll.title}
                       </Text>
                     </TouchableOpacity>
@@ -421,23 +412,25 @@ export default function LiveVoting() {
 
             {/* Current Poll */}
             {selectedPoll && (
-              <View style={[styles.currentPollCard, { backgroundColor: theme.colors.surface }]}>
+              <View style={[styles.currentPollCard, { backgroundColor: N.surface, borderColor: N.border }]}>
                 <View style={styles.pollHeader}>
-                  <View style={[styles.pollIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-                    <Vote size={20} color={theme.colors.primary} />
+                  <View style={[styles.pollIcon, { backgroundColor: N.iconTile }]}>
+                    <Vote size={20} color={N.accent} strokeWidth={1.75} />
                   </View>
                   <View style={styles.pollInfo}>
-                    <Text style={[styles.currentPollTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.currentPollTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                       {selectedPoll.title}
                     </Text>
                     {selectedPoll.description && (
-                      <Text style={[styles.currentPollDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      <Text style={[styles.currentPollDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                         {selectedPoll.description}
                       </Text>
                     )}
                     <View style={styles.pollStatus}>
-                      <View style={[styles.liveIndicator, { backgroundColor: theme.colors.success }]} />
-                      <Text style={[styles.liveText, { color: theme.colors.success }]} maxFontSizeMultiplier={1.3}>Live Poll</Text>
+                      <View style={[styles.liveIndicator, { backgroundColor: N.textTertiary }]} />
+                      <Text style={[styles.liveText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                        Live poll
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -452,16 +445,28 @@ export default function LiveVoting() {
                     const userVote = getUserVoteForQuestion(questionId);
 
                     return (
-                      <View key={questionId} style={[styles.questionCard, { backgroundColor: theme.colors.background, borderWidth: 1, borderColor: userVote ? theme.colors.success + '40' : theme.colors.border }]}>
+                      <View
+                        key={questionId}
+                        style={[
+                          styles.questionCard,
+                          {
+                            backgroundColor: N.surface,
+                            borderWidth: 1,
+                            borderColor: userVote ? N.accentSoftBorder : N.border,
+                          },
+                        ]}
+                      >
                         <View style={styles.questionHeader}>
-                          <Text style={[styles.questionText, { color: theme.colors.text, flex: 1 }]} maxFontSizeMultiplier={1.3}>
+                          <Text style={[styles.questionText, { color: N.text, flex: 1 }]} maxFontSizeMultiplier={1.3}>
                             {questionOrder + 1}. {questionText}
                           </Text>
                           {userVote ? (
-                            <CheckCircle size={18} color={theme.colors.success} />
+                            <CheckCircle size={18} color={N.success} strokeWidth={2} />
                           ) : (
-                            <View style={[styles.requiredBadge, { backgroundColor: theme.colors.error + '15', borderColor: theme.colors.error + '40' }]}>
-                              <Text style={[styles.requiredText, { color: theme.colors.error }]} maxFontSizeMultiplier={1.3}>Required</Text>
+                            <View style={[styles.requiredBadge, { backgroundColor: N.pillBg, borderColor: N.border }]}>
+                              <Text style={[styles.requiredText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                                Required
+                              </Text>
                             </View>
                           )}
                         </View>
@@ -476,39 +481,35 @@ export default function LiveVoting() {
                                 style={[
                                   styles.optionButton,
                                   {
-                                    backgroundColor: isSelected ? theme.colors.primary + '20' : theme.colors.surface,
-                                    borderColor: isSelected ? theme.colors.primary : theme.colors.border,
-                                  }
+                                    backgroundColor: isSelected ? N.accentSoft : N.surface,
+                                    borderColor: isSelected ? N.accentSoftBorder : N.border,
+                                  },
                                 ]}
                                 onPress={() => handleVote(questionId, item.option_id)}
                                 disabled={isVoting || hasVoted}
                               >
-                                <View style={[
-                                  styles.optionRadio,
-                                  {
-                                    backgroundColor: isSelected ? theme.colors.primary : 'transparent',
-                                    borderColor: isSelected ? theme.colors.primary : theme.colors.border,
-                                  }
-                                ]}>
-                                  {isSelected && (
-                                    <CheckCircle size={12} color="#ffffff" />
-                                  )}
+                                <View
+                                  style={[
+                                    styles.optionRadio,
+                                    {
+                                      backgroundColor: isSelected ? N.accent : 'transparent',
+                                      borderColor: isSelected ? N.accent : N.border,
+                                    },
+                                  ]}
+                                >
+                                  {isSelected && <CheckCircle size={12} color="#ffffff" strokeWidth={2} />}
                                 </View>
                                 {item.avatar_url ? (
-                                  <Image
-                                    source={{ uri: item.avatar_url }}
-                                    style={styles.optionAvatar}
-                                    resizeMode="cover"
-                                  />
+                                  <Image source={{ uri: item.avatar_url }} style={styles.optionAvatar} resizeMode="cover" />
                                 ) : (
-                                  <View style={[styles.optionAvatarPlaceholder, { backgroundColor: theme.colors.primary }]}>
-                                    <User size={14} color="#ffffff" />
+                                  <View style={[styles.optionAvatarPlaceholder, { backgroundColor: N.iconTile }]}>
+                                    <User size={14} color={N.iconMuted} strokeWidth={2} />
                                   </View>
                                 )}
-                                <Text style={[
-                                  styles.optionText,
-                                  { color: isSelected ? theme.colors.primary : theme.colors.text }
-                                ]} maxFontSizeMultiplier={1.3}>
+                                <Text
+                                  style={[styles.optionText, { color: isSelected ? N.accent : N.text }]}
+                                  maxFontSizeMultiplier={1.3}
+                                >
                                   {item.option_text}
                                 </Text>
                               </TouchableOpacity>
@@ -524,12 +525,12 @@ export default function LiveVoting() {
           </>
         ) : (
           <View style={styles.emptyState}>
-            <Vote size={48} color={theme.colors.textSecondary} />
-            <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              No Active Polls
+            <Vote size={44} color={N.iconMuted} strokeWidth={1.5} />
+            <Text style={[styles.emptyStateText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+              No active polls
             </Text>
-            <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              There are currently no active polls available for voting. Check back later or contact your ExComm.
+            <Text style={[styles.emptyStateSubtext, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              There are no published polls right now. Check back later or ask your club admin.
             </Text>
           </View>
         )}
@@ -542,22 +543,31 @@ export default function LiveVoting() {
               style={[
                 styles.submitButton,
                 {
-                  backgroundColor: allQuestionsAnswered() ? theme.colors.primary : theme.colors.surface,
-                  borderColor: theme.colors.border,
-                }
+                  backgroundColor: allQuestionsAnswered() ? N.text : N.surface,
+                  borderColor: N.border,
+                },
               ]}
               onPress={handleSubmitVotes}
               disabled={userVotes.length === 0 || isVoting}
+              activeOpacity={0.85}
             >
-              <CheckCircle size={18} color={allQuestionsAnswered() ? "#ffffff" : theme.colors.textSecondary} />
+              <CheckCircle
+                size={18}
+                color={allQuestionsAnswered() ? N.surface : N.textTertiary}
+                strokeWidth={2}
+              />
               <Text
                 style={[
                   styles.submitButtonText,
-                  { color: allQuestionsAnswered() ? "#ffffff" : theme.colors.textSecondary }
+                  { color: allQuestionsAnswered() ? N.surface : N.textSecondary },
                 ]}
                 maxFontSizeMultiplier={1.3}
               >
-                {isVoting ? 'Submitting...' : allQuestionsAnswered() ? `Submit Votes` : `${userVotes.length} of ${getAllQuestionIds().size} answered`}
+                {isVoting
+                  ? 'Submitting…'
+                  : allQuestionsAnswered()
+                    ? 'Submit votes'
+                    : `${userVotes.length} of ${getAllQuestionIds().size} answered`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -621,11 +631,12 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: 16,
+    marginHorizontal: 12,
+    letterSpacing: -0.2,
   },
   headerSpacer: {
     width: 40,
@@ -636,16 +647,8 @@ const styles = StyleSheet.create({
   pollSelectionCard: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 4,
+    padding: 14,
   },
   pollSelectionTitle: {
     fontSize: 16,
@@ -653,9 +656,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   pollTab: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 4,
     borderWidth: 1,
     marginRight: 8,
   },
@@ -666,16 +669,9 @@ const styles = StyleSheet.create({
   currentPollCard: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 4,
+    padding: 16,
+    borderWidth: 1,
   },
   pollHeader: {
     flexDirection: 'row',
@@ -685,7 +681,7 @@ const styles = StyleSheet.create({
   pollIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -694,9 +690,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   currentPollTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     marginBottom: 4,
+    letterSpacing: -0.2,
   },
   currentPollDescription: {
     fontSize: 14,
@@ -721,16 +718,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   questionCard: {
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderRadius: 4,
+    padding: 14,
   },
   questionHeader: {
     flexDirection: 'row',
@@ -760,9 +749,9 @@ const styles = StyleSheet.create({
   optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    borderRadius: 8,
-    padding: 12,
+    borderWidth: 1,
+    borderRadius: 4,
+    padding: 11,
   },
   optionRadio: {
     width: 20,
@@ -812,56 +801,41 @@ const styles = StyleSheet.create({
   },
   submitSection: {
     paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 32,
+    paddingTop: 16,
+    paddingBottom: 28,
   },
   submitButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
-    paddingVertical: 16,
+    borderRadius: 4,
+    paddingVertical: 14,
     borderWidth: 1,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    marginBottom: 8,
   },
   submitButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     marginLeft: 8,
-    letterSpacing: 0.3,
+    letterSpacing: -0.15,
   },
   thankYouSection: {
     paddingHorizontal: 16,
     paddingTop: 32,
   },
   thankYouCard: {
-    borderRadius: 16,
-    padding: 32,
+    borderRadius: 4,
+    padding: 24,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    borderWidth: 1,
   },
   thankYouIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   thankYouTitle: {
     fontSize: 24,
@@ -888,12 +862,13 @@ const styles = StyleSheet.create({
   otherPollButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 4,
     marginBottom: 8,
     width: '100%',
     justifyContent: 'center',
+    borderWidth: 1,
   },
   otherPollButtonText: {
     fontSize: 14,

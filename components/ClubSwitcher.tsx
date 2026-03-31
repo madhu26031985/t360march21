@@ -5,13 +5,64 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { ChevronDown, Crown, User, Shield, Eye, UserCheck, Building2 } from 'lucide-react-native';
 
+/** Notion-like neutrals (no saturated purple on role pills) */
+const N = {
+  surface: '#FFFFFF',
+  page: '#FBFBFA',
+  border: 'rgba(55, 53, 47, 0.09)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  accent: '#2383E2',
+  accentSoft: 'rgba(35, 131, 226, 0.1)',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+  iconTile: 'rgba(55, 53, 47, 0.06)',
+  pillBg: '#F0EFED',
+};
+
+function notionRolePill(role: string): { bg: string; fg: string } {
+  switch (role.toLowerCase()) {
+    case 'excomm':
+      return { bg: N.pillBg, fg: N.text };
+    case 'visiting_tm':
+      return { bg: 'rgba(13, 148, 136, 0.12)', fg: '#0F766E' };
+    case 'club_leader':
+      return { bg: 'rgba(217, 119, 6, 0.14)', fg: '#B45309' };
+    case 'guest':
+      return { bg: N.pillBg, fg: N.textSecondary };
+    case 'member':
+      return { bg: N.accentSoft, fg: N.accent };
+    default:
+      return { bg: N.pillBg, fg: N.textSecondary };
+  }
+}
+
+function RoleIcon({ role, color }: { role: string; color: string }) {
+  const p = { size: 12 as const, color, strokeWidth: 1.75 as const };
+  switch (role.toLowerCase()) {
+    case 'excomm':
+      return <Crown {...p} />;
+    case 'visiting_tm':
+      return <UserCheck {...p} />;
+    case 'club_leader':
+      return <Shield {...p} />;
+    case 'guest':
+      return <Eye {...p} />;
+    case 'member':
+      return <User {...p} />;
+    default:
+      return <User {...p} />;
+  }
+}
+
 interface ClubSwitcherProps {
   showRole?: boolean;
   /** When true, renders without card chrome for use inside a parent container (e.g. masterBox) */
   embedded?: boolean;
+  /** Flat borders, muted role pills (no violet ExComm chip) */
+  variant?: 'default' | 'notion';
 }
 
-export default function ClubSwitcher({ showRole = true, embedded = false }: ClubSwitcherProps) {
+export default function ClubSwitcher({ showRole = true, embedded = false, variant = 'default' }: ClubSwitcherProps) {
   const { theme } = useTheme();
   const { user, switchClub, refreshUserProfile } = useAuth();
   const [showModal, setShowModal] = useState(false);
@@ -36,24 +87,43 @@ export default function ClubSwitcher({ showRole = true, embedded = false }: Club
   const currentClub = user.clubs.find(c => c.id === user.currentClubId) || user.clubs[0];
 
   const getRoleIcon = (role: string) => {
+    if (variant === 'notion') {
+      const pill = notionRolePill(role);
+      return <RoleIcon role={role} color={pill.fg} />;
+    }
     switch (role.toLowerCase()) {
-      case 'excomm': return <Crown size={12} color="#8b5cf6" />;
-      case 'visiting_tm': return <UserCheck size={12} color="#10b981" />;
-      case 'club_leader': return <Shield size={12} color="#f59e0b" />;
-      case 'guest': return <Eye size={12} color="#6b7280" />;
-      case 'member': return <User size={12} color="#3b82f6" />;
-      default: return <User size={12} color="#6b7280" />;
+      case 'excomm':
+        return <Crown size={12} color="#8b5cf6" />;
+      case 'visiting_tm':
+        return <UserCheck size={12} color="#10b981" />;
+      case 'club_leader':
+        return <Shield size={12} color="#f59e0b" />;
+      case 'guest':
+        return <Eye size={12} color="#6b7280" />;
+      case 'member':
+        return <User size={12} color="#3b82f6" />;
+      default:
+        return <User size={12} color="#6b7280" />;
     }
   };
 
   const getRoleColor = (role: string) => {
+    if (variant === 'notion') {
+      return notionRolePill(role).bg;
+    }
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
-      case 'visiting_tm': return '#10b981';
-      case 'club_leader': return '#f59e0b';
-      case 'guest': return '#6b7280';
-      case 'member': return '#3b82f6';
-      default: return '#6b7280';
+      case 'excomm':
+        return '#8b5cf6';
+      case 'visiting_tm':
+        return '#10b981';
+      case 'club_leader':
+        return '#f59e0b';
+      case 'guest':
+        return '#6b7280';
+      case 'member':
+        return '#3b82f6';
+      default:
+        return '#6b7280';
     }
   };
 
@@ -73,18 +143,32 @@ export default function ClubSwitcher({ showRole = true, embedded = false }: Club
     setShowModal(false);
   };
 
+  const isNotion = variant === 'notion';
+
   return (
     <>
       <TouchableOpacity 
         style={[
           embedded ? styles.clubCardEmbedded : styles.clubCard,
-          embedded ? { backgroundColor: 'transparent' } : { backgroundColor: '#fffbeb' }
+          embedded
+            ? { backgroundColor: 'transparent' }
+            : isNotion
+              ? { backgroundColor: N.surface, borderWidth: 1, borderColor: N.border, shadowOpacity: 0, elevation: 0 }
+              : { backgroundColor: '#fffbeb' },
         ]}
         onPress={() => user.clubs && user.clubs.length > 1 && setShowModal(true)}
       >
         <View style={styles.clubHeader}>
-          <View style={[styles.clubIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-            <Building2 size={20} color={theme.colors.primary} />
+          <View
+            style={[
+              styles.clubIcon,
+              {
+                backgroundColor: isNotion ? N.iconTile : theme.colors.primary + '20',
+                borderRadius: isNotion ? 4 : 20,
+              },
+            ]}
+          >
+            <Building2 size={20} color={isNotion ? N.iconMuted : theme.colors.primary} strokeWidth={1.75} />
           </View>
           <View style={styles.clubInfo}>
             <View style={styles.clubNameRow}>
@@ -102,12 +186,29 @@ export default function ClubSwitcher({ showRole = true, embedded = false }: Club
                 </Text>
               )}
               {showRole && (
-                <View style={[
-                  styles.roleTag,
-                  { backgroundColor: getRoleColor(currentClub.role) }
-                ]}>
+                <View
+                  style={[
+                    styles.roleTag,
+                    isNotion
+                      ? {
+                          backgroundColor: notionRolePill(currentClub.role).bg,
+                          borderRadius: 4,
+                          paddingVertical: 3,
+                        }
+                      : { backgroundColor: getRoleColor(currentClub.role) },
+                  ]}
+                >
                   {getRoleIcon(currentClub.role)}
-                  <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>
+                  <Text
+                    style={[
+                      styles.roleText,
+                      isNotion && {
+                        color: notionRolePill(currentClub.role).fg,
+                        marginLeft: 4,
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
                     {formatRole(currentClub.role)}
                   </Text>
                 </View>
@@ -128,34 +229,78 @@ export default function ClubSwitcher({ showRole = true, embedded = false }: Club
           style={styles.modalOverlay}
           onPress={() => setShowModal(false)}
         >
-          <View style={[styles.clubModal, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Switch Club</Text>
+          <View
+            style={[
+              styles.clubModal,
+              {
+                backgroundColor: isNotion ? N.surface : theme.colors.surface,
+                borderWidth: isNotion ? 1 : 0,
+                borderColor: isNotion ? N.border : undefined,
+                borderRadius: isNotion ? 4 : 12,
+              },
+            ]}
+          >
+            <Text
+              style={[styles.modalTitle, { color: isNotion ? N.text : theme.colors.text }]}
+              maxFontSizeMultiplier={1.3}
+            >
+              Switch Club
+            </Text>
             <ScrollView style={styles.clubsList} showsVerticalScrollIndicator={false}>
               {user.clubs?.map((club) => (
                 <TouchableOpacity
                   key={club.id}
                   style={[
                     styles.clubOption,
-                    club.id === currentClub.id && { backgroundColor: theme.colors.primary + '20' }
+                    club.id === currentClub.id && {
+                      backgroundColor: isNotion ? N.accentSoft : theme.colors.primary + '20',
+                    },
                   ]}
                   onPress={() => handleClubSwitch(club.id)}
                 >
                   <View style={styles.clubOptionInfo}>
-                    <Text style={[
-                      styles.clubOptionName, 
-                      { color: club.id === currentClub.id ? theme.colors.primary : theme.colors.text }
-                    ]} maxFontSizeMultiplier={1.3}>
+                    <Text
+                      style={[
+                        styles.clubOptionName,
+                        {
+                          color: club.id === currentClub.id ? (isNotion ? N.accent : theme.colors.primary) : isNotion ? N.text : theme.colors.text,
+                        },
+                      ]}
+                      maxFontSizeMultiplier={1.3}
+                    >
                       {club.name}
                     </Text>
                     <View style={styles.clubOptionMeta}>
                       {club.club_number && (
-                        <Text style={[styles.clubOptionId, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                        <Text
+                          style={[styles.clubOptionId, { color: isNotion ? N.textSecondary : theme.colors.textSecondary }]}
+                          maxFontSizeMultiplier={1.3}
+                        >
                           Club #{club.club_number}
                         </Text>
                       )}
-                      <View style={[styles.roleTag, { backgroundColor: getRoleColor(club.role) + '20' }]}>
-                        {getRoleIcon(club.role)}
-                        <Text style={[styles.roleText, { color: getRoleColor(club.role) }]} maxFontSizeMultiplier={1.3}>
+                      <View
+                        style={[
+                          styles.roleTag,
+                          isNotion
+                            ? {
+                                backgroundColor: notionRolePill(club.role).bg,
+                                borderRadius: 4,
+                                paddingVertical: 3,
+                              }
+                            : { backgroundColor: getRoleColor(club.role) + '20' },
+                        ]}
+                      >
+                        {isNotion ? <RoleIcon role={club.role} color={notionRolePill(club.role).fg} /> : getRoleIcon(club.role)}
+                        <Text
+                          style={[
+                            styles.roleText,
+                            isNotion
+                              ? { color: notionRolePill(club.role).fg, marginLeft: 4 }
+                              : { color: getRoleColor(club.role) },
+                          ]}
+                          maxFontSizeMultiplier={1.3}
+                        >
                           {formatRole(club.role)}
                         </Text>
                       </View>
