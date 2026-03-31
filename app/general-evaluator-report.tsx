@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
@@ -9,9 +9,24 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { fetchGeneralEvaluatorReportBundle, generalEvaluatorReportQueryKeys } from '@/lib/generalEvaluatorReportQuery';
+import { exportAgendaToPDF } from '@/lib/pdfExportUtils';
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
-import { ArrowLeft, Calendar, Clock, MapPin, Building2, Star, Info, CircleCheck as CheckCircle, Circle, CircleAlert as AlertCircle, X, NotebookPen, Bell, FileText, Users, MessageSquare, Mic, BookOpen, CheckSquare, ClipboardCheck, FileBarChart, Search, UserPlus } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, MapPin, Building2, Star, Info, CircleCheck as CheckCircle, Circle, CircleAlert as AlertCircle, X, NotebookPen, Bell, FileText, Users, MessageSquare, MessageCircle, Mic, BookOpen, CheckSquare, ClipboardCheck, FileBarChart, Search, UserPlus, Vote, Settings, UserCog, LayoutDashboard, Download } from 'lucide-react-native';
 import { Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
+
+const FOOTER_NAV_ICON_SIZE = 15;
+
+/** General Evaluator Corner ratings use a 1–10 scale per question. */
+const GE_RATING_MIN = 1;
+const GE_RATING_MAX = 10;
+
+function normalizeStoredGeRating(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  const n = Math.round(raw);
+  if (n >= GE_RATING_MIN && n <= GE_RATING_MAX) return n;
+  if (n >= 0 && n <= 9) return n + 1;
+  return null;
+}
 
 const getRoleIcon = (role: string) => {
   switch (role.toLowerCase()) {
@@ -74,13 +89,8 @@ interface GeneralEvaluatorData {
 
 interface EvaluationQuestion {
   id: string;
-  question: string;
-  category: string;
-}
-
-interface EvaluationResponse {
-  questionId: string;
-  rating: 'done_well' | 'partially_done' | 'not_done' | 'na';
+  title: string;
+  description: string;
 }
 
 interface FeedbackForm {
@@ -88,12 +98,6 @@ interface FeedbackForm {
   whatWentWell: string;
   whatNeedsImprovement: string;
 }
-interface EvaluationCategory {
-  id: string;
-  title: string;
-  questions: EvaluationQuestion[];
-}
-
 export default function GeneralEvaluatorReport() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -105,9 +109,9 @@ export default function GeneralEvaluatorReport() {
   const [generalEvaluator, setGeneralEvaluator] = useState<GeneralEvaluator | null>(null);
   const [clubInfo, setClubInfo] = useState<{ id: string; name: string; club_number: string | null } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [responses, setResponses] = useState<Record<string, EvaluationResponse['rating']>>({});
+  const [responses, setResponses] = useState<Record<string, number | null>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['before_meeting']));
+  const [isExporting, setIsExporting] = useState(false);
   const [feedbackForm, setFeedbackForm] = useState<FeedbackForm>({
     summary: '',
     whatWentWell: '',
@@ -124,97 +128,57 @@ export default function GeneralEvaluatorReport() {
   const [clubMembersLoading, setClubMembersLoading] = useState(false);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
 
-  const evaluationCategories: EvaluationCategory[] = [
+  const evaluationQuestions: EvaluationQuestion[] = [
     {
-      id: 'before_meeting',
-      title: '1. Before Meeting',
-      questions: [
-        { id: 'room_ready', question: 'Was the meeting room/online platform ready on time?', category: 'before_meeting' },
-        { id: 'guests_welcomed', question: 'Were guests welcomed warmly upon arrival?', category: 'before_meeting' },
-        { id: 'agenda_received', question: 'Did members receive the agenda before the meeting?', category: 'before_meeting' },
-        { id: 'roles_assigned', question: 'Were all roles assigned in advance by the VPE?', category: 'before_meeting' },
-      ]
+      id: 'q1_preparation_setup',
+      title: '1. Preparation & Setup',
+      description: 'Was the meeting well-prepared (venue, agenda, and roles assigned in advance)?',
     },
     {
-      id: 'opening',
-      title: '2. Opening',
-      questions: [
-        { id: 'meeting_start_time', question: 'Did the meeting start on time?', category: 'opening' },
-        { id: 'presiding_officer', question: 'Was the presiding officer prepared and confident?', category: 'opening' },
-        { id: 'introductions', question: 'Were members and guests introduced properly?', category: 'opening' },
-        { id: 'opening_tone', question: 'Did the opening set an enthusiastic and positive tone?', category: 'opening' },
-      ]
+      id: 'q2_opening_quality',
+      title: '2. Opening Quality',
+      description: 'Did the meeting start on time with an engaging and confident opening?',
     },
     {
-      id: 'toastmaster',
-      title: '3. Toastmaster',
-      questions: [
-        { id: 'theme_explanation', question: 'Did the Toastmaster explain the meeting theme clearly?', category: 'toastmaster' },
-        { id: 'smooth_transitions', question: 'Were transitions between segments smooth and engaging?', category: 'toastmaster' },
-        { id: 'time_management', question: 'Did the Toastmaster manage time effectively?', category: 'toastmaster' },
-        { id: 'proper_introductions', question: 'Was the General Evaluator and Table Topics Master introduced properly?', category: 'toastmaster' },
-      ]
+      id: 'q3_guest_experience',
+      title: '3. Guest Experience',
+      description: 'Were guests warmly welcomed, introduced, and made comfortable?',
     },
     {
-      id: 'evaluation',
-      title: '4. Evaluation',
-      questions: [
-        { id: 'ge_role_explanation', question: 'Did the General Evaluator explain their role clearly?', category: 'evaluation' },
-        { id: 'constructive_evaluations', question: 'Were speech evaluators constructive and encouraging?', category: 'evaluation' },
-        { id: 'recommendations_examples', question: 'Did evaluators provide recommendations with examples?', category: 'evaluation' },
-        { id: 'feedback_timing', question: 'Was overall feedback delivered within the allotted time?', category: 'evaluation' },
-      ]
+      id: 'q4_meeting_leadership',
+      title: '4. Meeting Leadership (Toastmaster)',
+      description: 'Did the Toastmaster clearly manage the theme, flow, and transitions?',
     },
     {
-      id: 'tag_team',
-      title: '5. Tag Team',
-      questions: [
-        { id: 'timer_role_report', question: 'Did the Timer explain their role and present the report clearly?', category: 'tag_team' },
-        { id: 'ah_counter_effectiveness', question: 'Did the Ah-Counter perform effectively and give a useful report?', category: 'tag_team' },
-        { id: 'grammarian_performance', question: 'Did the Grammarian capture gaps and highlight positive usage?', category: 'tag_team' },
-        { id: 'reports_timing', question: 'Were all reports concise and delivered within the time limit?', category: 'tag_team' },
-      ]
+      id: 'q5_role_execution',
+      title: '5. Role Execution',
+      description: 'Did supporting roles (Timer, Ah-Counter, Grammarian, Table Topics Master) perform effectively?',
     },
     {
-      id: 'table_topics',
-      title: '6. Table Topics Session',
-      questions: [
-        { id: 'tt_rules_explanation', question: 'Did the Table Topics Master explain the rules and timing?', category: 'table_topics' },
-        { id: 'topics_quality', question: 'Were the topics clear, creative, and relevant to the theme?', category: 'table_topics' },
-        { id: 'participation_encouragement', question: 'Were members without roles and guests encouraged to participate?', category: 'table_topics' },
-        { id: 'smooth_return', question: 'Was control smoothly returned to the Toastmaster?', category: 'table_topics' },
-      ]
+      id: 'q6_speaker_intro_support',
+      title: '6. Speaker Introduction & Support',
+      description: 'Were speakers introduced well and supported throughout their speeches?',
     },
     {
-      id: 'speakers',
-      title: '7. Speakers',
-      questions: [
-        { id: 'speaker_introductions', question: 'Were all prepared speakers introduced properly?', category: 'speakers' },
-        { id: 'time_adherence', question: 'Did speakers stay within their allotted time?', category: 'speakers' },
-        { id: 'pathways_alignment', question: 'Were speeches aligned with Pathways projects or objectives?', category: 'speakers' },
-        { id: 'speaker_support', question: 'Did the Toastmaster and evaluators support the speakers effectively?', category: 'speakers' },
-      ]
+      id: 'q7_time_discipline',
+      title: '7. Time Discipline (Speakers & Agenda)',
+      description: 'Did speakers and segments stay within the allotted time?',
     },
     {
-      id: 'educational_speaker',
-      title: '8. Educational Speaker',
-      questions: [
-        { id: 'educational_introduction', question: 'Was the Educational Speaker (if any) properly introduced?', category: 'educational_speaker' },
-        { id: 'content_relevance', question: 'Was the content relevant and useful to members?', category: 'educational_speaker' },
-        { id: 'audience_engagement', question: 'Did the speaker engage the audience effectively?', category: 'educational_speaker' },
-        { id: 'educational_timing', question: 'Was the session kept within the allotted time?', category: 'educational_speaker' },
-      ]
+      id: 'q8_evaluation_quality',
+      title: '8. Evaluation Quality',
+      description: 'Were evaluations constructive, specific, and helpful (with examples)?',
     },
     {
-      id: 'meeting_flow_closing',
-      title: '9. Meeting Flow & Closing',
-      questions: [
-        { id: 'agenda_followed', question: 'Was the agenda followed throughout the meeting?', category: 'meeting_flow_closing' },
-        { id: 'meeting_timing', question: 'Did the meeting stay within the scheduled time?', category: 'meeting_flow_closing' },
-        { id: 'supportive_atmosphere', question: 'Was the atmosphere supportive and enjoyable?', category: 'meeting_flow_closing' },
-        { id: 'guest_feedback', question: 'Were guests invited to share feedback before closing?', category: 'meeting_flow_closing' },
-      ]
-    }
+      id: 'q9_flow_feedback_collection',
+      title: '9. Flow & Feedback Collection',
+      description: 'Was the meeting well-paced, and were feedback/comments gathered from guests and visiting Toastmasters?',
+    },
+    {
+      id: 'q10_overall_experience',
+      title: '10. Overall Experience',
+      description: 'Was the meeting engaging, well-organized, and valuable for members and guests?',
+    },
   ];
 
   useEffect(() => {
@@ -269,7 +233,12 @@ export default function GeneralEvaluatorReport() {
             whatNeedsImprovement: data.what_needs_improvement || '',
           });
           if (data.evaluation_data && typeof data.evaluation_data === 'object') {
-            setResponses(data.evaluation_data as Record<string, EvaluationResponse['rating']>);
+            const incoming = data.evaluation_data as Record<string, unknown>;
+            const normalized: Record<string, number | null> = {};
+            for (const q of evaluationQuestions) {
+              normalized[q.id] = normalizeStoredGeRating(incoming?.[q.id]);
+            }
+            setResponses(normalized);
           } else {
             setResponses({});
           }
@@ -438,7 +407,12 @@ export default function GeneralEvaluatorReport() {
           whatNeedsImprovement: data.what_needs_improvement || '',
         });
         if (data.evaluation_data && typeof data.evaluation_data === 'object') {
-          setResponses(data.evaluation_data);
+          const incoming = data.evaluation_data as Record<string, unknown>;
+          const normalized: Record<string, number | null> = {};
+          for (const q of evaluationQuestions) {
+            normalized[q.id] = normalizeStoredGeRating(incoming?.[q.id]);
+          }
+          setResponses(normalized);
         }
       } else {
         setExistingEvaluation(null);
@@ -454,14 +428,18 @@ export default function GeneralEvaluatorReport() {
     }
   };
 
-  // Check if current user is the General Evaluator
+  // Access control helpers
   const isGeneralEvaluator = () => {
     return generalEvaluator?.assigned_user_id === user?.id && generalEvaluator?.booking_status === 'booked';
   };
+  const canAccessGeneralEvaluatorCorner = isGeneralEvaluator() || isVPEClub;
+  const canEditGeneralEvaluatorCorner = canAccessGeneralEvaluatorCorner;
+  const isGeRoleBooked = generalEvaluator?.booking_status === 'booked';
+  const isExComm = (user?.clubRole || user?.role || '').toLowerCase() === 'excomm';
 
-  const handleRatingChange = (questionId: string, rating: EvaluationResponse['rating']) => {
-    if (!isGeneralEvaluator()) {
-      Alert.alert('Access Denied', 'Only the assigned General Evaluator can mark this evaluation.');
+  const handleRatingChange = (questionId: string, rating: number) => {
+    if (!canEditGeneralEvaluatorCorner) {
+      Alert.alert('Access Denied', 'Only the assigned General Evaluator or VPE can mark this evaluation.');
       return;
     }
     
@@ -469,18 +447,6 @@ export default function GeneralEvaluatorReport() {
       ...prev,
       [questionId]: rating
     }));
-  };
-
-  const toggleCategory = (categoryId: string) => {
-    setExpandedCategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(categoryId)) {
-        newSet.delete(categoryId);
-      } else {
-        newSet.add(categoryId);
-      }
-      return newSet;
-    });
   };
 
   const updateFeedbackField = (field: keyof FeedbackForm, value: string) => {
@@ -493,57 +459,28 @@ export default function GeneralEvaluatorReport() {
   const countWords = (text: string): number => {
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
   };
-  const getRatingIcon = (rating: EvaluationResponse['rating']) => {
-    switch (rating) {
-      case 'done_well':
-        return <CheckCircle size={20} color="#10b981" />;
-      case 'partially_done':
-        return <AlertCircle size={20} color="#f59e0b" />;
-      case 'not_done':
-        return <X size={20} color="#ef4444" />;
-      case 'na':
-        return <Circle size={20} color="#6b7280" />;
-      default:
-        return <Circle size={20} color="#e5e7eb" />;
-    }
-  };
-
-  const getRatingColor = (rating: EvaluationResponse['rating']) => {
-    switch (rating) {
-      case 'done_well': return '#10b981';
-      case 'partially_done': return '#f59e0b';
-      case 'not_done': return '#ef4444';
-      case 'na': return '#6b7280';
-      default: return '#e5e7eb';
-    }
-  };
-
-  const getRatingLabel = (rating: EvaluationResponse['rating']) => {
-    switch (rating) {
-      case 'done_well': return 'Done well';
-      case 'partially_done': return 'Partially done';
-      case 'not_done': return 'Not done';
-      case 'na': return 'N/A';
-      default: return '';
-    }
+  const getScoreLabel = (score: number | null): 'Needs Improvement' | 'Average' | 'Excellent' | 'Not rated' => {
+    if (score == null) return 'Not rated';
+    if (score <= 3) return 'Needs Improvement';
+    if (score <= 6) return 'Average';
+    return 'Excellent';
   };
 
   const getCompletionStats = () => {
-    const totalQuestions = evaluationCategories.reduce((sum, cat) => sum + cat.questions.length, 0);
-    const answeredQuestions = Object.keys(responses).length;
-    const completionPercentage = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+    const totalQuestions = evaluationQuestions.length;
+    const answeredQuestions = evaluationQuestions.filter((q) => typeof responses[q.id] === 'number').length;
     // Ensure hasFeedback is true if any of the text fields have content after trimming
     const hasFeedback = 
       (feedbackForm.summary && feedbackForm.summary.trim().length > 0) || 
       (feedbackForm.whatWentWell && feedbackForm.whatWentWell.trim().length > 0) || 
       (feedbackForm.whatNeedsImprovement && feedbackForm.whatNeedsImprovement.trim().length > 0);
     
-    return { totalQuestions, answeredQuestions, completionPercentage, hasFeedback };
+    return { totalQuestions, answeredQuestions, hasFeedback };
   };
 
   const handleSaveEvaluation = async () => {
-    if (!isGeneralEvaluator()) {
-      Alert.alert('Access Denied', 'Only the assigned General Evaluator can save this evaluation.');
+    if (!canEditGeneralEvaluatorCorner) {
+      Alert.alert('Access Denied', 'Only the assigned General Evaluator or VPE can save this evaluation.');
       return;
     }
 
@@ -578,7 +515,7 @@ export default function GeneralEvaluatorReport() {
       const saveData = {
         meeting_id: meetingId,
         club_id: user.currentClubId,
-        evaluator_user_id: user.id,
+        evaluator_user_id: generalEvaluator?.assigned_user_id || user.id,
         booking_status: 'booked',
         evaluation_data: responses,
         evaluation_summary: feedbackForm.summary.trim() || null,
@@ -637,7 +574,7 @@ export default function GeneralEvaluatorReport() {
   };
 
   const autoSave = async () => {
-    if (!isGeneralEvaluator() || !meetingId || !user?.currentClubId) {
+    if (!canEditGeneralEvaluatorCorner || !meetingId || !user?.currentClubId) {
       return;
     }
 
@@ -655,7 +592,7 @@ export default function GeneralEvaluatorReport() {
       const saveData = {
         meeting_id: meetingId,
         club_id: user.currentClubId,
-        evaluator_user_id: user.id,
+        evaluator_user_id: generalEvaluator?.assigned_user_id || user.id,
         booking_status: 'booked',
         evaluation_data: responses,
         evaluation_summary: feedbackForm.summary.trim() || null,
@@ -692,6 +629,26 @@ export default function GeneralEvaluatorReport() {
     Alert.alert('Coming soon');
   };
 
+  const handleExportPDF = async () => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('PDF Export', 'PDF export is available on the web version of this app.');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const clubName = (clubInfo?.name || 'Club').replace(/[^a-z0-9]/gi, '_');
+      const meetingNum = meeting?.meeting_number || 'X';
+      const date = meeting?.meeting_date ? new Date(meeting.meeting_date).toISOString().split('T')[0] : 'date';
+      const filename = `${clubName}_Meeting_${meetingNum}_General_Evaluator_Report_${date}.pdf`;
+      await exportAgendaToPDF('general-evaluator-report-content', filename);
+    } catch (error) {
+      console.error('Error exporting GE PDF:', error);
+      Alert.alert('Export Failed', 'Failed to export PDF. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const formatMeetingMode = (mode: string) => {
     switch (mode) {
       case 'in_person': return 'In Person';
@@ -701,124 +658,77 @@ export default function GeneralEvaluatorReport() {
     }
   };
 
-  const RatingOption = ({ rating, currentRating, onPress }: { 
-    rating: EvaluationResponse['rating']; 
-    currentRating: EvaluationResponse['rating'] | undefined; 
-    onPress: () => void; 
-  }) => {
-    const isSelected = currentRating === rating;
-    
+  const formatConsolidatedMeetingMetaSingleLine = (m: Meeting): string => {
+    const date = new Date(m.meeting_date);
+    const day = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+    const weekday = date.toLocaleDateString('en-US', { weekday: 'short' });
+    const start = m.meeting_start_time || '--:--';
+    const end = m.meeting_end_time || '--:--';
+    return `${day} | ${weekday} | ${start} - ${end} | ${formatMeetingMode(m.meeting_mode)}`;
+  };
+
+  const geTotalMax = evaluationQuestions.length * GE_RATING_MAX;
+  const totalScore = evaluationQuestions.reduce((sum, q) => sum + (typeof responses[q.id] === 'number' ? (responses[q.id] as number) : 0), 0);
+  const getOverallRating = (score: number): 'Excellent' | 'Good' | 'Needs Improvement' => {
+    if (score >= Math.round((56 / 72) * geTotalMax)) return 'Excellent';
+    if (score >= Math.round((36 / 72) * geTotalMax)) return 'Good';
+    return 'Needs Improvement';
+  };
+
+  useEffect(() => {
+    if (!canAccessGeneralEvaluatorCorner && activeTab !== 'feedback') {
+      setActiveTab('feedback');
+    }
+  }, [canAccessGeneralEvaluatorCorner, activeTab]);
+
+  const RatingCard = ({ question }: { question: EvaluationQuestion }) => {
+    const current = responses[question.id];
     return (
-      <TouchableOpacity
-        style={[
-          styles.ratingOption,
-          {
-            borderColor: isSelected ? getRatingColor(rating) : '#e5e7eb',
-            backgroundColor: isSelected ? getRatingColor(rating) + '10' : 'transparent',
-          }
-        ]}
-        onPress={onPress}
-        activeOpacity={0.7}
-      >
-        <View style={styles.ratingContent}>
-          {getRatingIcon(rating)}
-          <Text style={[
-            styles.ratingLabel,
-            { color: isSelected ? getRatingColor(rating) : '#6b7280' }
-          ]} maxFontSizeMultiplier={1.3}>
-            {getRatingLabel(rating)}
+      <View style={[styles.ratingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <Text style={[styles.ratingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          {question.title}
+        </Text>
+        <Text style={[styles.ratingCardDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+          {question.description}
+        </Text>
+
+        <View style={styles.sliderRow}>
+          {Array.from({ length: 10 }, (_, i) => {
+            const value = i + GE_RATING_MIN;
+            return (
+              <Pressable
+                key={`${question.id}-${value}`}
+                style={[
+                  styles.sliderStep,
+                  {
+                    backgroundColor: current != null && value <= current ? theme.colors.primary : '#E5E7EB',
+                  },
+                ]}
+                onPress={() => handleRatingChange(question.id, value)}
+              />
+            );
+          })}
+        </View>
+
+        <View style={styles.scaleRow}>
+          {Array.from({ length: 10 }, (_, i) => {
+            const value = i + GE_RATING_MIN;
+            return (
+              <Text key={`${question.id}-scale-${value}`} style={[styles.scaleTick, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                {value}
+              </Text>
+            );
+          })}
+        </View>
+
+        <View style={styles.ratingMetaRow}>
+          <Text style={[styles.selectedValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+            Selected: {current == null ? '-' : `${current}/${GE_RATING_MAX}`}
+          </Text>
+          <Text style={[styles.scoreBadge, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+            {getScoreLabel(current)}
           </Text>
         </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const QuestionCard = ({ question }: { question: EvaluationQuestion }) => {
-    const currentRating = responses[question.id];
-    
-    return (
-      <View style={[styles.questionCard, { backgroundColor: theme.colors.surface }]}>
-        <Text style={[styles.questionText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-          {question.question}
-        </Text>
-        
-        <View style={styles.ratingsContainer}>
-          <RatingOption
-            rating="done_well"
-            currentRating={currentRating}
-            onPress={() => handleRatingChange(question.id, 'done_well')}
-          />
-          <RatingOption
-            rating="partially_done"
-            currentRating={currentRating}
-            onPress={() => handleRatingChange(question.id, 'partially_done')}
-          />
-          <RatingOption
-            rating="not_done"
-            currentRating={currentRating}
-            onPress={() => handleRatingChange(question.id, 'not_done')}
-          />
-          <RatingOption
-            rating="na"
-            currentRating={currentRating}
-            onPress={() => handleRatingChange(question.id, 'na')}
-          />
-        </View>
-      </View>
-    );
-  };
-
-  const CategorySection = ({ category }: { category: EvaluationCategory }) => {
-    const isExpanded = expandedCategories.has(category.id);
-    const categoryResponses = category.questions.filter(q => responses[q.id]);
-    const completionCount = categoryResponses.length;
-    const totalCount = category.questions.length;
-    
-    return (
-      <View style={[styles.categorySection, { backgroundColor: theme.colors.surface }]}>
-        <TouchableOpacity
-          style={styles.categoryHeader}
-          onPress={() => toggleCategory(category.id)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.categoryTitleContainer}>
-            <View style={[styles.categoryIcon, { backgroundColor: '#ef4444' + '20' }]}>
-              <Star size={16} color="#ef4444" />
-            </View>
-            <Text style={[styles.categoryTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              {category.title}
-            </Text>
-          </View>
-          
-          <View style={styles.categoryMeta}>
-            <View style={[
-              styles.completionBadge,
-              { backgroundColor: completionCount === totalCount ? '#10b981' + '20' : '#f59e0b' + '20' }
-            ]}>
-              <Text style={[
-                styles.completionText,
-                { color: completionCount === totalCount ? '#10b981' : '#f59e0b' }
-              ]} maxFontSizeMultiplier={1.3}>
-                {completionCount}/{totalCount}
-              </Text>
-            </View>
-            
-            <View style={[
-              styles.expandIcon,
-              { transform: [{ rotate: isExpanded ? '90deg' : '0deg' }] }
-            ]}>
-              <Text style={[styles.chevron, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>›</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {isExpanded && (
-          <View style={styles.questionsContainer}>
-            {category.questions.map((question) => (
-              <QuestionCard key={question.id} question={question} />
-            ))}
-          </View>
-        )}
       </View>
     );
   };
@@ -849,8 +759,7 @@ export default function GeneralEvaluatorReport() {
     );
   }
 
-  const { totalQuestions, answeredQuestions, completionPercentage, hasFeedback } = getCompletionStats();
-  const hasContent = answeredQuestions > 0 || hasFeedback;
+  const { totalQuestions, answeredQuestions, hasFeedback } = getCompletionStats();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -861,319 +770,282 @@ export default function GeneralEvaluatorReport() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>General Evaluator Report</Text>
-        <TouchableOpacity
-          style={styles.infoButton}
-          onPress={handleInfoClick}
-        >
-          <Info size={20} color={theme.colors.text} />
-        </TouchableOpacity>
+        {isGeRoleBooked ? (
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.infoButton}
+              onPress={handleExportPDF}
+              disabled={isExporting}
+            >
+              <Download size={20} color={theme.colors.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.infoButton}
+              onPress={handleInfoClick}
+            >
+              <Info size={20} color={theme.colors.text} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.infoButton} />
+        )}
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
-        <View style={styles.contentTop}>
-        {/* Meeting Info Card */}
-        <View style={[styles.meetingCard, {
-          backgroundColor: theme.colors.surface,
-          borderWidth: 1,
-          borderColor: theme.colors.border
-        }]}>
-          <View style={styles.meetingCardContent}>
-            <View style={[styles.dateBox, {
-              backgroundColor: theme.colors.primary + '15'
-            }]}>
-              <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).getDate()}
-              </Text>
-              <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.meetingDetails}>
-              <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {meeting.meeting_title}
-              </Text>
-              <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Day: {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
-              </Text>
-              {meeting.meeting_start_time && (
-                <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Time: {meeting.meeting_start_time}
-                  {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
-                </Text>
-              )}
-              <Text style={[styles.meetingCardMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Mode: {formatMeetingMode(meeting.meeting_mode)}
-              </Text>
-            </View>
-          </View>
-        </View>
-
+        <View style={styles.contentTop} nativeID="general-evaluator-report-content">
         {/* General Evaluator Assignment Section */}
-        <View style={[styles.evaluatorSection, { backgroundColor: theme.colors.surface }]}>
-          {generalEvaluator?.assigned_user_id && generalEvaluator.app_user_profiles ? (
+        {generalEvaluator?.assigned_user_id && generalEvaluator.app_user_profiles ? (
+          <View style={[styles.evaluatorSection, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.evaluatorClubName, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              {clubInfo?.name || 'Club'}
+            </Text>
             <View style={styles.evaluatorCard}>
-              <View style={styles.evaluatorInfo}>
-                <View style={styles.evaluatorAvatar}>
+              {canEditGeneralEvaluatorCorner && (
+                <TouchableOpacity
+                  style={[styles.prepSpaceIcon, styles.prepSpaceIconFloating, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                  onPress={() => router.push(`/general-evaluator-notes?meetingId=${meetingId}`)}
+                >
+                  <NotebookPen size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+              <View style={styles.evaluatorInfoCentered}>
+                <View style={styles.evaluatorAvatarLarge}>
                   {generalEvaluator.app_user_profiles.avatar_url ? (
                     <Image
                       source={{ uri: generalEvaluator.app_user_profiles.avatar_url }}
                       style={styles.evaluatorAvatarImage}
                     />
                   ) : (
-                    <Star size={24} color="#ffffff" />
+                    <Star size={28} color="#ffffff" />
                   )}
                 </View>
-                <View style={styles.evaluatorDetails}>
-                  <Text style={[styles.evaluatorName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {generalEvaluator.app_user_profiles.full_name}
-                  </Text>
-                  <Text style={[styles.evaluatorRoleLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    General evaluator
-                  </Text>
-                </View>
-                {isGeneralEvaluator() && (
-                  <TouchableOpacity
-                    style={[styles.prepSpaceIcon, { backgroundColor: '#E8F4FD' }]}
-                    onPress={() => router.push(`/general-evaluator-notes?meetingId=${meetingId}`)}
-                  >
-                    <NotebookPen size={18} color="#3b82f6" />
-                  </TouchableOpacity>
-                )}
+                <Text style={[styles.evaluatorNameCentered, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {generalEvaluator.app_user_profiles.full_name}
+                </Text>
+                <Text style={[styles.evaluatorRoleLabelCentered, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  General evaluator
+                </Text>
               </View>
             </View>
-          ) : (
-            <View style={styles.noEvaluatorCard}>
-              <View style={[styles.noEvaluatorIcon, { backgroundColor: '#3b82f6' + '20' }]}>
-                <Star size={28} color="#3b82f6" />
+
+            {isGeRoleBooked && (
+              <>
+                <View style={[styles.consolidatedBottomDivider, { backgroundColor: '#EAEAEA' }]} />
+                <View style={styles.consolidatedMeetingMetaBlock}>
+                  <Text
+                    style={[
+                      styles.consolidatedMeetingMetaSingle,
+                      { color: theme.mode === 'dark' ? '#A3A3A3' : '#999999' },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {formatConsolidatedMeetingMetaSingleLine(meeting)}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.noAssignmentNotionCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <View style={styles.meetingCardContent}>
+              <View style={[styles.dateBox, { backgroundColor: theme.colors.primary + '15' }]}>
+                <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {new Date(meeting.meeting_date).getDate()}
+                </Text>
+                <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+                </Text>
               </View>
-              <Text style={[styles.guideMessage, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <View style={styles.meetingDetails}>
+                <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {meeting.meeting_title}
+                </Text>
+                <Text
+                  style={[styles.meetingCardMetaCompact, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.25}
+                >
+                  {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'short' })} • {meeting.meeting_start_time || '--:--'}
+                  {meeting.meeting_end_time ? ` - ${meeting.meeting_end_time}` : ''}
+                </Text>
+                <Text
+                  style={[styles.meetingCardMetaCompact, styles.meetingCardMetaModeLine, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.25}
+                >
+                  {formatMeetingMode(meeting.meeting_mode)}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.noAssignmentDivider, { backgroundColor: theme.colors.border }]} />
+            <View style={styles.noToastmasterCard}>
+              <View style={[styles.noToastmasterIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
+                <Star size={32} color={theme.colors.textSecondary} />
+              </View>
+              <Text style={[styles.noToastmasterText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Guide the meeting to excellence ⭐
               </Text>
+              <Text style={[styles.noToastmasterSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                It's time to become General Evaluator now.
+              </Text>
               <TouchableOpacity
-                style={[styles.bookRoleButton, { opacity: bookingGeRole || assigningGeRole ? 0.85 : 1 }]}
+                style={[
+                  styles.bookRoleButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingGeRole || assigningGeRole ? 0.85 : 1,
+                    zIndex: 2,
+                  },
+                ]}
                 onPress={() => handleBookGeneralEvaluatorInline()}
                 disabled={bookingGeRole || assigningGeRole}
+                delayPressIn={0}
+                activeOpacity={0.88}
+                hitSlop={{ top: 16, bottom: 16, left: 20, right: 20 }}
               >
                 {bookingGeRole ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
                   <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                    Book the GE role
+                    Book GE Role
                   </Text>
                 )}
               </TouchableOpacity>
             </View>
-          )}
-        </View>
-
-        {/* Tab Selector */}
-        <View style={[styles.tabContainer, { backgroundColor: theme.colors.surface }]}>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              activeTab === 'categories' && styles.activeTab,
-              { borderBottomColor: activeTab === 'categories' ? theme.colors.primary : 'transparent' }
-            ]}
-            onPress={() => setActiveTab('categories')}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                { color: activeTab === 'categories' ? theme.colors.primary : theme.colors.textSecondary }
-              ]}
-              maxFontSizeMultiplier={1.3}
-            >
-              Evaluation Categories
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              activeTab === 'feedback' && styles.activeTab,
-              { borderBottomColor: activeTab === 'feedback' ? theme.colors.primary : 'transparent' }
-            ]}
-            onPress={() => setActiveTab('feedback')}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                { color: activeTab === 'feedback' ? theme.colors.primary : theme.colors.textSecondary }
-              ]}
-              maxFontSizeMultiplier={1.3}
-            >
-              Evaluation Feedback
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Feedback Sections */}
-        {activeTab === 'feedback' && (
-          <View style={[styles.feedbackSection, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.feedbackHeader}>
-              <View style={[styles.feedbackIcon, { backgroundColor: '#3b82f6' + '20' }]}>
-                <Text style={[styles.feedbackEmoji, { color: '#3b82f6' }]} maxFontSizeMultiplier={1.3}>📝</Text>
-              </View>
-              <Text style={[styles.feedbackTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                General Evaluation Feedback
-              </Text>
-            </View>
-
-          {/* Summary */}
-          <View style={styles.feedbackField}>
-            <View style={styles.feedbackFieldHeader}>
-              <Text style={[styles.feedbackFieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Meeting Summary
-              </Text>
-              <Text style={[styles.wordCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {(feedbackForm.summary || '').length}/1200 characters
-              </Text>
-            </View>
-            <TextInput
-              style={[
-                styles.feedbackTextInput, 
-                { 
-                  backgroundColor: theme.colors.background, 
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text,
-                  opacity: isGeneralEvaluator() ? 1 : 0.6
-                }
-              ]}
-              placeholder="Provide an overall summary of today's meeting, highlighting key moments and general observations..."
-              placeholderTextColor={theme.colors.textSecondary}
-              value={feedbackForm.summary}
-              onChangeText={(text) => updateFeedbackField('summary', text)}
-              multiline
-              numberOfLines={6}
-              textAlignVertical="top"
-              editable={isGeneralEvaluator()}
-              maxLength={1200} // Added maxLength
-            />
-          </View>
-
-          {/* What Went Well */}
-          <View style={styles.feedbackField}>
-            <View style={styles.feedbackFieldHeader}>
-              <Text style={[styles.feedbackFieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                What Went Well?
-              </Text>
-              <Text style={[styles.wordCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {(feedbackForm.whatWentWell || '').length}/1200 characters
-              </Text>
-            </View>
-            <TextInput
-              style={[
-                styles.feedbackTextInput, 
-                { 
-                  backgroundColor: theme.colors.background, 
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text,
-                  opacity: isGeneralEvaluator() ? 1 : 0.6
-                }
-              ]}
-              placeholder="Highlight the positive aspects of the meeting, successful moments, and things that worked well..."
-              placeholderTextColor={theme.colors.textSecondary}
-              value={feedbackForm.whatWentWell}
-              onChangeText={(text) => updateFeedbackField('whatWentWell', text)}
-              multiline
-              numberOfLines={6}
-              textAlignVertical="top"
-              editable={isGeneralEvaluator()}
-              maxLength={1200} // Added maxLength
-            />
-          </View>
-
-          {/* What Needs Improvement */}
-          <View style={styles.feedbackField}>
-            <View style={styles.feedbackFieldHeader}>
-              <Text style={[styles.feedbackFieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                What Needs Improvement?
-              </Text>
-              <Text style={[styles.wordCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {(feedbackForm.whatNeedsImprovement || '').length}/1200 characters
-              </Text>
-            </View>
-            <TextInput
-              style={[
-                styles.feedbackTextInput, 
-                { 
-                  backgroundColor: theme.colors.background, 
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text,
-                  opacity: isGeneralEvaluator() ? 1 : 0.6
-                }
-              ]}
-              placeholder="Provide constructive feedback on areas that could be improved for future meetings..."
-              placeholderTextColor={theme.colors.textSecondary}
-              value={feedbackForm.whatNeedsImprovement}
-              onChangeText={(text) => updateFeedbackField('whatNeedsImprovement', text)}
-              multiline
-              numberOfLines={6}
-              textAlignVertical="top"
-              editable={isGeneralEvaluator()}
-              maxLength={1200} // Added maxLength
-            />
-          </View>
+            <View style={styles.meetingCardDecoration} pointerEvents="none" />
           </View>
         )}
 
-        {/* Evaluation Categories */}
-        {activeTab === 'categories' && (
+        {/* Tabs/content are available only after GE role is booked */}
+        {isGeRoleBooked && (
           <>
-            <View style={styles.categoriesSection}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Evaluation Categories
-              </Text>
-              <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                
-              </Text>
-
-              {evaluationCategories.map((category) => (
-                <CategorySection key={category.id} category={category} />
-              ))}
+            {/* Tab Selector */}
+            <View style={[styles.tabContainer, { backgroundColor: theme.colors.surface }]}>
+              {canAccessGeneralEvaluatorCorner && (
+                <TouchableOpacity
+                  style={[
+                    styles.tab,
+                    activeTab === 'categories' && styles.activeTab,
+                    { borderBottomColor: activeTab === 'categories' ? theme.colors.primary : 'transparent' }
+                  ]}
+                  onPress={() => setActiveTab('categories')}
+                >
+                  <Text
+                    style={[
+                      styles.tabText,
+                      { color: activeTab === 'categories' ? theme.colors.primary : theme.colors.textSecondary }
+                    ]}
+                    maxFontSizeMultiplier={1.1}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                  >
+                    General Evaluator Corner
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  activeTab === 'feedback' && styles.activeTab,
+                  { borderBottomColor: activeTab === 'feedback' ? theme.colors.primary : 'transparent' }
+                ]}
+                onPress={() => setActiveTab('feedback')}
+              >
+                <Text
+                  style={[
+                    styles.tabText,
+                    { color: activeTab === 'feedback' ? theme.colors.primary : theme.colors.textSecondary }
+                  ]}
+                  maxFontSizeMultiplier={1.1}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  General Evaluator Summary
+                </Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Legend */}
-            <View style={[styles.legendCard, { backgroundColor: theme.colors.surface }]}>
-              <Text style={[styles.legendTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Rating Guide</Text>
+            {/* Evaluation Categories */}
+            {canAccessGeneralEvaluatorCorner && activeTab === 'categories' && (
+              <>
+                <View style={styles.categoriesSection}>
+                  <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                    <Text style={[styles.summaryText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      Total Score: {totalScore} / {geTotalMax}
+                    </Text>
+                    <Text style={[styles.summaryText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                      Overall Rating: {getOverallRating(totalScore)}
+                    </Text>
+                  </View>
 
-              <View style={styles.legendItems}>
-                <View style={styles.legendItem}>
-                  <CheckCircle size={16} color="#10b981" />
-                  <Text style={[styles.legendText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Done well - Excellent performance</Text>
+                  {evaluationQuestions.map((question) => (
+                    <RatingCard key={question.id} question={question} />
+                  ))}
+                </View>
+              </>
+            )}
+
+            {activeTab === 'feedback' && (
+              <View style={styles.categoriesSection}>
+                <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  <Text style={[styles.summaryText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Total Score: {totalScore} / {geTotalMax}
+                  </Text>
+                  <Text style={[styles.summaryText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    Overall Rating: {getOverallRating(totalScore)}
+                  </Text>
                 </View>
 
-                <View style={styles.legendItem}>
-                  <AlertCircle size={16} color="#f59e0b" />
-                  <Text style={[styles.legendText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Partially done - Good with room for improvement</Text>
-                </View>
-
-                <View style={styles.legendItem}>
-                  <X size={16} color="#ef4444" />
-                  <Text style={[styles.legendText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Not done - Needs significant improvement</Text>
-                </View>
-
-                <View style={styles.legendItem}>
-                  <Circle size={16} color="#6b7280" />
-                  <Text style={[styles.legendText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>N/A - Not applicable to this meeting</Text>
+                <View style={[styles.scoreListCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  {evaluationQuestions.map((question, index) => {
+                    const score = responses[question.id];
+                    return (
+                      <View
+                        key={`summary-${question.id}`}
+                        style={[
+                          styles.scoreListRow,
+                          { borderBottomColor: theme.colors.border },
+                          index === evaluationQuestions.length - 1 && styles.scoreListRowLast,
+                        ]}
+                      >
+                        <Text style={[styles.scoreQuestionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                          {question.title}
+                        </Text>
+                        <View style={[styles.scoreValuePill, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                          <Text style={[styles.scoreValueText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.1}>
+                            {score == null ? '-' : `${score}/${GE_RATING_MAX}`}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
               </View>
-            </View>
+            )}
           </>
         )}
 
         </View>
 
         {/* Footer Navigation */}
-        {meeting && (
-          <>
-          <View style={[styles.footerNavigationInline, {
+        <View style={[styles.footerNavigationInline, {
             backgroundColor: theme.colors.surface,
-            marginTop: 24,
+            borderTopColor: theme.colors.border,
+            marginTop: 0,
             marginBottom: 16,
           }]}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.footerNavigationContent}
             >
               <TouchableOpacity
@@ -1181,7 +1053,7 @@ export default function GeneralEvaluatorReport() {
                 onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3E7' }]}>
-                  <FileText size={20} color="#f59e0b" />
+                  <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
               </TouchableOpacity>
@@ -1191,7 +1063,7 @@ export default function GeneralEvaluatorReport() {
                 onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meeting.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                  <Bell size={20} color="#772432" />
+                  <Bell size={FOOTER_NAV_ICON_SIZE} color="#772432" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
               </TouchableOpacity>
@@ -1201,7 +1073,7 @@ export default function GeneralEvaluatorReport() {
                 onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Users size={20} color="#ec4899" />
+                  <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
               </TouchableOpacity>
@@ -1216,7 +1088,7 @@ export default function GeneralEvaluatorReport() {
                   disabled={bookingGeRole || assigningGeRole}
                 >
                   <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
-                    <UserPlus size={20} color="#059669" />
+                    <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#059669" />
                   </View>
                   <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Assign</Text>
                 </TouchableOpacity>
@@ -1227,7 +1099,7 @@ export default function GeneralEvaluatorReport() {
                 onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                  <Calendar size={20} color="#004165" />
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
               </TouchableOpacity>
@@ -1237,9 +1109,19 @@ export default function GeneralEvaluatorReport() {
                 onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDF4' }]}>
-                  <BookOpen size={20} color="#16a34a" />
+                  <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#16a34a" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId: meeting.id } })}
+              >
+                <View style={[styles.footerNavIcon, { backgroundColor: '#FFF7ED' }]}>
+                  <Eye size={FOOTER_NAV_ICON_SIZE} color="#ea580c" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1247,19 +1129,9 @@ export default function GeneralEvaluatorReport() {
                 onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meeting.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
-                  <NotebookPen size={20} color="#4f46e5" />
+                  <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meeting.id } })}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3C7' }]}>
-                  <Mic size={20} color="#f59e0b" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1267,29 +1139,9 @@ export default function GeneralEvaluatorReport() {
                 onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FDF4FF' }]}>
-                  <CheckSquare size={20} color="#a855f7" />
+                  <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting.id } })}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
-                  <CheckSquare size={20} color="#059669" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Roles</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/prepared-speech-evaluations', params: { meetingId: meeting.id } })}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FEF2F2' }]}>
-                  <ClipboardCheck size={20} color="#dc2626" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Evaluations</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1297,7 +1149,7 @@ export default function GeneralEvaluatorReport() {
                 onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting.id } })}
               >
                 <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                  <Mic size={20} color="#C9B84E" />
+                  <Mic size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
               </TouchableOpacity>
@@ -1306,8 +1158,8 @@ export default function GeneralEvaluatorReport() {
                 style={styles.footerNavItem}
                 onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting.id } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                  <Clock size={20} color="#C9B84E" />
+                <View style={[styles.footerNavIcon, { backgroundColor: '#E6F4FF' }]}>
+                  <Clock size={FOOTER_NAV_ICON_SIZE} color="#0369a1" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
               </TouchableOpacity>
@@ -1316,11 +1168,65 @@ export default function GeneralEvaluatorReport() {
                 style={styles.footerNavItem}
                 onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting.id } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDFA' }]}>
-                  <MessageSquare size={20} color="#0d9488" />
+                <View style={[styles.footerNavIcon, { backgroundColor: '#FFF1F2' }]}>
+                  <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#e11d48" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meeting.id } })}
+              >
+                <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
+                  <Mic size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push({ pathname: '/admin/voting-operations' })}
+              >
+                <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
+                  <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#772432" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Vote Ops</Text>
+              </TouchableOpacity>
+
+              {isExComm && (
+                <>
+                  <TouchableOpacity
+                    style={styles.footerNavItem}
+                    onPress={() => router.push('/admin/club-operations')}
+                  >
+                    <View style={[styles.footerNavIcon, { backgroundColor: '#D1FAE5' }]}>
+                      <Settings size={FOOTER_NAV_ICON_SIZE} color="#10b981" />
+                    </View>
+                    <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.footerNavItem}
+                    onPress={() => router.push('/admin/meeting-management')}
+                  >
+                    <View style={[styles.footerNavIcon, { backgroundColor: '#DBEAFE' }]}>
+                      <LayoutDashboard size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
+                    </View>
+                    <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.footerNavItem}
+                    onPress={() => router.push('/admin/manage-club-users')}
+                  >
+                    <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3C7' }]}>
+                      <UserCog size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+                    </View>
+                    <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Users</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </ScrollView>
           </View>
 
@@ -1418,8 +1324,6 @@ export default function GeneralEvaluatorReport() {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
-          </>
-        )}
       </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1459,43 +1363,58 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: 8,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   content: {
     flex: 1,
   },
   contentContainer: {
     flexGrow: 1,
+    flexDirection: 'column',
   },
   contentTop: {
+  },
+  navSpacer: {
     flex: 1,
+    minHeight: 16,
   },
   footerNavigationInline: {
-    marginHorizontal: 16,
+    borderTopWidth: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
     borderRadius: 16,
-    paddingVertical: 16,
+    marginHorizontal: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 3,
   },
   footerNavigationContent: {
-    paddingHorizontal: 16,
-    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 6,
   },
   footerNavItem: {
     alignItems: 'center',
-    gap: 6,
-    minWidth: 64,
+    minWidth: 45,
   },
   footerNavIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 3,
   },
   footerNavLabel: {
-    fontSize: 11,
+    fontSize: 8,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -1518,7 +1437,7 @@ const styles = StyleSheet.create({
   },
   meetingCardContent: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 13,
     zIndex: 1,
   },
@@ -1543,9 +1462,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   meetingCardTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
-    marginBottom: 3,
+    marginBottom: 4,
+    letterSpacing: -0.2,
+  },
+  meetingCardMetaCompact: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
+  meetingCardMetaModeLine: {
+    marginTop: 3,
+  },
+  meetingCardDecoration: {
+    position: 'absolute',
+    right: -40,
+    bottom: -40,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'transparent',
   },
   meetingCardDateTime: {
     fontSize: 10,
@@ -1560,7 +1497,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1569,6 +1506,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+  },
+  evaluatorClubName: {
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 10,
   },
   evaluatorHeader: {
     flexDirection: 'row',
@@ -1590,15 +1533,20 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   evaluatorCard: {
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-    padding: 14,
-    borderLeftWidth: 3,
-    borderLeftColor: '#3b82f6',
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderLeftWidth: 0,
+    position: 'relative',
   },
   evaluatorInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  evaluatorInfoCentered: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   evaluatorAvatar: {
     width: 49,
@@ -1609,6 +1557,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 11,
     overflow: 'hidden',
+  },
+  evaluatorAvatarLarge: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
   },
   evaluatorAvatarImage: {
     width: '100%',
@@ -1628,6 +1588,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  evaluatorNameCentered: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    textAlign: 'center',
+  },
+  evaluatorRoleLabelCentered: {
+    marginTop: 4,
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   prepSpaceIcon: {
     width: 36,
     height: 36,
@@ -1635,6 +1607,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
+    borderWidth: 1,
+  },
+  prepSpaceIconFloating: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    marginLeft: 0,
+    zIndex: 2,
   },
   evaluatorEmail: {
     fontSize: 14,
@@ -1670,6 +1650,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 26,
   },
+  noAssignmentNotionCard: {
+    marginHorizontal: 13,
+    marginTop: 13,
+    borderRadius: 13,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  noAssignmentDivider: {
+    height: 1,
+    marginTop: 14,
+  },
+  noToastmasterCard: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noToastmasterIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  noToastmasterText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  noToastmasterSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
   noEvaluatorIcon: {
     width: 52,
     height: 52,
@@ -1697,24 +1719,27 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   bookRoleButton: {
-    backgroundColor: '#3b82f6',
-    paddingVertical: 9,
-    paddingHorizontal: 21,
-    borderRadius: 12,
-    marginTop: 5,
-    shadowColor: '#3b82f6',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    minHeight: 48,
+    minWidth: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 6,
   },
   bookRoleButtonText: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
+    letterSpacing: 0.3,
     textAlign: 'center',
   },
   geAssignOverlay: {
@@ -1818,6 +1843,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  inlineTabContainer: {
+    marginHorizontal: 0,
+    marginTop: 14,
+    borderRadius: 10,
+    shadowOpacity: 0,
+    elevation: 0,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   tab: {
     flex: 1,
     paddingVertical: 16,
@@ -1829,8 +1863,10 @@ const styles = StyleSheet.create({
     // Active tab styling handled by borderBottomColor
   },
   tabText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
+    textAlign: 'center',
+    width: '100%',
   },
   feedbackSection: {
     marginHorizontal: 16,
@@ -1909,6 +1945,116 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 24,
     paddingBottom: 16,
+    gap: 12,
+  },
+  consolidatedBottomDivider: {
+    height: 1,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  consolidatedMeetingMetaBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  consolidatedMeetingMetaSingle: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  summaryCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  summaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  scoreListCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  scoreListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  scoreListRowLast: {
+    borderBottomWidth: 0,
+  },
+  scoreQuestionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 18,
+  },
+  scoreValuePill: {
+    minWidth: 56,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scoreValueText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  ratingCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+  },
+  ratingCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  ratingCardDesc: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  sliderRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  sliderStep: {
+    flex: 1,
+    height: 10,
+    borderRadius: 999,
+  },
+  scaleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  scaleTick: {
+    fontSize: 10,
+    width: 12,
+    textAlign: 'center',
+  },
+  ratingMetaRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  selectedValue: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  scoreBadge: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   sectionTitle: {
     fontSize: 20,
