@@ -285,7 +285,7 @@ export default function AdminPanel() {
       ? [
           {
             key: 'users',
-            label: 'Invite club members',
+            label: 'Invite new club members',
             icon: <UserPlus size={18} color={N.iconMuted} strokeWidth={1.75} />,
             onPress: () => router.push('/admin/manage-club-users'),
           },

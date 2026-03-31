@@ -235,13 +235,13 @@ export default function ManageClubUsers() {
 
           <View style={[styles.notionGroup, { borderColor: N.border }]}>
             <NotionActionRow
-              title="Invite club members"
+              title="Invite new club members"
               description="Send invites and grow your club community."
               icon={<UserPlus size={18} color={N.iconMuted} strokeWidth={1.75} />}
               onPress={() => router.push('/admin/invite-new-user')}
             />
             <NotionActionRow
-              title="Manage members"
+              title="Manage club members"
               description="Organize members, roles, and access in one place."
               icon={<Users size={18} color={N.iconMuted} strokeWidth={1.75} />}
               onPress={() => router.push('/admin/manage-existing-users')}
