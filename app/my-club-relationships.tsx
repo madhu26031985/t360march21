@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -37,9 +37,14 @@ export default function MyClubRelationships() {
 
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
   const [clubToDisconnect, setClubToDisconnect] = useState<any>(null);
+  const [clubs, setClubs] = useState<any[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [isLoadingInvites, setIsLoadingInvites] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
+
+  useEffect(() => {
+    setClubs(user?.clubs || []);
+  }, [user?.clubs]);
 
 
   const loadPendingInvites = async () => {
@@ -224,6 +229,7 @@ export default function MyClubRelationships() {
       }
 
       Alert.alert('Success', `Disconnected from ${clubToDisconnect.name}`);
+      setClubs((prev) => prev.filter((club) => club.id !== clubToDisconnect.id));
       setShowDisconnectModal(false);
       setClubToDisconnect(null);
 
@@ -274,17 +280,17 @@ export default function MyClubRelationships() {
       {/* Summary Card */}
       <View style={[styles.summaryCard, { backgroundColor: N.surface, borderColor: N.border }]}>
         <Text style={[styles.summaryCount, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-          {user?.clubs?.length || 0}
+          {clubs.length}
         </Text>
         <Text style={[styles.summaryLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-          {user?.clubs?.length === 1 ? 'Active Club' : 'Active Clubs'}
+          {clubs.length === 1 ? 'Active Club' : 'Active Clubs'}
         </Text>
       </View>
 
       {/* Club Cards */}
       <View style={styles.clubsSection}>
-        {user?.clubs && user.clubs.length > 0 ? (
-          user.clubs.map((club) => (
+        {clubs.length > 0 ? (
+          clubs.map((club) => (
             <View key={club.id} style={[styles.clubCard, { backgroundColor: N.surface, borderColor: N.border }]}>
               {/* Club Header */}
               <View style={styles.clubHeader}>
@@ -305,7 +311,9 @@ export default function MyClubRelationships() {
                   style={[styles.disconnectButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
                   onPress={() => handleDisconnectClub(club)}
                 >
-                  <X size={16} color={N.textSecondary} />
+                  <Text style={styles.disconnectButtonText} maxFontSizeMultiplier={1.3}>
+                    Disconnect Club
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -626,12 +634,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   disconnectButton: {
-    width: 32,
-    height: 32,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 4,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  disconnectButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
   },
   clubDetails: {
     gap: 12,
