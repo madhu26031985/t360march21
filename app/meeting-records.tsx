@@ -5,9 +5,19 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, Clock, MapPin, ChevronRight, Building2, Crown, User, Shield, Eye, UserCheck, Clock as Unlock, Lock, Home, Users, Settings } from 'lucide-react-native';
-import { Search, Filter, ChevronDown } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, MapPin, ChevronRight, ChevronDown, ChevronUp, Building2, Crown, User, Shield, Eye, UserCheck, Lock, Home, Users, Settings, RefreshCw, FileText, Vote, ClipboardCheck } from 'lucide-react-native';
+import { Search, Filter } from 'lucide-react-native';
 import { TextInput, Modal } from 'react-native';
+
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  surfaceSoft: '#F7F6F3',
+  border: 'rgba(55, 53, 47, 0.10)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  iconMuted: 'rgba(55, 53, 47, 0.45)',
+};
 
 interface Meeting {
   id: string;
@@ -36,8 +46,9 @@ export default function MeetingRecords() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedTab, setSelectedTab] = useState<'open' | 'closed'>('open');
   const [filteredMeetings, setFilteredMeetings] = useState<Meeting[]>([]);
+  const [expandedMeetingId, setExpandedMeetingId] = useState<string | null>(null);
+  const [expandedTab, setExpandedTab] = useState<'actions' | 'roles' | 'evaluation'>('actions');
   const [searchQuery, setSearchQuery] = useState('');
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [dateFilter, setDateFilter] = useState<'upcoming' | 'last_30' | 'last_90' | 'last_6_months' | 'last_1_year' | 'all_time'>('last_30');
@@ -53,7 +64,7 @@ export default function MeetingRecords() {
 
   useEffect(() => {
     filterMeetings();
-  }, [meetings, selectedTab, searchQuery, dateFilter, customStartDate, customEndDate]);
+  }, [meetings, searchQuery, dateFilter, customStartDate, customEndDate]);
 
   const loadMeetings = async () => {
     if (!user?.currentClubId) {
@@ -146,12 +157,8 @@ export default function MeetingRecords() {
         break;
     }
     
-    // Apply tab filter
-    if (selectedTab === 'open') {
-      filtered = filtered.filter(m => m.meeting_status === 'open');
-    } else {
-      filtered = filtered.filter(m => m.meeting_status === 'close');
-    }
+    // Only show closed meetings
+    filtered = filtered.filter((m) => m.meeting_status === 'close');
     
     setFilteredMeetings(filtered);
   };
@@ -168,56 +175,15 @@ export default function MeetingRecords() {
     }
   };
 
-  const getFilterCount = (tabValue: string) => {
-    // Apply search and date filters first
-    let baseFiltered = meetings;
-    
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      baseFiltered = baseFiltered.filter(meeting => 
-        meeting.meeting_title?.toLowerCase().includes(query) ||
-        (meeting.meeting_number && meeting.meeting_number.toLowerCase().includes(query))
-      );
-    }
-    
-    // Apply date filter
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    switch (dateFilter) {
-      case 'upcoming':
-        baseFiltered = baseFiltered.filter(meeting => new Date(meeting.meeting_date) >= today);
-        break;
-      case 'last_30':
-        const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
-        baseFiltered = baseFiltered.filter(meeting => new Date(meeting.meeting_date) >= thirtyDaysAgo);
-        break;
-      case 'last_90':
-        const ninetyDaysAgo = new Date(now.getTime() - (90 * 24 * 60 * 60 * 1000));
-        baseFiltered = baseFiltered.filter(meeting => new Date(meeting.meeting_date) >= ninetyDaysAgo);
-        break;
-      case 'last_6_months':
-        const sixMonthsAgo = new Date(now.getTime() - (6 * 30 * 24 * 60 * 60 * 1000));
-        baseFiltered = baseFiltered.filter(meeting => new Date(meeting.meeting_date) >= sixMonthsAgo);
-        break;
-      case 'last_1_year':
-        const oneYearAgo = new Date(now.getTime() - (365 * 24 * 60 * 60 * 1000));
-        baseFiltered = baseFiltered.filter(meeting => new Date(meeting.meeting_date) >= oneYearAgo);
-        break;
-      case 'all_time':
-      default:
-        // No date filtering
-        break;
-    }
-    
-    // Then apply tab filter
-    if (tabValue === 'open') return baseFiltered.filter(m => m.meeting_status === 'open').length;
-    return baseFiltered.filter(m => m.meeting_status === 'close').length;
-  };
+  // (Open/Closed tabs removed; this screen shows closed meetings only.)
 
   const handleMeetingPress = (meeting: Meeting) => {
-    router.push(`/meeting-details?meetingId=${meeting.id}`);
+    if (expandedMeetingId === meeting.id) {
+      setExpandedMeetingId(null);
+      return;
+    }
+    setExpandedMeetingId(meeting.id);
+    setExpandedTab('actions');
   };
 
   const formatMeetingMode = (mode: string) => {
@@ -264,50 +230,43 @@ export default function MeetingRecords() {
 
   const MeetingCard = ({ meeting }: { meeting: Meeting }) => (
     <TouchableOpacity 
-      style={[styles.meetingCard, { backgroundColor: theme.colors.surface }]}
+      style={[styles.meetingCard, { backgroundColor: N.surface, borderColor: N.border }]}
       onPress={() => handleMeetingPress(meeting)}
       activeOpacity={0.7}
     >
       <View style={styles.meetingHeader}>
-        <View style={[
-          styles.meetingIcon, 
-          { backgroundColor: meeting.meeting_status === 'open' ? '#10b981' + '20' : '#6b7280' + '20' }
-        ]}>
-          {meeting.meeting_status === 'open' ? (
-            <Unlock size={24} color="#10b981" />
-          ) : (
-            <Lock size={24} color="#6b7280" />
-          )}
+        <View style={[styles.meetingIcon, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
+          <Lock size={20} color={N.iconMuted} />
         </View>
         <View style={styles.meetingCardInfo}>
-          <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.meetingCardTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
             {meeting.meeting_title}
           </Text>
           <View style={styles.meetingCardMeta}>
             <View style={styles.meetingCardDate}>
-              <Calendar size={12} color={theme.colors.textSecondary} />
-              <Text style={[styles.meetingCardDateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              <Calendar size={12} color={N.textSecondary} />
+              <Text style={[styles.meetingCardDateText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {new Date(meeting.meeting_date).toLocaleDateString()}
               </Text>
             </View>
             {meeting.meeting_number && (
-              <Text style={[styles.meetingCardNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.meetingCardNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 #{meeting.meeting_number}
               </Text>
             )}
           </View>
           {meeting.meeting_start_time && (
             <View style={styles.meetingCardTime}>
-              <Clock size={12} color={theme.colors.textSecondary} />
-              <Text style={[styles.meetingCardTimeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              <Clock size={12} color={N.textSecondary} />
+              <Text style={[styles.meetingCardTimeText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {meeting.meeting_start_time}
                 {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
               </Text>
             </View>
           )}
           <View style={styles.meetingCardMode}>
-            <MapPin size={12} color={theme.colors.textSecondary} />
-            <Text style={[styles.meetingCardModeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            <MapPin size={12} color={N.textSecondary} />
+            <Text style={[styles.meetingCardModeText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
               {formatMeetingMode(meeting.meeting_mode)}
             </Text>
           </View>
@@ -315,25 +274,123 @@ export default function MeetingRecords() {
           {/* Meeting Day */}
           {meeting.meeting_day && (
             <View style={styles.meetingCardDay}>
-              <Calendar size={12} color={theme.colors.textSecondary} />
-              <Text style={[styles.meetingCardDayText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              <Calendar size={12} color={N.textSecondary} />
+              <Text style={[styles.meetingCardDayText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {meeting.meeting_day}
               </Text>
             </View>
           )}
         </View>
-        <View style={styles.meetingCardArrow}>
-          <ChevronRight size={20} color={theme.colors.textSecondary} />
-        </View>
+        <TouchableOpacity
+          style={styles.openCloseBtn}
+          onPress={() => handleMeetingPress(meeting)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.openCloseBtnText} maxFontSizeMultiplier={1.2}>
+            {expandedMeetingId === meeting.id ? 'Close' : 'Open'}
+          </Text>
+          {expandedMeetingId === meeting.id ? (
+            <ChevronUp size={14} color="#ffffff" />
+          ) : (
+            <ChevronDown size={14} color="#ffffff" />
+          )}
+        </TouchableOpacity>
       </View>
+
+      {expandedMeetingId === meeting.id && (
+        <View style={[styles.expandedCardWrap, { borderTopColor: N.border }]}>
+          <View style={[styles.expandedTabs, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
+            {(['actions', 'roles', 'evaluation'] as const).map((tab) => (
+              <TouchableOpacity
+                key={tab}
+                style={[
+                  styles.expandedTab,
+                  expandedTab === tab && [styles.expandedTabActive, { backgroundColor: N.surface }],
+                ]}
+                onPress={() => setExpandedTab(tab)}
+              >
+                <Text style={[styles.expandedTabText, { color: expandedTab === tab ? N.text : N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                  {tab === 'actions' ? 'Actions' : tab === 'roles' ? 'Roles' : 'Evaluation'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {expandedTab === 'actions' && (
+            <View style={styles.expandedSection}>
+              <Text style={[styles.expandedSectionLabel, { color: N.text }]} maxFontSizeMultiplier={1.2}>Core</Text>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/book-a-role?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <Calendar size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Book a Role</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Book roles for this meeting</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/quick-overview?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <RefreshCw size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Quick Overview</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View meeting overview and status</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-agenda-view?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <FileText size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Meeting Agenda</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View and manage meeting agenda</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {expandedTab === 'roles' && (
+            <View style={styles.expandedSection}>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-details?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <ClipboardCheck size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Roles</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View booked and completed meeting roles</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {expandedTab === 'evaluation' && (
+            <View style={styles.expandedSection}>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-details?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <Vote size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Evaluation</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Open evaluation and reports for this meeting</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
     </TouchableOpacity>
   );
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading meeting records...</Text>
+          <Text style={[styles.loadingText, { color: N.text }]} maxFontSizeMultiplier={1.3}>Loading meeting records...</Text>
         </View>
       </SafeAreaView>
     );
@@ -341,15 +398,15 @@ export default function MeetingRecords() {
 
   if (!user?.isAuthenticated) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.accessDeniedContainer}>
-          <Calendar size={48} color={theme.colors.textSecondary} />
-          <Text style={[styles.accessDeniedTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club Access Required</Text>
-          <Text style={[styles.accessDeniedMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+          <Calendar size={48} color={N.textSecondary} />
+          <Text style={[styles.accessDeniedTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Club Access Required</Text>
+          <Text style={[styles.accessDeniedMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
             You need to be an authenticated club member to access meeting records.
           </Text>
           <TouchableOpacity
-            style={[styles.signInButton, { backgroundColor: theme.colors.primary }]}
+            style={[styles.signInButton, { backgroundColor: N.text }]}
             onPress={() => router.replace('/login')}
           >
             <Text style={styles.signInButtonText} maxFontSizeMultiplier={1.3}>Sign In</Text>
@@ -359,36 +416,33 @@ export default function MeetingRecords() {
     );
   }
 
-  const openCount = meetings.filter(m => m.meeting_status === 'open').length;
-  const closedCount = meetings.filter(m => m.meeting_status === 'close').length;
-
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+          <ArrowLeft size={22} color={N.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Records</Text>
+        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Meeting Records</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Club Card */}
         {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.clubCard, { backgroundColor: N.surface, borderColor: N.border }]}>
             <View style={styles.clubHeader}>
-              <View style={[styles.clubIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-                <Building2 size={20} color={theme.colors.primary} />
+              <View style={[styles.clubIcon, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
+                <Building2 size={20} color={N.textSecondary} />
               </View>
               <View style={styles.clubInfo}>
-                <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
                   {clubInfo.name}
                 </Text>
                 <View style={styles.clubMeta}>
                   {clubInfo.club_number && (
-                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    <Text style={[styles.clubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Club #{clubInfo.club_number}
                     </Text>
                   )}
@@ -407,12 +461,12 @@ export default function MeetingRecords() {
         {/* Search and Filter Section */}
         <View style={styles.searchFilterSection}>
           {/* Search Box */}
-          <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <Search size={16} color={theme.colors.textSecondary} />
+          <View style={[styles.searchContainer, { backgroundColor: N.surface, borderColor: N.border }]}>
+            <Search size={16} color={N.textSecondary} />
             <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
+              style={[styles.searchInput, { color: N.text }]}
               placeholder="Search by meeting number or title..."
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={N.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -420,90 +474,24 @@ export default function MeetingRecords() {
 
           {/* Date Filter */}
           <TouchableOpacity
-            style={[styles.filterButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+            style={[styles.filterButton, { backgroundColor: N.surface, borderColor: N.border }]}
             onPress={() => setShowDateFilter(true)}
           >
-            <Filter size={16} color={theme.colors.textSecondary} />
-            <Text style={[styles.filterButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Filter size={16} color={N.textSecondary} />
+            <Text style={[styles.filterButtonText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
               {getDateFilterLabel()}
             </Text>
-            <ChevronDown size={14} color={theme.colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              {
-                backgroundColor: selectedTab === 'open' ? '#10b981' : theme.colors.surface,
-                borderColor: selectedTab === 'open' ? '#10b981' : theme.colors.border,
-              }
-            ]}
-            onPress={() => setSelectedTab('open')}
-          >
-            <Unlock size={16} color={selectedTab === 'open' ? '#ffffff' : theme.colors.text} />
-            <Text style={[
-              styles.tabText,
-              { color: selectedTab === 'open' ? '#ffffff' : theme.colors.text }
-            ]} maxFontSizeMultiplier={1.3}>
-              Open Meetings
-            </Text>
-            <View style={[
-              styles.tabCount,
-              { backgroundColor: selectedTab === 'open' ? 'rgba(255, 255, 255, 0.2)' : '#10b981' + '20' }
-            ]}>
-              <Text style={[
-                styles.tabCountText,
-                { color: selectedTab === 'open' ? '#ffffff' : '#10b981' }
-              ]} maxFontSizeMultiplier={1.3}>
-                {getFilterCount('open')}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              {
-                backgroundColor: selectedTab === 'closed' ? '#6b7280' : theme.colors.surface,
-                borderColor: selectedTab === 'closed' ? '#6b7280' : theme.colors.border,
-              }
-            ]}
-            onPress={() => setSelectedTab('closed')}
-          >
-            <Lock size={16} color={selectedTab === 'closed' ? '#ffffff' : theme.colors.text} />
-            <Text style={[
-              styles.tabText,
-              { color: selectedTab === 'closed' ? '#ffffff' : theme.colors.text }
-            ]} maxFontSizeMultiplier={1.3}>
-              Closed Meetings
-            </Text>
-            <View style={[
-              styles.tabCount,
-              { backgroundColor: selectedTab === 'closed' ? 'rgba(255, 255, 255, 0.2)' : '#6b7280' + '20' }
-            ]}>
-              <Text style={[
-                styles.tabCountText,
-                { color: selectedTab === 'closed' ? '#ffffff' : '#6b7280' }
-              ]} maxFontSizeMultiplier={1.3}>
-                {getFilterCount('closed')}
-              </Text>
-            </View>
+            <ChevronDown size={14} color={N.textSecondary} />
           </TouchableOpacity>
         </View>
 
         {/* Meetings Section */}
         <View style={styles.meetingsSection}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            {selectedTab === 'open' ? 'Open' : 'Closed'} Meetings ({filteredMeetings.length})
+          <Text style={[styles.sectionTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            Closed Meetings ({filteredMeetings.length})
           </Text>
-          <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            {selectedTab === 'open' 
-              ? 'Currently active meetings where members can participate'
-              : 'Completed meetings that have been closed'
-            }
+          <Text style={[styles.sectionSubtitle, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Completed meetings that have been closed
           </Text>
           
           {filteredMeetings.length > 0 ? (
@@ -514,19 +502,12 @@ export default function MeetingRecords() {
             </View>
           ) : (
             <View style={styles.noMeetingsState}>
-              {selectedTab === 'open' ? (
-                <Unlock size={48} color={theme.colors.textSecondary} />
-              ) : (
-                <Lock size={48} color={theme.colors.textSecondary} />
-              )}
-              <Text style={[styles.noMeetingsText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                No {selectedTab === 'open' ? 'Open' : 'Closed'} Meetings
+              <Lock size={48} color={N.textSecondary} />
+              <Text style={[styles.noMeetingsText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                No Closed Meetings
               </Text>
-              <Text style={[styles.noMeetingsSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {selectedTab === 'open' 
-                  ? 'There are currently no open meetings available'
-                  : 'There are no closed meetings to display'
-                }
+              <Text style={[styles.noMeetingsSubtext, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                There are no closed meetings to display
               </Text>
             </View>
           )}
@@ -1029,6 +1010,85 @@ const styles = StyleSheet.create({
   meetingCardDayText: {
     fontSize: 13,
     marginLeft: 4,
+  },
+  openCloseBtn: {
+    marginLeft: 12,
+    minWidth: 82,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#2874F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  openCloseBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  expandedCardWrap: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    gap: 12,
+  },
+  expandedTabs: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 4,
+    gap: 4,
+  },
+  expandedTab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  expandedTabActive: {
+    borderWidth: 1,
+    borderColor: '#DCDCDC',
+  },
+  expandedTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  expandedSection: {
+    gap: 8,
+  },
+  expandedSectionLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  expandedRowCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  expandedRowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  expandedRowTextWrap: {
+    flex: 1,
+  },
+  expandedRowTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  expandedRowSub: {
+    fontSize: 12,
+    marginTop: 2,
   },
   meetingCardArrow: {
     marginLeft: 12,

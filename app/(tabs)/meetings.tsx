@@ -2289,6 +2289,37 @@ export default function ClubMeetings() {
           </View>
             </>
           )}
+
+          <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
+          <View style={styles.nextMeetingsSection}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Meeting History
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.lockedHeroMeetingCard,
+                { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
+              ]}
+              onPress={() => router.push('/meeting-records')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.heroCardContent}>
+                <View style={[styles.comingSoonIcon, { backgroundColor: theme.colors.textSecondary + '15' }]}>
+                  <ScrollText size={24} color={theme.colors.textSecondary} />
+                </View>
+                <View style={styles.comingSoonContent}>
+                  <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    Meeting History
+                  </Text>
+                  <Text style={[styles.comingSoonSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    Access previous closed meetings
+                  </Text>
+                </View>
+                <ChevronRight size={18} color={theme.colors.textSecondary} />
+              </View>
+              <View style={styles.heroCardDecoration} />
+            </TouchableOpacity>
+          </View>
           </View>
         ) : (
           <View style={[styles.noClubCard, { backgroundColor: theme.colors.surface }]}>

@@ -46,6 +46,18 @@ import { prefetchEvaluationCornerSnapshot } from '@/lib/evaluationCornerSnapshot
 import { prefetchMeetingAgendaView } from '@/lib/meetingAgendaPrefetch';
 import { journeyHomeQueryKeys, fetchJourneyHomeSnapshot } from '@/lib/journeyHomeQuery';
 
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  surfaceSoft: '#F7F6F3',
+  border: 'rgba(55, 53, 47, 0.10)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  iconStrong: '#787774',
+  iconTile: '#EFEDEB',
+  accent: '#9A6A3A',
+};
+
 const ROLE_PLAYER_CONGRATS_STORAGE_PREFIX = 'journey_role_player_congrats_ack_v1_';
 
 const ROLE_PLAYER_CONGRATS_TEMPLATES = [
@@ -1397,13 +1409,13 @@ export default function MyJourney() {
 
   if (!isAuthenticated || !user) {
     return (
-      <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: N.page }]}>
         <View style={styles.authCheckContainer}>
           <Text style={[styles.authCheckText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
             Please sign in to continue
           </Text>
           <TouchableOpacity 
-            style={[styles.signInButton, { backgroundColor: theme.colors.primary }]}
+            style={[styles.signInButton, { backgroundColor: N.text }]}
             onPress={() => router.replace('/login')}
           >
             <Text style={styles.signInButtonText} maxFontSizeMultiplier={1.3}>Sign In</Text>
@@ -1414,9 +1426,9 @@ export default function MyJourney() {
   }
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: N.page }]}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
         <View style={styles.profileHeader}>
           <View style={styles.profileHeaderLeft}>
             <Animated.View
@@ -1449,11 +1461,11 @@ export default function MyJourney() {
           </View>
           {Platform.OS === 'web' ? (
             <TouchableOpacity
-              style={[styles.businessCardButton, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
+              style={[styles.businessCardButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
               onPress={() => router.push('/business-card')}
               activeOpacity={0.8}
             >
-              <CreditCard size={18} color="#3730A3" />
+              <CreditCard size={18} color={N.iconStrong} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -1462,10 +1474,10 @@ export default function MyJourney() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* No club card - only when user has no club */}
         {!user?.currentClubId && (
-          <View style={[styles.noClubSwitcher, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.noClubSwitcher, { backgroundColor: N.surface }]}>
             <View style={styles.noClubHeader}>
-              <View style={[styles.noClubIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
-                <Building2 size={20} color={theme.colors.textSecondary} />
+              <View style={[styles.noClubIcon, { backgroundColor: N.iconTile }]}>
+                <Building2 size={20} color={N.textSecondary} />
               </View>
               <View style={styles.noClubInfo}>
                 <Text style={[styles.noClubText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
@@ -1483,7 +1495,7 @@ export default function MyJourney() {
         {!user?.currentClubId && (
           <>
             <View style={styles.welcomeMessageSection}>
-              <View style={[styles.welcomeMessageCard, { backgroundColor: theme.colors.surface }]}>
+              <View style={[styles.welcomeMessageCard, { backgroundColor: N.surface }]}>
                 <Text style={[styles.welcomeTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   🎉 Welcome to T-360! 🎉
                 </Text>
@@ -1512,21 +1524,21 @@ export default function MyJourney() {
               </View>
             </View>
 
-            <View style={[styles.journeyUnifiedBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.journeyUnifiedBox, { backgroundColor: N.surface, borderColor: N.border }]}>
               <View style={styles.journeyListCardsContainer}>
                 <JourneyListCard
                   title="My Profile"
                   description="View and edit your personal information"
-                  icon={<User size={18} color="#3b82f6" />}
-                  color="#3b82f6"
+                  icon={<User size={18} color={N.iconStrong} />}
+                  color={N.iconStrong}
                   onPress={handleMyProfilePress}
                   inline
                 />
                 <JourneyListCard
                   title="My Speeches"
                   description="Manage and organize your speech documents"
-                  icon={<BookOpen size={18} color="#3b82f6" />}
-                  color="#3b82f6"
+                  icon={<BookOpen size={18} color={N.iconStrong} />}
+                  color={N.iconStrong}
                   onPress={() => router.push('/speech-repository')}
                   inline
                 />
@@ -1534,8 +1546,8 @@ export default function MyJourney() {
                   <JourneyListCard
                     title="My Mentor"
                     description="Get guidance from your mentor"
-                    icon={<Users size={18} color="#3b82f6" />}
-                    color="#3b82f6"
+                    icon={<Users size={18} color={N.iconStrong} />}
+                    color={N.iconStrong}
                     onPress={handleMyMentorPress}
                     inline
                   />
@@ -1558,25 +1570,25 @@ export default function MyJourney() {
             {/* My Journey + Meeting - One Master Box (when user has a club) */}
         {user?.currentClubId && (
           <>
-                <View style={[styles.masterBox, { backgroundColor: theme.colors.surface }]}>
+                <View style={[styles.masterBox, { backgroundColor: N.surface, borderColor: N.border }]}>
                   {/* Club selection - integrated into master box */}
-                  <ClubSwitcher showRole={true} embedded />
-                  <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
+                  <ClubSwitcher showRole={true} embedded variant="notion" />
+                  <View style={[styles.masterBoxDivider, { backgroundColor: N.border }]} />
                   {/* Profile, Speeches, Mentor */}
                   <View style={styles.journeyListCardsContainer}>
                     <JourneyListCard
                       title="My Profile"
                       description="View and edit your personal information"
-                      icon={<User size={18} color="#3b82f6" />}
-                      color="#3b82f6"
+                      icon={<User size={18} color={N.iconStrong} />}
+                      color={N.iconStrong}
                       onPress={handleMyProfilePress}
                       inline
                     />
                     <JourneyListCard
                       title="My Speeches"
                       description="Manage and organize your speech documents"
-                      icon={<BookOpen size={18} color="#3b82f6" />}
-                      color="#3b82f6"
+                      icon={<BookOpen size={18} color={N.iconStrong} />}
+                      color={N.iconStrong}
                       onPress={() => router.push('/speech-repository')}
                       inline
                     />
@@ -1584,8 +1596,8 @@ export default function MyJourney() {
                       <JourneyListCard
                         title="My Mentor"
                         description="Get guidance from your mentor"
-                        icon={<Users size={18} color="#3b82f6" />}
-                        color="#3b82f6"
+                        icon={<Users size={18} color={N.iconStrong} />}
+                        color={N.iconStrong}
                         onPress={handleMyMentorPress}
                         inline
                       />
@@ -1596,7 +1608,7 @@ export default function MyJourney() {
                         description={
                           pendingMeetingReminders.length > 0 ? (
                             <Animated.View style={[styles.myTasksAnimatedWrap, heroReminderTextAnimatedStyle]}>
-                              <Text style={[styles.myTasksAnimatedText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                              <Text style={[styles.myTasksAnimatedText, { color: N.accent }]} maxFontSizeMultiplier={1.2}>
                                 {pendingMeetingReminders[heroReminderSlide]?.text ?? ''}
                               </Text>
                             </Animated.View>
@@ -1606,8 +1618,8 @@ export default function MyJourney() {
                             </Text>
                           )
                         }
-                        icon={<Bell size={18} color="#b7791f" />}
-                        color="#3b82f6"
+                        icon={<Bell size={18} color={N.iconStrong} />}
+                        color={N.iconStrong}
                         onPress={() => {
                           const item = pendingMeetingReminders[heroReminderSlide];
                           if (item) {
@@ -1624,8 +1636,8 @@ export default function MyJourney() {
                       <JourneyListCard
                         title={`Mark attendance, ${userFirstName}!`}
                         description="Confirm you were present at this meeting."
-                        icon={<UserCheck size={18} color="#3b82f6" />}
-                        color="#3b82f6"
+                        icon={<UserCheck size={18} color={N.iconStrong} />}
+                        color={N.iconStrong}
                         onPress={() =>
                           router.push({
                             pathname: '/attendance-report',
@@ -1640,8 +1652,8 @@ export default function MyJourney() {
                       <JourneyListCard
                         title={`Mark role completion, ${userFirstName}!`}
                         description="Record how your role went for this meeting."
-                        icon={<ClipboardCheck size={18} color="#6366f1" />}
-                        color="#6366f1"
+                        icon={<ClipboardCheck size={18} color={N.iconStrong} />}
+                        color={N.iconStrong}
                         onPress={() =>
                           router.push({
                             pathname: '/role-completion-report',
@@ -1656,8 +1668,8 @@ export default function MyJourney() {
                       <JourneyListCard
                         title={`Cast your vote, ${userFirstName}!`}
                         description="A live poll is open—tap to participate."
-                        icon={<Vote size={18} color="#0a66c2" />}
-                        color="#0a66c2"
+                        icon={<Vote size={18} color={N.iconStrong} />}
+                        color={N.iconStrong}
                         onPress={() =>
                           router.push({
                             pathname: '/live-voting',
@@ -1679,8 +1691,8 @@ export default function MyJourney() {
                         onPress={openRolePlayerCongrats}
                         activeOpacity={0.7}
                       >
-                        <View style={[styles.rolePlayerCongratsIconWrap, { backgroundColor: '#8b5cf620' }]}>
-                          <Sparkles size={18} color="#8b5cf6" />
+                        <View style={[styles.rolePlayerCongratsIconWrap, { backgroundColor: N.iconTile }]}>
+                          <Sparkles size={18} color={N.iconStrong} />
                         </View>
                         <View style={styles.journeyListTextCol}>
                           <Text style={[styles.journeyListTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -1694,7 +1706,7 @@ export default function MyJourney() {
                       </TouchableOpacity>
                     ) : null}
                   </View>
-                  <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
+                  <View style={[styles.masterBoxDivider, { backgroundColor: N.border }]} />
                   {/* Meeting details */}
                   <TouchableOpacity
                     activeOpacity={0.7}
@@ -1703,7 +1715,7 @@ export default function MyJourney() {
                   >
                   {currentOpenMeetingId ? (
                     <>
-                  <View style={[styles.dateBadge, { backgroundColor: theme.colors.textSecondary + '18' }]}>
+                  <View style={[styles.dateBadge, { backgroundColor: N.iconTile }]}>
                     <Text style={[styles.dateBadgeDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {meetingDayNum ?? '—'}
                     </Text>
@@ -1734,7 +1746,7 @@ export default function MyJourney() {
                     )}
                   </View>
 
-                  <View style={[styles.meetingStatusPill, { backgroundColor: '#fed7aa' }]}>
+                  <View style={[styles.meetingStatusPill, { backgroundColor: N.iconTile }]}>
                     <Text style={[styles.meetingStatusPillText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {meetingStatusText}
                     </Text>
@@ -1747,7 +1759,7 @@ export default function MyJourney() {
               )}
                   </TouchableOpacity>
 
-              <View style={[styles.meetingActionsDivider, { backgroundColor: theme.colors.border }]} />
+              <View style={[styles.meetingActionsDivider, { backgroundColor: N.border }]} />
 
               <TouchableOpacity
                 style={styles.meetingActionsHeader}
@@ -1764,7 +1776,7 @@ export default function MyJourney() {
                 <MeetingActionButton
                   title="Book a Role"
                   icon={<Calendar size={16} color="#ffffff" />}
-                  color="#0a66c2"
+                  color={N.iconStrong}
                   showAlert={showBookRoleAttention}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
@@ -1777,7 +1789,7 @@ export default function MyJourney() {
                 <MeetingActionButton
                   title="Toastmaster of the day"
                   icon={<MessageSquare size={16} color="#ffffff" />}
-                  color="#84cc16"
+                  color={N.iconStrong}
                   avatarUrls={journeyToastmasterDisplayAvatarUrls}
                   showAlert={tmodNeedsThemeAlert}
                   onPress={handleToastmasterPress}
@@ -1785,7 +1797,7 @@ export default function MyJourney() {
                 <MeetingActionButton
                   title="Prepared Speeches"
                   icon={<Mic size={16} color="#ffffff" />}
-                  color="#14b8a6"
+                  color={N.iconStrong}
                   avatarUrls={journeyPreparedSpeakerAvatarUrls}
                   showAlert={preparedSpeakerNeedsSpeechDetailsAlert}
                   onPress={handlePreparedSpeechesPress}
@@ -1793,14 +1805,14 @@ export default function MyJourney() {
                 <MeetingActionButton
                   title="Speech evalution"
                   icon={<Mic size={16} color="#ffffff" />}
-                  color="#0a66c2"
+                  color={N.iconStrong}
                   avatarUrls={journeySpeechEvaluatorAvatarUrls}
                   onPress={handlePreparedSpeechesPress}
                 />
                 <MeetingActionButton
                   title="General Evaluator"
                   icon={<ClipboardCheck size={16} color="#ffffff" />}
-                  color="#ec4899"
+                  color={N.iconStrong}
                   avatarUrls={journeyGeneralEvaluatorAvatarUrls}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
@@ -1813,7 +1825,7 @@ export default function MyJourney() {
                 <MeetingActionButton
                   title="Table topic"
                   icon={<Mic size={16} color="#ffffff" />}
-                  color="#fb923c"
+                  color={N.iconStrong}
                   avatarUrls={journeyTableTopicsSpeakerAvatarUrls}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
@@ -1826,7 +1838,7 @@ export default function MyJourney() {
                 <MeetingActionButton
                   title="Educational speaker"
                   icon={<GraduationCap size={16} color="#ffffff" />}
-                  color="#f97316"
+                  color={N.iconStrong}
                   avatarUrls={journeyEducationalAvatarUrls}
                   showAlert={educationalSpeakerNeedsAlert}
                   onPress={handleEducationalSpeakerPress}
@@ -1834,7 +1846,7 @@ export default function MyJourney() {
                 <MeetingActionButton
                   title="Timer"
                   icon={<Timer size={16} color="#ffffff" />}
-                  color="#0a66c2"
+                  color={N.iconStrong}
                   avatarUrls={journeyTimerAvatarUrls}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
@@ -1847,7 +1859,7 @@ export default function MyJourney() {
                 <MeetingActionButton
                   title="Ah Counter"
                   icon={<Bell size={16} color="#ffffff" />}
-                  color="#f59e0b"
+                  color={N.iconStrong}
                   avatarUrls={journeyAhCounterAvatarUrls}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
@@ -1860,7 +1872,7 @@ export default function MyJourney() {
                 <MeetingActionButton
                   title="Grammarian"
                   icon={<BookOpen size={16} color="#ffffff" />}
-                  color="#8b5cf6"
+                  color={N.iconStrong}
                   avatarUrls={journeyGrammarianAvatarUrls}
                   showAlert={grammarianNeedsWordOfTheDayAlert}
                   onPress={handleGrammarianPress}
@@ -1868,7 +1880,7 @@ export default function MyJourney() {
               </View>
 
               <TouchableOpacity
-                style={[styles.liveVotingHeroCard, { backgroundColor: theme.colors.surface, borderColor: '#93c5fd' }]}
+                style={[styles.liveVotingHeroCard, { backgroundColor: N.surface, borderColor: N.border }]}
                 onPress={() => {
                   if (!currentOpenMeetingId) {
                     Alert.alert('No open meeting', 'There is no current open meeting to view agenda.');
@@ -1880,7 +1892,7 @@ export default function MyJourney() {
                 activeOpacity={0.85}
               >
                 <View style={styles.liveVotingHeroContent}>
-                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: '#0a66c2' }]}>
+                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: N.iconStrong }]}>
                     <FileText size={18} color="#ffffff" />
                   </View>
                   <View style={styles.liveVotingHeroTextWrap}>
@@ -1894,7 +1906,7 @@ export default function MyJourney() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.liveVotingHeroCard, { backgroundColor: theme.colors.surface, borderColor: '#93c5fd' }]}
+                style={[styles.liveVotingHeroCard, { backgroundColor: N.surface, borderColor: N.border }]}
                 onPress={() => {
                   if (!currentOpenMeetingId) {
                     Alert.alert('No open meeting', 'There is no current open meeting to view live voting.');
@@ -1905,14 +1917,14 @@ export default function MyJourney() {
                 activeOpacity={0.85}
               >
                 <View style={styles.liveVotingHeroContent}>
-                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: '#0a66c2' }]}>
+                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: N.iconStrong }]}>
                     <Vote size={18} color="#ffffff" />
                   </View>
                   <View style={styles.liveVotingHeroTextWrap}>
                     <View style={styles.liveVotingHeroTitleRow}>
                       <Text style={[styles.liveVotingHeroTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
                       {hasActivePoll && !hasVotedInActivePoll && (
-                        <View style={[styles.liveVotingBadge, { backgroundColor: '#dbeafe' }]}>
+                        <View style={[styles.liveVotingBadge, { backgroundColor: N.iconTile }]}>
                           <View style={styles.liveVotingBadgeDot} />
                           <Text style={styles.liveVotingBadgeText} maxFontSizeMultiplier={1.3}>Live</Text>
                         </View>
@@ -1922,7 +1934,7 @@ export default function MyJourney() {
                   </View>
                   {hasActivePoll && !hasVotedInActivePoll ? (
                     <Animated.View style={[styles.voteNowButtonWrap, voteNowAnimatedStyle]}>
-                      <View style={[styles.voteNowButton, { backgroundColor: '#0a66c2' }]}>
+                      <View style={[styles.voteNowButton, { backgroundColor: N.text }]}>
                         <Text style={styles.voteNowButtonText} maxFontSizeMultiplier={1.3}>Vote now</Text>
                         <ChevronRight size={12} color="#ffffff" />
                       </View>
@@ -1933,7 +1945,7 @@ export default function MyJourney() {
                 </View>
               </TouchableOpacity>
 
-              <View style={[styles.masterBoxDivider, { backgroundColor: theme.colors.border }]} />
+              <View style={[styles.masterBoxDivider, { backgroundColor: N.border }]} />
               <TouchableOpacity
                 style={styles.journeySectionHeader}
                 onPress={() => router.push('/(tabs)/club')}
@@ -1996,7 +2008,7 @@ export default function MyJourney() {
           onPress={() => setShowNoTasksModal(false)}
         >
           <TouchableOpacity
-            style={[styles.noTasksContent, { backgroundColor: theme.colors.surface }]}
+            style={[styles.noTasksContent, { backgroundColor: N.surface, borderColor: N.border }]}
             activeOpacity={1}
             onPress={() => {}}
           >
@@ -2004,7 +2016,7 @@ export default function MyJourney() {
               {`${userFirstName}, You’ve nailed it, champ—no pending tasks!`}
             </Text>
             <TouchableOpacity
-              style={[styles.noTasksButton, { backgroundColor: theme.colors.primary }]}
+              style={[styles.noTasksButton, { backgroundColor: N.text }]}
               onPress={() => setShowNoTasksModal(false)}
               activeOpacity={0.85}
             >
@@ -2026,7 +2038,7 @@ export default function MyJourney() {
           onPress={() => setShowRolePlayerCongratsModal(false)}
         >
           <TouchableOpacity
-            style={[styles.noTasksContent, { backgroundColor: theme.colors.surface }]}
+            style={[styles.noTasksContent, { backgroundColor: N.surface, borderColor: N.border }]}
             activeOpacity={1}
             onPress={() => {}}
           >
@@ -2037,7 +2049,7 @@ export default function MyJourney() {
               {rolePlayerCongratsBody}
             </Text>
             <TouchableOpacity
-              style={[styles.noTasksButton, { backgroundColor: theme.colors.primary }]}
+              style={[styles.noTasksButton, { backgroundColor: N.text }]}
               onPress={acknowledgeRolePlayerCongrats}
               activeOpacity={0.85}
             >
@@ -2067,7 +2079,8 @@ const styles = StyleSheet.create({
   noTasksContent: {
     width: '100%',
     maxWidth: 360,
-    borderRadius: 14,
+    borderRadius: 4,
+    borderWidth: 1,
     padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -2186,7 +2199,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#3b82f6',
+    backgroundColor: N.iconStrong,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -2223,7 +2236,9 @@ const styles = StyleSheet.create({
   noClubSwitcher: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: N.border,
     padding: 16,
     shadowColor: '#000',
     shadowOffset: {
@@ -2262,7 +2277,9 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   welcomeMessageCard: {
-    borderRadius: 12,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: N.border,
     padding: 16,
     shadowColor: '#000',
     shadowOffset: {
@@ -2390,7 +2407,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 24,
     padding: 20,
-    borderRadius: 24,
+    borderRadius: 4,
+    borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
@@ -2435,7 +2453,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 16,
     padding: 16,
-    borderRadius: 16,
+    borderRadius: 4,
     borderWidth: 1,
   },
   journeyUnifiedDivider: {
@@ -2460,7 +2478,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 4,
     paddingVertical: 14,
     paddingHorizontal: 14,
     marginBottom: 8,
@@ -2484,7 +2502,7 @@ const styles = StyleSheet.create({
   journeyListIconWrap: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2560,7 +2578,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 24,
     borderWidth: 1,
-    borderRadius: 20,
+    borderRadius: 4,
     padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -2602,7 +2620,7 @@ const styles = StyleSheet.create({
   rolePlayerCongratsIconWrap: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2613,7 +2631,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   liveVotingHeroCard: {
-    borderRadius: 12,
+    borderRadius: 4,
     paddingVertical: 10,
     paddingHorizontal: 12,
     marginTop: 4,
@@ -2627,7 +2645,7 @@ const styles = StyleSheet.create({
   liveVotingHeroIconWrap: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2656,12 +2674,12 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    backgroundColor: '#0a66c2',
+    backgroundColor: N.iconStrong,
   },
   liveVotingBadgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#0a66c2',
+    color: N.textSecondary,
   },
   liveVotingHeroSubtitle: {
     fontSize: 11,
@@ -2739,7 +2757,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
-    borderRadius: 12,
+    borderRadius: 4,
     borderWidth: 1,
   },
   meetingActionButtonAlert: {
@@ -2752,7 +2770,7 @@ const styles = StyleSheet.create({
   meetingActionButtonIcon: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
