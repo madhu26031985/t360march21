@@ -406,12 +406,6 @@ Welcome to a seamless digital experience! 🚀`;
                 title="Create new club"
                 description="Start a new Toastmasters club"
                 onPress={() => router.push('/create-club')}
-              />
-              <SettingItem
-                icon={mutedIcon(Building2)}
-                title="My club relationships"
-                description="Request to join clubs and manage memberships"
-                onPress={() => router.push('/my-club-relationships')}
                 hideBottomBorder
               />
             </View>
