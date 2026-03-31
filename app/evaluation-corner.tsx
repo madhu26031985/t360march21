@@ -114,6 +114,7 @@ export default function EvaluationCorner() {
   const [evaluatorSearchQuery, setEvaluatorSearchQuery] = useState('');
   const [assigningEvaluatorForRoleId, setAssigningEvaluatorForRoleId] = useState<string | null>(null);
   const mainScrollRef = useRef<ScrollView | null>(null);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
 
   const currentUserRole = (user?.clubRole || user?.role || '').toLowerCase();
   const isExcomm = currentUserRole === 'excomm';
@@ -134,9 +135,9 @@ export default function EvaluationCorner() {
   useFocusEffect(
     useCallback(() => {
       if (meetingId) {
-        loadData();
+        void loadData();
       }
-    }, [meetingId])
+    }, [meetingId, user?.currentClubId])
   );
 
   const showPreparedSpeakerInfo = () => {
@@ -467,6 +468,11 @@ export default function EvaluationCorner() {
   };
 
   const loadData = async () => {
+    if (loadInFlightRef.current) {
+      return loadInFlightRef.current;
+    }
+
+    const run = async () => {
     if (!meetingId || !user?.currentClubId) {
       setIsLoading(false);
       return;
@@ -503,6 +509,15 @@ export default function EvaluationCorner() {
       Alert.alert('Error', 'Failed to load evaluation data');
     } finally {
       setIsLoading(false);
+    }
+    };
+
+    const promise = run();
+    loadInFlightRef.current = promise;
+    try {
+      await promise;
+    } finally {
+      loadInFlightRef.current = null;
     }
   };
 

@@ -1,12 +1,13 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
-import { fetchTimerReportSnapshot, fetchTimerReportCategoryBundle } from '@/lib/timerReportSnapshot';
+import { fetchTimerReportSnapshot, fetchTimerReportCategoryBundle, timerReportQueryKeys } from '@/lib/timerReportSnapshot';
 import { ArrowLeft, Timer, Calendar, User, ChevronDown, Save, Trash2, X, FileText, Search, Lock, MessageCircle, Snowflake, Mic, MessageSquare, Lightbulb, NotebookPen, Plus, Bell, Users, BookOpen, Star, CheckSquare, ClipboardCheck, FileBarChart, Clock, Info, HelpCircle, Upload, RotateCcw, UserPlus } from 'lucide-react-native';
 import { Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -102,6 +103,7 @@ interface CategoryRole {
 export default function TimerReportDetails() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
   
@@ -159,6 +161,7 @@ export default function TimerReportDetails() {
   const [stopwatchRunning, setStopwatchRunning] = useState(false);
   const [stopwatchInterval, setStopwatchInterval] = useState<NodeJS.Timeout | null>(null);
   const [isVPEClub, setIsVPEClub] = useState(false);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
 
   const isMeetingTimer = !!(assignedTimer && user && assignedTimer.id === user.id);
   const canEditTimerCorner = isMeetingTimer || isVPEClub;
@@ -181,9 +184,9 @@ export default function TimerReportDetails() {
   const secondOptions = Array.from({ length: 60 }, (_, i) => i);
   useEffect(() => {
     if (meetingId) {
-      loadData();
+      void loadData();
     }
-  }, [meetingId]);
+  }, [meetingId, user?.currentClubId, user?.id]);
 
   useEffect(() => {
     if (selectedSpeaker) {
@@ -295,70 +298,89 @@ export default function TimerReportDetails() {
       return;
     }
 
-    try {
-      setIsLoading(true);
-      const snap = await fetchTimerReportSnapshot(meetingId, reportData.speech_category);
-      if (snap?.meeting && Object.keys(snap.meeting).length > 0 && snap.club_id) {
-        setMeeting(snap.meeting as unknown as Meeting);
-
-        const allMembers: ClubMember[] = snap.member_directory.map((m) => ({
-          id: m.user_id,
-          full_name: m.full_name || '',
-          email: m.email || '',
-          avatar_url: m.avatar_url ?? null,
-        }));
-        let membersToShow = allMembers;
-        if (snap.selected_member_ids.length > 0) {
-          const selectedSet = new Set(snap.selected_member_ids);
-          membersToShow = allMembers.filter((m) => selectedSet.has(m.id));
-        }
-        membersToShow.sort((a, b) => a.full_name.localeCompare(b.full_name));
-        setClubMembers(membersToShow);
-
-        if (snap.assigned_timer) {
-          setAssignedTimer({
-            id: snap.assigned_timer.id,
-            full_name: snap.assigned_timer.full_name,
-            email: snap.assigned_timer.email,
-            avatar_url: snap.assigned_timer.avatar_url,
-          });
-        } else {
-          setAssignedTimer(null);
-        }
-
-        setIsVPEClub(snap.is_vpe);
-        setSavedReports((snap.timer_reports || []) as TimerReport[]);
-        applyCategoryBundleToState(snap.category_roles as CategoryRole[], snap.booked_speakers);
-      } else {
-        await Promise.all([
-          loadMeeting(),
-          loadClubMembers(),
-          loadAssignedTimer(),
-          loadIsVPEClub(),
-          loadSavedReports(),
-          loadBookedSpeakersForCategory(reportData.speech_category),
-          loadCategoryRolesForCategory(reportData.speech_category),
-        ]);
-      }
-    } catch (error) {
-      console.error('Error loading timer snapshot:', error);
-      try {
-        await Promise.all([
-          loadMeeting(),
-          loadClubMembers(),
-          loadAssignedTimer(),
-          loadIsVPEClub(),
-          loadSavedReports(),
-          loadBookedSpeakersForCategory(reportData.speech_category),
-          loadCategoryRolesForCategory(reportData.speech_category),
-        ]);
-      } catch (fallbackError) {
-        console.error('Error loading data:', fallbackError);
-        Alert.alert('Error', 'Failed to load meeting data');
-      }
-    } finally {
-      setIsLoading(false);
+    if (loadInFlightRef.current) {
+      return loadInFlightRef.current;
     }
+
+    const run = async () => {
+      try {
+        setIsLoading(true);
+        const effectiveUserId = user?.id ?? '';
+        const snap = await queryClient.fetchQuery({
+          queryKey: timerReportQueryKeys.snapshot(
+            meetingId,
+            reportData.speech_category,
+            effectiveUserId || 'anon'
+          ),
+          queryFn: () => fetchTimerReportSnapshot(meetingId, reportData.speech_category),
+          staleTime: 60 * 1000,
+        });
+        if (snap?.meeting && Object.keys(snap.meeting).length > 0 && snap.club_id) {
+          setMeeting(snap.meeting as unknown as Meeting);
+
+          const allMembers: ClubMember[] = snap.member_directory.map((m) => ({
+            id: m.user_id,
+            full_name: m.full_name || '',
+            email: m.email || '',
+            avatar_url: m.avatar_url ?? null,
+          }));
+          let membersToShow = allMembers;
+          if (snap.selected_member_ids.length > 0) {
+            const selectedSet = new Set(snap.selected_member_ids);
+            membersToShow = allMembers.filter((m) => selectedSet.has(m.id));
+          }
+          membersToShow.sort((a, b) => a.full_name.localeCompare(b.full_name));
+          setClubMembers(membersToShow);
+
+          if (snap.assigned_timer) {
+            setAssignedTimer({
+              id: snap.assigned_timer.id,
+              full_name: snap.assigned_timer.full_name,
+              email: snap.assigned_timer.email,
+              avatar_url: snap.assigned_timer.avatar_url,
+            });
+          } else {
+            setAssignedTimer(null);
+          }
+
+          setIsVPEClub(snap.is_vpe);
+          setSavedReports((snap.timer_reports || []) as TimerReport[]);
+          applyCategoryBundleToState(snap.category_roles as CategoryRole[], snap.booked_speakers);
+        } else {
+          await Promise.all([
+            loadMeeting(),
+            loadClubMembers(),
+            loadAssignedTimer(),
+            loadIsVPEClub(),
+            loadSavedReports(),
+            loadBookedSpeakersForCategory(reportData.speech_category),
+            loadCategoryRolesForCategory(reportData.speech_category),
+          ]);
+        }
+      } catch (error) {
+        console.error('Error loading timer snapshot:', error);
+        try {
+          await Promise.all([
+            loadMeeting(),
+            loadClubMembers(),
+            loadAssignedTimer(),
+            loadIsVPEClub(),
+            loadSavedReports(),
+            loadBookedSpeakersForCategory(reportData.speech_category),
+            loadCategoryRolesForCategory(reportData.speech_category),
+          ]);
+        } catch (fallbackError) {
+          console.error('Error loading data:', fallbackError);
+          Alert.alert('Error', 'Failed to load meeting data');
+        }
+      } finally {
+        setIsLoading(false);
+        loadInFlightRef.current = null;
+      }
+    };
+
+    loadInFlightRef.current = run();
+    return loadInFlightRef.current;
   };
 
   const loadMeeting = async () => {

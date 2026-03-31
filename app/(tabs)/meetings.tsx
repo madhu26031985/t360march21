@@ -4,8 +4,10 @@ import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useState, useEffect, useCallback, useRef, useMemo, type ComponentType } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
+import { prefetchToastmasterCorner } from '@/lib/prefetchToastmasterCorner';
 import { Calendar, Vote, Building2, Clock, Lock, FileText, Timer, ChartBar as BarChart3, BookOpen, Star, MessageSquare, ClipboardCheck, UserCheck, Award, Book, MessageCircle, ChevronRight, ChevronDown, ChevronUp, BookCheck, Ear, UserPlus, Mic, ClipboardList, MessageSquareQuote, ScrollText, UserCog, Lightbulb, Target, RefreshCw, MonitorCheck, CheckCircle, Search, AlertCircle } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
@@ -543,6 +545,7 @@ function KeyRoleCardWithTmodAlert({
 export default function ClubMeetings() {
   const { theme } = useTheme();
   const { user, isAuthenticated, refreshUserProfile } = useAuth();
+  const queryClient = useQueryClient();
   const [currentMeeting, setCurrentMeeting] = useState<Meeting | null>(null);
   const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
@@ -1289,6 +1292,9 @@ export default function ClubMeetings() {
   const handleTabPress = (tab: TabItem, meetingId: string) => {
     if (tab.route) {
       let routeWithId = tab.route.replace('meetingId=undefined', `meetingId=${meetingId}`);
+      if (tab.id === 'toastmaster_corner') {
+        prefetchToastmasterCorner(queryClient, meetingId, user?.id, user?.currentClubId);
+      }
       if (tab.id === 'toastmaster_corner' && tmodNeedsThemeByMeeting[meetingId]) {
         routeWithId += '&showCongrats=1';
       }

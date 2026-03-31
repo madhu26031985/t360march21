@@ -13,11 +13,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Info, X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
 import {
   buildAllNudgeMessages,
   daysUntilMeeting,
@@ -45,6 +45,7 @@ import {
   pathwayRowHasSpeechDetails,
   type EvaluationPathwaySpeechRow,
 } from '@/lib/vpePreparedSpeakerNudge';
+import { fetchVpeNudgesSnapshot, vpeNudgesQueryKeys } from '@/lib/vpeNudgesSnapshot';
 
 const VPE_CARD_SUBTITLE = 'Nudge members to book the role';
 
@@ -91,9 +92,11 @@ const N = {
 export default function VPENudgesScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ quickShare?: string }>();
   const quickShareConsumed = useRef(false);
   const prevQuickShareParam = useRef<string | undefined>(undefined);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
@@ -181,392 +184,279 @@ export default function VPENudgesScreen() {
       return;
     }
 
-    setLoading(true);
-    try {
-      const { data: clubRow, error: clubErr } = await supabase
-        .from('club_profiles')
-        .select('club_name, vpe_id')
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
+    if (loadInFlightRef.current) return loadInFlightRef.current;
+    const run = async () => {
+      setLoading(true);
+      try {
+        const snap = await queryClient.fetchQuery({
+          queryKey: vpeNudgesQueryKeys.snapshot(user.currentClubId!, user.id || 'anon'),
+          queryFn: () => fetchVpeNudgesSnapshot(user.currentClubId!),
+          staleTime: 60 * 1000,
+        });
 
-      if (clubErr || !clubRow || (clubRow as { vpe_id?: string }).vpe_id !== user.id) {
-        setAllowed(false);
-        setMessages([]);
-        setPreparedSpeakerNudges([]);
-        setToastmasterNudges([]);
-        setEducationalNudges([]);
-        setKeynoteNudges([]);
-        setEvaluatorNudges([]);
-        setNudgesHiddenFinalHour(false);
-        setEducationalVpeSelfNeedsTitle(false);
-        setNudgeClubName('Our club');
-        setMeetingTitle(null);
-        setMeetingDateISO(null);
-        setMeetingNumberDisplay('—');
-        return;
-      }
-
-      setAllowed(true);
-
-      const clubName = (clubRow as { club_name?: string | null }).club_name?.trim() || 'Our club';
-      setNudgeClubName(clubName);
-      const today = localISODate(new Date());
-
-      const { data: meetings, error: meetErr } = await supabase
-        .from('app_club_meeting')
-        .select('id, meeting_title, meeting_date, meeting_number, meeting_start_time')
-        .eq('club_id', user.currentClubId)
-        .eq('meeting_status', 'open')
-        .gte('meeting_date', today)
-        .order('meeting_date', { ascending: true })
-        .order('meeting_start_time', { ascending: true })
-        .limit(1);
-
-      if (meetErr || !meetings?.length) {
-        setMeetingTitle(null);
-        setMeetingDateISO(null);
-        setMeetingNumberDisplay('—');
-        setMessages([]);
-        setPreparedSpeakerNudges([]);
-        setToastmasterNudges([]);
-        setEducationalNudges([]);
-        setKeynoteNudges([]);
-        setEvaluatorNudges([]);
-        setNudgesHiddenFinalHour(false);
-        setEducationalVpeSelfNeedsTitle(false);
-        return;
-      }
-
-      const m = meetings[0] as {
-        id: string;
-        meeting_title: string | null;
-        meeting_date: string;
-        meeting_number: string | number | null;
-        meeting_start_time: string | null;
-      };
-
-      const finalHour = isWithinOneHourOfMeetingStart(m.meeting_date, m.meeting_start_time);
-      setNudgesHiddenFinalHour(finalHour);
-
-      setMeetingTitle(m.meeting_title || 'Open meeting');
-      setMeetingDateISO(m.meeting_date);
-      setMeetingNumberDisplay(m.meeting_number != null && String(m.meeting_number).trim() !== '' ? String(m.meeting_number) : '—');
-
-      const { data: rolesRaw, error: rolesErr } = await supabase
-        .from('app_meeting_roles_management')
-        .select('role_name, role_metric, role_classification, booking_status, assigned_user_id')
-        .eq('meeting_id', m.id);
-
-      const roles: VpeNudgeRoleRow[] = (rolesRaw || []) as VpeNudgeRoleRow[];
-      if (rolesErr) {
-        console.error('VPE nudges roles:', rolesErr);
-      }
-
-      const ctx = {
-        clubName,
-        meetingDateDisplay: formatMeetingDateDisplay(m.meeting_date),
-        meetingNumber: m.meeting_number != null ? String(m.meeting_number) : '—',
-        vpeName: (user.fullName || '').trim() || vpeFirstName,
-      };
-
-      setMessages(buildAllNudgeMessages(ctx, roles));
-
-      const clearRoleNudges = () => {
-        setPreparedSpeakerNudges([]);
-        setToastmasterNudges([]);
-        setEducationalNudges([]);
-        setKeynoteNudges([]);
-        setEvaluatorNudges([]);
-        setEducationalVpeSelfNeedsTitle(false);
-      };
-
-      if (finalHour) {
-        clearRoleNudges();
-        return;
-      }
-
-      const vpeUserId = user.id;
-
-      const isBooked = (r: VpeNudgeRoleRow) =>
-        r.booking_status === 'booked' && !!r.assigned_user_id;
-
-      const tmodRows = roles.filter(
-        (r) => isBooked(r) && isToastmasterOfTheDayRoleName(r.role_name)
-      );
-      const tmodUserIds = [...new Set(tmodRows.map((r) => r.assigned_user_id as string))];
-
-      const eduRole = roles.find(
-        (r) => isBooked(r) && r.role_name?.trim() === 'Educational Speaker'
-      );
-      const keynoteRole = roles.find(
-        (r) => isBooked(r) && (r.role_name || '').toLowerCase().includes('keynote')
-      );
-
-      const { data: psRolesRaw, error: psErr } = await supabase
-        .from('app_meeting_roles_management')
-        .select('role_name, assigned_user_id')
-        .eq('meeting_id', m.id)
-        .eq('booking_status', 'booked')
-        .not('assigned_user_id', 'is', null)
-        .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%ice%breaker%');
-
-      if (psErr) {
-        console.error('VPE nudges prepared speaker roles:', psErr);
-        setPreparedSpeakerNudges([]);
-        setEvaluatorNudges([]);
-      } else {
-        const psRoles = (psRolesRaw || []) as { role_name: string; assigned_user_id: string }[];
-        const speakerUserIds = [...new Set(psRoles.map((r) => r.assigned_user_id))];
-
-        if (speakerUserIds.length === 0) {
+        if (!snap?.allowed) {
+          setAllowed(false);
+          setMessages([]);
           setPreparedSpeakerNudges([]);
+          setToastmasterNudges([]);
+          setEducationalNudges([]);
+          setKeynoteNudges([]);
           setEvaluatorNudges([]);
-        } else {
-          const { data: pathwaysRaw, error: pathErr } = await supabase
-            .from('app_evaluation_pathway')
-            .select(
-              'user_id, role_name, speech_title, pathway_name, level, project_name, evaluation_form, comments_for_evaluator, assigned_evaluator_id'
-            )
-            .eq('meeting_id', m.id)
-            .in('user_id', speakerUserIds);
-
-          if (pathErr) {
-            console.error('VPE nudges pathways:', pathErr);
-            setPreparedSpeakerNudges([]);
-            setEvaluatorNudges([]);
-          } else {
-            const pathwayByUserRole = new Map<string, EvaluationPathwaySpeechRow>();
-            for (const row of pathwaysRaw || []) {
-              const r = row as EvaluationPathwaySpeechRow;
-              const uid = String(r.user_id ?? '');
-              const rn = String(r.role_name ?? '');
-              pathwayByUserRole.set(`${uid}::${rn}`, r);
-            }
-
-            const needNudgeUserIds = new Set<string>();
-            const evaluatorTuples: { evaluatorId: string; speakerId: string; roleName: string }[] = [];
-            for (const r of psRoles) {
-              const p = pathwayByUserRole.get(`${r.assigned_user_id}::${r.role_name}`) ?? null;
-              const speakerId = r.assigned_user_id;
-              const speakerIsVpe = speakerId === vpeUserId;
-
-              if (!speakerIsVpe && !pathwayRowHasSpeechDetails(p)) {
-                needNudgeUserIds.add(speakerId);
-              }
-
-              if (pathwayRowHasSpeechDetails(p)) {
-                const ev = p?.assigned_evaluator_id?.trim();
-                if (ev && ev !== vpeUserId) {
-                  evaluatorTuples.push({
-                    evaluatorId: ev,
-                    speakerId,
-                    roleName: r.role_name,
-                  });
-                }
-              }
-            }
-
-            const profileIds = new Set<string>([
-              ...speakerUserIds,
-              ...needNudgeUserIds,
-              ...evaluatorTuples.map((t) => t.evaluatorId),
-            ]);
-            tmodUserIds.forEach((id) => profileIds.add(id));
-            if (eduRole?.assigned_user_id) profileIds.add(eduRole.assigned_user_id);
-            if (keynoteRole?.assigned_user_id) profileIds.add(keynoteRole.assigned_user_id);
-
-            const { data: profilesRaw } = await supabase
-              .from('app_user_profiles')
-              .select('id, full_name')
-              .in('id', [...profileIds]);
-
-            const nameById = new Map(
-              (profilesRaw || []).map((p: { id: string; full_name: string | null }) => [
-                p.id,
-                (p.full_name || '').trim() || 'Member',
-              ])
-            );
-
-            const prepNudges = [...needNudgeUserIds]
-              .map((uid) => {
-                const fullName = nameById.get(uid) || 'Member';
-                const speakerFirstName = firstNameFromFullName(fullName);
-                return {
-                  userId: uid,
-                  fullName,
-                  message: buildPreparedSpeakerSpeechDetailsWhatsApp({
-                    speakerFirstName,
-                    vpeName: ctx.vpeName,
-                    clubName: ctx.clubName,
-                    meetingDateDisplay: ctx.meetingDateDisplay,
-                    meetingNumber: ctx.meetingNumber,
-                  }),
-                };
-              })
-              .sort((a, b) => a.fullName.localeCompare(b.fullName));
-
-            setPreparedSpeakerNudges(prepNudges);
-
-            const evNudges = evaluatorTuples
-              .map((t) => {
-                const evaluatorName = nameById.get(t.evaluatorId) || 'Member';
-                const speakerName = nameById.get(t.speakerId) || 'Member';
-                return {
-                  key: `${t.evaluatorId}::${t.speakerId}::${t.roleName}`,
-                  evaluatorName,
-                  speakerName,
-                  message: buildEvaluatorPrepNudgeWhatsApp({
-                    evaluatorFirstName: firstNameFromFullName(evaluatorName),
-                    speakerFullName: speakerName,
-                    vpeName: ctx.vpeName,
-                    clubName: ctx.clubName,
-                    meetingDateDisplay: ctx.meetingDateDisplay,
-                    meetingNumber: ctx.meetingNumber,
-                  }),
-                };
-              })
-              .sort((a, b) => a.evaluatorName.localeCompare(b.evaluatorName) || a.speakerName.localeCompare(b.speakerName));
-
-            setEvaluatorNudges(evNudges);
-          }
+          setNudgesHiddenFinalHour(false);
+          setEducationalVpeSelfNeedsTitle(false);
+          setNudgeClubName('Our club');
+          setMeetingTitle(null);
+          setMeetingDateISO(null);
+          setMeetingNumberDisplay('—');
+          return;
         }
+
+        setAllowed(true);
+        const clubName = snap.club_name?.trim() || 'Our club';
+        setNudgeClubName(clubName);
+
+        const m = snap.meeting;
+        if (!m) {
+          setMeetingTitle(null);
+          setMeetingDateISO(null);
+          setMeetingNumberDisplay('—');
+          setMessages([]);
+          setPreparedSpeakerNudges([]);
+          setToastmasterNudges([]);
+          setEducationalNudges([]);
+          setKeynoteNudges([]);
+          setEvaluatorNudges([]);
+          setNudgesHiddenFinalHour(false);
+          setEducationalVpeSelfNeedsTitle(false);
+          return;
+        }
+
+        const finalHour = isWithinOneHourOfMeetingStart(m.meeting_date, m.meeting_start_time);
+        setNudgesHiddenFinalHour(finalHour);
+
+        setMeetingTitle(m.meeting_title || 'Open meeting');
+        setMeetingDateISO(m.meeting_date);
+        setMeetingNumberDisplay(m.meeting_number != null && String(m.meeting_number).trim() !== '' ? String(m.meeting_number) : '—');
+
+        const roles: VpeNudgeRoleRow[] = (snap.roles || []) as VpeNudgeRoleRow[];
+        const ctx = {
+          clubName,
+          meetingDateDisplay: formatMeetingDateDisplay(m.meeting_date),
+          meetingNumber: m.meeting_number != null ? String(m.meeting_number) : '—',
+          vpeName: (user.fullName || '').trim() || vpeFirstName,
+        };
+
+        setMessages(buildAllNudgeMessages(ctx, roles));
+
+        const clearRoleNudges = () => {
+          setPreparedSpeakerNudges([]);
+          setToastmasterNudges([]);
+          setEducationalNudges([]);
+          setKeynoteNudges([]);
+          setEvaluatorNudges([]);
+          setEducationalVpeSelfNeedsTitle(false);
+        };
+
+        if (finalHour) {
+          clearRoleNudges();
+          return;
+        }
+
+        const vpeUserId = user.id;
+        const isBooked = (r: VpeNudgeRoleRow) =>
+          r.booking_status === 'booked' && !!r.assigned_user_id;
+
+        const tmodRows = roles.filter(
+          (r) => isBooked(r) && isToastmasterOfTheDayRoleName(r.role_name)
+        );
+        const tmodUserIds = [...new Set(tmodRows.map((r) => r.assigned_user_id as string))];
+
+        const eduRole = roles.find(
+          (r) => isBooked(r) && r.role_name?.trim() === 'Educational Speaker'
+        );
+        const keynoteRole = roles.find(
+          (r) => isBooked(r) && (r.role_name || '').toLowerCase().includes('keynote')
+        );
+
+        const psRoles = (snap.prepared_roles || []) as { role_name: string; assigned_user_id: string }[];
+        const speakerUserIds = [...new Set(psRoles.map((r) => r.assigned_user_id))];
+        if (speakerUserIds.length === 0) {
+        setMeetingTitle(null);
+        setPreparedSpeakerNudges([]);
+        setEvaluatorNudges([]);
+        } else {
+          const pathwayByUserRole = new Map<string, EvaluationPathwaySpeechRow>();
+          for (const row of snap.pathways || []) {
+            const r = row as EvaluationPathwaySpeechRow;
+            const uid = String(r.user_id ?? '');
+            const rn = String(r.role_name ?? '');
+            pathwayByUserRole.set(`${uid}::${rn}`, r);
+          }
+
+          const nameById = new Map(
+            (snap.profiles || []).map((p) => [
+              p.id,
+              (p.full_name || '').trim() || 'Member',
+            ])
+          );
+
+          const needNudgeUserIds = new Set<string>();
+          const evaluatorTuples: { evaluatorId: string; speakerId: string; roleName: string }[] = [];
+          for (const r of psRoles) {
+            const p = pathwayByUserRole.get(`${r.assigned_user_id}::${r.role_name}`) ?? null;
+            const speakerId = r.assigned_user_id;
+            const speakerIsVpe = speakerId === vpeUserId;
+            if (!speakerIsVpe && !pathwayRowHasSpeechDetails(p)) {
+              needNudgeUserIds.add(speakerId);
+            }
+            if (pathwayRowHasSpeechDetails(p)) {
+              const ev = p?.assigned_evaluator_id?.trim();
+              if (ev && ev !== vpeUserId) {
+                evaluatorTuples.push({
+                  evaluatorId: ev,
+                  speakerId,
+                  roleName: r.role_name,
+                });
+              }
+            }
+          }
+
+          const prepNudges = [...needNudgeUserIds]
+            .map((uid) => {
+              const fullName = nameById.get(uid) || 'Member';
+              const speakerFirstName = firstNameFromFullName(fullName);
+              return {
+                userId: uid,
+                fullName,
+                message: buildPreparedSpeakerSpeechDetailsWhatsApp({
+                  speakerFirstName,
+                  vpeName: ctx.vpeName,
+                  clubName: ctx.clubName,
+                  meetingDateDisplay: ctx.meetingDateDisplay,
+                  meetingNumber: ctx.meetingNumber,
+                }),
+              };
+            })
+            .sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+          setPreparedSpeakerNudges(prepNudges);
+
+          const evNudges = evaluatorTuples
+            .map((t) => {
+              const evaluatorName = nameById.get(t.evaluatorId) || 'Member';
+              const speakerName = nameById.get(t.speakerId) || 'Member';
+              return {
+                key: `${t.evaluatorId}::${t.speakerId}::${t.roleName}`,
+                evaluatorName,
+                speakerName,
+                message: buildEvaluatorPrepNudgeWhatsApp({
+                  evaluatorFirstName: firstNameFromFullName(evaluatorName),
+                  speakerFullName: speakerName,
+                  vpeName: ctx.vpeName,
+                  clubName: ctx.clubName,
+                  meetingDateDisplay: ctx.meetingDateDisplay,
+                  meetingNumber: ctx.meetingNumber,
+                }),
+              };
+            })
+            .sort((a, b) => a.evaluatorName.localeCompare(b.evaluatorName) || a.speakerName.localeCompare(b.speakerName));
+
+          setEvaluatorNudges(evNudges);
+        }
+        const themeByTmod = new Map<string, string | null>();
+        for (const row of snap.toastmaster_data || []) {
+          themeByTmod.set(row.toastmaster_user_id, row.theme_of_the_day);
+        }
+
+        const tmNeedTheme = tmodUserIds.filter(
+          (uid) => uid !== vpeUserId && !themeByTmod.get(uid)?.trim()
+        );
+        const eduNeedsTitle =
+          !!eduRole?.assigned_user_id &&
+          eduRole.assigned_user_id !== vpeUserId &&
+          !snap.educational_content?.speech_title?.trim();
+        const knNeedsTitle =
+          !!keynoteRole?.assigned_user_id &&
+          keynoteRole.assigned_user_id !== vpeUserId &&
+          !snap.keynote_content?.speech_title?.trim();
+
+        const tmEduKnNameById = new Map(
+          (snap.profiles || []).map((p) => [p.id, (p.full_name || '').trim() || 'Member'])
+        );
+
+        const tmNudgesFinal: { userId: string; fullName: string; message: string }[] = [];
+        for (const uid of tmNeedTheme) {
+          const fullName = tmEduKnNameById.get(uid) || 'Member';
+          tmNudgesFinal.push({
+            userId: uid,
+            fullName,
+            message: buildToastmasterThemeNudgeWhatsApp({
+              toastmasterFirstName: firstNameFromFullName(fullName),
+              vpeName: ctx.vpeName,
+              clubName: ctx.clubName,
+              meetingDateDisplay: ctx.meetingDateDisplay,
+              meetingNumber: ctx.meetingNumber,
+            }),
+          });
+        }
+        setToastmasterNudges(tmNudgesFinal.sort((a, b) => a.fullName.localeCompare(b.fullName)));
+
+        const eduList: { userId: string; fullName: string; message: string }[] = [];
+        if (eduNeedsTitle && eduRole?.assigned_user_id) {
+          const fullName = tmEduKnNameById.get(eduRole.assigned_user_id) || 'Member';
+          eduList.push({
+            userId: eduRole.assigned_user_id,
+            fullName,
+            message: buildEducationalSpeakerTitleNudgeWhatsApp({
+              speakerFirstName: firstNameFromFullName(fullName),
+              vpeName: ctx.vpeName,
+              clubName: ctx.clubName,
+              meetingDateDisplay: ctx.meetingDateDisplay,
+              meetingNumber: ctx.meetingNumber,
+            }),
+          });
+        }
+        setEducationalNudges(eduList);
+
+        const eduVpeSelfNeedsTitle =
+          !!eduRole?.assigned_user_id &&
+          eduRole.assigned_user_id === vpeUserId &&
+          !snap.educational_content?.speech_title?.trim();
+        setEducationalVpeSelfNeedsTitle(eduVpeSelfNeedsTitle);
+
+        const knList: { userId: string; fullName: string; message: string }[] = [];
+        if (knNeedsTitle && keynoteRole?.assigned_user_id) {
+          const fullName = tmEduKnNameById.get(keynoteRole.assigned_user_id) || 'Member';
+          knList.push({
+            userId: keynoteRole.assigned_user_id,
+            fullName,
+            message: buildKeynoteTitleNudgeWhatsApp({
+              speakerFirstName: firstNameFromFullName(fullName),
+              vpeName: ctx.vpeName,
+              clubName: ctx.clubName,
+              meetingDateDisplay: ctx.meetingDateDisplay,
+              meetingNumber: ctx.meetingNumber,
+            }),
+          });
+        }
+        setKeynoteNudges(knList);
+      } catch (e) {
+        console.error('VPE nudges load:', e);
+        setMessages([]);
+        setPreparedSpeakerNudges([]);
+        setToastmasterNudges([]);
+        setEducationalNudges([]);
+        setKeynoteNudges([]);
+        setEvaluatorNudges([]);
+        setNudgesHiddenFinalHour(false);
+        setEducationalVpeSelfNeedsTitle(false);
+      } finally {
+        setLoading(false);
+        loadInFlightRef.current = null;
       }
-
-      const [tmRes, eduRes, knRes] = await Promise.all([
-        tmodUserIds.length
-          ? supabase
-              .from('toastmaster_meeting_data')
-              .select('toastmaster_user_id, theme_of_the_day')
-              .eq('meeting_id', m.id)
-              .in('toastmaster_user_id', tmodUserIds)
-          : Promise.resolve({ data: [] as { toastmaster_user_id: string; theme_of_the_day: string | null }[], error: null }),
-        eduRole?.assigned_user_id
-          ? supabase
-              .from('app_meeting_educational_speaker')
-              .select('speech_title')
-              .eq('meeting_id', m.id)
-              .eq('speaker_user_id', eduRole.assigned_user_id)
-              .maybeSingle()
-          : Promise.resolve({ data: null as { speech_title: string | null } | null, error: null }),
-        keynoteRole?.assigned_user_id
-          ? supabase
-              .from('app_meeting_keynote_speaker')
-              .select('speech_title')
-              .eq('meeting_id', m.id)
-              .eq('speaker_user_id', keynoteRole.assigned_user_id)
-              .maybeSingle()
-          : Promise.resolve({ data: null as { speech_title: string | null } | null, error: null }),
-      ]);
-
-      if (tmRes.error) {
-        console.error('VPE nudges toastmaster data:', tmRes.error);
-      }
-      if (eduRes.error) {
-        console.error('VPE nudges educational:', eduRes.error);
-      }
-      if (knRes.error) {
-        console.error('VPE nudges keynote:', knRes.error);
-      }
-
-      const themeByTmod = new Map<string, string | null>();
-      for (const row of tmRes.data || []) {
-        themeByTmod.set(row.toastmaster_user_id, row.theme_of_the_day);
-      }
-
-      const tmNeedTheme = tmodUserIds.filter(
-        (uid) => uid !== vpeUserId && !themeByTmod.get(uid)?.trim()
-      );
-      const eduNeedsTitle =
-        !!eduRole?.assigned_user_id &&
-        eduRole.assigned_user_id !== vpeUserId &&
-        !eduRes.data?.speech_title?.trim();
-      const knNeedsTitle =
-        !!keynoteRole?.assigned_user_id &&
-        keynoteRole.assigned_user_id !== vpeUserId &&
-        !knRes.data?.speech_title?.trim();
-
-      const tmEduKnProfileIds = [
-        ...tmNeedTheme,
-        ...(eduNeedsTitle && eduRole?.assigned_user_id ? [eduRole.assigned_user_id] : []),
-        ...(knNeedsTitle && keynoteRole?.assigned_user_id ? [keynoteRole.assigned_user_id] : []),
-      ];
-      const { data: tmEduKnProfiles } =
-        tmEduKnProfileIds.length > 0
-          ? await supabase.from('app_user_profiles').select('id, full_name').in('id', tmEduKnProfileIds)
-          : { data: [] as { id: string; full_name: string | null }[] };
-      const tmEduKnNameById = new Map(
-        (tmEduKnProfiles || []).map((p) => [p.id, (p.full_name || '').trim() || 'Member'])
-      );
-
-      const tmNudgesFinal: { userId: string; fullName: string; message: string }[] = [];
-      for (const uid of tmNeedTheme) {
-        const fullName = tmEduKnNameById.get(uid) || 'Member';
-        tmNudgesFinal.push({
-          userId: uid,
-          fullName,
-          message: buildToastmasterThemeNudgeWhatsApp({
-            toastmasterFirstName: firstNameFromFullName(fullName),
-            vpeName: ctx.vpeName,
-            clubName: ctx.clubName,
-            meetingDateDisplay: ctx.meetingDateDisplay,
-            meetingNumber: ctx.meetingNumber,
-          }),
-        });
-      }
-      setToastmasterNudges(tmNudgesFinal.sort((a, b) => a.fullName.localeCompare(b.fullName)));
-
-      const eduList: { userId: string; fullName: string; message: string }[] = [];
-      if (eduNeedsTitle && eduRole?.assigned_user_id) {
-        const fullName = tmEduKnNameById.get(eduRole.assigned_user_id) || 'Member';
-        eduList.push({
-          userId: eduRole.assigned_user_id,
-          fullName,
-          message: buildEducationalSpeakerTitleNudgeWhatsApp({
-            speakerFirstName: firstNameFromFullName(fullName),
-            vpeName: ctx.vpeName,
-            clubName: ctx.clubName,
-            meetingDateDisplay: ctx.meetingDateDisplay,
-            meetingNumber: ctx.meetingNumber,
-          }),
-        });
-      }
-      setEducationalNudges(eduList);
-
-      const eduVpeSelfNeedsTitle =
-        !!eduRole?.assigned_user_id &&
-        eduRole.assigned_user_id === vpeUserId &&
-        !eduRes.data?.speech_title?.trim();
-      setEducationalVpeSelfNeedsTitle(eduVpeSelfNeedsTitle);
-
-      const knList: { userId: string; fullName: string; message: string }[] = [];
-      if (knNeedsTitle && keynoteRole?.assigned_user_id) {
-        const fullName = tmEduKnNameById.get(keynoteRole.assigned_user_id) || 'Member';
-        knList.push({
-          userId: keynoteRole.assigned_user_id,
-          fullName,
-          message: buildKeynoteTitleNudgeWhatsApp({
-            speakerFirstName: firstNameFromFullName(fullName),
-            vpeName: ctx.vpeName,
-            clubName: ctx.clubName,
-            meetingDateDisplay: ctx.meetingDateDisplay,
-            meetingNumber: ctx.meetingNumber,
-          }),
-        });
-      }
-      setKeynoteNudges(knList);
-    } catch (e) {
-      console.error('VPE nudges load:', e);
-      setMessages([]);
-      setPreparedSpeakerNudges([]);
-      setToastmasterNudges([]);
-      setEducationalNudges([]);
-      setKeynoteNudges([]);
-      setEvaluatorNudges([]);
-      setNudgesHiddenFinalHour(false);
-      setEducationalVpeSelfNeedsTitle(false);
-    } finally {
-      setLoading(false);
-    }
+    };
+    loadInFlightRef.current = run();
+    return loadInFlightRef.current;
   }, [user?.id, user?.currentClubId, user?.fullName, vpeFirstName]);
 
   useFocusEffect(

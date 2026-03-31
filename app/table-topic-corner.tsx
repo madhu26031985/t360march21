@@ -16,9 +16,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchTableTopicCornerBundle, tableTopicCornerQueryKeys } from '@/lib/tableTopicCornerQuery';
 import {
   bookMeetingRoleForCurrentUser as bookMeetingRoleInline,
   bookOpenMeetingRole,
@@ -127,6 +129,7 @@ interface TableTopicQuestion {
 export default function TableTopicCorner(): JSX.Element {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
   
@@ -155,6 +158,8 @@ export default function TableTopicCorner(): JSX.Element {
   /** Inline book-a-role: loading state per participant row */
   const [bookingRoleId, setBookingRoleId] = useState<string | null>(null);
   const [bookingTableTopicMaster, setBookingTableTopicMaster] = useState<boolean>(false);
+  const hasLoadedOnceRef = useRef<boolean>(false);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
 
   // Ref for screenshot
   const summaryViewRef = useRef<ViewShot>(null);
@@ -162,15 +167,19 @@ export default function TableTopicCorner(): JSX.Element {
   // Load data on component mount
   useEffect(() => {
     if (meetingId) {
-      loadTableTopicCornerData();
+      void loadTableTopicCornerData();
     }
-  }, [meetingId]);
+  }, [meetingId, user?.currentClubId]);
 
   // Reload published questions when screen comes into focus
   useFocusEffect(
     useCallback(() => {
+      if (!hasLoadedOnceRef.current) {
+        hasLoadedOnceRef.current = true;
+        return;
+      }
       if (meetingId && user?.currentClubId) {
-        loadPublishedQuestions();
+        void loadPublishedQuestions();
       }
     }, [meetingId, user?.currentClubId])
   );
@@ -184,21 +193,45 @@ export default function TableTopicCorner(): JSX.Element {
       return;
     }
 
-    try {
-      await Promise.all([
-        loadMeeting(),
-        loadClubInfo(),
-        loadTableTopicMaster(),
-        loadTableTopicParticipants(),
-        loadAssignedQuestions(),
-        loadPublishedQuestions()
-      ]);
-    } catch (error) {
-      console.error('Error loading table topic corner data:', error);
-      Alert.alert('Error', 'Failed to load table topic data');
-    } finally {
-      setIsLoading(false);
+    if (loadInFlightRef.current) {
+      return loadInFlightRef.current;
     }
+
+    const run = async () => {
+      try {
+        const effectiveUserId = user?.id ?? '';
+        const bundle = await queryClient.fetchQuery({
+          queryKey: tableTopicCornerQueryKeys.snapshot(
+            meetingId,
+            user.currentClubId,
+            effectiveUserId || 'anon'
+          ),
+          queryFn: () => fetchTableTopicCornerBundle(meetingId, user.currentClubId!),
+          staleTime: 60 * 1000,
+        });
+        setMeeting(bundle.meeting);
+        setClubInfo(bundle.clubInfo);
+        setTableTopicMaster(bundle.tableTopicMaster);
+        setParticipants(bundle.participants);
+        setAssignedQuestions(bundle.assignedQuestions);
+        setPublishedQuestions(bundle.publishedQuestions);
+
+        const questionsMap: ParticipantQuestion = {};
+        bundle.assignedQuestions.forEach((q) => {
+          questionsMap[q.participant_id] = q.question_text;
+        });
+        setParticipantQuestions(questionsMap);
+      } catch (error) {
+        console.error('Error loading table topic corner data:', error);
+        Alert.alert('Error', 'Failed to load table topic data');
+      } finally {
+        setIsLoading(false);
+        loadInFlightRef.current = null;
+      }
+    };
+
+    loadInFlightRef.current = run();
+    return loadInFlightRef.current;
   };
 
   const loadPublishedQuestions = async (): Promise<void> => {

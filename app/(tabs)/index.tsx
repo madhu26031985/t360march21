@@ -39,9 +39,14 @@ import {
   isAhCounterRole,
 } from '@/lib/journeyMeetingOpenData';
 import { prefetchEducationalCorner } from '@/lib/prefetchEducationalCorner';
+import { prefetchAhCounter } from '@/lib/prefetchAhCounter';
 import { prefetchGrammarianCorner } from '@/lib/prefetchGrammarianCorner';
+import { prefetchGeneralEvaluatorReport } from '@/lib/prefetchGeneralEvaluatorReport';
 import { prefetchMyMentorSnapshot } from '@/lib/myMentorSnapshot';
+import { prefetchTableTopicCorner } from '@/lib/prefetchTableTopicCorner';
+import { prefetchTimerReport } from '@/lib/prefetchTimerReport';
 import { prefetchToastmasterCorner } from '@/lib/prefetchToastmasterCorner';
+import { prefetchVpeNudges } from '@/lib/prefetchVpeNudges';
 import { prefetchEvaluationCornerSnapshot } from '@/lib/evaluationCornerSnapshot';
 import { prefetchMeetingAgendaView } from '@/lib/meetingAgendaPrefetch';
 import { journeyHomeQueryKeys, fetchJourneyHomeSnapshot } from '@/lib/journeyHomeQuery';
@@ -1316,6 +1321,7 @@ export default function MyJourney() {
           router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
           break;
         case 'vpe_nudge':
+          prefetchVpeNudges(queryClient, user?.currentClubId, user?.id);
           router.push('/vpe-nudges');
           break;
         default:
@@ -1394,6 +1400,42 @@ export default function MyJourney() {
       params: { meetingId: currentOpenMeetingId },
     });
   }, [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId]);
+
+  const handleGeneralEvaluatorPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting for General Evaluator.');
+      return;
+    }
+    prefetchGeneralEvaluatorReport(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId);
+    router.push({ pathname: '/general-evaluator-report', params: { meetingId: currentOpenMeetingId } });
+  }, [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId]);
+
+  const handleTableTopicPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting for Table Topics.');
+      return;
+    }
+    prefetchTableTopicCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId);
+    router.push({ pathname: '/table-topic-corner', params: { meetingId: currentOpenMeetingId } });
+  }, [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId]);
+
+  const handleTimerPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting for Timer.');
+      return;
+    }
+    prefetchTimerReport(queryClient, currentOpenMeetingId, user?.id);
+    router.push({ pathname: '/timer-report-details', params: { meetingId: currentOpenMeetingId } });
+  }, [currentOpenMeetingId, queryClient, user?.id]);
+
+  const handleAhCounterPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting for Ah Counter.');
+      return;
+    }
+    prefetchAhCounter(queryClient, currentOpenMeetingId, user?.currentClubId, user?.id);
+    router.push({ pathname: '/ah-counter-corner', params: { meetingId: currentOpenMeetingId } });
+  }, [currentOpenMeetingId, queryClient, user?.currentClubId, user?.id]);
 
   useEffect(() => {
     if (!showHeaderAvatarPending) {
@@ -1814,26 +1856,14 @@ export default function MyJourney() {
                   icon={<ClipboardCheck size={16} color="#ffffff" />}
                   color={N.iconStrong}
                   avatarUrls={journeyGeneralEvaluatorAvatarUrls}
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for General Evaluator.');
-                      return;
-                    }
-                    router.push({ pathname: '/general-evaluator-report', params: { meetingId: currentOpenMeetingId } });
-                  }}
+                  onPress={handleGeneralEvaluatorPress}
                 />
                 <MeetingActionButton
                   title="Table topic"
                   icon={<Mic size={16} color="#ffffff" />}
                   color={N.iconStrong}
                   avatarUrls={journeyTableTopicsSpeakerAvatarUrls}
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for Table Topics.');
-                      return;
-                    }
-                    router.push({ pathname: '/table-topic-corner', params: { meetingId: currentOpenMeetingId } });
-                  }}
+                  onPress={handleTableTopicPress}
                 />
                 <MeetingActionButton
                   title="Educational speaker"
@@ -1848,26 +1878,14 @@ export default function MyJourney() {
                   icon={<Timer size={16} color="#ffffff" />}
                   color={N.iconStrong}
                   avatarUrls={journeyTimerAvatarUrls}
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for Timer.');
-                      return;
-                    }
-                    router.push({ pathname: '/timer-report-details', params: { meetingId: currentOpenMeetingId } });
-                  }}
+                  onPress={handleTimerPress}
                 />
                 <MeetingActionButton
                   title="Ah Counter"
                   icon={<Bell size={16} color="#ffffff" />}
                   color={N.iconStrong}
                   avatarUrls={journeyAhCounterAvatarUrls}
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting for Ah Counter.');
-                      return;
-                    }
-                    router.push({ pathname: '/ah-counter-corner', params: { meetingId: currentOpenMeetingId } });
-                  }}
+                  onPress={handleAhCounterPress}
                 />
                 <MeetingActionButton
                   title="Grammarian"

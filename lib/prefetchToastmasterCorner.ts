@@ -10,10 +10,11 @@ export function prefetchToastmasterCorner(
   userId: string | null | undefined,
   clubId: string | null | undefined
 ): void {
-  if (!meetingId || !userId || !clubId) return;
+  if (!meetingId || !clubId) return;
+  const effectiveUserId = userId ?? '';
   void queryClient.prefetchQuery({
-    queryKey: toastmasterCornerQueryKeys.detail(meetingId, clubId, userId),
-    queryFn: () => fetchToastmasterCornerBundle(meetingId, clubId, userId),
+    queryKey: toastmasterCornerQueryKeys.detail(meetingId, clubId, effectiveUserId || 'anon'),
+    queryFn: () => fetchToastmasterCornerBundle(meetingId, clubId, effectiveUserId),
     staleTime: STALE_MS,
   });
 }

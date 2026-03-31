@@ -89,6 +89,7 @@ async function fetchToastmasterCornerBundleLegacy(
   clubId: string,
   userId: string
 ): Promise<ToastmasterCornerBundle> {
+  const isUserKnown = !!userId;
   const [tmRes, meetingRes, clubRes, roleRes, vpeRes, themeListRes] = await Promise.all([
     supabase
       .from('app_meeting_roles_management')
@@ -112,8 +113,12 @@ async function fetchToastmasterCornerBundleLegacy(
       .maybeSingle(),
     supabase.from('app_club_meeting').select('*').eq('id', meetingId).single(),
     supabase.from('clubs').select('id, name, club_number, charter_date').eq('id', clubId).single(),
-    supabase.from('app_club_user_relationship').select('role').eq('user_id', userId).eq('club_id', clubId).maybeSingle(),
-    supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle(),
+    isUserKnown
+      ? supabase.from('app_club_user_relationship').select('role').eq('user_id', userId).eq('club_id', clubId).maybeSingle()
+      : Promise.resolve({ data: null, error: null } as const),
+    isUserKnown
+      ? supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle()
+      : Promise.resolve({ data: null, error: null } as const),
     supabase.from('toastmaster_meeting_data').select('*').eq('meeting_id', meetingId).eq('club_id', clubId),
   ]);
 
@@ -145,8 +150,8 @@ async function fetchToastmasterCornerBundleLegacy(
   const meeting = meetingRes.error ? null : (meetingRes.data as ToastmasterCornerMeeting);
   const clubInfo = clubRes.error ? null : (clubRes.data as ToastmasterCornerClubInfo);
 
-  const isExComm = roleRes.error ? false : roleRes.data?.role === 'excomm';
-  const isVPEClub = vpeRes.error ? false : vpeRes.data?.vpe_id === userId;
+  const isExComm = !isUserKnown ? false : (roleRes.error ? false : roleRes.data?.role === 'excomm');
+  const isVPEClub = !isUserKnown ? false : (vpeRes.error ? false : vpeRes.data?.vpe_id === userId);
 
   let toastmasterMeetingData: ToastmasterMeetingDataRow | null = null;
   if (!themeListRes.error) {

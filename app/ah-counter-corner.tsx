@@ -1,10 +1,12 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { ahCounterQueryKeys, fetchAhCounterSnapshot } from '@/lib/ahCounterSnapshot';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { ArrowLeft, Calendar, Clock, MapPin, Building2, User, FileText, ChartBar, Play, ClipboardList, Bell, Users, BookOpen, Star, Mic, CheckSquare, FileBarChart, MessageSquare, Crown, Settings, UserCog, LayoutDashboard, Vote, Info, X, UserCheck, NotebookPen, ClipboardCheck, Trash2, Plus, Search } from 'lucide-react-native';
 import { Image } from 'react-native';
@@ -87,6 +89,7 @@ const FOOTER_NAV_ICON_SIZE = 15;
 export default function AhCounterCorner() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
 
@@ -95,6 +98,8 @@ export default function AhCounterCorner() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('audit');
   const hasLoadedOnce = useRef<boolean>(false);
+  const hasFocusedOnceRef = useRef<boolean>(false);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
   const [reportStats, setReportStats] = useState({ totalSpeakers: 0, completedReports: 0, selectedMembers: 0 });
   const [isExComm, setIsExComm] = useState(false);
   const [isVPEClub, setIsVPEClub] = useState(false);
@@ -134,18 +139,22 @@ export default function AhCounterCorner() {
   // Reload report stats and audit members when screen comes into focus
   useFocusEffect(
     useCallback(() => {
+      if (!hasFocusedOnceRef.current) {
+        hasFocusedOnceRef.current = true;
+        return;
+      }
       if (meetingId && user?.currentClubId) {
-        loadReportStats();
-        loadAuditMembers();
+        // Refresh via the same snapshot-first path to avoid duplicate network fan-out.
+        void loadData();
       }
     }, [meetingId, user?.currentClubId])
   );
 
   // Reload report stats when switching to audit tab, and load audit members
   useEffect(() => {
-    if (activeTab === 'audit' && meetingId && user?.currentClubId) {
-      loadReportStats();
-      loadAuditMembers();
+    // Avoid duplicate mount-time fetches; refresh only after the first successful load.
+    if (activeTab === 'audit' && hasLoadedOnce.current && meetingId && user?.currentClubId) {
+      void loadData();
     }
   }, [activeTab, meetingId, user?.currentClubId]);
 
@@ -247,22 +256,80 @@ export default function AhCounterCorner() {
     }
     const isFirstLoad = !hasLoadedOnce.current;
     if (isFirstLoad) setIsLoading(true);
+    if (loadInFlightRef.current) return loadInFlightRef.current;
+
+    const mapReportRowsToEntries = (rows: Record<string, unknown>[]) => {
+      const entries: ReportEntry[] = [];
+      for (const row of rows) {
+        const avatarUrl = ((row as any).app_user_profiles?.avatar_url as string | null) ?? null;
+        for (const [col, word] of Object.entries(COLUMN_TO_FILLER_WORD)) {
+          const count = ((row as any)[col] as number) || 0;
+          for (let i = 0; i < count; i++) {
+            entries.push({
+              id: `${(row as any).id}_${col}_${i}`,
+              memberId: ((row as any).speaker_user_id as string) || `guest_${(row as any).speaker_name}`,
+              memberName: ((row as any).speaker_name as string) || '',
+              fillerWord: word,
+              avatarUrl,
+              dbRowId: (row as any).id as string,
+              dbColumn: col,
+            });
+          }
+        }
+      }
+      entries.sort((a, b) => a.memberName.localeCompare(b.memberName));
+      return entries;
+    };
+
+    const run = async () => {
     try {
-      await Promise.all([
-        loadMeeting(),
-        loadAssignedAhCounter(),
-        loadReportStats(),
-        loadUserRole(),
-        loadIsVPEClub(),
-        loadReportEntries(),
-        loadPublishStatus(),
-      ]);
+      const effectiveUserId = user?.id ?? '';
+      const snap = await queryClient.fetchQuery({
+        queryKey: ahCounterQueryKeys.snapshot(
+          meetingId,
+          user.currentClubId,
+          effectiveUserId || 'anon'
+        ),
+        queryFn: () => fetchAhCounterSnapshot(meetingId),
+        staleTime: 60 * 1000,
+      });
+
+      if (snap?.meeting && Object.keys(snap.meeting).length > 0 && snap.club_id) {
+        setMeeting(snap.meeting as unknown as Meeting);
+        setAssignedAhCounter(snap.assigned_ah_counter);
+        setIsExComm(snap.is_excomm);
+        setIsVPEClub(snap.is_vpe_for_club);
+        setReportStats({
+          totalSpeakers: snap.report_stats.total_speakers,
+          completedReports: snap.report_stats.completed_reports,
+          selectedMembers: snap.report_stats.selected_members,
+        });
+        setPublishedCount(snap.published_count);
+        setIsPublished(snap.total_reports > 0 && snap.published_count === snap.total_reports);
+        setReportEntries(mapReportRowsToEntries(snap.report_rows));
+        setAuditMembers(snap.audit_members);
+      } else {
+        await Promise.all([
+          loadMeeting(),
+          loadAssignedAhCounter(),
+          loadReportStats(),
+          loadUserRole(),
+          loadIsVPEClub(),
+          loadReportEntries(),
+          loadPublishStatus(),
+        ]);
+      }
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
       hasLoadedOnce.current = true;
       if (isFirstLoad) setIsLoading(false);
+      loadInFlightRef.current = null;
     }
+    };
+
+    loadInFlightRef.current = run();
+    return loadInFlightRef.current;
   };
 
   const loadMeeting = async () => {

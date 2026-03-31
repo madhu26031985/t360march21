@@ -1,13 +1,14 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
-import { fetchGeneralEvaluatorReportBundle } from '@/lib/generalEvaluatorReportQuery';
+import { fetchGeneralEvaluatorReportBundle, generalEvaluatorReportQueryKeys } from '@/lib/generalEvaluatorReportQuery';
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
 import { ArrowLeft, Calendar, Clock, MapPin, Building2, Star, Info, CircleCheck as CheckCircle, Circle, CircleAlert as AlertCircle, X, NotebookPen, Bell, FileText, Users, MessageSquare, Mic, BookOpen, CheckSquare, ClipboardCheck, FileBarChart, Search, UserPlus } from 'lucide-react-native';
 import { Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
@@ -96,6 +97,7 @@ interface EvaluationCategory {
 export default function GeneralEvaluatorReport() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
   
@@ -120,6 +122,7 @@ export default function GeneralEvaluatorReport() {
   const [assigningGeRole, setAssigningGeRole] = useState(false);
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [clubMembersLoading, setClubMembersLoading] = useState(false);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
 
   const evaluationCategories: EvaluationCategory[] = [
     {
@@ -216,9 +219,9 @@ export default function GeneralEvaluatorReport() {
 
   useEffect(() => {
     if (meetingId) {
-      loadGeneralEvaluatorData();
+      void loadGeneralEvaluatorData();
     }
-  }, [meetingId]);
+  }, [meetingId, user?.currentClubId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -229,48 +232,67 @@ export default function GeneralEvaluatorReport() {
   }, [responses, feedbackForm]);
 
   const loadGeneralEvaluatorData = async () => {
-    if (!meetingId || !user?.currentClubId || !user?.id) {
+    if (!meetingId || !user?.currentClubId) {
       setIsLoading(false);
       return;
     }
 
-    try {
-      // Prefer single RPC (get_general_evaluator_report_snapshot) → one round-trip vs 4+ parallel REST calls.
-      // Club roster for “Assign GE” still loads on demand via loadClubMembers().
-      const bundle = await fetchGeneralEvaluatorReportBundle(meetingId, user.currentClubId, user.id);
-      setMeeting(bundle.meeting as Meeting | null);
-      setClubInfo(bundle.clubInfo);
-      setIsVPEClub(bundle.isVPEClub);
-      setGeneralEvaluator(bundle.generalEvaluator as GeneralEvaluator | null);
+    if (loadInFlightRef.current) {
+      return loadInFlightRef.current;
+    }
 
-      if (bundle.geReport) {
-        const data = bundle.geReport as GeneralEvaluatorData;
-        setExistingEvaluation(data);
-        setFeedbackForm({
-          summary: data.evaluation_summary || '',
-          whatWentWell: data.what_went_well || '',
-          whatNeedsImprovement: data.what_needs_improvement || '',
+    const run = async () => {
+      try {
+        const effectiveUserId = user?.id ?? '';
+        // Prefer single RPC (get_general_evaluator_report_snapshot) → one round-trip vs 4+ parallel REST calls.
+        // Club roster for “Assign GE” still loads on demand via loadClubMembers().
+        const bundle = await queryClient.fetchQuery({
+          queryKey: generalEvaluatorReportQueryKeys.snapshot(
+            meetingId,
+            user.currentClubId,
+            effectiveUserId || 'anon'
+          ),
+          queryFn: () => fetchGeneralEvaluatorReportBundle(meetingId, user.currentClubId, effectiveUserId),
+          staleTime: 60 * 1000,
         });
-        if (data.evaluation_data && typeof data.evaluation_data === 'object') {
-          setResponses(data.evaluation_data as Record<string, EvaluationResponse['rating']>);
+        setMeeting(bundle.meeting as Meeting | null);
+        setClubInfo(bundle.clubInfo);
+        setIsVPEClub(bundle.isVPEClub);
+        setGeneralEvaluator(bundle.generalEvaluator as GeneralEvaluator | null);
+
+        if (bundle.geReport) {
+          const data = bundle.geReport as GeneralEvaluatorData;
+          setExistingEvaluation(data);
+          setFeedbackForm({
+            summary: data.evaluation_summary || '',
+            whatWentWell: data.what_went_well || '',
+            whatNeedsImprovement: data.what_needs_improvement || '',
+          });
+          if (data.evaluation_data && typeof data.evaluation_data === 'object') {
+            setResponses(data.evaluation_data as Record<string, EvaluationResponse['rating']>);
+          } else {
+            setResponses({});
+          }
         } else {
+          setExistingEvaluation(null);
+          setFeedbackForm({
+            summary: '',
+            whatWentWell: '',
+            whatNeedsImprovement: '',
+          });
           setResponses({});
         }
-      } else {
-        setExistingEvaluation(null);
-        setFeedbackForm({
-          summary: '',
-          whatWentWell: '',
-          whatNeedsImprovement: '',
-        });
-        setResponses({});
+      } catch (error) {
+        console.error('Error loading general evaluator data:', error);
+        Alert.alert('Error', 'Failed to load general evaluator data');
+      } finally {
+        setIsLoading(false);
+        loadInFlightRef.current = null;
       }
-    } catch (error) {
-      console.error('Error loading general evaluator data:', error);
-      Alert.alert('Error', 'Failed to load general evaluator data');
-    } finally {
-      setIsLoading(false);
-    }
+    };
+
+    loadInFlightRef.current = run();
+    return loadInFlightRef.current;
   };
 
   const handleBookGeneralEvaluatorInline = async () => {

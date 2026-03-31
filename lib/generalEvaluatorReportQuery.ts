@@ -55,6 +55,11 @@ export type GeneralEvaluatorReportBundle = {
   geReport: GeReportEvaluationRow | null;
 };
 
+export const generalEvaluatorReportQueryKeys = {
+  snapshot: (meetingId: string, clubId: string, userId: string) =>
+    ['general-evaluator-report-snapshot', meetingId, clubId, userId] as const,
+};
+
 type RpcSnapshot = {
   club_id: string;
   meeting: GeReportMeeting | null;
@@ -69,10 +74,13 @@ async function fetchGeneralEvaluatorReportBundleLegacy(
   clubId: string,
   userId: string
 ): Promise<GeneralEvaluatorReportBundle> {
+  const isUserKnown = !!userId;
   const [meetingRes, clubRes, vpeRes, geRes] = await Promise.all([
     supabase.from('app_club_meeting').select('*').eq('id', meetingId).single(),
     supabase.from('clubs').select('id, name, club_number').eq('id', clubId).single(),
-    supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle(),
+    isUserKnown
+      ? supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle()
+      : Promise.resolve({ data: null, error: null } as const),
     supabase
       .from('app_meeting_roles_management')
       .select(
@@ -97,7 +105,7 @@ async function fetchGeneralEvaluatorReportBundleLegacy(
 
   const meeting = (meetingRes.data ?? null) as GeReportMeeting | null;
   const clubInfo = (clubRes.data ?? null) as GeReportClubInfo | null;
-  const isVPEClub = vpeRes.data?.vpe_id === userId;
+  const isVPEClub = isUserKnown && vpeRes.data?.vpe_id === userId;
   const generalEvaluator = (geRes.data ?? null) as GeReportEvaluatorRole | null;
 
   let geReport: GeReportEvaluationRow | null = null;

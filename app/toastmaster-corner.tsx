@@ -114,11 +114,11 @@ export default function ToastmasterCorner() {
   const queryClient = useQueryClient();
   const clubId = user?.currentClubId;
   const uid = user?.id;
-  const queryEnabled = !!meetingId && !!clubId && !!uid;
+  const queryEnabled = !!meetingId && !!clubId;
 
   const { data: cornerData, isPending, isError, error } = useQuery({
-    queryKey: toastmasterCornerQueryKeys.detail(meetingId ?? '', clubId ?? '', uid ?? ''),
-    queryFn: () => fetchToastmasterCornerBundle(meetingId!, clubId!, uid!),
+    queryKey: toastmasterCornerQueryKeys.detail(meetingId ?? '', clubId ?? '', uid ?? 'anon'),
+    queryFn: () => fetchToastmasterCornerBundle(meetingId!, clubId!, uid ?? ''),
     enabled: queryEnabled,
     staleTime: 60_000,
     gcTime: 30 * 60 * 1000,
@@ -187,8 +187,7 @@ export default function ToastmasterCorner() {
   }, [isError, error]);
 
   const isLoading =
-    (queryEnabled && isPending) ||
-    (!!meetingId && !!clubId && !uid);
+    (queryEnabled && isPending);
 
   const invalidateToastmasterCorner = useCallback(async () => {
     if (!meetingId || !user?.currentClubId || !user?.id) return;

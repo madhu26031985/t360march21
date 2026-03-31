@@ -116,9 +116,9 @@ export default function EducationalCorner(): JSX.Element {
     isError,
     refetch,
   } = useQuery({
-    queryKey: educationalCornerQueryKeys.snapshot(meetingId ?? '', user?.id ?? ''),
-    queryFn: () => fetchEducationalCornerBundle(meetingId!, user!.id, user!.currentClubId!),
-    enabled: Boolean(meetingId && user?.id && user?.currentClubId),
+    queryKey: educationalCornerQueryKeys.snapshot(meetingId ?? '', user?.id ?? 'anon'),
+    queryFn: () => fetchEducationalCornerBundle(meetingId!, user?.id ?? '', user!.currentClubId!),
+    enabled: Boolean(meetingId && user?.currentClubId),
     staleTime: 60 * 1000,
     gcTime: 15 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -162,10 +162,10 @@ export default function EducationalCorner(): JSX.Element {
         skipFocusRefetchRef.current = false;
         return;
       }
-      if (meetingId && user?.id) {
+      if (meetingId && user?.currentClubId) {
         void refetch();
       }
-    }, [meetingId, user?.id, refetch])
+    }, [meetingId, user?.currentClubId, refetch])
   );
 
   useEffect(() => {

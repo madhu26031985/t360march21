@@ -10,10 +10,11 @@ export function prefetchEducationalCorner(
   userId: string | null | undefined,
   clubId: string | null | undefined
 ): void {
-  if (!meetingId || !userId || !clubId) return;
+  if (!meetingId || !clubId) return;
+  const effectiveUserId = userId ?? '';
   void queryClient.prefetchQuery({
-    queryKey: educationalCornerQueryKeys.snapshot(meetingId, userId),
-    queryFn: () => fetchEducationalCornerBundle(meetingId, userId, clubId),
+    queryKey: educationalCornerQueryKeys.snapshot(meetingId, effectiveUserId || 'anon'),
+    queryFn: () => fetchEducationalCornerBundle(meetingId, effectiveUserId, clubId),
     staleTime: STALE_MS,
   });
 }

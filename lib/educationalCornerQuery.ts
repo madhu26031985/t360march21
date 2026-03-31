@@ -114,19 +114,24 @@ async function fetchEducationalCornerLegacy(
   userId: string,
   clubId: string
 ): Promise<EducationalCornerBundle | null> {
+  const isUserKnown = !!userId;
   const [{ data: meetingData, error: meetingError }, membershipRes, vpeRes] = await Promise.all([
     supabase
       .from('app_club_meeting')
       .select(`*, clubs!inner(name)`)
       .eq('id', meetingId)
       .single(),
-    supabase
-      .from('app_club_user_relationship')
-      .select('role')
-      .eq('user_id', userId)
-      .eq('club_id', clubId)
-      .maybeSingle(),
-    supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle(),
+    isUserKnown
+      ? supabase
+          .from('app_club_user_relationship')
+          .select('role')
+          .eq('user_id', userId)
+          .eq('club_id', clubId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null } as const),
+    isUserKnown
+      ? supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle()
+      : Promise.resolve({ data: null, error: null } as const),
   ]);
 
   if (meetingError || !meetingData) {
@@ -134,8 +139,8 @@ async function fetchEducationalCornerLegacy(
     return null;
   }
 
-  const isExComm = membershipRes.data?.role === 'excomm';
-  const isVPEClub = vpeRes.data?.vpe_id === userId;
+  const isExComm = !isUserKnown ? false : membershipRes.data?.role === 'excomm';
+  const isVPEClub = !isUserKnown ? false : vpeRes.data?.vpe_id === userId;
 
   const meeting: EducationalCornerMeeting = {
     ...(meetingData as unknown as EducationalCornerMeeting),

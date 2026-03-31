@@ -1,5 +1,10 @@
 import { supabase } from '@/lib/supabase';
 
+export const timerReportQueryKeys = {
+  snapshot: (meetingId: string, speechCategory: string, userId: string) =>
+    ['timer-report-snapshot', meetingId, speechCategory, userId] as const,
+};
+
 export type TimerReportSnapshotMember = {
   user_id: string;
   full_name: string;

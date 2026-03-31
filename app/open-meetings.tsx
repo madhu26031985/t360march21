@@ -3,9 +3,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { prefetchAhCounter } from '@/lib/prefetchAhCounter';
+import { prefetchGeneralEvaluatorReport } from '@/lib/prefetchGeneralEvaluatorReport';
+import { prefetchTableTopicCorner } from '@/lib/prefetchTableTopicCorner';
+import { prefetchTimerReport } from '@/lib/prefetchTimerReport';
+import { prefetchToastmasterCorner } from '@/lib/prefetchToastmasterCorner';
 import { ArrowLeft, Clock, Calendar, MapPin, ChevronRight, FileText, Timer, ChartBar as BarChart3, BookOpen, Star, MessageSquare, ClipboardCheck, UserCheck, Award, Book, MessageCircle } from 'lucide-react-native';
 
 interface Meeting {
@@ -34,6 +40,7 @@ interface TabItem {
 export default function OpenMeetings() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -94,6 +101,17 @@ export default function OpenMeetings() {
 
   const handleTabPress = (tab: TabItem, meetingId: string) => {
     if (tab.route) {
+      if (tab.id === 'toastmaster_corner') {
+        prefetchToastmasterCorner(queryClient, meetingId, user?.id, user?.currentClubId);
+      } else if (tab.id === 'ah_counter') {
+        prefetchAhCounter(queryClient, meetingId, user?.currentClubId, user?.id);
+      } else if (tab.id === 'general_evaluator') {
+        prefetchGeneralEvaluatorReport(queryClient, meetingId, user?.id, user?.currentClubId);
+      } else if (tab.id === 'table_topic_corner') {
+        prefetchTableTopicCorner(queryClient, meetingId, user?.id, user?.currentClubId);
+      } else if (tab.id === 'timer') {
+        prefetchTimerReport(queryClient, meetingId, user?.id);
+      }
       const routeWithId = tab.route.replace('meetingId=undefined', `meetingId=${meetingId}`);
       router.push(routeWithId);
       return;
