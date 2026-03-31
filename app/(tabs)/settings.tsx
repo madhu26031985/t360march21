@@ -260,6 +260,10 @@ Welcome to a seamless digital experience! 🚀`;
     }
   };
 
+  const handleBuyUsACoffee = () => {
+    router.push('/buy-us-a-coffee');
+  };
+
   const handleDeleteAccount = async () => {
     if (deleteConfirmation !== 'DELETE') {
       showAlert('Error', 'Please type DELETE to confirm');
@@ -427,6 +431,13 @@ Welcome to a seamless digital experience! 🚀`;
             </Text>
             <View style={[styles.notionGroup, { borderColor: N.border }]}>
               <SettingItem
+                icon={themedIcon(DollarSign, '#92400E')}
+                iconBackgroundColor="#FEF3C7"
+                title="Buy us a coffee"
+                description="Support T360 with a small contribution"
+                onPress={handleBuyUsACoffee}
+              />
+              <SettingItem
                 icon={themedIcon(Share2, '#16A34A')}
                 iconBackgroundColor="#F0FDF4"
                 title="Share app"
@@ -460,13 +471,6 @@ Welcome to a seamless digital experience! 🚀`;
                 title="Help & support"
                 description="FAQs, contact support, tutorials"
                 onPress={handleHelpSupport}
-              />
-              <SettingItem
-                icon={themedIcon(DollarSign, '#DC2626')}
-                iconBackgroundColor="#FEF2F2"
-                title="Pricing"
-                description="View pricing plans and options"
-                onPress={handlePricing}
               />
               <SettingItem
                 icon={themedIcon(FileText, '#475569')}
