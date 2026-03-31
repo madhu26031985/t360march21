@@ -54,9 +54,19 @@ interface SettingItemProps {
   rightElement?: React.ReactNode;
   showChevron?: boolean;
   hideBottomBorder?: boolean;
+  iconBackgroundColor?: string;
 }
 
-function SettingItem({ icon, title, description, onPress, rightElement, showChevron = true, hideBottomBorder }: SettingItemProps) {
+function SettingItem({
+  icon,
+  title,
+  description,
+  onPress,
+  rightElement,
+  showChevron = true,
+  hideBottomBorder,
+  iconBackgroundColor,
+}: SettingItemProps) {
   return (
     <TouchableOpacity
       style={[styles.settingItem, !hideBottomBorder && styles.settingItemBorder]}
@@ -64,7 +74,7 @@ function SettingItem({ icon, title, description, onPress, rightElement, showChev
       activeOpacity={0.65}
     >
       <View style={styles.settingLeft}>
-        <View style={[styles.settingIconWrap, { backgroundColor: N.iconTile }]}>{icon}</View>
+        <View style={[styles.settingIconWrap, { backgroundColor: iconBackgroundColor || N.iconTile }]}>{icon}</View>
         <View style={styles.settingText}>
           <Text style={[styles.settingTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
             {title}
@@ -118,6 +128,7 @@ export default function Settings() {
   const avatarAbortRef = React.useRef<AbortController | null>(null);
 
   const mutedIcon = (Icon: typeof User, size = 18) => <Icon size={size} color={N.iconMuted} strokeWidth={1.75} />;
+  const themedIcon = (Icon: typeof User, color: string, size = 18) => <Icon size={size} color={color} strokeWidth={1.75} />;
 
   const handleShareApp = async () => {
     try {
@@ -402,7 +413,8 @@ Welcome to a seamless digital experience! 🚀`;
             </Text>
             <View style={[styles.notionGroup, { borderColor: N.border }]}>
               <SettingItem
-                icon={mutedIcon(Building2)}
+                icon={themedIcon(Building2, '#2563EB')}
+                iconBackgroundColor="#EFF6FF"
                 title="Create new club"
                 description="Start a new Toastmasters club"
                 onPress={() => router.push('/create-club')}
@@ -414,26 +426,65 @@ Welcome to a seamless digital experience! 🚀`;
               Support
             </Text>
             <View style={[styles.notionGroup, { borderColor: N.border }]}>
-              <SettingItem icon={mutedIcon(Share2)} title="Share app" description="Invite members to download T360" onPress={handleShareApp} />
               <SettingItem
-                icon={mutedIcon(Globe)}
+                icon={themedIcon(Share2, '#16A34A')}
+                iconBackgroundColor="#F0FDF4"
+                title="Share app"
+                description="Invite members to download T360"
+                onPress={handleShareApp}
+              />
+              <SettingItem
+                icon={themedIcon(Globe, '#334155')}
+                iconBackgroundColor="#F1F5F9"
                 title="Web login"
                 description="Access T360 on your browser"
                 onPress={() => Linking.openURL('https://t360.in/weblogin')}
               />
               <SettingItem
-                icon={mutedIcon(MessageCircle)}
+                icon={themedIcon(MessageCircle, '#22C55E')}
+                iconBackgroundColor="#ECFDF5"
                 title="WhatsApp support 24/7"
                 description="Get instant help on WhatsApp"
                 onPress={handleWhatsAppSupport}
               />
-              <SettingItem icon={mutedIcon(Calendar)} title="Talk to us" description="Schedule a call with our team" onPress={handleTalkToUs} />
-              <SettingItem icon={mutedIcon(HelpCircle)} title="Help & support" description="FAQs, contact support, tutorials" onPress={handleHelpSupport} />
-              <SettingItem icon={mutedIcon(DollarSign)} title="Pricing" description="View pricing plans and options" onPress={handlePricing} />
-              <SettingItem icon={mutedIcon(FileText)} title="Privacy policy" description="Read our privacy policy" onPress={handlePrivacyPolicy} />
-              <SettingItem icon={mutedIcon(Shield)} title="Data protection" description="Learn more about data protection" onPress={handleDataProtection} />
               <SettingItem
-                icon={mutedIcon(RefreshCw)}
+                icon={themedIcon(Calendar, '#D97706')}
+                iconBackgroundColor="#FEF3C7"
+                title="Talk to us"
+                description="Schedule a call with our team"
+                onPress={handleTalkToUs}
+              />
+              <SettingItem
+                icon={themedIcon(HelpCircle, '#6366F1')}
+                iconBackgroundColor="#EEF2FF"
+                title="Help & support"
+                description="FAQs, contact support, tutorials"
+                onPress={handleHelpSupport}
+              />
+              <SettingItem
+                icon={themedIcon(DollarSign, '#DC2626')}
+                iconBackgroundColor="#FEF2F2"
+                title="Pricing"
+                description="View pricing plans and options"
+                onPress={handlePricing}
+              />
+              <SettingItem
+                icon={themedIcon(FileText, '#475569')}
+                iconBackgroundColor="#F8FAFC"
+                title="Privacy policy"
+                description="Read our privacy policy"
+                onPress={handlePrivacyPolicy}
+              />
+              <SettingItem
+                icon={themedIcon(Shield, '#0891B2')}
+                iconBackgroundColor="#ECFEFF"
+                title="Data protection"
+                description="Learn more about data protection"
+                onPress={handleDataProtection}
+              />
+              <SettingItem
+                icon={themedIcon(RefreshCw, '#7C3AED')}
+                iconBackgroundColor="#F5F3FF"
                 title="App version check"
                 description="Check for latest version and updates"
                 onPress={() => router.push('/version-debug')}
@@ -446,7 +497,8 @@ Welcome to a seamless digital experience! 🚀`;
             </Text>
             <View style={[styles.notionGroup, { borderColor: N.border }]}>
               <SettingItem
-                icon={mutedIcon(Video)}
+                icon={themedIcon(Video, '#7C3AED')}
+                iconBackgroundColor="#F5F3FF"
                 title="Watch training videos"
                 description="Learn how to use T360 effectively"
                 onPress={handleTrainingVideos}
@@ -458,8 +510,21 @@ Welcome to a seamless digital experience! 🚀`;
               Connect with us
             </Text>
             <View style={[styles.notionGroup, { borderColor: N.border }]}>
-              <SettingItem icon={mutedIcon(Linkedin)} title="LinkedIn" description="Connect with us on LinkedIn" onPress={handleLinkedIn} />
-              <SettingItem icon={mutedIcon(Globe)} title="Website" description="Visit our website" onPress={handleWebsite} hideBottomBorder />
+              <SettingItem
+                icon={themedIcon(Linkedin, '#0A66C2')}
+                iconBackgroundColor="#EFF6FF"
+                title="LinkedIn"
+                description="Connect with us on LinkedIn"
+                onPress={handleLinkedIn}
+              />
+              <SettingItem
+                icon={themedIcon(Globe, '#334155')}
+                iconBackgroundColor="#F1F5F9"
+                title="Website"
+                description="Visit our website"
+                onPress={handleWebsite}
+                hideBottomBorder
+              />
             </View>
 
             <TouchableOpacity

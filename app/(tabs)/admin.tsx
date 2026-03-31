@@ -66,11 +66,13 @@ function NotionRow({
   icon,
   onPress,
   isLast,
+  iconBackgroundColor,
 }: {
   label: string;
   icon?: ReactNode | null;
   onPress: () => void;
   isLast?: boolean;
+  iconBackgroundColor?: string;
 }) {
   return (
     <TouchableOpacity
@@ -79,7 +81,7 @@ function NotionRow({
       activeOpacity={0.65}
     >
       {icon ? (
-        <View style={[styles.notionRowIconWrap, { backgroundColor: N.iconTile }]}>{icon}</View>
+        <View style={[styles.notionRowIconWrap, { backgroundColor: iconBackgroundColor || N.iconTile }]}>{icon}</View>
       ) : (
         <View style={styles.notionRowIconSpacer} />
       )}
@@ -94,7 +96,13 @@ function NotionRow({
 function NotionActionList({
   items,
 }: {
-  items: { key: string; label: string; icon?: ReactNode | null; onPress: () => void }[];
+  items: {
+    key: string;
+    label: string;
+    icon?: ReactNode | null;
+    onPress: () => void;
+    iconBackgroundColor?: string;
+  }[];
 }) {
   if (items.length === 0) return null;
   return (
@@ -105,6 +113,7 @@ function NotionActionList({
           label={item.label}
           icon={item.icon}
           onPress={item.onPress}
+          iconBackgroundColor={item.iconBackgroundColor}
           isLast={i === items.length - 1}
         />
       ))}
@@ -286,7 +295,8 @@ export default function AdminPanel() {
           {
             key: 'users',
             label: 'Invite new club members',
-            icon: <UserPlus size={18} color={N.iconMuted} strokeWidth={1.75} />,
+            icon: <UserPlus size={18} color="#16A34A" strokeWidth={1.75} />,
+            iconBackgroundColor: '#ECFDF5',
             onPress: () => router.push('/admin/manage-club-users'),
           },
         ]
@@ -296,7 +306,8 @@ export default function AdminPanel() {
           {
             key: 'meeting',
             label: openMeetingCount > 0 ? 'Manage meetings' : 'Create meetings',
-            icon: <CalendarPlus size={18} color={N.iconMuted} strokeWidth={1.75} />,
+            icon: <CalendarPlus size={18} color="#2563EB" strokeWidth={1.75} />,
+            iconBackgroundColor: '#EFF6FF',
             onPress: () => router.push('/admin/meeting-management'),
           },
         ]
@@ -306,18 +317,30 @@ export default function AdminPanel() {
           {
             key: 'voting',
             label: 'Voting operations',
-            icon: <Vote size={18} color={N.iconMuted} strokeWidth={1.75} />,
+            icon: <Vote size={18} color="#D97706" strokeWidth={1.75} />,
+            iconBackgroundColor: '#FEF3C7',
             onPress: () => router.push('/admin/voting-operations'),
           },
         ]
       : []),
   ];
 
-  const clubOpsItems = CLUB_OPERATIONS_SUB_PAGES.map(({ title, route, Icon }) => ({
-    key: route,
-    label: title,
-    icon: <Icon size={18} color={N.iconMuted} strokeWidth={1.75} />,
-    onPress: () => {
+  const clubOpsItems = CLUB_OPERATIONS_SUB_PAGES.map(({ title, route, Icon }) => {
+    const tilePalette =
+      title === 'Club Info'
+        ? { icon: '#334155', bg: '#F1F5F9' }
+        : title === 'Club ExComm'
+          ? { icon: '#7C3AED', bg: '#F5F3FF' }
+          : title === 'Club Social Media'
+            ? { icon: '#0891B2', bg: '#ECFEFF' }
+            : { icon: '#475569', bg: '#F8FAFC' };
+
+    return {
+      key: route,
+      label: title,
+      icon: <Icon size={18} color={tilePalette.icon} strokeWidth={1.75} />,
+      iconBackgroundColor: tilePalette.bg,
+      onPress: () => {
       if (route.startsWith('/admin/club-info-management')) {
         prefetchClubInfoManagement(queryClient, user?.currentClubId);
       }
@@ -325,8 +348,9 @@ export default function AdminPanel() {
         prefetchExcommManagement(queryClient, user?.currentClubId);
       }
       router.push(route);
-    },
-  }));
+      },
+    };
+  });
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>

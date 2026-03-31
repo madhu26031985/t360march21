@@ -256,7 +256,7 @@ function MeetingActionButton({
             key={currentUri}
             source={{ uri: currentUri }}
             style={styles.meetingActionButtonAvatarImage}
-            resizeMode="cover"
+            resizeMode="contain"
             onError={handleAvatarError}
           />
         ) : (
@@ -320,6 +320,7 @@ interface JourneyListCardProps {
   showPendingHighlight?: boolean;
   /** Pulse icon only (no border or badge) */
   animateIconOnly?: boolean;
+  iconBackgroundColor?: string;
 }
 
 function JourneyListCard({
@@ -331,6 +332,7 @@ function JourneyListCard({
   inline,
   showPendingHighlight,
   animateIconOnly,
+  iconBackgroundColor,
 }: JourneyListCardProps) {
   const { theme } = useTheme();
   const alertScale = useSharedValue(1);
@@ -374,7 +376,7 @@ function JourneyListCard({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <Animated.View style={[styles.journeyListIconWrap, { backgroundColor: `${color}20` }, iconPulseStyle]}>
+      <Animated.View style={[styles.journeyListIconWrap, { backgroundColor: iconBackgroundColor || `${color}20` }, iconPulseStyle]}>
         {icon}
       </Animated.View>
       <View style={styles.journeyListTextCol}>
@@ -1571,16 +1573,18 @@ export default function MyJourney() {
                 <JourneyListCard
                   title="My Profile"
                   description="View and edit your personal information"
-                  icon={<User size={18} color={N.iconStrong} />}
-                  color={N.iconStrong}
+                  icon={<User size={18} color="#111827" />}
+                  color="#111827"
+                  iconBackgroundColor="#F3F4F6"
                   onPress={handleMyProfilePress}
                   inline
                 />
                 <JourneyListCard
                   title="My Speeches"
                   description="Manage and organize your speech documents"
-                  icon={<BookOpen size={18} color={N.iconStrong} />}
-                  color={N.iconStrong}
+                  icon={<BookOpen size={18} color="#7C3AED" />}
+                  color="#7C3AED"
+                  iconBackgroundColor="#F5F3FF"
                   onPress={() => router.push('/speech-repository')}
                   inline
                 />
@@ -1588,8 +1592,9 @@ export default function MyJourney() {
                   <JourneyListCard
                     title="My Mentor"
                     description="Get guidance from your mentor"
-                    icon={<Users size={18} color={N.iconStrong} />}
-                    color={N.iconStrong}
+                    icon={<Users size={18} color="#16A34A" />}
+                    color="#16A34A"
+                    iconBackgroundColor="#ECFDF5"
                     onPress={handleMyMentorPress}
                     inline
                   />
@@ -1614,23 +1619,31 @@ export default function MyJourney() {
           <>
                 <View style={[styles.masterBox, { backgroundColor: N.surface, borderColor: N.border }]}>
                   {/* Club selection - integrated into master box */}
-                  <ClubSwitcher showRole={true} embedded variant="notion" />
+                  <ClubSwitcher
+                    showRole={true}
+                    embedded
+                    variant="notion"
+                    clubIconBackgroundColor="#F1F5F9"
+                    clubIconColor="#334155"
+                  />
                   <View style={[styles.masterBoxDivider, { backgroundColor: N.border }]} />
                   {/* Profile, Speeches, Mentor */}
                   <View style={styles.journeyListCardsContainer}>
                     <JourneyListCard
                       title="My Profile"
                       description="View and edit your personal information"
-                      icon={<User size={18} color={N.iconStrong} />}
-                      color={N.iconStrong}
+                      icon={<User size={18} color="#111827" />}
+                      color="#111827"
+                      iconBackgroundColor="#F3F4F6"
                       onPress={handleMyProfilePress}
                       inline
                     />
                     <JourneyListCard
                       title="My Speeches"
                       description="Manage and organize your speech documents"
-                      icon={<BookOpen size={18} color={N.iconStrong} />}
-                      color={N.iconStrong}
+                      icon={<BookOpen size={18} color="#7C3AED" />}
+                      color="#7C3AED"
+                      iconBackgroundColor="#F5F3FF"
                       onPress={() => router.push('/speech-repository')}
                       inline
                     />
@@ -1638,8 +1651,9 @@ export default function MyJourney() {
                       <JourneyListCard
                         title="My Mentor"
                         description="Get guidance from your mentor"
-                        icon={<Users size={18} color={N.iconStrong} />}
-                        color={N.iconStrong}
+                        icon={<Users size={18} color="#16A34A" />}
+                        color="#16A34A"
+                        iconBackgroundColor="#ECFDF5"
                         onPress={handleMyMentorPress}
                         inline
                       />
@@ -1660,8 +1674,9 @@ export default function MyJourney() {
                             </Text>
                           )
                         }
-                        icon={<Bell size={18} color={N.iconStrong} />}
-                        color={N.iconStrong}
+                        icon={<Bell size={18} color="#D97706" />}
+                        color="#D97706"
+                        iconBackgroundColor="#FFFBEB"
                         onPress={() => {
                           const item = pendingMeetingReminders[heroReminderSlide];
                           if (item) {
@@ -1817,8 +1832,8 @@ export default function MyJourney() {
               <View style={styles.meetingActionsGrid}>
                 <MeetingActionButton
                   title="Book a Role"
-                  icon={<Calendar size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<Calendar size={16} color="#D97706" />}
+                  color="#FEF3C7"
                   showAlert={showBookRoleAttention}
                   onPress={() => {
                     if (!currentOpenMeetingId) {
@@ -1830,67 +1845,67 @@ export default function MyJourney() {
                 />
                 <MeetingActionButton
                   title="Toastmaster of the day"
-                  icon={<MessageSquare size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<MessageSquare size={16} color="#2563EB" />}
+                  color="#EFF6FF"
                   avatarUrls={journeyToastmasterDisplayAvatarUrls}
                   showAlert={tmodNeedsThemeAlert}
                   onPress={handleToastmasterPress}
                 />
                 <MeetingActionButton
                   title="Prepared Speeches"
-                  icon={<Mic size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<Mic size={16} color="#7C3AED" />}
+                  color="#F5F3FF"
                   avatarUrls={journeyPreparedSpeakerAvatarUrls}
                   showAlert={preparedSpeakerNeedsSpeechDetailsAlert}
                   onPress={handlePreparedSpeechesPress}
                 />
                 <MeetingActionButton
                   title="Speech evalution"
-                  icon={<Mic size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<Mic size={16} color="#7C3AED" />}
+                  color="#F5F3FF"
                   avatarUrls={journeySpeechEvaluatorAvatarUrls}
                   onPress={handlePreparedSpeechesPress}
                 />
                 <MeetingActionButton
                   title="General Evaluator"
-                  icon={<ClipboardCheck size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<ClipboardCheck size={16} color="#2563EB" />}
+                  color="#EFF6FF"
                   avatarUrls={journeyGeneralEvaluatorAvatarUrls}
                   onPress={handleGeneralEvaluatorPress}
                 />
                 <MeetingActionButton
                   title="Table topic"
-                  icon={<Mic size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<Mic size={16} color="#7C3AED" />}
+                  color="#F5F3FF"
                   avatarUrls={journeyTableTopicsSpeakerAvatarUrls}
                   onPress={handleTableTopicPress}
                 />
                 <MeetingActionButton
                   title="Educational speaker"
-                  icon={<GraduationCap size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<GraduationCap size={16} color="#16A34A" />}
+                  color="#ECFDF5"
                   avatarUrls={journeyEducationalAvatarUrls}
                   showAlert={educationalSpeakerNeedsAlert}
                   onPress={handleEducationalSpeakerPress}
                 />
                 <MeetingActionButton
                   title="Timer"
-                  icon={<Timer size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<Timer size={16} color="#111827" />}
+                  color="#F3F4F6"
                   avatarUrls={journeyTimerAvatarUrls}
                   onPress={handleTimerPress}
                 />
                 <MeetingActionButton
                   title="Ah Counter"
-                  icon={<Bell size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<Bell size={16} color="#111827" />}
+                  color="#F3F4F6"
                   avatarUrls={journeyAhCounterAvatarUrls}
                   onPress={handleAhCounterPress}
                 />
                 <MeetingActionButton
                   title="Grammarian"
-                  icon={<BookOpen size={16} color="#ffffff" />}
-                  color={N.iconStrong}
+                  icon={<BookOpen size={16} color="#16A34A" />}
+                  color="#ECFDF5"
                   avatarUrls={journeyGrammarianAvatarUrls}
                   showAlert={grammarianNeedsWordOfTheDayAlert}
                   onPress={handleGrammarianPress}
@@ -1910,8 +1925,8 @@ export default function MyJourney() {
                 activeOpacity={0.85}
               >
                 <View style={styles.liveVotingHeroContent}>
-                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: N.iconStrong }]}>
-                    <FileText size={18} color="#ffffff" />
+                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: '#F1F5F9' }]}>
+                    <FileText size={18} color="#334155" />
                   </View>
                   <View style={styles.liveVotingHeroTextWrap}>
                     <View style={styles.liveVotingHeroTitleRow}>
@@ -1935,8 +1950,8 @@ export default function MyJourney() {
                 activeOpacity={0.85}
               >
                 <View style={styles.liveVotingHeroContent}>
-                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: N.iconStrong }]}>
-                    <Vote size={18} color="#ffffff" />
+                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                    <Vote size={18} color="#D97706" />
                   </View>
                   <View style={styles.liveVotingHeroTextWrap}>
                     <View style={styles.liveVotingHeroTitleRow}>
@@ -2795,13 +2810,13 @@ const styles = StyleSheet.create({
   },
   /** Ring color comes from tile `color` prop */
   meetingActionButtonIconWithAvatar: {
-    padding: 2,
+    padding: 0,
     overflow: 'hidden',
   },
   meetingActionButtonAvatarImage: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
   },
   meetingActionButtonTitle: {
     flex: 1,

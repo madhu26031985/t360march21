@@ -60,9 +60,17 @@ interface ClubSwitcherProps {
   embedded?: boolean;
   /** Flat borders, muted role pills (no violet ExComm chip) */
   variant?: 'default' | 'notion';
+  clubIconBackgroundColor?: string;
+  clubIconColor?: string;
 }
 
-export default function ClubSwitcher({ showRole = true, embedded = false, variant = 'default' }: ClubSwitcherProps) {
+export default function ClubSwitcher({
+  showRole = true,
+  embedded = false,
+  variant = 'default',
+  clubIconBackgroundColor,
+  clubIconColor,
+}: ClubSwitcherProps) {
   const { theme } = useTheme();
   const { user, switchClub, refreshUserProfile } = useAuth();
   const [showModal, setShowModal] = useState(false);
@@ -163,12 +171,16 @@ export default function ClubSwitcher({ showRole = true, embedded = false, varian
             style={[
               styles.clubIcon,
               {
-                backgroundColor: isNotion ? N.iconTile : theme.colors.primary + '20',
+                backgroundColor: clubIconBackgroundColor || (isNotion ? N.iconTile : theme.colors.primary + '20'),
                 borderRadius: isNotion ? 4 : 20,
               },
             ]}
           >
-            <Building2 size={20} color={isNotion ? N.iconMuted : theme.colors.primary} strokeWidth={1.75} />
+            <Building2
+              size={20}
+              color={clubIconColor || (isNotion ? N.iconMuted : theme.colors.primary)}
+              strokeWidth={1.75}
+            />
           </View>
           <View style={styles.clubInfo}>
             <View style={styles.clubNameRow}>
