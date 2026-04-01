@@ -77,7 +77,7 @@ const NUDGE_TABS: { id: NudgeTabId; label: string }[] = [
 
 /** Notion-like neutrals (screen is light-first; works with current forced light theme). */
 const N = {
-  canvas: '#F7F7F5',
+  canvas: '#FFFFFF',
   shell: '#FFFFFF',
   ink: '#37352F',
   muted: '#787774',
@@ -623,7 +623,9 @@ export default function VPENudgesScreen() {
       <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
         <ArrowLeft size={22} color={N.ink} />
       </TouchableOpacity>
-      <View style={{ flex: 1 }} />
+      <Text style={styles.topBarTitle} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+        Smart Daily Insights
+      </Text>
       {headerInfoButton}
     </View>
   );
@@ -635,9 +637,6 @@ export default function VPENudgesScreen() {
           {notionTopBar}
           <View style={styles.notionCanvasFlex}>
             <View style={[styles.notionShell, { backgroundColor: N.shell, borderColor: N.faint }]}>
-              <Text style={styles.notionPageTitle} numberOfLines={2}>
-                {SCREEN_TITLE}
-              </Text>
               <Text style={styles.notionPageSub}>{VPE_SUBNOTE}</Text>
               <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
               <Text style={[styles.deniedText, { color: N.muted, marginTop: 8 }]}>
@@ -663,9 +662,6 @@ export default function VPENudgesScreen() {
         ) : !meetingTitle || messages.length === 0 ? (
           <View style={styles.notionCanvasFlex}>
             <View style={[styles.notionShell, { backgroundColor: N.shell, borderColor: N.faint }]}>
-              <Text style={styles.notionPageTitle} numberOfLines={2}>
-                {SCREEN_TITLE}
-              </Text>
               <Text style={styles.notionPageSub}>{VPE_SUBNOTE}</Text>
               <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
               <Text style={[styles.notionEmptyTitle, { color: N.ink }]}>No upcoming open meeting</Text>
@@ -677,9 +673,6 @@ export default function VPENudgesScreen() {
         ) : (
           <View style={styles.notionCanvasFlex}>
             <View style={[styles.notionShell, { backgroundColor: N.shell, borderColor: N.faint }]}>
-              <Text style={styles.notionPageTitle} numberOfLines={2}>
-                {SCREEN_TITLE}
-              </Text>
               <Text style={styles.notionPageSub}>{VPE_SUBNOTE}</Text>
 
               {nudgesHiddenFinalHour ? (
@@ -695,12 +688,7 @@ export default function VPENudgesScreen() {
               ) : (
                 <>
                   <View style={[styles.notionSegment, { backgroundColor: N.segment }]}>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      keyboardShouldPersistTaps="handled"
-                      contentContainerStyle={styles.notionSegmentScroll}
-                    >
+                    <View style={styles.notionSegmentGrid}>
                       {NUDGE_TABS.map(({ id, label }) => {
                         const selected = activeNudgeTab === id;
                         const count = tabBadgeCount(id);
@@ -728,7 +716,7 @@ export default function VPENudgesScreen() {
                           </Pressable>
                         );
                       })}
-                    </ScrollView>
+                    </View>
                   </View>
 
                   <View style={[styles.notionDivider, { backgroundColor: N.hairline, marginTop: 16 }]} />
@@ -1097,6 +1085,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  topBarTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#37352F',
+    letterSpacing: -0.2,
+  },
   notionGhostIconBtn: {
     width: 36,
     height: 36,
@@ -1140,33 +1136,41 @@ const styles = StyleSheet.create({
     letterSpacing: -0.35,
     color: '#37352F',
     lineHeight: 28,
+    textAlign: 'center',
   },
   notionPageSub: {
     fontSize: 13,
     lineHeight: 18,
     color: '#787774',
     marginTop: 6,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   notionDivider: {
     height: StyleSheet.hairlineWidth,
     marginVertical: 16,
   },
   notionSegment: {
-    borderRadius: 9,
-    padding: 3,
+    borderRadius: 12,
+    padding: 4,
     alignSelf: 'stretch',
+    marginTop: 8,
   },
-  notionSegmentScroll: {
+  notionSegmentGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'nowrap',
-    paddingRight: 8,
+    alignItems: 'stretch',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 4,
   },
   notionSegPill: {
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    marginRight: 2,
+    width: '32.3%',
+    minHeight: 36,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   notionSegPillActive: {
     backgroundColor: '#FFFFFF',
@@ -1177,8 +1181,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   notionSegPillText: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
   },
   notionPanelContent: {
     paddingTop: 4,
@@ -1289,13 +1293,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   vpeMessageCard: {
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(55, 53, 47, 0.08)',
-    backgroundColor: '#FAFAF8',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    marginBottom: 14,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   vpeMessageTitleOnly: {
     fontSize: 15,
@@ -1313,13 +1322,12 @@ const styles = StyleSheet.create({
     color: '#787774',
   },
   vpeMessageBodyWrap: {
-    borderRadius: 6,
+    borderRadius: 10,
     paddingVertical: 14,
     paddingHorizontal: 14,
     marginBottom: 14,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: 'rgba(55, 53, 47, 0.06)',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 0,
   },
   vpeMessageBody: {
     fontSize: 14,
