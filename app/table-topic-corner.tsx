@@ -121,6 +121,12 @@ interface TableTopicQuestion {
   question_order: number;
 }
 
+interface ClubMemberLite {
+  id: string;
+  full_name: string;
+  email?: string;
+}
+
 /**
  * Table Topic Corner Component
  * Displays Table Topic Master and Participants for a meeting
@@ -151,10 +157,23 @@ export default function TableTopicCorner(): JSX.Element {
     participantId: '',
     participantName: '',
   });
-  const [activeTab, setActiveTab] = useState<'participants' | 'summary'>('participants');
+  const [activeTab, setActiveTab] = useState<'participants' | 'table_topic_corner' | 'table_topic_summary'>('participants');
   const [publishedQuestions, setPublishedQuestions] = useState<AssignedQuestion[]>([]);
   const [clubInfo, setClubInfo] = useState<{ name: string; club_number: string | null; banner_color: string | null } | null>(null);
+  const [isVPEClub, setIsVPEClub] = useState<boolean>(false);
   const [isSharing, setIsSharing] = useState<boolean>(false);
+  const [showAddQuestionModal, setShowAddQuestionModal] = useState<boolean>(false);
+  const [newQuestionText, setNewQuestionText] = useState<string>('');
+  const [savingQuestionBank, setSavingQuestionBank] = useState<boolean>(false);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [questionIdPendingDelete, setQuestionIdPendingDelete] = useState<string | null>(null);
+  const [showAssignMemberModal, setShowAssignMemberModal] = useState<boolean>(false);
+  const [selectedCornerQuestion, setSelectedCornerQuestion] = useState<TableTopicQuestion | null>(null);
+  const [clubMembers, setClubMembers] = useState<ClubMemberLite[]>([]);
+  const [membersLoading, setMembersLoading] = useState<boolean>(false);
+  const [assignSearch, setAssignSearch] = useState<string>('');
+  const [assignMode, setAssignMode] = useState<'member' | 'guest'>('member');
+  const [guestName, setGuestName] = useState<string>('');
   /** Inline book-a-role: loading state per participant row */
   const [bookingRoleId, setBookingRoleId] = useState<string | null>(null);
   const [bookingTableTopicMaster, setBookingTableTopicMaster] = useState<boolean>(false);
@@ -215,6 +234,12 @@ export default function TableTopicCorner(): JSX.Element {
         setParticipants(bundle.participants);
         setAssignedQuestions(bundle.assignedQuestions);
         setPublishedQuestions(bundle.publishedQuestions);
+        const { data: vpeData } = await supabase
+          .from('club_profiles')
+          .select('vpe_id')
+          .eq('club_id', user.currentClubId)
+          .maybeSingle();
+        setIsVPEClub(vpeData?.vpe_id === user.id);
 
         const questionsMap: ParticipantQuestion = {};
         bundle.assignedQuestions.forEach((q) => {
@@ -590,13 +615,41 @@ export default function TableTopicCorner(): JSX.Element {
   const isTableTopicMaster = (): boolean => {
     return tableTopicMaster?.assigned_user_id === user?.id;
   };
+  const canManageTableTopicCorner = (): boolean => {
+    return isTableTopicMaster() || isVPEClub;
+  };
+  const tableTopicQuestionOwnerId = tableTopicMaster?.assigned_user_id || user?.id || '';
+
+  useEffect(() => {
+    if (activeTab === 'table_topic_corner' && !canManageTableTopicCorner()) {
+      setActiveTab('participants');
+    }
+  }, [activeTab, isVPEClub, tableTopicMaster?.assigned_user_id, user?.id]);
+
+  useEffect(() => {
+    const loadQuestionBank = async () => {
+      if (!meetingId || !tableTopicQuestionOwnerId || !canManageTableTopicCorner()) return;
+      const { data, error } = await supabase
+        .from('table_topic_master_questions')
+        .select('*')
+        .eq('meeting_id', meetingId)
+        .eq('table_topic_master_id', tableTopicQuestionOwnerId)
+        .order('question_order');
+      if (error) {
+        console.error('Error loading table topic question bank:', error);
+        return;
+      }
+      setQuestions((data || []) as TableTopicQuestion[]);
+    };
+    void loadQuestionBank();
+  }, [meetingId, tableTopicQuestionOwnerId, isVPEClub, tableTopicMaster?.assigned_user_id]);
 
   /**
    * Handle adding/editing question for a participant from question bank
    */
   const handleAssignQuestionFromBank = async (participant: TableTopicParticipant): Promise<void> => {
-    if (!isTableTopicMaster()) {
-      Alert.alert('Access Denied', 'Only the Table Topic Master can assign questions.');
+    if (!canManageTableTopicCorner()) {
+      Alert.alert('Access Denied', 'Only the assigned Table Topic Master or club VPE can assign questions.');
       return;
     }
 
@@ -607,7 +660,7 @@ export default function TableTopicCorner(): JSX.Element {
         .from('table_topic_master_questions')
         .select('*')
         .eq('meeting_id', meetingId)
-        .eq('table_topic_master_id', user?.id)
+        .eq('table_topic_master_id', tableTopicQuestionOwnerId)
         .order('question_order');
 
       console.log('Questions loaded:', {
@@ -622,17 +675,7 @@ export default function TableTopicCorner(): JSX.Element {
       }
 
       if (!questions || questions.length === 0) {
-        Alert.alert(
-          'No Questions Available',
-          'You haven\'t added any questions to your question bank yet. Would you like to add some questions first?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Add Questions', 
-              onPress: () => router.push(`/table-topic-master-notes?meetingId=${meetingId}`)
-            }
-          ]
-        );
+        Alert.alert('No Questions Available', 'Please add questions in Table Topic Corner first.');
         return;
       }
 
@@ -699,7 +742,7 @@ export default function TableTopicCorner(): JSX.Element {
             question_id: selectedQuestion.id,
             asked_by: user.id,
             asked_by_name: user.fullName || 'Unknown',
-            table_topic_master_user_id: user.id,
+            table_topic_master_user_id: tableTopicQuestionOwnerId,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existingAssignment.id);
@@ -727,7 +770,7 @@ export default function TableTopicCorner(): JSX.Element {
           asked_by_name: user?.fullName || 'Unknown',
           booking_status: 'booked',
           is_active: true,
-          table_topic_master_user_id: user?.id,
+          table_topic_master_user_id: tableTopicQuestionOwnerId,
         });
 
         if (error) {
@@ -771,8 +814,8 @@ export default function TableTopicCorner(): JSX.Element {
    * Handle adding/editing question for a participant
    */
   const handleAssignQuestion = async (participant: TableTopicParticipant): Promise<void> => {
-    if (!isTableTopicMaster()) {
-      Alert.alert('Access Denied', 'Only the Table Topic Master can assign questions.');
+    if (!canManageTableTopicCorner()) {
+      Alert.alert('Access Denied', 'Only the assigned Table Topic Master or club VPE can assign questions.');
       return;
     }
 
@@ -783,7 +826,7 @@ export default function TableTopicCorner(): JSX.Element {
         .from('table_topic_master_questions')
         .select('*')
         .eq('meeting_id', meetingId)
-        .eq('table_topic_master_id', user?.id)
+        .eq('table_topic_master_id', tableTopicQuestionOwnerId)
         .order('question_order');
 
       console.log('Questions loaded:', {
@@ -797,17 +840,7 @@ export default function TableTopicCorner(): JSX.Element {
       }
 
       if (!questions || questions.length === 0) {
-        Alert.alert(
-          'No Questions Available',
-          'You haven\'t added any questions to your question bank yet. Would you like to add some questions first?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Add Questions', 
-              onPress: () => router.push(`/table-topic-master-notes?meetingId=${meetingId}`)
-            }
-          ]
-        );
+        Alert.alert('No Questions Available', 'Please add questions in Table Topic Corner first.');
         return;
       }
 
@@ -907,8 +940,8 @@ export default function TableTopicCorner(): JSX.Element {
    * Handle clearing question for a participant
    */
   const handleClearQuestion = (participant: TableTopicParticipant): void => {
-    if (!isTableTopicMaster()) {
-      Alert.alert('Access Denied', 'Only the Table Topic Master can clear questions.');
+    if (!canManageTableTopicCorner()) {
+      Alert.alert('Access Denied', 'Only the assigned Table Topic Master or club VPE can clear questions.');
       return;
     }
 
@@ -932,7 +965,7 @@ export default function TableTopicCorner(): JSX.Element {
                 .eq('meeting_id', meetingId)
                 .eq('participant_id', participant.assigned_user_id)
                 .eq('booking_status', 'booked')
-                .eq('table_topic_master_user_id', user?.id);
+                .eq('table_topic_master_user_id', tableTopicQuestionOwnerId);
 
               if (error) {
                 console.error('Error clearing question:', error);
@@ -959,6 +992,168 @@ export default function TableTopicCorner(): JSX.Element {
         }
       ]
     );
+  };
+
+  const handleAddQuestionToCorner = async (): Promise<void> => {
+    if (!canManageTableTopicCorner()) {
+      Alert.alert('Access Denied', 'Only the assigned Table Topic Master or club VPE can add questions.');
+      return;
+    }
+    const text = newQuestionText.trim();
+    if (!meetingId || !user?.currentClubId || !tableTopicQuestionOwnerId) {
+      Alert.alert('Error', 'Missing required information');
+      return;
+    }
+    if (!text) {
+      Alert.alert('Error', 'Please enter a question');
+      return;
+    }
+    if (text.length > 200) {
+      Alert.alert('Error', 'Question cannot exceed 200 characters');
+      return;
+    }
+    if (!editingQuestionId && questions.length >= 12) {
+      Alert.alert('Limit reached', 'You can add up to 12 questions.');
+      return;
+    }
+    setSavingQuestionBank(true);
+    try {
+      let error: any = null;
+      if (editingQuestionId) {
+        const result = await supabase
+          .from('table_topic_master_questions')
+          .update({
+            question_text: text,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editingQuestionId);
+        error = result.error;
+      } else {
+        const nextOrder = (questions?.length || 0) + 1;
+        const result = await supabase
+          .from('table_topic_master_questions')
+          .insert({
+            meeting_id: meetingId,
+            club_id: user.currentClubId,
+            table_topic_master_id: tableTopicQuestionOwnerId,
+            question_text: text,
+            question_order: nextOrder,
+            is_used: false,
+          });
+        error = result.error;
+      }
+      if (error) {
+        console.error('Error adding question to table topic corner:', error);
+        Alert.alert('Error', 'Failed to add question');
+        return;
+      }
+      const { data: refreshed, error: refreshError } = await supabase
+        .from('table_topic_master_questions')
+        .select('*')
+        .eq('meeting_id', meetingId)
+        .eq('table_topic_master_id', tableTopicQuestionOwnerId)
+        .order('question_order');
+      if (!refreshError && refreshed) {
+        setQuestions(refreshed);
+      }
+      setNewQuestionText('');
+      setEditingQuestionId(null);
+      setShowAddQuestionModal(false);
+      Alert.alert('Success', editingQuestionId ? 'Question updated' : 'Question added');
+    } finally {
+      setSavingQuestionBank(false);
+    }
+  };
+
+  const handleDeleteCornerQuestion = async (questionId: string): Promise<void> => {
+    if (!canManageTableTopicCorner()) return;
+    setQuestionIdPendingDelete(questionId);
+  };
+
+  const confirmDeleteCornerQuestion = async (): Promise<void> => {
+    if (!questionIdPendingDelete || !meetingId || !tableTopicQuestionOwnerId) return;
+    const { error } = await supabase
+      .from('table_topic_master_questions')
+      .delete()
+      .eq('id', questionIdPendingDelete)
+      .eq('meeting_id', meetingId)
+      .eq('table_topic_master_id', tableTopicQuestionOwnerId);
+    if (error) {
+      console.error('Error deleting table topic question:', error);
+      Alert.alert('Error', 'Failed to delete question');
+      return;
+    }
+    setQuestions((prev) => prev.filter((q) => q.id !== questionIdPendingDelete));
+    setQuestionIdPendingDelete(null);
+  };
+
+  const loadClubMembersForAssign = async (): Promise<void> => {
+    if (!user?.currentClubId) return;
+    setMembersLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('app_club_user_relationship')
+        .select('user_id, app_user_profiles(full_name, email)')
+        .eq('club_id', user.currentClubId)
+        .eq('is_authenticated', true);
+      if (error) {
+        console.error('Error loading club members for assignment:', error);
+        return;
+      }
+      const rows = (data || [])
+        .map((r: any) => ({
+          id: String(r.user_id || ''),
+          full_name: String(r.app_user_profiles?.full_name || '').trim() || 'Member',
+          email: r.app_user_profiles?.email || '',
+        }))
+        .filter((r: ClubMemberLite) => !!r.id)
+        .sort((a: ClubMemberLite, b: ClubMemberLite) => a.full_name.localeCompare(b.full_name));
+      setClubMembers(rows);
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  const openAssignModalForQuestion = async (q: TableTopicQuestion): Promise<void> => {
+    setSelectedCornerQuestion(q);
+    setAssignSearch('');
+    setGuestName('');
+    setAssignMode('member');
+    setShowAssignMemberModal(true);
+    await loadClubMembersForAssign();
+  };
+
+  const assignQuestionToSpeaker = async (member?: ClubMemberLite): Promise<void> => {
+    if (!selectedCornerQuestion || !meetingId || !user?.currentClubId) return;
+    const isGuest = assignMode === 'guest';
+    const participantName = isGuest ? guestName.trim() : (member?.full_name || '');
+    if (!participantName) {
+      Alert.alert('Error', isGuest ? 'Enter guest name' : 'Select a club member');
+      return;
+    }
+    const participantId = isGuest ? null : member?.id || null;
+    const { error } = await supabase.from('app_meeting_tabletopicscorner').insert({
+      meeting_id: meetingId,
+      club_id: user.currentClubId,
+      participant_id: participantId,
+      participant_name: participantName,
+      question_text: selectedCornerQuestion.question_text,
+      question_id: selectedCornerQuestion.id,
+      asked_by: user.id,
+      asked_by_name: user.fullName || 'Unknown',
+      booking_status: 'booked',
+      is_active: true,
+      table_topic_master_user_id: tableTopicQuestionOwnerId,
+    });
+    if (error) {
+      console.error('Error assigning corner question:', error);
+      Alert.alert('Error', 'Failed to assign question');
+      return;
+    }
+    setShowAssignMemberModal(false);
+    setSelectedCornerQuestion(null);
+    await loadAssignedQuestions();
+    Alert.alert('Assigned', `Question assigned to ${participantName}`);
   };
 
   /**
@@ -1136,20 +1331,39 @@ export default function TableTopicCorner(): JSX.Element {
             </Text>
           </TouchableOpacity>
 
+          {canManageTableTopicCorner() && (
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'table_topic_corner' && styles.activeTabButton,
+                { borderBottomColor: activeTab === 'table_topic_corner' ? theme.colors.primary : 'transparent' }
+              ]}
+              onPress={() => setActiveTab('table_topic_corner')}
+            >
+              <ListChecks size={16} color={activeTab === 'table_topic_corner' ? theme.colors.primary : theme.colors.textSecondary} />
+              <Text style={[
+                styles.tabButtonText,
+                { color: activeTab === 'table_topic_corner' ? theme.colors.primary : theme.colors.textSecondary }
+              ]} maxFontSizeMultiplier={1.3}>
+                Table Topic Corner
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[
               styles.tabButton,
-              activeTab === 'summary' && styles.activeTabButton,
-              { borderBottomColor: activeTab === 'summary' ? theme.colors.primary : 'transparent' }
+              activeTab === 'table_topic_summary' && styles.activeTabButton,
+              { borderBottomColor: activeTab === 'table_topic_summary' ? theme.colors.primary : 'transparent' }
             ]}
-            onPress={() => setActiveTab('summary')}
+            onPress={() => setActiveTab('table_topic_summary')}
           >
-            <ListChecks size={16} color={activeTab === 'summary' ? theme.colors.primary : theme.colors.textSecondary} />
+            <FileBarChart size={16} color={activeTab === 'table_topic_summary' ? theme.colors.primary : theme.colors.textSecondary} />
             <Text style={[
               styles.tabButtonText,
-              { color: activeTab === 'summary' ? theme.colors.primary : theme.colors.textSecondary }
+              { color: activeTab === 'table_topic_summary' ? theme.colors.primary : theme.colors.textSecondary }
             ]} maxFontSizeMultiplier={1.3}>
-              Summary
+              Table Topic Summary
             </Text>
             {publishedQuestions.length > 0 && (
               <View style={[styles.tabBadge, { backgroundColor: theme.colors.primary }]}>
@@ -1185,16 +1399,6 @@ export default function TableTopicCorner(): JSX.Element {
                     Table topic master
                   </Text>
                 </View>
-                {isTableTopicMaster() && (
-                  <TouchableOpacity
-                    style={styles.prepSpaceIconButton}
-                    onPress={() => {
-                      router.push(`/table-topic-master-notes?meetingId=${meetingId}`);
-                    }}
-                  >
-                    <NotebookPen size={20} color="#3b82f6" />
-                  </TouchableOpacity>
-                )}
               </View>
             </View>
           ) : (
@@ -1302,6 +1506,21 @@ export default function TableTopicCorner(): JSX.Element {
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
             </TouchableOpacity>
+
+            {canManageTableTopicCorner() && (
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => {
+                  setActiveTab('table_topic_corner');
+                  setShowAddQuestionModal(true);
+                }}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: '#E8E3D8' }]}>
+                  <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#3B82F6" />
+                </View>
+                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Prep Space</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={styles.quickActionItem}
@@ -1428,8 +1647,91 @@ export default function TableTopicCorner(): JSX.Element {
         </>
         )}
 
-        {/* Summary Tab */}
-        {activeTab === 'summary' && (
+        {/* Table Topic Corner Tab */}
+        {activeTab === 'table_topic_corner' && canManageTableTopicCorner() && (
+        <View style={styles.summaryContainer}>
+          <View style={[styles.summarySection, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.noSummaryCard, styles.cornerPlaceholderCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+              <Text style={[styles.noSummaryText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Table Topic Corner
+              </Text>
+              <Text style={[styles.noSummarySubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                This is the dedicated place for the assigned Table Topic Master or club VPE to prepare up to 12 questions.
+              </Text>
+              {questions.length > 0 && (
+                <View style={[styles.cornerQuestionList, { borderColor: theme.colors.border }]}>
+                  {questions.map((q, index) => (
+                    <View
+                      key={q.id}
+                      style={[
+                        styles.cornerQuestionRow,
+                        { borderBottomColor: theme.colors.border },
+                        index === questions.length - 1 && { borderBottomWidth: 0 },
+                      ]}
+                    >
+                      <View style={[styles.cornerQuestionNumber, { backgroundColor: theme.colors.primary + '18' }]}>
+                        <Text style={[styles.cornerQuestionNumberText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                          {index + 1}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.cornerQuestionText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                          {q.question_text}
+                        </Text>
+                        <View style={styles.cornerQuestionActions}>
+                          <TouchableOpacity
+                            style={[styles.cornerActionBtn, { borderColor: theme.colors.border }]}
+                            onPress={() => {
+                              setEditingQuestionId(q.id);
+                              setNewQuestionText(q.question_text);
+                              setShowAddQuestionModal(true);
+                            }}
+                          >
+                            <Text style={[styles.cornerActionText, { color: theme.colors.text }]}>Edit</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.cornerActionBtn, { borderColor: theme.colors.border }]}
+                            onPress={() => handleDeleteCornerQuestion(q.id)}
+                          >
+                            <Text style={[styles.cornerActionText, { color: '#dc2626' }]}>Delete</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.cornerActionBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '12' }]}
+                            onPress={() => openAssignModalForQuestion(q)}
+                          >
+                            <Text style={[styles.cornerActionText, { color: theme.colors.primary }]}>Assign</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <TouchableOpacity
+                style={[
+                  styles.addQuestionsCta,
+                  { backgroundColor: questions.length >= 12 ? '#9CA3AF' : theme.colors.primary, opacity: questions.length >= 12 ? 0.8 : 1 },
+                ]}
+                onPress={() => {
+                  setEditingQuestionId(null);
+                  setNewQuestionText('');
+                  setShowAddQuestionModal(true);
+                }}
+                disabled={questions.length >= 12}
+                activeOpacity={0.85}
+              >
+                <Plus size={16} color="#ffffff" />
+                <Text style={styles.addQuestionsCtaText} maxFontSizeMultiplier={1.3}>
+                  {questions.length >= 12 ? 'Question Limit Reached (12/12)' : 'Add Questions'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+        )}
+
+        {/* Table Topic Summary Tab */}
+        {activeTab === 'table_topic_summary' && (
         <View style={styles.summaryContainer}>
           {publishedQuestions.length > 0 ? (
             <View style={styles.summaryReportEntryCard}>
@@ -1457,13 +1759,13 @@ export default function TableTopicCorner(): JSX.Element {
             <View style={[styles.summarySection, { backgroundColor: theme.colors.surface }]}>
               <View style={styles.noSummaryCard}>
                 <View style={[styles.noSummaryIcon, { backgroundColor: theme.colors.primary + '15' }]}>
-                  <MessageSquare size={32} color={theme.colors.primary} />
+                  <FileBarChart size={32} color={theme.colors.primary} />
                 </View>
                 <Text style={[styles.noSummaryText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Get ready for the Questioner!
+                  No Table Topic Summary yet
                 </Text>
                 <Text style={[styles.noSummarySubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  The Table Topics Master will reveal the question at the end of the meeting. Stay tuned!
+                  Once questions are published, the Table Topic Summary will appear here.
                 </Text>
               </View>
             </View>
@@ -1585,7 +1887,7 @@ export default function TableTopicCorner(): JSX.Element {
                     style={[styles.addQuestionsButton, { backgroundColor: theme.colors.primary }]}
                     onPress={() => {
                       setShowQuestionModal(false);
-                      router.push(`/table-topic-master-notes?meetingId=${meetingId}`);
+                      setShowAddQuestionModal(true);
                     }}
                   >
                     <Plus size={16} color="#ffffff" />
@@ -1618,6 +1920,199 @@ export default function TableTopicCorner(): JSX.Element {
                 </TouchableOpacity>
               </View>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showAddQuestionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!savingQuestionBank) setShowAddQuestionModal(false);
+        }}
+      >
+        <View style={styles.centerModalOverlay}>
+          <View style={[styles.centerQuestionModal, { backgroundColor: theme.colors.background, maxWidth: 560 }]}>
+            <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                {editingQuestionId ? 'Edit Question' : 'Add Question'}
+              </Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => !savingQuestionBank && setShowAddQuestionModal(false)}
+                disabled={savingQuestionBank}
+              >
+                <X size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 16 }}>
+              <Text style={[styles.noQuestionsSubtext, { color: theme.colors.textSecondary, textAlign: 'left', paddingHorizontal: 0 }]} maxFontSizeMultiplier={1.25}>
+                Add up to 12 questions directly in Table Topic Corner.
+              </Text>
+              <TextInput
+                style={[
+                  styles.searchInput,
+                  {
+                    minHeight: 90,
+                    textAlignVertical: 'top',
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
+                    borderWidth: 1,
+                    borderRadius: 10,
+                    padding: 12,
+                    marginTop: 10,
+                  },
+                ]}
+                value={newQuestionText}
+                onChangeText={setNewQuestionText}
+                placeholder="Type your table topic question..."
+                placeholderTextColor={theme.colors.textSecondary}
+                multiline
+                maxLength={200}
+                editable={!savingQuestionBank}
+              />
+              <Text style={[styles.memberCountText, { marginTop: 8, alignSelf: 'flex-end' }]} maxFontSizeMultiplier={1.2}>
+                {newQuestionText.length}/200 • {questions.length}/12
+              </Text>
+            </View>
+            <View style={[styles.questionModalFooter, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
+              <TouchableOpacity
+                style={[styles.assignSelectedButton, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary, opacity: savingQuestionBank ? 0.7 : 1 }]}
+                onPress={handleAddQuestionToCorner}
+                disabled={savingQuestionBank}
+              >
+                <Text style={styles.assignSelectedButtonText} maxFontSizeMultiplier={1.3}>
+                  {savingQuestionBank ? 'Saving...' : 'Save Question'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showAssignMemberModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAssignMemberModal(false)}
+      >
+        <View style={styles.centerModalOverlay}>
+          <View style={[styles.centerQuestionModal, { backgroundColor: theme.colors.background, maxWidth: 560 }]}>
+            <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Assign Question
+              </Text>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setShowAssignMemberModal(false)}>
+                <X size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 16, gap: 10 }}>
+              <Text style={[styles.noQuestionsSubtext, { color: theme.colors.textSecondary, textAlign: 'left', paddingHorizontal: 0 }]} maxFontSizeMultiplier={1.25}>
+                {selectedCornerQuestion?.question_text || ''}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.cornerActionBtn, { borderColor: assignMode === 'member' ? theme.colors.primary : theme.colors.border }]}
+                  onPress={() => setAssignMode('member')}
+                >
+                  <Text style={[styles.cornerActionText, { color: assignMode === 'member' ? theme.colors.primary : theme.colors.text }]}>Club Members</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.cornerActionBtn, { borderColor: assignMode === 'guest' ? theme.colors.primary : theme.colors.border }]}
+                  onPress={() => setAssignMode('guest')}
+                >
+                  <Text style={[styles.cornerActionText, { color: assignMode === 'guest' ? theme.colors.primary : theme.colors.text }]}>Guest</Text>
+                </TouchableOpacity>
+              </View>
+              {assignMode === 'guest' ? (
+                <TextInput
+                  style={[styles.searchInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, height: 44, color: theme.colors.text }]}
+                  placeholder="Enter guest name"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  value={guestName}
+                  onChangeText={setGuestName}
+                />
+              ) : (
+                <>
+                  <TextInput
+                    style={[styles.searchInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, height: 44, color: theme.colors.text }]}
+                    placeholder="Search club members"
+                    placeholderTextColor={theme.colors.textSecondary}
+                    value={assignSearch}
+                    onChangeText={setAssignSearch}
+                  />
+                  <ScrollView style={{ maxHeight: 220 }}>
+                    {membersLoading ? (
+                      <ActivityIndicator color={theme.colors.primary} />
+                    ) : (
+                      clubMembers
+                        .filter((m) => !assignSearch.trim() || m.full_name.toLowerCase().includes(assignSearch.toLowerCase()) || (m.email || '').toLowerCase().includes(assignSearch.toLowerCase()))
+                        .map((m) => (
+                          <TouchableOpacity key={m.id} style={[styles.memberOption, { backgroundColor: theme.colors.surface }]} onPress={() => assignQuestionToSpeaker(m)}>
+                            <Text style={[styles.memberOptionName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{m.full_name}</Text>
+                          </TouchableOpacity>
+                        ))
+                    )}
+                  </ScrollView>
+                </>
+              )}
+            </View>
+            {assignMode === 'guest' && (
+              <View style={[styles.questionModalFooter, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
+                <TouchableOpacity
+                  style={[styles.assignSelectedButton, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]}
+                  onPress={() => assignQuestionToSpeaker()}
+                >
+                  <Text style={styles.assignSelectedButtonText} maxFontSizeMultiplier={1.3}>
+                    Assign Guest
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!questionIdPendingDelete}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setQuestionIdPendingDelete(null)}
+      >
+        <View style={styles.centerModalOverlay}>
+          <View style={[styles.centerQuestionModal, { backgroundColor: theme.colors.background, maxWidth: 480 }]}>
+            <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Delete Question
+              </Text>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setQuestionIdPendingDelete(null)}>
+                <X size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 16 }}>
+              <Text style={[styles.noQuestionsSubtext, { color: theme.colors.textSecondary, textAlign: 'left', paddingHorizontal: 0 }]} maxFontSizeMultiplier={1.25}>
+                Are you sure you want to delete this question? This action cannot be undone.
+              </Text>
+            </View>
+            <View style={[styles.questionModalFooter, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border, flexDirection: 'row', gap: 10 }]}>
+              <TouchableOpacity
+                style={[styles.assignSelectedButton, { flex: 1, backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                onPress={() => setQuestionIdPendingDelete(null)}
+              >
+                <Text style={[styles.assignSelectedButtonText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.assignSelectedButton, { flex: 1, backgroundColor: '#dc2626', borderColor: '#dc2626' }]}
+                onPress={confirmDeleteCornerQuestion}
+              >
+                <Text style={styles.assignSelectedButtonText} maxFontSizeMultiplier={1.3}>
+                  Delete
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -2204,6 +2699,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 32,
   },
+  cornerPlaceholderCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
   noSummaryIcon: {
     width: 64,
     height: 64,
@@ -2222,6 +2723,71 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 24,
     lineHeight: 20,
+  },
+  addQuestionsCta: {
+    marginTop: 14,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  addQuestionsCtaText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cornerQuestionList: {
+    marginTop: 14,
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+  },
+  cornerQuestionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+  },
+  cornerQuestionNumber: {
+    minWidth: 26,
+    height: 26,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  cornerQuestionNumberText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cornerQuestionText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  cornerQuestionActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  cornerActionBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  cornerActionText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   // Center Modal styles
   centerModalOverlay: {
