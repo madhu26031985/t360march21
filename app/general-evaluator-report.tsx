@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Pressable, Switch } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
@@ -12,7 +12,7 @@ import { fetchGeneralEvaluatorReportBundle, generalEvaluatorReportQueryKeys } fr
 import { exportAgendaToPDF } from '@/lib/pdfExportUtils';
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
 import { ArrowLeft, Calendar, Clock, MapPin, Building2, Star, Info, CircleCheck as CheckCircle, Circle, CircleAlert as AlertCircle, X, NotebookPen, Bell, FileText, Users, MessageSquare, MessageCircle, Mic, BookOpen, CheckSquare, ClipboardCheck, FileBarChart, Search, UserPlus, Vote, Settings, UserCog, LayoutDashboard, Download } from 'lucide-react-native';
-import { Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
+import { Crown, User, Shield, Eye, EyeOff, UserCheck } from 'lucide-react-native';
 
 const FOOTER_NAV_ICON_SIZE = 15;
 
@@ -83,6 +83,7 @@ interface GeneralEvaluatorData {
   evaluation_data: any; // Added
   is_completed: boolean; // Added
   submitted_at: string | null; // Added
+  summary_visible_to_members?: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -126,6 +127,9 @@ export default function GeneralEvaluatorReport() {
   const [assigningGeRole, setAssigningGeRole] = useState(false);
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [clubMembersLoading, setClubMembersLoading] = useState(false);
+  /** When false, regular members do not see scores on the Summary tab (GE and VPE always do). */
+  const [summaryVisibleToMembers, setSummaryVisibleToMembers] = useState(true);
+  const [supportsSummaryVisibilityColumn, setSupportsSummaryVisibilityColumn] = useState(true);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
 
   const evaluationQuestions: EvaluationQuestion[] = [
@@ -227,6 +231,7 @@ export default function GeneralEvaluatorReport() {
         if (bundle.geReport) {
           const data = bundle.geReport as GeneralEvaluatorData;
           setExistingEvaluation(data);
+          setSummaryVisibleToMembers(data.summary_visible_to_members !== false);
           setFeedbackForm({
             summary: data.evaluation_summary || '',
             whatWentWell: data.what_went_well || '',
@@ -244,6 +249,7 @@ export default function GeneralEvaluatorReport() {
           }
         } else {
           setExistingEvaluation(null);
+          setSummaryVisibleToMembers(true);
           setFeedbackForm({
             summary: '',
             whatWentWell: '',
@@ -401,6 +407,7 @@ export default function GeneralEvaluatorReport() {
 
       if (data) {
         setExistingEvaluation(data as GeneralEvaluatorData);
+        setSummaryVisibleToMembers(data.summary_visible_to_members !== false);
         setFeedbackForm({
           summary: data.evaluation_summary || '',
           whatWentWell: data.what_went_well || '',
@@ -416,6 +423,7 @@ export default function GeneralEvaluatorReport() {
         }
       } else {
         setExistingEvaluation(null);
+        setSummaryVisibleToMembers(true);
         setFeedbackForm({
           summary: '',
           whatWentWell: '',
@@ -436,6 +444,44 @@ export default function GeneralEvaluatorReport() {
   const canEditGeneralEvaluatorCorner = canAccessGeneralEvaluatorCorner;
   const isGeRoleBooked = generalEvaluator?.booking_status === 'booked';
   const isExComm = (user?.clubRole || user?.role || '').toLowerCase() === 'excomm';
+  const isMissingSummaryVisibilityColumnError = (error: any): boolean => {
+    const message = String(error?.message ?? '').toLowerCase();
+    return (error?.code === 'PGRST204' || error?.code === '42703') && message.includes('summary_visible_to_members');
+  };
+
+  const handleSummaryVisibilityChange = async (visible: boolean) => {
+    if (!canEditGeneralEvaluatorCorner || !meetingId || !user?.currentClubId) return;
+    const previous = summaryVisibleToMembers;
+    setSummaryVisibleToMembers(visible);
+    if (!existingEvaluation?.id) {
+      return;
+    }
+    const { error } = await supabase
+      .from('app_meeting_ge')
+      .update({
+        summary_visible_to_members: visible,
+        updated_at: new Date().toISOString(),
+      } as any)
+      .eq('id', existingEvaluation.id);
+    if (error) {
+      if (isMissingSummaryVisibilityColumnError(error)) {
+        setSupportsSummaryVisibilityColumn(false);
+        Alert.alert('Migration pending', 'Visibility toggle will work after DB migration is run.');
+        return;
+      }
+      console.error('Error updating GE summary visibility:', error);
+      setSummaryVisibleToMembers(previous);
+      Alert.alert('Error', 'Could not update member visibility. Please try again.');
+      return;
+    }
+    setExistingEvaluation((prev) => (prev ? { ...prev, summary_visible_to_members: visible } : prev));
+    void queryClient.invalidateQueries({
+      predicate: (q) =>
+        Array.isArray(q.queryKey) &&
+        q.queryKey[0] === 'general-evaluator-report-snapshot' &&
+        q.queryKey[1] === meetingId,
+    });
+  };
 
   const handleRatingChange = (questionId: string, rating: number) => {
     if (!canEditGeneralEvaluatorCorner) {
@@ -512,7 +558,7 @@ export default function GeneralEvaluatorReport() {
         return;
       }
 
-      const saveData = {
+      const saveData: Record<string, any> = {
         meeting_id: meetingId,
         club_id: user.currentClubId,
         evaluator_user_id: generalEvaluator?.assigned_user_id || user.id,
@@ -524,6 +570,9 @@ export default function GeneralEvaluatorReport() {
         is_completed: answeredQuestions > 0 || hasFeedback, // Ensure this is true if any feedback is present
         submitted_at: new Date().toISOString(),
       };
+      if (supportsSummaryVisibilityColumn) {
+        saveData.summary_visible_to_members = summaryVisibleToMembers;
+      }
 
       // Diagnostic log: Check the final saveData object
       console.log('Final saveData object:', saveData);
@@ -539,6 +588,23 @@ export default function GeneralEvaluatorReport() {
           .eq('id', existingEvaluation.id);
 
         if (error) {
+          if (isMissingSummaryVisibilityColumnError(error)) {
+            setSupportsSummaryVisibilityColumn(false);
+            const fallbackData = { ...saveData };
+            delete fallbackData.summary_visible_to_members;
+            const { error: fallbackError } = await supabase
+              .from('app_meeting_ge')
+              .update({
+                ...fallbackData,
+                updated_at: new Date().toISOString(),
+              } as any)
+              .eq('id', existingEvaluation.id);
+            if (!fallbackError) {
+              Alert.alert('Success', 'General Evaluator Report updated successfully!');
+              await loadExistingEvaluation(user.id);
+              return;
+            }
+          }
           console.error('Error updating evaluation:', error);
           Alert.alert('Error', 'Failed to update evaluation report');
           return;
@@ -555,6 +621,22 @@ export default function GeneralEvaluatorReport() {
           } as any);
 
         if (error) {
+          if (isMissingSummaryVisibilityColumnError(error)) {
+            setSupportsSummaryVisibilityColumn(false);
+            const fallbackData = { ...saveData };
+            delete fallbackData.summary_visible_to_members;
+            const { error: fallbackError } = await supabase
+              .from('app_meeting_ge')
+              .insert({
+                ...fallbackData,
+                created_at: new Date().toISOString(),
+              } as any);
+            if (!fallbackError) {
+              Alert.alert('Success', 'General Evaluator Report saved successfully!');
+              await loadExistingEvaluation(user.id);
+              return;
+            }
+          }
           console.error('Error creating evaluation:', error);
           Alert.alert('Error', 'Failed to save evaluation report');
           return;
@@ -589,7 +671,7 @@ export default function GeneralEvaluatorReport() {
     }
 
     try {
-      const saveData = {
+      const saveData: Record<string, any> = {
         meeting_id: meetingId,
         club_id: user.currentClubId,
         evaluator_user_id: generalEvaluator?.assigned_user_id || user.id,
@@ -601,22 +683,48 @@ export default function GeneralEvaluatorReport() {
         is_completed: answeredQuestions > 0 || hasFeedback,
         submitted_at: new Date().toISOString(),
       };
+      if (supportsSummaryVisibilityColumn) {
+        saveData.summary_visible_to_members = summaryVisibleToMembers;
+      }
 
       if (existingEvaluation) {
-        await supabase
+        const { error } = await supabase
           .from('app_meeting_ge')
           .update({
             ...saveData,
             updated_at: new Date().toISOString(),
           } as any)
           .eq('id', existingEvaluation.id);
+        if (error && isMissingSummaryVisibilityColumnError(error)) {
+          setSupportsSummaryVisibilityColumn(false);
+          const fallbackData = { ...saveData };
+          delete fallbackData.summary_visible_to_members;
+          await supabase
+            .from('app_meeting_ge')
+            .update({
+              ...fallbackData,
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq('id', existingEvaluation.id);
+        }
       } else {
-        await supabase
+        const { error } = await supabase
           .from('app_meeting_ge')
           .insert({
             ...saveData,
             created_at: new Date().toISOString(),
           } as any);
+        if (error && isMissingSummaryVisibilityColumnError(error)) {
+          setSupportsSummaryVisibilityColumn(false);
+          const fallbackData = { ...saveData };
+          delete fallbackData.summary_visible_to_members;
+          await supabase
+            .from('app_meeting_ge')
+            .insert({
+              ...fallbackData,
+              created_at: new Date().toISOString(),
+            } as any);
+        }
 
         await loadExistingEvaluation(user.id);
       }
@@ -673,6 +781,52 @@ export default function GeneralEvaluatorReport() {
     if (score >= Math.round((56 / 72) * geTotalMax)) return 'Excellent';
     if (score >= Math.round((36 / 72) * geTotalMax)) return 'Good';
     return 'Needs Improvement';
+  };
+
+  // Summary tab score visibility is controlled only by the members toggle.
+  const showGeSummaryToViewer = summaryVisibleToMembers;
+
+  const renderGeTotalScoreCard = (opts: { showMemberVisibilityToggle: boolean }) => {
+    const showToggle = opts.showMemberVisibilityToggle && canEditGeneralEvaluatorCorner;
+    return (
+      <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <View style={styles.summaryCardTopRow}>
+          <View style={styles.summaryScoreTexts}>
+            <Text style={[styles.summaryText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Total Score: {totalScore} / {geTotalMax}
+            </Text>
+            <Text style={[styles.summaryText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              Overall Rating: {getOverallRating(totalScore)}
+            </Text>
+          </View>
+          {showToggle ? (
+            <View style={styles.summaryVisibilityToggleWrap}>
+              {summaryVisibleToMembers ? (
+                <Eye size={20} color={theme.colors.primary} />
+              ) : (
+                <EyeOff size={20} color={theme.colors.textSecondary} />
+              )}
+              <Text style={[styles.summaryVisibilityLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                Members
+              </Text>
+              <Switch
+                value={summaryVisibleToMembers}
+                onValueChange={handleSummaryVisibilityChange}
+                trackColor={{ false: '#d1d5db', true: '#93c5fd' }}
+                thumbColor={Platform.OS === 'android' ? (summaryVisibleToMembers ? theme.colors.primary : '#f4f3f4') : undefined}
+              />
+            </View>
+          ) : null}
+        </View>
+        {showToggle ? (
+          <Text style={[styles.summaryVisibilityHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.05}>
+            {summaryVisibleToMembers
+              ? 'Members can see this summary on the General Evaluator Summary tab.'
+              : 'Hidden from members — only you and VPE see scores on Summary.'}
+          </Text>
+        ) : null}
+      </View>
+    );
   };
 
   useEffect(() => {
@@ -977,14 +1131,7 @@ export default function GeneralEvaluatorReport() {
             {canAccessGeneralEvaluatorCorner && activeTab === 'categories' && (
               <>
                 <View style={styles.categoriesSection}>
-                  <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                    <Text style={[styles.summaryText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      Total Score: {totalScore} / {geTotalMax}
-                    </Text>
-                    <Text style={[styles.summaryText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                      Overall Rating: {getOverallRating(totalScore)}
-                    </Text>
-                  </View>
+                  {renderGeTotalScoreCard({ showMemberVisibilityToggle: true })}
 
                   {evaluationQuestions.map((question) => (
                     <RatingCard key={question.id} question={question} />
@@ -995,39 +1142,48 @@ export default function GeneralEvaluatorReport() {
 
             {activeTab === 'feedback' && (
               <View style={styles.categoriesSection}>
-                <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  <Text style={[styles.summaryText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Total Score: {totalScore} / {geTotalMax}
-                  </Text>
-                  <Text style={[styles.summaryText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                    Overall Rating: {getOverallRating(totalScore)}
-                  </Text>
-                </View>
+                {showGeSummaryToViewer ? (
+                  <>
+                    {renderGeTotalScoreCard({ showMemberVisibilityToggle: false })}
 
-                <View style={[styles.scoreListCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  {evaluationQuestions.map((question, index) => {
-                    const score = responses[question.id];
-                    return (
-                      <View
-                        key={`summary-${question.id}`}
-                        style={[
-                          styles.scoreListRow,
-                          { borderBottomColor: theme.colors.border },
-                          index === evaluationQuestions.length - 1 && styles.scoreListRowLast,
-                        ]}
-                      >
-                        <Text style={[styles.scoreQuestionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                          {question.title}
-                        </Text>
-                        <View style={[styles.scoreValuePill, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                          <Text style={[styles.scoreValueText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.1}>
-                            {score == null ? '-' : `${score}/${GE_RATING_MAX}`}
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
+                    <View style={[styles.scoreListCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                      {evaluationQuestions.map((question, index) => {
+                        const score = responses[question.id];
+                        return (
+                          <View
+                            key={`summary-${question.id}`}
+                            style={[
+                              styles.scoreListRow,
+                              { borderBottomColor: theme.colors.border },
+                              index === evaluationQuestions.length - 1 && styles.scoreListRowLast,
+                            ]}
+                          >
+                            <Text style={[styles.scoreQuestionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                              {question.title}
+                            </Text>
+                            <View style={[styles.scoreValuePill, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                              <Text style={[styles.scoreValueText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.1}>
+                                {score == null ? '-' : `${score}/${GE_RATING_MAX}`}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </>
+                ) : (
+                  <View
+                    style={[
+                      styles.summaryHiddenPlaceholder,
+                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                    ]}
+                  >
+                    <EyeOff size={36} color={theme.colors.textSecondary} />
+                    <Text style={[styles.summaryHiddenTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                      General evalutor is yet to publish the evalution score
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
           </>
@@ -1966,6 +2122,52 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  summaryCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  summaryScoreTexts: {
+    flex: 1,
+    minWidth: 0,
+  },
+  summaryVisibilityToggleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  summaryVisibilityLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  summaryVisibilityHint: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 10,
+    fontWeight: '400',
+  },
+  summaryHiddenPlaceholder: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    gap: 10,
+  },
+  summaryHiddenTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  summaryHiddenBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   summaryText: {
     fontSize: 14,

@@ -43,6 +43,8 @@ export type GeReportEvaluationRow = {
   evaluation_data: unknown;
   is_completed: boolean;
   submitted_at: string | null;
+  /** When false, regular members do not see the Summary tab scores; GE and VPE always do. */
+  summary_visible_to_members?: boolean | null;
   created_at: string;
   updated_at: string;
 };
