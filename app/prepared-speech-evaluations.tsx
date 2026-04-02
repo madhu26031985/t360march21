@@ -4,7 +4,27 @@ import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { ChevronLeft, User, FileText, CheckCircle2, AlertCircle, Eye, Clock, Bell, Users, Calendar, BookOpen, Star, Mic, CheckSquare, FileBarChart, MessageSquare, ClipboardCheck } from 'lucide-react-native';
+import {
+  ChevronLeft,
+  User,
+  FileText,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
+  Clock,
+  Bell,
+  Users,
+  Calendar,
+  BookOpen,
+  Star,
+  Mic,
+  CheckSquare,
+  FileBarChart,
+  MessageSquare,
+  ClipboardCheck,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { Image } from 'react-native';
@@ -883,10 +903,24 @@ export default function PreparedSpeechEvaluations() {
 
             <TouchableOpacity
               style={styles.quickActionItem}
+              onPress={() =>
+                router.push({ pathname: '/book-a-role', params: { meetingId, initialTab: 'my_bookings' } })
+              }
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
+                <RotateCcw size={24} color="#4F46E5" />
+              </View>
+              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Withdraw
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickActionItem}
               onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId } })}
             >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Calendar size={24} color="#3b82f6" />
+              <View style={[styles.quickActionIcon, { backgroundColor: '#E0F0F7' }]}>
+                <Calendar size={24} color="#004165" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
             </TouchableOpacity>
@@ -915,8 +949,8 @@ export default function PreparedSpeechEvaluations() {
               style={styles.quickActionItem}
               onPress={() => router.push({ pathname: '/grammarian', params: { meetingId } })}
             >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#F3E8FF' }]}>
-                <FileText size={24} color="#8b5cf6" />
+              <View style={[styles.quickActionIcon, { backgroundColor: '#8b5cf6' + '20' }]}>
+                <Sparkles size={24} color="#8b5cf6" />
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
             </TouchableOpacity>

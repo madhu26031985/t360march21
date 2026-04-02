@@ -122,6 +122,62 @@ export async function fetchOpenMeetingRoleId(
   return data?.id ?? null;
 }
 
+/** Booked role row (assigned) for reassign flows (e.g. VPE). */
+export async function fetchBookedMeetingRoleId(
+  meetingId: string,
+  filters: OpenRoleFilters
+): Promise<string | null> {
+  let q = supabase
+    .from('app_meeting_roles_management')
+    .select('id')
+    .eq('meeting_id', meetingId)
+    .eq('booking_status', 'booked')
+    .not('assigned_user_id', 'is', null);
+
+  if ('orRoleName' in filters) {
+    q = q.or(filters.orRoleName);
+  } else if ('eqRoleName' in filters) {
+    q = q.eq('role_name', filters.eqRoleName);
+  } else {
+    q = q.ilike('role_name', filters.ilikeRoleName);
+  }
+
+  const { data, error } = await q.limit(1).maybeSingle();
+
+  if (error) {
+    console.error('fetchBookedMeetingRoleId:', error);
+    return null;
+  }
+  return data?.id ?? null;
+}
+
+/** VPE/admin: change assignee on an already-booked role row. */
+export async function reassignBookedMeetingRole(
+  memberUserId: string,
+  roleId: string
+): Promise<BookMeetingRoleResult> {
+  const { data, error } = await supabase
+    .from('app_meeting_roles_management')
+    .update({
+      assigned_user_id: memberUserId,
+      booking_status: 'booked',
+      booked_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', roleId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    console.error('reassignBookedMeetingRole:', error);
+    return { ok: false, message: 'Failed to reassign this role. Please try again.' };
+  }
+  if (!data) {
+    return { ok: false, message: 'Could not update this role.' };
+  }
+  return { ok: true };
+}
+
 /** Looks up an open role matching `filters`, then books it for `userId`. */
 export async function bookOpenMeetingRole(
   userId: string,

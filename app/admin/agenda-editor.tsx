@@ -2035,6 +2035,64 @@ export default function AgendaEditor() {
 
       const roleSlots = Array.from(roleBySlot.keys()).sort((a, b) => a - b);
 
+      const [{ data: evalRoleRows }, { data: pseMeetingRows }] = await Promise.all([
+        supabase
+          .from('app_meeting_roles_management')
+          .select(
+            `role_name, assigned_user_id, app_user_profiles!fk_meeting_roles_management_assigned_user_id(full_name)`
+          )
+          .eq('meeting_id', meetingId)
+          .not('assigned_user_id', 'is', null)
+          .ilike('role_name', 'Evaluator %'),
+        supabase
+          .from('app_prepared_speech_evaluations')
+          .select(
+            `
+            evaluation_pathway_id,
+            speaker_id,
+            evaluator_id,
+            created_at,
+            evaluator:app_user_profiles!app_prepared_speech_evaluations_evaluator_id_fkey(full_name)
+          `
+          )
+          .eq('meeting_id', meetingId)
+          .eq('speech_category', 'Prepared Speech'),
+      ]);
+
+      const evaluatorBySpeechSlot = new Map<number, { userId: string; name: string | null }>();
+      (evalRoleRows || []).forEach((row: any) => {
+        const m = (row.role_name || '').match(/evaluator\s*(\d+)/i);
+        if (!m || !row.assigned_user_id) return;
+        const sn = parseInt(m[1], 10);
+        if (sn >= 1 && sn <= 5) {
+          evaluatorBySpeechSlot.set(sn, {
+            userId: row.assigned_user_id,
+            name: row.app_user_profiles?.full_name ?? null,
+          });
+        }
+      });
+
+      const pseByPathwayId = new Map<string, { userId: string; name: string | null }>();
+      const pseLatestBySpeakerId = new Map<string, { userId: string; name: string | null }>();
+      const sortedPse = [...(pseMeetingRows || [])].sort(
+        (a: any, b: any) =>
+          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+      sortedPse.forEach((row: any) => {
+        if (row.evaluation_pathway_id && row.evaluator_id && !pseByPathwayId.has(row.evaluation_pathway_id)) {
+          pseByPathwayId.set(row.evaluation_pathway_id, {
+            userId: row.evaluator_id,
+            name: row.evaluator?.full_name ?? null,
+          });
+        }
+        if (row.speaker_id && row.evaluator_id && !pseLatestBySpeakerId.has(row.speaker_id)) {
+          pseLatestBySpeakerId.set(row.speaker_id, {
+            userId: row.evaluator_id,
+            name: row.evaluator?.full_name ?? null,
+          });
+        }
+      });
+
       const slots: PreparedSpeechAgendaSlot[] = await Promise.all(
         roleSlots.map(async (slot) => {
           const role = roleBySlot.get(slot) as {
@@ -2083,6 +2141,41 @@ export default function AgendaEditor() {
             pathway = pw as typeof pathway;
           }
 
+          let evaluatorUserId: string | null = pathway?.assigned_evaluator_id ?? null;
+          let evaluatorFullName: string | null = pathway?.evaluator?.full_name ?? null;
+
+          if (booked && role?.assigned_user_id) {
+            if (evaluatorUserId && !evaluatorFullName) {
+              const { data: evProf } = await supabase
+                .from('app_user_profiles')
+                .select('full_name')
+                .eq('id', evaluatorUserId)
+                .maybeSingle();
+              evaluatorFullName = evProf?.full_name ?? null;
+            }
+            if (!evaluatorUserId && pathway?.id) {
+              const fromPse = pseByPathwayId.get(pathway.id);
+              if (fromPse) {
+                evaluatorUserId = fromPse.userId;
+                evaluatorFullName = fromPse.name ?? evaluatorFullName;
+              }
+            }
+            if (!evaluatorUserId) {
+              const fromPseSp = pseLatestBySpeakerId.get(role.assigned_user_id);
+              if (fromPseSp) {
+                evaluatorUserId = fromPseSp.userId;
+                evaluatorFullName = fromPseSp.name ?? evaluatorFullName;
+              }
+            }
+            if (!evaluatorUserId) {
+              const fromRole = evaluatorBySpeechSlot.get(slot);
+              if (fromRole) {
+                evaluatorUserId = fromRole.userId;
+                evaluatorFullName = fromRole.name ?? evaluatorFullName;
+              }
+            }
+          }
+
           const prev = prevBySlot(slot);
           const speakerName =
             pathway?.speaker?.full_name ??
@@ -2105,8 +2198,8 @@ export default function AgendaEditor() {
                 : null,
             project_name: pathway?.project_name ?? null,
             evaluation_form: pathway?.evaluation_form ?? null,
-            evaluator_user_id: pathway?.assigned_evaluator_id ?? null,
-            evaluator_name: pathway?.evaluator?.full_name ?? null,
+            evaluator_user_id: evaluatorUserId,
+            evaluator_name: evaluatorFullName,
             is_visible: prev ? prev.is_visible : true,
           };
         })

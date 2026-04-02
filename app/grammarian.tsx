@@ -6,7 +6,14 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
+import {
+  bookOpenMeetingRole,
+  fetchOpenMeetingRoleId,
+  fetchBookedMeetingRoleId,
+  bookMeetingRoleForCurrentUser,
+  reassignBookedMeetingRole,
+  type BookMeetingRoleResult,
+} from '@/lib/bookMeetingRoleInline';
 import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
 import {
   fetchGrammarianCornerSnapshot,
@@ -15,7 +22,7 @@ import {
 } from '@/lib/grammarianCornerQuery';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
 import { GrammarianNotesScreen } from './grammarian-notes';
-import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus, ClipboardCheck, Vote } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus, UserCog, ClipboardCheck, Vote } from 'lucide-react-native';
 
 /** Match Toastmaster / corner bottom dock icon size */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -128,6 +135,8 @@ export default function GrammarianReport() {
   
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [assignedGrammarian, setAssignedGrammarian] = useState<AssignedGrammarian | null>(null);
+  /** Lexicon + daily-elements rows are keyed by assigned grammarian; VPE edits the same rows. */
+  const effectiveGrammarianUserId = assignedGrammarian?.id ?? user?.id ?? null;
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
   const [clubName, setClubName] = useState<string>('');
   const [selectedMember, setSelectedMember] = useState<ClubMember | null>(null);
@@ -264,6 +273,7 @@ export default function GrammarianReport() {
     if (!opts?.force && Date.now() - lastLoadAtRef.current < 1200) return;
 
     const run = async () => {
+      let isVpeForMeeting = false;
       try {
         if (opts?.force) {
           invalidateGrammarianCornerSnapshotCache(meetingId, user.id, user.currentClubId);
@@ -273,6 +283,7 @@ export default function GrammarianReport() {
         let assigned: AssignedGrammarian | null = null;
 
         if (snap) {
+          isVpeForMeeting = snap.is_vpe_for_club;
           setMeeting(snap.meeting as Meeting);
           if (snap.club_name) setClubName(snap.club_name);
           setIsVPEClub(snap.is_vpe_for_club);
@@ -331,6 +342,12 @@ export default function GrammarianReport() {
         } else {
           await Promise.all([loadMeeting(), loadClubName(), loadIsVPEClub()]);
           assigned = await loadAssignedGrammarian();
+          const { data: cp } = await supabase
+            .from('club_profiles')
+            .select('vpe_id')
+            .eq('club_id', user.currentClubId)
+            .maybeSingle();
+          isVpeForMeeting = cp?.vpe_id === user.id;
         }
 
         if (assigned) {
@@ -345,8 +362,10 @@ export default function GrammarianReport() {
             if (!preMeetingBackgroundQueuedRef.current) {
               preMeetingBackgroundQueuedRef.current = true;
               setTimeout(() => {
+                const shouldLoadDaily =
+                  !snap?.daily_elements && (isVpeForMeeting || assigned.id === user.id);
                 void Promise.all([
-                  assigned.id === user.id && !snap?.daily_elements ? loadDailyElements() : Promise.resolve(),
+                  shouldLoadDaily ? loadDailyElements(assigned.id) : Promise.resolve(),
                   !snap?.idiom_of_the_day ? loadIdiomOfTheDay() : Promise.resolve(),
                   !snap?.quote_of_the_day ? loadQuoteOfTheDay() : Promise.resolve(),
                 ]);
@@ -355,6 +374,9 @@ export default function GrammarianReport() {
           }
         } else {
           setAssignedGrammarian(null);
+          if (isVpeForMeeting && !snap?.daily_elements && user?.id) {
+            void loadDailyElements(user.id);
+          }
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -393,7 +415,15 @@ export default function GrammarianReport() {
         'Grammarian is already booked or not set up for this meeting.'
       );
       if (result.ok) {
-        await loadData({ force: true });
+        invalidateGrammarianCornerSnapshotCache(meetingId, user.id, user.currentClubId ?? '');
+        setAssignedGrammarian({
+          id: user.id,
+          full_name: user.fullName || 'You',
+          email: user.email || '',
+          avatar_url: user.avatarUrl ?? null,
+        });
+        Alert.alert('Booked', 'You are now the Grammarian for this meeting.');
+        void loadData({ force: true });
       } else {
         Alert.alert('Could not book', result.message);
       }
@@ -410,21 +440,42 @@ export default function GrammarianReport() {
       Alert.alert('Sign in required', 'Please sign in to assign this role.');
       return;
     }
+    const reassigning = !!assignedGrammarian;
     setAssigningGrammarianRole(true);
     try {
-      const roleId = await fetchOpenMeetingRoleId(meetingId, { ilikeRoleName: '%grammarian%' });
-      if (!roleId) {
-        Alert.alert('Error', 'No open Grammarian role was found for this meeting.');
-        return;
+      let result: BookMeetingRoleResult;
+      if (reassigning) {
+        const roleId = await fetchBookedMeetingRoleId(meetingId, { ilikeRoleName: '%grammarian%' });
+        if (!roleId) {
+          Alert.alert('Error', 'No booked Grammarian role was found to reassign.');
+          return;
+        }
+        result = await reassignBookedMeetingRole(member.id, roleId);
+      } else {
+        const roleId = await fetchOpenMeetingRoleId(meetingId, { ilikeRoleName: '%grammarian%' });
+        if (!roleId) {
+          Alert.alert('Error', 'No open Grammarian role was found for this meeting.');
+          return;
+        }
+        result = await bookMeetingRoleForCurrentUser(member.id, roleId);
       }
-      const result = await bookMeetingRoleForCurrentUser(member.id, roleId);
       if (result.ok) {
+        invalidateGrammarianCornerSnapshotCache(meetingId, user.id, user.currentClubId ?? '');
         setShowAssignGrammarianModal(false);
         setAssignGrammarianSearch('');
-        await loadData({ force: true });
-        Alert.alert('Assigned', `${member.full_name} is now the Grammarian for this meeting.`);
+        setAssignedGrammarian({
+          id: member.id,
+          full_name: member.full_name,
+          email: member.email,
+          avatar_url: member.avatar_url,
+        });
+        Alert.alert(
+          reassigning ? 'Reassigned' : 'Assigned',
+          `${member.full_name} is now the Grammarian for this meeting.`
+        );
+        void loadData({ force: true });
       } else {
-        Alert.alert('Could not assign', result.message);
+        Alert.alert(reassigning ? 'Could not reassign' : 'Could not assign', result.message);
       }
     } finally {
       setAssigningGrammarianRole(false);
@@ -563,15 +614,16 @@ export default function GrammarianReport() {
     }
   };
 
-  const loadDailyElements = async () => {
-    if (!meetingId || !user?.id) return;
+  const loadDailyElements = async (grammarianUserId?: string | null) => {
+    const gid = grammarianUserId ?? effectiveGrammarianUserId;
+    if (!meetingId || !gid) return;
 
     try {
       const { data, error } = await supabase
         .from('app_grammarian_daily_elements')
         .select('word_of_the_day, idiom_of_the_day, phrase_of_the_day, quote_of_the_day')
         .eq('meeting_id', meetingId)
-        .eq('grammarian_user_id', user.id)
+        .eq('grammarian_user_id', gid)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -865,10 +917,16 @@ export default function GrammarianReport() {
     setIsSaving(true);
 
     try {
+      const gid = effectiveGrammarianUserId;
+      if (!gid) {
+        Alert.alert('Error', 'No grammarian context for this meeting.');
+        return;
+      }
+
       const saveData = {
         meeting_id: meetingId,
         club_id: user.currentClubId,
-        grammarian_user_id: user.id,
+        grammarian_user_id: gid,
         word_of_the_day: dailyElements.word_of_the_day.trim() || null,
         idiom_of_the_day: dailyElements.idiom_of_the_day.trim() || null,
         phrase_of_the_day: dailyElements.phrase_of_the_day.trim() || null,
@@ -881,7 +939,7 @@ export default function GrammarianReport() {
         .from('app_grammarian_daily_elements')
         .select('id')
         .eq('meeting_id', meetingId)
-        .eq('grammarian_user_id', user.id)
+        .eq('grammarian_user_id', gid)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -1378,6 +1436,25 @@ export default function GrammarianReport() {
           </Text>
         </TouchableOpacity>
 
+        {isVPEClub ? (
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => setShowAssignGrammarianModal(true)}
+            disabled={bookingGrammarianRole || assigningGrammarianRole}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              {assignedGrammarian ? (
+                <UserCog size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+              ) : (
+                <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#0d9488" />
+              )}
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {assignedGrammarian ? 'Reassign' : 'Assign'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity
           style={styles.footerNavItem}
           onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting.id } })}
@@ -1551,18 +1628,6 @@ export default function GrammarianReport() {
                 </Text>
               )}
             </TouchableOpacity>
-            {isVPEClub ? (
-              <TouchableOpacity
-                style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12 }}
-                onPress={() => setShowAssignGrammarianModal(true)}
-                disabled={bookingGrammarianRole || assigningGrammarianRole}
-                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.primary }} maxFontSizeMultiplier={1.25}>
-                  Assign to a member
-                </Text>
-              </TouchableOpacity>
-            ) : null}
             </View>
             <View style={styles.meetingCardDecoration} />
           </View>
@@ -1598,7 +1663,7 @@ export default function GrammarianReport() {
             >
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Assign Grammarian
+                  {assignedGrammarian ? 'Reassign Grammarian' : 'Assign Grammarian'}
                 </Text>
                 <TouchableOpacity
                   style={styles.closeButton}
@@ -1611,7 +1676,9 @@ export default function GrammarianReport() {
                 </TouchableOpacity>
               </View>
               <Text style={[styles.assignModalHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Choose a club member to book the Grammarian role for this meeting.
+                {assignedGrammarian
+                  ? 'Choose a member to assign as Grammarian (replaces the current assignee).'
+                  : 'Choose a club member to book the Grammarian role for this meeting.'}
               </Text>
               <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
                 <Search size={20} color={theme.colors.textSecondary} />
@@ -2185,6 +2252,107 @@ export default function GrammarianReport() {
       </ScrollView>
       {renderGrammarianGeDock()}
       </View>
+
+      <Modal
+        visible={showAssignGrammarianModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowAssignGrammarianModal(false);
+          setAssignGrammarianSearch('');
+        }}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowAssignGrammarianModal(false);
+            setAssignGrammarianSearch('');
+          }}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.memberModal, { backgroundColor: theme.colors.surface }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                {assignedGrammarian ? 'Reassign Grammarian' : 'Assign Grammarian'}
+              </Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setShowAssignGrammarianModal(false);
+                  setAssignGrammarianSearch('');
+                }}
+              >
+                <X size={20} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.assignModalHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              {assignedGrammarian
+                ? 'Choose a member to assign as Grammarian (replaces the current assignee).'
+                : 'Choose a club member to book the Grammarian role for this meeting.'}
+            </Text>
+            <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
+              <Search size={20} color={theme.colors.textSecondary} />
+              <TextInput
+                style={[styles.searchInput, { color: theme.colors.text }]}
+                placeholder="Search by name or email..."
+                placeholderTextColor={theme.colors.textSecondary}
+                value={assignGrammarianSearch}
+                onChangeText={setAssignGrammarianSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {assignGrammarianSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setAssignGrammarianSearch('')}>
+                  <X size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
+              {assigningGrammarianRole ? (
+                <View style={styles.noResultsContainer}>
+                  <ActivityIndicator color={theme.colors.primary} />
+                </View>
+              ) : isLoadingClubMembers && clubMembers.length === 0 ? (
+                <View style={styles.noResultsContainer}>
+                  <ActivityIndicator color={theme.colors.primary} />
+                </View>
+              ) : filteredMembersForAssign.length > 0 ? (
+                filteredMembersForAssign.map((member) => (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={[styles.memberOption, { backgroundColor: theme.colors.background }]}
+                    onPress={() => handleAssignGrammarianToMember(member)}
+                    disabled={assigningGrammarianRole}
+                  >
+                    <View style={styles.memberOptionAvatar}>
+                      {member.avatar_url ? (
+                        <Image source={{ uri: member.avatar_url }} style={styles.memberOptionAvatarImage} />
+                      ) : (
+                        <User size={20} color="#ffffff" />
+                      )}
+                    </View>
+                    <View style={styles.memberOptionInfo}>
+                      <Text style={[styles.memberOptionName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                        {member.full_name}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.noResultsContainer}>
+                  <Text style={[styles.noResultsText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    No members found
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Daily Elements Modal */}
       <Modal

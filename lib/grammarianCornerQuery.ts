@@ -1,8 +1,7 @@
 import { supabase } from '@/lib/supabase';
 
-// Temporary production hotfix:
-// Force legacy query path until `get_grammarian_corner_snapshot` is fully stabilized.
-const FORCE_DISABLE_GRAMMARIAN_SNAPSHOT_RPC = true;
+// Use snapshot RPC when deployed (see migrations/*grammarian_corner_snapshot*). Legacy REST is fallback only.
+const FORCE_DISABLE_GRAMMARIAN_SNAPSHOT_RPC = false;
 let grammarianSnapshotRpcDisabledUntil = 0;
 const FALLBACK_CACHE_TTL_MS = 30_000;
 const fallbackSnapshotCache = new Map<string, { at: number; value: GrammarianCornerSnapshot | null }>();
