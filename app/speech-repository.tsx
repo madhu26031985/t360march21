@@ -7,7 +7,6 @@ import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 import {
   ArrowLeft,
   Plus,
@@ -24,17 +23,12 @@ import {
   Users,
   Settings,
   Shield,
-  Coffee,
-  MessageCircle,
-  Globe,
 } from 'lucide-react-native';
 import AddSpeechModal from '@/components/AddSpeechModal';
 import EditSpeechModal from '@/components/EditSpeechModal';
 import React from 'react';
 
 const FOOTER_NAV_ICON_SIZE = 15;
-const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
-const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
 
 interface Speech {
   id: string;
@@ -48,8 +42,7 @@ export default function SpeechRepository() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const { shouldShowCoffee } = useCoffeePromptEligibility();
-  
+
   const [speeches, setSpeeches] = useState<Speech[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -64,26 +57,6 @@ export default function SpeechRepository() {
   const infoIconPulse = useRef(new Animated.Value(1)).current;
 
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
-
-  const openWhatsAppSupport = async () => {
-    try {
-      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
-      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
-      else Alert.alert('Error', 'Cannot open WhatsApp');
-    } catch {
-      Alert.alert('Error', 'Failed to open WhatsApp');
-    }
-  };
-
-  const openWebLogin = async () => {
-    try {
-      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
-      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
-      else Alert.alert('Error', 'Cannot open web login');
-    } catch {
-      Alert.alert('Error', 'Failed to open web login');
-    }
-  };
 
   useEffect(() => {
     loadSpeeches();
@@ -530,35 +503,6 @@ export default function SpeechRepository() {
             </View>
             <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
               Settings
-            </Text>
-          </TouchableOpacity>
-
-          {shouldShowCoffee ? (
-            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/buy-us-a-coffee')} activeOpacity={0.75}>
-              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Coffee
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-
-          <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
-            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-              <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />
-            </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Support
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
-            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-              <Globe size={FOOTER_NAV_ICON_SIZE} color="#334155" />
-            </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Web
             </Text>
           </TouchableOpacity>
         </ScrollView>

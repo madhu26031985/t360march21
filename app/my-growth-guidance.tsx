@@ -1,18 +1,14 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Alert, Modal, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Alert, Modal } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useRef } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Phone, CheckCircle2, Copy, UsersRound, Info, X, Home, Calendar, Users, Settings, Shield, Coffee, MessageCircle, Globe } from 'lucide-react-native';
+import { ArrowLeft, Phone, CheckCircle2, Copy, UsersRound, Info, X, Home, Calendar, Users, Settings, Shield } from 'lucide-react-native';
 import { useCallback } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { fetchMyMentorSnapshot, getCachedMyMentorSnapshot, type MyMentorSnapshot } from '@/lib/myMentorSnapshot';
-import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
-
 const FOOTER_NAV_ICON_SIZE = 15;
-const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
-const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
 
 interface ContactPerson {
   id: string;
@@ -31,7 +27,6 @@ interface VpeContactInfo {
 export default function MyGrowthGuidance() {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const { shouldShowCoffee } = useCoffeePromptEligibility();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [mentor, setMentor] = useState<ContactPerson | null>(null);
@@ -140,26 +135,6 @@ export default function MyGrowthGuidance() {
   ];
 
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
-
-  const openWhatsAppSupport = useCallback(async () => {
-    try {
-      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
-      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
-      else Alert.alert('Error', 'Cannot open WhatsApp');
-    } catch {
-      Alert.alert('Error', 'Failed to open WhatsApp');
-    }
-  }, []);
-
-  const openWebLogin = useCallback(async () => {
-    try {
-      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
-      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
-      else Alert.alert('Error', 'Cannot open web login');
-    } catch {
-      Alert.alert('Error', 'Failed to open web login');
-    }
-  }, []);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -344,35 +319,6 @@ export default function MyGrowthGuidance() {
             </View>
             <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
               Settings
-            </Text>
-          </TouchableOpacity>
-
-          {shouldShowCoffee ? (
-            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/buy-us-a-coffee')} activeOpacity={0.75}>
-              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Coffee
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-
-          <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
-            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-              <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />
-            </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Support
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
-            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-              <Globe size={FOOTER_NAV_ICON_SIZE} color="#334155" />
-            </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Web
             </Text>
           </TouchableOpacity>
         </ScrollView>

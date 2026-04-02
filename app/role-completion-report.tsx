@@ -9,14 +9,12 @@ import {
   Platform,
   Image,
   KeyboardAvoidingView,
-  Linking,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft,
@@ -27,9 +25,6 @@ import {
   Shield,
   Home,
   Settings,
-  Coffee,
-  MessageCircle,
-  Globe,
 } from 'lucide-react-native';
 
 /** Notion-like neutrals + accent (no red/green on completion UI). */
@@ -46,8 +41,6 @@ const N = {
   accentSoft: 'rgba(107, 168, 240, 0.18)',
 };
 
-const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
-const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
 const ROLE_COMPLETION_DOCK_ICON_SIZE = 15;
 
 type RoleTabId = 'my_role' | 'all_roles';
@@ -82,7 +75,6 @@ interface RoleAssignment {
 export default function RoleCompletionReport() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { shouldShowCoffee } = useCoffeePromptEligibility();
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -94,26 +86,6 @@ export default function RoleCompletionReport() {
   const isExComm =
     user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
-
-  const openWhatsAppSupport = useCallback(async () => {
-    try {
-      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
-      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
-      else Alert.alert('Error', 'Cannot open WhatsApp');
-    } catch {
-      Alert.alert('Error', 'Failed to open WhatsApp');
-    }
-  }, []);
-
-  const openWebLogin = useCallback(async () => {
-    try {
-      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
-      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
-      else Alert.alert('Error', 'Cannot open web login');
-    } catch {
-      Alert.alert('Error', 'Failed to open web login');
-    }
-  }, []);
 
   useEffect(() => {
     if (meetingId) {
@@ -572,32 +544,6 @@ export default function RoleCompletionReport() {
             </View>
             <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
               Settings
-            </Text>
-          </TouchableOpacity>
-          {shouldShowCoffee ? (
-            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/buy-us-a-coffee')} activeOpacity={0.75}>
-              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                <Coffee size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#92400e" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Coffee
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
-            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-              <MessageCircle size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#22c55e" />
-            </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Support
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
-            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-              <Globe size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#334155" />
-            </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Web
             </Text>
           </TouchableOpacity>
         </ScrollView>

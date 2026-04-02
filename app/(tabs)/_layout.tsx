@@ -1,13 +1,9 @@
-import { useCallback } from 'react';
-import { Tabs, router } from 'expo-router';
+import { Tabs } from 'expo-router';
 import {
   Home,
   Users,
   Calendar,
   Settings,
-  Coffee,
-  MessageCircle,
-  Globe,
   Shield,
 } from 'lucide-react-native';
 import {
@@ -16,18 +12,13 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Linking,
-  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 
 const FOOTER_NAV_ICON_SIZE = 15;
-const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
-const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
 
 const TAB_META: Record<string, { Icon: typeof Home; color: string; label: string }> = {
   index: { Icon: Home, color: '#0a66c2', label: 'Home' },
@@ -41,33 +32,12 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { user } = useAuth();
-  const { shouldShowCoffee } = useCoffeePromptEligibility();
 
   const hasClub = user?.currentClubId != null;
   const isExComm =
     user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
 
   const focusedRoute = state.routes[state.index]?.name;
-
-  const openWhatsAppSupport = useCallback(async () => {
-    try {
-      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
-      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
-      else Alert.alert('Error', 'Cannot open WhatsApp');
-    } catch {
-      Alert.alert('Error', 'Failed to open WhatsApp');
-    }
-  }, []);
-
-  const openWebLogin = useCallback(async () => {
-    try {
-      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
-      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
-      else Alert.alert('Error', 'Cannot open web login');
-    } catch {
-      Alert.alert('Error', 'Failed to open web login');
-    }
-  }, []);
 
   const renderTab = (routeName: string) => {
     const meta = TAB_META[routeName];
@@ -119,36 +89,6 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
         {hasClub ? renderTab('meetings') : null}
         {isExComm ? renderTab('admin') : null}
         {renderTab('settings')}
-        {shouldShowCoffee ? (
-          <TouchableOpacity
-            style={styles.footerNavItem}
-            onPress={() => router.push('/buy-us-a-coffee')}
-            activeOpacity={0.75}
-          >
-            <View style={styles.footerNavIcon}>
-              <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
-            </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Coffee
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-        <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
-          <View style={styles.footerNavIcon}>
-            <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />
-          </View>
-          <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Support
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
-          <View style={styles.footerNavIcon}>
-            <Globe size={FOOTER_NAV_ICON_SIZE} color="#334155" />
-          </View>
-          <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Web
-          </Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
