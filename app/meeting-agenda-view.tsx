@@ -981,11 +981,15 @@ export function MeetingAgendaViewContent({
         )}
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Agenda</Text>
         <View style={styles.headerActions}>
-          {meeting?.is_agenda_visible && (
+          {/* Web-only PDF export: same audience as agenda body (members when visible; ExComm even when draft). */}
+          {Platform.OS === 'web' &&
+            meeting &&
+            (isExcomm || meeting.is_agenda_visible !== false) && (
             <TouchableOpacity
               onPress={handleExportPDF}
               style={styles.headerButton}
               disabled={isExporting}
+              accessibilityLabel="Export agenda as PDF"
             >
               {isExporting ? (
                 <ActivityIndicator size="small" color={theme.colors.primary} />

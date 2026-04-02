@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
+  buildMinimalAgendaDescriptionLines,
   formatPublicAgendaMeetingDate,
   preparedSlotsForPublic,
   publicAgendaRoleDetailLines,
@@ -43,6 +44,7 @@ function formatPublicAgendaMeetingDateShort(iso: string | undefined): string {
   }
 }
 
+/** Role abbreviations for the People column (public minimal agenda). */
 function minimalRoleLabelForSection(sectionName: string): string | null {
   const s = (sectionName || '').toLowerCase();
   if (s.includes('call to order')) return 'SAA';
@@ -56,6 +58,42 @@ function minimalRoleLabelForSection(sectionName: string): string | null {
   if (s.includes('grammarian')) return 'Grammar';
   if (s.includes('timer')) return 'Timer';
   return null;
+}
+
+function buildMinimalPeopleLines(item: PublicAgendaItemRow): string[] {
+  const lines: string[] = [];
+  const rp = minimalRoleLabelForSection(item.section_name);
+  const primary = item.assigned_user_name;
+  if (primary) {
+    lines.push(rp ? `${rp} · ${primary}` : primary);
+  } else if (rp) {
+    lines.push(rp);
+  } else {
+    lines.push('All');
+  }
+  const seen = new Set<string>(primary ? [primary] : []);
+  if (item.timer_user_name && !seen.has(item.timer_user_name)) {
+    lines.push(`Timer: ${item.timer_user_name}`);
+    seen.add(item.timer_user_name);
+  }
+  if (item.ah_counter_user_name && !seen.has(item.ah_counter_user_name)) {
+    lines.push(`Ah Counter: ${item.ah_counter_user_name}`);
+    seen.add(item.ah_counter_user_name);
+  }
+  if (item.grammarian_user_name && !seen.has(item.grammarian_user_name)) {
+    lines.push(`Grammarian: ${item.grammarian_user_name}`);
+    seen.add(item.grammarian_user_name);
+  }
+  const slots = preparedSlotsForPublic(item);
+  for (const s of slots) {
+    if (s.speaker_name?.trim()) {
+      lines.push(`Speaker ${s.slot}: ${s.speaker_name.trim()}`);
+    }
+    if (s.evaluator_name?.trim()) {
+      lines.push(`Evaluator ${s.slot}: ${s.evaluator_name.trim()}`);
+    }
+  }
+  return lines;
 }
 
 export function PublicMeetingAgendaLoadedView({
@@ -207,6 +245,12 @@ function MinimalLayout({
               </Text>
             ) : null}
 
+            {meeting.meeting_title ? (
+              <Text style={[styles.minBannerMeetingTitle, { color: theme.colors.text }]} numberOfLines={3}>
+                {meeting.meeting_title}
+              </Text>
+            ) : null}
+
             {meeting.meeting_link ? (
               <View style={{ marginTop: 12, alignItems: 'center' }}>
                 <Pressable
@@ -219,14 +263,43 @@ function MinimalLayout({
             ) : null}
           </View>
 
-          {items.map((item) => (
-            <AgendaSectionCard
-              key={`${item.section_order}-${item.section_name}`}
-              item={item}
-              theme={theme}
-              skin="minimal"
-            />
-          ))}
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={Platform.OS === 'web'}
+            contentContainerStyle={styles.notionTableScrollInner}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.notionTable}>
+              <View
+                style={[
+                  styles.notionHeaderRow,
+                  { borderBottomColor: theme.colors.borderLight, backgroundColor: theme.colors.backgroundSecondary },
+                ]}
+              >
+                <Text style={[styles.notionHeaderCell, styles.notionColTime, { color: theme.colors.textSecondary }]}>
+                  Time
+                </Text>
+                <Text style={[styles.notionHeaderCell, styles.notionColTitle, { color: theme.colors.textSecondary }]}>
+                  Title
+                </Text>
+                <Text style={[styles.notionHeaderCell, styles.notionColDesc, { color: theme.colors.textSecondary }]}>
+                  Description
+                </Text>
+                <Text style={[styles.notionHeaderCell, styles.notionColPeople, { color: theme.colors.textSecondary }]}>
+                  People
+                </Text>
+              </View>
+              {items.map((item) => (
+                <AgendaSectionCard
+                  key={`${item.section_order}-${item.section_name}`}
+                  item={item}
+                  theme={theme}
+                  skin="minimal"
+                />
+              ))}
+            </View>
+          </ScrollView>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -314,27 +387,6 @@ function AgendaSectionCard({
   const slots = preparedSlotsForPublic(item);
   const tagParts = [item.timer_user_name, item.ah_counter_user_name, item.grammarian_user_name].filter(Boolean);
 
-  const minimalDurationText =
-    item.duration_minutes != null ? `${item.duration_minutes}m` : '';
-
-  const minimalAssignedName =
-    item.assigned_user_name ||
-    item.timer_user_name ||
-    item.ah_counter_user_name ||
-    item.grammarian_user_name ||
-    '';
-
-  const minimalRolePrefix = minimalRoleLabelForSection(item.section_name);
-
-  const minimalRightTopText = minimalAssignedName
-    ? minimalRolePrefix
-      ? `${minimalRolePrefix} · ${minimalAssignedName}`
-      : minimalAssignedName
-    : minimalRolePrefix || 'All';
-
-  const minimalRightTimeText =
-    item.start_time && item.end_time ? `${item.start_time}–${item.end_time}` : '';
-
   const body = (
     <>
       <View style={skin === 'minimal' ? styles.minCardHeader : styles.cardHeader}>
@@ -413,71 +465,70 @@ function AgendaSectionCard({
   );
 
   if (skin === 'minimal') {
+    const descLines = buildMinimalAgendaDescriptionLines(item);
+    const peopleLines = buildMinimalPeopleLines(item);
+    const durationText = item.duration_minutes != null ? `${item.duration_minutes}m` : '—';
+    const rangeText =
+      item.start_time && item.end_time ? `${item.start_time}–${item.end_time}` : '';
+
     return (
       <View
         style={[
-          styles.minRowCard,
+          styles.notionDataRow,
           {
             backgroundColor: theme.colors.background,
             borderBottomColor: theme.colors.borderLight,
           },
         ]}
       >
-        <View style={styles.minRow}>
-          <View style={styles.minRowTimeCol}>
-            {minimalDurationText ? (
-              <Text style={[styles.minRowTimeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                {minimalDurationText}
-              </Text>
+        <View style={[styles.notionColTime, styles.notionCellPad]}>
+          <Text style={[styles.notionTimePrimary, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
+            {durationText}
+          </Text>
+          {rangeText ? (
+            <Text style={[styles.notionTimeSecondary, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.05}>
+              {rangeText}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={[styles.notionColTitle, styles.notionCellPad]}>
+          <View style={styles.notionTitleLine}>
+            {item.section_icon ? (
+              <Text style={[styles.notionTitleIcon, { color: theme.colors.text }]}>{item.section_icon}</Text>
             ) : null}
+            <Text style={[styles.notionTitleText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
+              {item.section_name}
+            </Text>
           </View>
+        </View>
 
-          <View style={styles.minRowMid}>
-            <View style={styles.minRowTitleLine}>
-              {item.section_icon ? (
-                <Text style={[styles.minRowIcon, { color: theme.colors.text }]}>{item.section_icon}</Text>
-              ) : null}
-              <Text style={[styles.minRowTitle, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>
-                {item.section_name}
-              </Text>
-            </View>
-
-            {item.section_description ? (
-              <Text style={[styles.minRowDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
-                {item.section_description}
-              </Text>
-            ) : null}
-
-            {extraLines[0] && !item.section_description ? (
-              <Text style={[styles.minRowExtraLine, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.0}>
-                {extraLines[0]}
-              </Text>
-            ) : null}
-
-            {extraLines[0] && item.section_description ? (
-              <Text style={[styles.minRowExtraLine, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.0}>
-                {extraLines[0]}
-              </Text>
-            ) : null}
-          </View>
-
-          <View style={styles.minRowRightCol}>
-            {minimalRightTopText ? (
+        <View style={[styles.notionColDesc, styles.notionCellPad]}>
+          {descLines.length === 0 ? (
+            <Text style={[styles.notionDescMuted, { color: theme.colors.textTertiary }]}>—</Text>
+          ) : (
+            descLines.map((line, i) => (
               <Text
-                style={[styles.minRowRightText, { color: theme.colors.text }]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.0}
+                key={`d-${i}-${line.slice(0, 40)}`}
+                style={[styles.notionDescLine, { color: theme.colors.textSecondary }]}
+                maxFontSizeMultiplier={1.1}
               >
-                {minimalRightTopText}
+                {line}
               </Text>
-            ) : null}
+            ))
+          )}
+        </View>
 
-            {minimalRightTimeText ? (
-              <Text style={[styles.minRowRightTimeText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                {minimalRightTimeText}
-              </Text>
-            ) : null}
-          </View>
+        <View style={[styles.notionColPeople, styles.notionCellPad]}>
+          {peopleLines.map((line, i) => (
+            <Text
+              key={`p-${i}-${line.slice(0, 40)}`}
+              style={[styles.notionPeopleLine, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.1}
+            >
+              {line}
+            </Text>
+          ))}
         </View>
       </View>
     );
@@ -582,6 +633,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  minBannerMeetingTitle: {
+    marginTop: 14,
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: '600',
+    lineHeight: 24,
+  },
   minBannerLinkBtn: {
     borderRadius: 12,
     paddingHorizontal: 18,
@@ -677,6 +735,94 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   minFooter: { textAlign: 'center', fontSize: 11, marginTop: 24, paddingHorizontal: 24 },
+
+  notionTableScrollInner: {
+    flexGrow: 1,
+    paddingBottom: 4,
+  },
+  notionTable: {
+    minWidth: 820,
+    alignSelf: 'flex-start',
+    width: '100%' as const,
+  },
+  notionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderBottomWidth: 1,
+    paddingVertical: 11,
+  },
+  notionHeaderCell: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  notionDataRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  notionCellPad: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  notionColTime: {
+    width: 100,
+    flexShrink: 0,
+  },
+  notionColTitle: {
+    width: 176,
+    flexShrink: 0,
+  },
+  notionColDesc: {
+    width: 300,
+    flexShrink: 0,
+  },
+  notionColPeople: {
+    minWidth: 200,
+    flexGrow: 1,
+    flexShrink: 0,
+    width: 220,
+  },
+  notionTimePrimary: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  notionTimeSecondary: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  notionTitleLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  notionTitleIcon: {
+    fontSize: 20,
+    lineHeight: 24,
+  },
+  notionTitleText: {
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 20,
+    flex: 1,
+  },
+  notionDescLine: {
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  notionDescMuted: {
+    fontSize: 13,
+  },
+  notionPeopleLine: {
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 8,
+    fontWeight: '500',
+  },
 
   vibScroll: { paddingBottom: 40 },
   vibBannerTop: {
