@@ -1,7 +1,7 @@
 /**
  * Shareable public agenda URLs (no login).
  * Path includes Expo `experiments.baseUrl` so the link matches the real URL in the browser:
- * /weblogin/{clubId}/agenda/{meetingNo}/{meetingId}
+ * /weblogin/{club-slug}/agenda/{meetingNo}/{meetingId} (slug from club display name; legacy UUID first segment still works).
  *
  * Short share link (same agenda): /weblogin/{club-slug}/a/{meetingId} when a display name is known,
  * or /weblogin/a/{meetingId} (slug in the path is cosmetic; meeting UUID loads data).
@@ -71,14 +71,20 @@ export function slugifyClubNameForAgendaUrl(raw: string | null | undefined): str
 }
 
 export function buildAgendaWebUrl(params: {
+  /** Fallback first path segment when `clubDisplayName` is missing (e.g. club UUID). */
   clubId: string;
+  /** Club profile or club table name — preferred for branding in the URL. */
+  clubDisplayName?: string | null;
   meetingNumber: string | null | undefined;
   meetingId: string;
   /** Append `?skin=minimal` or `?skin=vibrant` (default layout omits query). */
   skin?: PublicAgendaSkinId;
 }): string {
   const num = sanitizeMeetingNumberSegment(params.meetingNumber);
-  const path = `${AGENDA_WEB_PATH_PREFIX}/${params.clubId}/agenda/${num}/${params.meetingId}`;
+  const trimmed = params.clubDisplayName?.trim();
+  const clubSegment =
+    trimmed && trimmed.length > 0 ? slugifyClubNameForAgendaUrl(trimmed) : params.clubId;
+  const path = `${AGENDA_WEB_PATH_PREFIX}/${clubSegment}/agenda/${num}/${params.meetingId}`;
   let url = `${agendaWebHost()}${path}`;
   if (params.skin === 'minimal' || params.skin === 'vibrant') {
     url += `?skin=${params.skin}`;

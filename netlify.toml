@@ -9,7 +9,7 @@
   # Agenda share URLs in the app; default in code is https://t360.in — use app host until t360.in points here
   EXPO_PUBLIC_AGENDA_WEB_HOST = "https://app.t360.in"
 
-# Public agenda: /{clubId}/agenda/{meetingNo}/{meetingId} (no /weblogin in the shared URL) → SPA under baseUrl
+# Public agenda: /{club-segment}/agenda/{meetingNo}/{meetingId} (slug or legacy UUID; no /weblogin in shared URL)
 [[redirects]]
   from = "/:clubId/agenda/:meetingNo/:meetingId"
   to = "/weblogin/:clubId/agenda/:meetingNo/:meetingId"

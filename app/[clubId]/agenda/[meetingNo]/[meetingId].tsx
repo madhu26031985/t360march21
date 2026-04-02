@@ -4,19 +4,19 @@ import { useGlobalSearchParams, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PublicMeetingAgendaLoadedView } from '@/components/PublicMeetingAgendaWebLayouts';
 import { useTheme } from '@/contexts/ThemeContext';
-import {
-  extractMeetingNoFromRouteParam,
-  extractUuidFromRouteParam,
-} from '@/lib/agendaWebLink';
+import { extractUuidFromRouteParam } from '@/lib/agendaWebLink';
 import {
   normalizeStoredPublicAgendaSkin,
   publicAgendaSkinFromUrlParam,
 } from '@/lib/publicAgendaSkin';
-import { fetchPublicMeetingAgenda, type PublicAgendaPayload } from '@/lib/publicAgendaQuery';
+import {
+  fetchPublicMeetingAgendaByMeetingId,
+  type PublicAgendaPayload,
+} from '@/lib/publicAgendaQuery';
 
 export default function PublicMeetingAgendaPage() {
   const { theme } = useTheme();
-  const { clubId, meetingNo, meetingId } = useLocalSearchParams<{
+  const { meetingId } = useLocalSearchParams<{
     clubId: string;
     meetingNo: string;
     meetingId: string;
@@ -28,11 +28,9 @@ export default function PublicMeetingAgendaPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const cid = extractUuidFromRouteParam(clubId);
     const mid = extractUuidFromRouteParam(meetingId);
-    const num = extractMeetingNoFromRouteParam(meetingNo);
-
-    if (!cid || !num || !mid) {
+    // First segment may be club slug or legacy club UUID; only meeting UUID is used to load.
+    if (!mid) {
       setState('empty');
       setMessage('This link is invalid or incomplete.');
       return;
@@ -41,11 +39,7 @@ export default function PublicMeetingAgendaPage() {
     setState('loading');
     setMessage(null);
     try {
-      const res = await fetchPublicMeetingAgenda({
-        meetingId: mid,
-        clubId: cid,
-        meetingNo: num,
-      });
+      const res = await fetchPublicMeetingAgendaByMeetingId(mid);
       if (!res.ok) {
         setPayload(null);
         setState('empty');
@@ -60,7 +54,7 @@ export default function PublicMeetingAgendaPage() {
       setState('error');
       setMessage('Something went wrong while loading the agenda. Please try again later.');
     }
-  }, [clubId, meetingNo, meetingId]);
+  }, [meetingId]);
 
   useEffect(() => {
     load();

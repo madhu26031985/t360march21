@@ -2653,6 +2653,7 @@ export default function AgendaEditor() {
     meetingClubIdForWeb && meetingId
       ? buildAgendaWebUrl({
           clubId: meetingClubIdForWeb,
+          clubDisplayName: meetingClubDisplayNameForWeb,
           meetingNumber: meetingNumberForWeb,
           meetingId,
           skin: publicAgendaSkin,

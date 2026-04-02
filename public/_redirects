@@ -1,4 +1,4 @@
-# /{clubId}/agenda/{meetingNo}/{meetingId} → Expo baseUrl (see app.json experiments.baseUrl)
+# /{club-segment}/agenda/{meetingNo}/{meetingId} → Expo baseUrl (slug or legacy club UUID)
 /:clubId/agenda/:meetingNo/:meetingId  /weblogin/:clubId/agenda/:meetingNo/:meetingId  302
 
 # Short public agenda: /a/{meetingId}
