@@ -18,7 +18,27 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Building2, User, BookOpen, Users, Calendar, Vote, FileText, ClipboardCheck, ChevronRight, MessageSquare, Mic, GraduationCap, AlertCircle, X, Bell, Timer, CreditCard, Sparkles, UserCheck } from 'lucide-react-native';
+import {
+  Building2,
+  User,
+  BookOpen,
+  Users,
+  Calendar,
+  Vote,
+  FileText,
+  ClipboardCheck,
+  ChevronRight,
+  MessageSquare,
+  Mic,
+  GraduationCap,
+  AlertCircle,
+  X,
+  LucideBell,
+  Timer,
+  CreditCard,
+  Sparkles,
+  UserCheck,
+} from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { supabase } from '@/lib/supabase';
@@ -1148,6 +1168,19 @@ export default function MyJourney() {
     return [];
   }, [journeyToastmasterAvatarUrls, userBookedToastmaster, userAvatar]);
 
+  /** Table Topics tile: Table Topics Master first, then booked speakers (rotation like other multi-role tiles). */
+  const journeyTableTopicsDisplayAvatarUrls = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const u of [...journeyTableTopicsMasterAvatarUrls, ...journeyTableTopicsSpeakerAvatarUrls]) {
+      const t = (u || '').trim();
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      out.push(t);
+    }
+    return out;
+  }, [journeyTableTopicsMasterAvatarUrls, journeyTableTopicsSpeakerAvatarUrls]);
+
   type PendingMeetingReminderKey =
     | 'profile_intro'
     | 'profile_picture'
@@ -1674,7 +1707,7 @@ export default function MyJourney() {
                             </Text>
                           )
                         }
-                        icon={<Bell size={18} color="#D97706" />}
+                        icon={<LucideBell size={18} color="#D97706" />}
                         color="#D97706"
                         iconBackgroundColor="#FFFBEB"
                         onPress={() => {
@@ -1877,7 +1910,7 @@ export default function MyJourney() {
                   title="Table topic"
                   icon={<Mic size={16} color="#7C3AED" />}
                   color="#F5F3FF"
-                  avatarUrls={journeyTableTopicsSpeakerAvatarUrls}
+                  avatarUrls={journeyTableTopicsDisplayAvatarUrls}
                   onPress={handleTableTopicPress}
                 />
                 <MeetingActionButton
@@ -1897,7 +1930,7 @@ export default function MyJourney() {
                 />
                 <MeetingActionButton
                   title="Ah Counter"
-                  icon={<Bell size={16} color="#111827" />}
+                  icon={<LucideBell size={16} color="#111827" />}
                   color="#F3F4F6"
                   avatarUrls={journeyAhCounterAvatarUrls}
                   onPress={handleAhCounterPress}
@@ -1932,7 +1965,12 @@ export default function MyJourney() {
                     <View style={styles.liveVotingHeroTitleRow}>
                       <Text style={[styles.liveVotingHeroTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Agenda</Text>
                     </View>
-                    <Text style={[styles.liveVotingHeroSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>View current meeting flow</Text>
+                    <Text
+                      style={[styles.liveVotingHeroSubtitle, { color: theme.colors.textSecondary, marginTop: 2 }]}
+                      maxFontSizeMultiplier={1.3}
+                    >
+                      Your roadmap for this meeting
+                    </Text>
                   </View>
                   <ChevronRight size={20} color={theme.colors.textSecondary} />
                 </View>

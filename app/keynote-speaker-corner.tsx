@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   TextInput,
   Platform,
-  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,28 +21,19 @@ import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import {
   ArrowLeft,
-  NotebookPen,
-  FileText,
-  Bell,
-  Users,
   Calendar,
-  BookOpen,
-  Eye,
-  Vote,
-  Mic,
-  CheckSquare,
-  MessageCircle,
-  Clock,
-  LayoutDashboard,
-  UserCog,
-  Settings,
   ClipboardCheck,
   Edit3,
+  FileText,
+  Mic,
+  NotebookPen,
+  RotateCcw,
   Save,
-  User,
-  X,
   Search,
-  UserPlus,
+  User,
+  Users,
+  Vote,
+  X,
 } from 'lucide-react-native';
 
 /** Match Toastmaster Corner bottom dock icon size */
@@ -129,14 +119,11 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
-  const { width: windowWidth } = useWindowDimensions();
-  const consolidatedCardSideMargin = Math.min(56, Math.max(36, Math.round(windowWidth * 0.11)));
 
   // State management
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [keynoteSpeaker, setKeynoteSpeaker] = useState<KeynoteSpeaker | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isExComm, setIsExComm] = useState(false);
   const [isVPEClub, setIsVPEClub] = useState(false);
   const [showCongratsModal, setShowCongratsModal] = useState(false);
   const [bookingKeynoteRole, setBookingKeynoteRole] = useState(false);
@@ -398,26 +385,12 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   };
 
   /**
-   * Check if current user is ExComm
+   * Whether current user is club VPE (for assign-to-member affordance).
    */
   const checkUserRole = async (): Promise<void> => {
     if (!user?.id || !user?.currentClubId) return;
 
     try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading user role:', error);
-        return;
-      }
-
-      setIsExComm(data?.role === 'excomm');
-
       const { data: vpeData, error: vpeError } = await supabase
         .from('club_profiles')
         .select('vpe_id')
@@ -601,6 +574,8 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
     keynoteSpeaker?.assigned_user_id && keynoteSpeaker.app_user_profiles
   );
 
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+
   // Loading state
   if (isLoading) {
     return (
@@ -647,21 +622,23 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
         <View style={styles.headerSpacer} />
       </View>
 
+      <View style={styles.mainBody}>
       <ScrollView
-        style={styles.content}
+        style={styles.scrollMain}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded]}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
       >
+        <View style={styles.contentTop} pointerEvents="box-none">
         {showConsolidatedKeynoteCard ? (
-          <View style={styles.contentTop} pointerEvents="box-none">
             <View
               style={[
                 styles.consolidatedCornerCard,
                 {
-                  backgroundColor: theme.mode === 'dark' ? theme.colors.surface : '#FFFFFF',
-                  shadowColor: '#000000',
-                  borderColor: theme.mode === 'dark' ? theme.colors.border : '#E8EAED',
-                  marginHorizontal: consolidatedCardSideMargin,
+                  backgroundColor: theme.colors.background,
+                  borderBottomColor: theme.colors.border,
+                  marginHorizontal: 16,
+                  marginTop: 8,
                 },
               ]}
             >
@@ -888,7 +865,6 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                 </Text>
               </View>
             </View>
-          </View>
         ) : (
           <>
             <View
@@ -960,6 +936,21 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                       </Text>
                     )}
                   </TouchableOpacity>
+                  {isVPEClub ? (
+                    <TouchableOpacity
+                      style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12 }}
+                      onPress={() => {
+                        setShowAssignKeynoteModal(true);
+                        void loadClubMembers();
+                      }}
+                      disabled={bookingKeynoteRole || assigningKeynoteRole}
+                      hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.primary }} maxFontSizeMultiplier={1.25}>
+                        Assign to a member
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ) : (
                 <View style={styles.edSpeakerLoadingRow}>
@@ -973,504 +964,212 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
             </View>
           </>
         )}
+        </View>
+      </ScrollView>
 
-        {/* Spacer that pushes nav to bottom when content is short (same pattern as Toastmaster Corner) */}
-        <View style={styles.navSpacer} />
-
-        {/* Footer Navigation — same as Toastmaster Corner when no keynote speaker booked */}
-        {!keynoteSpeaker?.assigned_user_id && (
-          <>
-          <View style={[styles.footerNavigationInline, {
-            backgroundColor: theme.colors.surface,
+      <View
+        style={[
+          styles.geBottomDock,
+          {
             borderTopColor: theme.colors.border,
-            marginTop: 0,
-            marginBottom: 16,
-          }]}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.footerNavigationContent}>
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
-            </TouchableOpacity>
+            backgroundColor: theme.colors.surface,
+          },
+        ]}
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.footerNavigationContent}
+        >
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Book the role
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                <Bell size={FOOTER_NAV_ICON_SIZE} color="#772432" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() =>
+              router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id, initialTab: 'my_bookings' } })
+            }
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Withdraw role
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting.id } })}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Attendance
+            </Text>
+          </TouchableOpacity>
 
-            {isVPEClub && (
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => {
-                  setShowAssignKeynoteModal(true);
-                  void loadClubMembers();
-                }}
-                disabled={bookingKeynoteRole || assigningKeynoteRole}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
-                  <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#059669" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Assign</Text>
-              </TouchableOpacity>
-            )}
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting.id } })}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Role completion
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() =>
+              router.push({
+                pathname: '/keynote-speaker-notes',
+                params: { meetingId: meeting.id, clubId: user?.currentClubId ?? '' },
+              })
+            }
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              prep space
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDF4' }]}>
-                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#16a34a" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting.id } })}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              AGENDA
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FFF7ED' }]}>
-                <Eye size={FOOTER_NAV_ICON_SIZE} color="#ea580c" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting.id } })}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              VOTING
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+      </View>
 
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
-                <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FDF4FF' }]}>
-                <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                <Mic size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#E6F4FF' }]}>
-                <Clock size={FOOTER_NAV_ICON_SIZE} color="#0369a1" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FFF1F2' }]}>
-                <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#e11d48" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Mic size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/admin/voting-operations' })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#772432" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Vote Ops</Text>
-            </TouchableOpacity>
-
-            {isExComm && (
-              <>
-                <TouchableOpacity
-                  style={styles.footerNavItem}
-                  onPress={() => router.push('/admin/club-operations')}
-                >
-                  <View style={[styles.footerNavIcon, { backgroundColor: '#D1FAE5' }]}>
-                    <Settings size={FOOTER_NAV_ICON_SIZE} color="#10b981" />
-                  </View>
-                  <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.footerNavItem}
-                  onPress={() => router.push('/admin/meeting-management')}
-                >
-                  <View style={[styles.footerNavIcon, { backgroundColor: '#DBEAFE' }]}>
-                    <LayoutDashboard size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-                  </View>
-                  <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.footerNavItem}
-                  onPress={() => router.push('/admin/manage-club-users')}
-                >
-                  <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3C7' }]}>
-                    <UserCog size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-                  </View>
-                  <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Users</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </ScrollView>
-          </View>
-
-        <Modal
-          visible={showAssignKeynoteModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {
+      <Modal
+        visible={showAssignKeynoteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowAssignKeynoteModal(false);
+          setAssignKeynoteSearch('');
+        }}
+      >
+        <TouchableOpacity
+          style={styles.keynoteAssignOverlay}
+          activeOpacity={1}
+          onPress={() => {
             setShowAssignKeynoteModal(false);
             setAssignKeynoteSearch('');
           }}
         >
           <TouchableOpacity
-            style={styles.keynoteAssignOverlay}
             activeOpacity={1}
-            onPress={() => {
-              setShowAssignKeynoteModal(false);
-              setAssignKeynoteSearch('');
-            }}
+            style={[styles.keynoteAssignModal, { backgroundColor: theme.colors.surface }]}
+            onPress={(e) => e.stopPropagation()}
           >
-            <TouchableOpacity
-              activeOpacity={1}
-              style={[styles.keynoteAssignModal, { backgroundColor: theme.colors.surface }]}
-              onPress={(e) => e.stopPropagation()}
-            >
-              <View style={styles.keynoteAssignHeader}>
-                <Text style={[styles.keynoteAssignTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Assign Keynote Speaker
-                </Text>
-                <TouchableOpacity
-                  style={styles.keynoteAssignClose}
-                  onPress={() => {
-                    setShowAssignKeynoteModal(false);
-                    setAssignKeynoteSearch('');
-                  }}
-                >
+            <View style={styles.keynoteAssignHeader}>
+              <Text style={[styles.keynoteAssignTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Assign Keynote Speaker
+              </Text>
+              <TouchableOpacity
+                style={styles.keynoteAssignClose}
+                onPress={() => {
+                  setShowAssignKeynoteModal(false);
+                  setAssignKeynoteSearch('');
+                }}
+              >
+                <X size={20} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.keynoteAssignHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              Choose a club member to book the Keynote Speaker role for this meeting.
+            </Text>
+            <View style={[styles.keynoteAssignSearchWrap, { backgroundColor: theme.colors.background }]}>
+              <Search size={20} color={theme.colors.textSecondary} />
+              <TextInput
+                style={[styles.keynoteAssignSearchInput, { color: theme.colors.text }]}
+                placeholder="Search by name or email..."
+                placeholderTextColor={theme.colors.textSecondary}
+                value={assignKeynoteSearch}
+                onChangeText={setAssignKeynoteSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {assignKeynoteSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setAssignKeynoteSearch('')}>
                   <X size={20} color={theme.colors.textSecondary} />
                 </TouchableOpacity>
-              </View>
-              <Text style={[styles.keynoteAssignHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Choose a club member to book the Keynote Speaker role for this meeting.
-              </Text>
-              <View style={[styles.keynoteAssignSearchWrap, { backgroundColor: theme.colors.background }]}>
-                <Search size={20} color={theme.colors.textSecondary} />
-                <TextInput
-                  style={[styles.keynoteAssignSearchInput, { color: theme.colors.text }]}
-                  placeholder="Search by name or email..."
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={assignKeynoteSearch}
-                  onChangeText={setAssignKeynoteSearch}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {assignKeynoteSearch.length > 0 && (
-                  <TouchableOpacity onPress={() => setAssignKeynoteSearch('')}>
-                    <X size={20} color={theme.colors.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <ScrollView style={styles.keynoteAssignList} showsVerticalScrollIndicator={false}>
-                {assigningKeynoteRole ? (
-                  <View style={styles.keynoteAssignEmptyWrap}>
-                    <ActivityIndicator color={theme.colors.primary} />
-                  </View>
-                ) : filteredMembersForAssignKeynote.length > 0 ? (
-                  filteredMembersForAssignKeynote.map((member) => (
-                    <TouchableOpacity
-                      key={member.id}
-                      style={[styles.keynoteAssignMemberRow, { backgroundColor: theme.colors.background }]}
-                      onPress={() => handleAssignKeynoteToMember(member)}
-                      disabled={assigningKeynoteRole}
-                    >
-                      <View style={styles.keynoteAssignAvatar}>
-                        {member.avatar_url ? (
-                          <Image source={{ uri: member.avatar_url }} style={styles.keynoteAssignAvatarImage} />
-                        ) : (
-                          <User size={20} color="#ffffff" />
-                        )}
-                      </View>
-                      <View style={styles.keynoteAssignMemberTextWrap}>
-                        <Text style={[styles.keynoteAssignMemberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                          {member.full_name}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))
-                ) : (
-                  <View style={styles.keynoteAssignEmptyWrap}>
-                    <Text style={[styles.keynoteAssignEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      No members found
-                    </Text>
-                  </View>
-                )}
-              </ScrollView>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
-          </>
-        )}
-
-        {/* Footer Navigation — same dock as Toastmaster Corner + Prep (keynote speaker notes) */}
-        {keynoteSpeaker?.assigned_user_id && (
-          <View style={[styles.footerNavigationInline, {
-            backgroundColor: theme.colors.surface,
-            borderTopColor: theme.colors.border,
-            marginTop: 0,
-            marginBottom: 16,
-          }]}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.footerNavigationContent}
-            >
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
-            </TouchableOpacity>
-
-            {isKeynoteSpeaker() && (
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() =>
-                  router.push({
-                    pathname: '/keynote-speaker-notes',
-                    params: { meetingId: meeting?.id },
-                  })
-                }
-                accessibilityLabel="Keynote speaker prep space"
-              >
-                <View
-                  style={[
-                    styles.footerNavIcon,
-                    { backgroundColor: theme.mode === 'dark' ? '#374151' : '#F1F5F9' },
-                  ]}
-                >
-                  <NotebookPen
-                    size={FOOTER_NAV_ICON_SIZE}
-                    color={theme.mode === 'dark' ? '#A3A3A3' : '#777777'}
-                  />
+              )}
+            </View>
+            <ScrollView style={styles.keynoteAssignList} showsVerticalScrollIndicator={false}>
+              {assigningKeynoteRole ? (
+                <View style={styles.keynoteAssignEmptyWrap}>
+                  <ActivityIndicator color={theme.colors.primary} />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Prep
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                <Bell size={FOOTER_NAV_ICON_SIZE} color="#772432" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDF4' }]}>
-                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#16a34a" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FFF7ED' }]}>
-                <Eye size={FOOTER_NAV_ICON_SIZE} color="#ea580c" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
-                <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FDF4FF' }]}>
-                <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                <Mic size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
-                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#059669" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Roles</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDFA' }]}>
-                <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#0d9488" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                <Clock size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push('/admin/club-operations')}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#F5F3FF' }]}>
-                <LayoutDashboard size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push('/admin/manage-club-users')}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#FDF2F8' }]}>
-                <UserCog size={FOOTER_NAV_ICON_SIZE} color="#db2777" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Users</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push('/admin/meeting-operations')}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                <Settings size={FOOTER_NAV_ICON_SIZE} color="#004165" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push('/admin/voting-operations')}
-            >
-              <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#772432" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Vote Ops</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-        )}
-
-      </ScrollView>
+              ) : filteredMembersForAssignKeynote.length > 0 ? (
+                filteredMembersForAssignKeynote.map((member) => (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={[styles.keynoteAssignMemberRow, { backgroundColor: theme.colors.background }]}
+                    onPress={() => handleAssignKeynoteToMember(member)}
+                    disabled={assigningKeynoteRole}
+                  >
+                    <View style={styles.keynoteAssignAvatar}>
+                      {member.avatar_url ? (
+                        <Image source={{ uri: member.avatar_url }} style={styles.keynoteAssignAvatarImage} />
+                      ) : (
+                        <User size={20} color="#ffffff" />
+                      )}
+                    </View>
+                    <View style={styles.keynoteAssignMemberTextWrap}>
+                      <Text style={[styles.keynoteAssignMemberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                        {member.full_name}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.keynoteAssignEmptyWrap}>
+                  <Text style={[styles.keynoteAssignEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    No members found
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Congrats Keynote Speaker modal - shown once per meeting when title not added */}
       <Modal
@@ -1493,7 +1192,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               Congrats {user?.fullName?.split(' ')[0] || 'there'}! 🎉
             </Text>
             <Text style={[styles.congratsModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              You're the Keynote Speaker. Add your{' '}
+              {"You're the Keynote Speaker. Add your "}
               <Text style={styles.congratsModalHighlight}>keynote title</Text>
               {' '}(or use Prep below) so members know what to expect.
             </Text>
@@ -1527,17 +1226,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
   },
   backButton: {
     padding: 8,
-    marginRight: 8,
+    width: 40,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
     flex: 1,
+    fontSize: 21,
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
   headerSpacer: {
     width: 40,
@@ -1552,10 +1253,19 @@ const styles = StyleSheet.create({
   contentContainerPadded: {
     paddingHorizontal: 4,
   },
-  /** Expands inside ScrollView so the horizontal nav bar sits at the bottom when content is short */
-  navSpacer: {
+  contentTop: {},
+  mainBody: {
     flex: 1,
-    minHeight: 16,
+    minHeight: 0,
+  },
+  scrollMain: {
+    flex: 1,
+  },
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingHorizontal: 8,
   },
   meetingCard: {
     marginHorizontal: 13,
@@ -2123,12 +1833,13 @@ const styles = StyleSheet.create({
   footerNavigationContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
-    paddingHorizontal: 6,
+    gap: 10,
+    paddingHorizontal: 4,
   },
   footerNavItem: {
     alignItems: 'center',
-    minWidth: 45,
+    minWidth: 62,
+    paddingVertical: 2,
   },
   footerNavIcon: {
     width: 30,
@@ -2136,37 +1847,30 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 3,
+    marginBottom: 4,
   },
   footerNavLabel: {
-    fontSize: 8,
-    fontWeight: '600',
+    fontSize: 9,
+    fontWeight: '500',
     textAlign: 'center',
   },
-  contentTop: {
-    width: '100%',
-  },
+  /** Flat Notion-style header — same surface as page, no card chrome (matches Toastmaster Corner). */
   consolidatedCornerCard: {
-    marginTop: 12,
-    marginBottom: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 20,
+    marginBottom: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
     alignItems: 'center',
-    alignSelf: 'center',
+    alignSelf: 'stretch',
     width: '100%',
     maxWidth: 720,
     overflow: 'visible',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.14,
-    shadowRadius: 32,
-    elevation: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   consolidatedClubBadge: {
-    marginTop: 2,
-    marginBottom: 20,
+    marginTop: 0,
+    marginBottom: 16,
     alignSelf: 'center',
     paddingHorizontal: 8,
   },
@@ -2187,12 +1891,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderWidth: 2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   consolidatedAvatarImage: {
     width: 96,

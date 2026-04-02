@@ -1,15 +1,37 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Linking } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Plus, Calendar, Clock, MapPin, Users, CreditCard as Edit3, X, Building2, Crown, User, Shield, Eye, UserCheck, Home, Settings } from 'lucide-react-native';
-import { RotateCcw } from 'lucide-react-native';
-import { Platform } from 'react-native';
+import {
+  ArrowLeft,
+  Plus,
+  Calendar,
+  Clock,
+  MapPin,
+  Users,
+  CreditCard as Edit3,
+  X,
+  Building2,
+  Crown,
+  User,
+  Shield,
+  Eye,
+  UserCheck,
+  Home,
+  Settings,
+  Coffee,
+  MessageCircle,
+  Globe,
+  ChevronRight,
+  RotateCcw,
+} from 'lucide-react-native';
 
 const FOOTER_NAV_ICON_SIZE = 15;
+const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
+const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
 
 interface Meeting {
   id: string;
@@ -37,12 +59,26 @@ const MEETING_LIST_COLUMNS =
 export default function MeetingManagement() {
   const { theme } = useTheme();
   const { user } = useAuth();
-  
+  const insets = useSafeAreaInsets();
+
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<'open' | 'closed'>('open');
   const [filteredMeetings, setFilteredMeetings] = useState<Meeting[]>([]);
+
+  const openMeetingsCount = useMemo(
+    () => meetings.filter((m) => m.meeting_status === 'open').length,
+    [meetings]
+  );
+  const closedMeetingsCount = useMemo(
+    () => meetings.filter((m) => m.meeting_status === 'close').length,
+    [meetings]
+  );
+
+  const isExComm =
+    user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
 
   const showAlert = (
     title: string,
@@ -67,6 +103,26 @@ export default function MeetingManagement() {
       Alert.alert(title, message, buttons);
     }
   };
+
+  const openWhatsAppSupport = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
+      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
+      else Alert.alert('Error', 'Cannot open WhatsApp');
+    } catch {
+      Alert.alert('Error', 'Failed to open WhatsApp');
+    }
+  }, []);
+
+  const openWebLogin = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
+      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
+      else Alert.alert('Error', 'Cannot open web login');
+    } catch {
+      Alert.alert('Error', 'Failed to open web login');
+    }
+  }, []);
 
   useEffect(() => {
     filterMeetings();
@@ -186,8 +242,6 @@ export default function MeetingManagement() {
   };
 
   const handleAddMeeting = () => {
-    // Check if club already has 3 open meetings
-    const openMeetingsCount = meetings.filter(m => m.meeting_status === 'open').length;
     if (openMeetingsCount >= 3) {
       showAlert(
         'Maximum Open Meetings Reached',
@@ -377,7 +431,7 @@ export default function MeetingManagement() {
   };
 
   const MeetingCard = ({ meeting }: { meeting: Meeting }) => (
-    <View style={[styles.meetingCard, { backgroundColor: theme.colors.surface }]}>
+    <View style={[styles.meetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
       {/* Meeting Information */}
       <View style={styles.meetingInfo}>
         <Text style={[styles.meetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -428,12 +482,12 @@ export default function MeetingManagement() {
       </View>
       
       {/* Action Buttons */}
-      <View style={styles.meetingActions}>
+      <View style={[styles.meetingActions, { borderTopColor: theme.colors.border }]}>
         {meeting.meeting_status === 'open' ? (
           <>
             <View style={styles.actionButtonContainer}>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: '#f3f4f6' }]}
+                style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                 onPress={() => router.push(`/admin/manage-meeting-roles?meetingId=${meeting.id}`)}
                 activeOpacity={0.7}
               >
@@ -446,7 +500,7 @@ export default function MeetingManagement() {
 
             <View style={styles.actionButtonContainer}>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: '#f3f4f6' }]}
+                style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                 onPress={() => handleEditMeeting(meeting)}
                 activeOpacity={0.7}
               >
@@ -459,7 +513,7 @@ export default function MeetingManagement() {
 
             <View style={styles.actionButtonContainer}>
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: '#f3f4f6' }]}
+                style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
                 onPress={() => handleCloseMeeting(meeting)}
                 activeOpacity={0.7}
               >
@@ -473,7 +527,7 @@ export default function MeetingManagement() {
         ) : (
           <View style={styles.actionButtonContainer}>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#f3f4f6' }]}
+              style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
               onPress={() => handleReopenMeeting(meeting)}
               activeOpacity={0.7}
             >
@@ -499,231 +553,322 @@ export default function MeetingManagement() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Management</Text>
-        <View style={styles.headerRightSpacer} />
-      </View>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      <View style={styles.pageMain}>
+        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Meeting Management
+          </Text>
+          <View style={styles.headerRightSpacer} />
+        </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <View style={[styles.managementMasterBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-        {/* Club Card */}
-        {clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: 'transparent' }]}>
-            <View style={styles.clubHeader}>
-              <View style={[styles.clubIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-                <Building2 size={20} color={theme.colors.primary} />
-              </View>
-              <View style={styles.clubInfo}>
-                <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {clubInfo.name}
-                </Text>
-                <View style={styles.clubMeta}>
-                  {clubInfo.club_number && (
-                    <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Club #{clubInfo.club_number}
-                    </Text>
-                  )}
-                  {user?.clubRole && (
-                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
-                      {getRoleIcon(user.clubRole)}
-                      <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>{formatRole(user.clubRole)}</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Create Meeting Hero */}
-        <View style={[styles.createMeetingHeroWrap, { backgroundColor: 'transparent', borderColor: theme.colors.border }]}>
-          <TouchableOpacity
+        <ScrollView
+          style={styles.pageScroll}
+          contentContainerStyle={styles.pageScrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View
             style={[
-              styles.createMeetingHeroButton,
+              styles.notionSheet,
               {
-                backgroundColor: theme.colors.background,
+                backgroundColor: theme.colors.surface,
                 borderColor: theme.colors.border,
               },
             ]}
-            onPress={handleAddMeeting}
-            disabled={meetings.filter(m => m.meeting_status === 'open').length >= 3}
-            activeOpacity={0.8}
-            accessibilityLabel="Create meeting"
-            accessibilityHint="Create a new meeting"
           >
-            <View style={styles.createMeetingHeroRow}>
-              <View style={[styles.createMeetingHeroIconCircle, { backgroundColor: theme.colors.surface }]}>
-                <Plus size={18} color={theme.colors.textSecondary} />
+            {clubInfo && (
+              <View
+                style={[
+                  styles.notionClubBlock,
+                  { backgroundColor: theme.mode === 'dark' ? theme.colors.background : '#fffbeb' },
+                ]}
+              >
+                <View style={styles.clubHeader}>
+                  <View style={[styles.clubIcon, { backgroundColor: theme.colors.primary + '20' }]}>
+                    <Building2 size={20} color={theme.colors.primary} />
+                  </View>
+                  <View style={styles.clubInfo}>
+                    <View style={styles.clubNameRow}>
+                      <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                        {clubInfo.name}
+                      </Text>
+                    </View>
+                    <View style={styles.clubMeta}>
+                      {clubInfo.club_number && (
+                        <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                          Club #{clubInfo.club_number}
+                        </Text>
+                      )}
+                      {user?.clubRole && (
+                        <View style={[styles.roleTag, { backgroundColor: getRoleColor(user.clubRole) }]}>
+                          {getRoleIcon(user.clubRole)}
+                          <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>
+                            {formatRole(user.clubRole)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </View>
               </View>
-              <View style={styles.createMeetingHeroTextCol}>
-                <Text style={[styles.createMeetingHeroTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+            )}
+
+            <View style={[styles.notionHairline, { backgroundColor: theme.colors.border }]} />
+
+            <TouchableOpacity
+              style={styles.notionCreateRow}
+              onPress={handleAddMeeting}
+              disabled={openMeetingsCount >= 3}
+              activeOpacity={0.85}
+              accessibilityLabel="Create meeting"
+              accessibilityHint="Create a new meeting"
+            >
+              <View style={[styles.notionCreateIcon, { backgroundColor: theme.colors.primary + '14' }]}>
+                <Plus size={20} color={theme.colors.primary} strokeWidth={2.2} />
+              </View>
+              <View style={styles.notionCreateTextCol}>
+                <Text style={[styles.notionCreateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
                   Create meeting
                 </Text>
-                <Text style={[styles.createMeetingHeroSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1} numberOfLines={2}>
-                  {meetings.filter(m => m.meeting_status === 'open').length >= 3
+                <Text
+                  style={[styles.notionCreateSubtext, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.1}
+                  numberOfLines={2}
+                >
+                  {openMeetingsCount >= 3
                     ? 'Close an open meeting to create a new one.'
                     : 'Add a new meeting for your club.'}
                 </Text>
               </View>
-              <View style={{ justifyContent: 'center', paddingHorizontal: 2 }}>
-                <Text style={[styles.createMeetingHeroArrow, { color: theme.colors.textSecondary }]}>{'>'}</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              {
-                backgroundColor: selectedTab === 'open' ? theme.colors.background : theme.colors.surface,
-                borderColor: theme.colors.border,
-              }
-            ]}
-            onPress={() => setSelectedTab('open')}
-          >
-            <Text style={[
-              styles.tabText,
-              { color: theme.colors.text }
-            ]} maxFontSizeMultiplier={1.3}>
-              Open Meetings
-            </Text>
-            <View style={[
-              styles.tabCount,
-              { backgroundColor: theme.colors.border }
-            ]}>
-              <Text style={[
-                styles.tabCountText,
-                { color: theme.colors.textSecondary }
-              ]} maxFontSizeMultiplier={1.3}>
-                {meetings.filter(m => m.meeting_status === 'open').length}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              {
-                backgroundColor: selectedTab === 'closed' ? theme.colors.background : theme.colors.surface,
-                borderColor: theme.colors.border,
-              }
-            ]}
-            onPress={() => setSelectedTab('closed')}
-          >
-            <Text style={[
-              styles.tabText,
-              { color: theme.colors.text }
-            ]} maxFontSizeMultiplier={1.3}>
-              Closed Meetings
-            </Text>
-            <View style={[
-              styles.tabCount,
-              { backgroundColor: theme.colors.border }
-            ]}>
-              <Text style={[
-                styles.tabCountText,
-                { color: theme.colors.textSecondary }
-              ]} maxFontSizeMultiplier={1.3}>
-                {meetings.filter(m => m.meeting_status === 'close').length}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Meetings Section */}
-        <View style={styles.meetingsSection}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            {selectedTab === 'open' ? 'Open' : 'Closed'} Meetings ({filteredMeetings.length})
-          </Text>
-          
-          {filteredMeetings.map((meeting) => (
-            <MeetingCard key={meeting.id} meeting={meeting} />
-          ))}
-
-          {filteredMeetings.length === 0 && (
-            <View style={styles.emptyState}>
-              <Calendar size={48} color={theme.colors.textSecondary} />
-              <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                No {selectedTab === 'open' ? 'open' : 'closed'} meetings
-              </Text>
-              <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {selectedTab === 'open'
-                  ? 'Create your first meeting to get started'
-                  : 'Closed meetings will appear here'
-                }
-              </Text>
-            </View>
-          )}
-        </View>
-        </View>
-
-        <View style={styles.navSpacer} />
-
-        {/* Navigation Icons */}
-        <View style={[styles.navigationSection, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.navigationBar}>
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
+              <ChevronRight size={22} color={theme.colors.textSecondary} strokeWidth={2} />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/club')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
-            </TouchableOpacity>
+            <View style={[styles.notionHairline, { backgroundColor: theme.colors.border }]} />
 
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/meetings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/settings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
-            </TouchableOpacity>
-
-            {user?.clubRole === 'excomm' && (
+            <View style={styles.notionTabsRow}>
               <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/admin')}
+                style={[
+                  styles.notionTab,
+                  {
+                    backgroundColor: selectedTab === 'open' ? theme.colors.primary : 'transparent',
+                    borderColor: selectedTab === 'open' ? theme.colors.primary : theme.colors.border,
+                  },
+                ]}
+                onPress={() => setSelectedTab('open')}
+                activeOpacity={0.85}
               >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
+                <Text
+                  style={[
+                    styles.notionTabText,
+                    { color: selectedTab === 'open' ? '#ffffff' : theme.colors.text },
+                  ]}
+                  maxFontSizeMultiplier={1.3}
+                >
+                  Open
+                </Text>
+                <View
+                  style={[
+                    styles.notionTabCount,
+                    {
+                      backgroundColor:
+                        selectedTab === 'open' ? 'rgba(255,255,255,0.22)' : theme.colors.primary + '18',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.notionTabCountText,
+                      { color: selectedTab === 'open' ? '#ffffff' : theme.colors.primary },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
+                    {openMeetingsCount}
+                  </Text>
                 </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
               </TouchableOpacity>
-            )}
+
+              <TouchableOpacity
+                style={[
+                  styles.notionTab,
+                  {
+                    backgroundColor: selectedTab === 'closed' ? theme.colors.primary : 'transparent',
+                    borderColor: selectedTab === 'closed' ? theme.colors.primary : theme.colors.border,
+                  },
+                ]}
+                onPress={() => setSelectedTab('closed')}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[
+                    styles.notionTabText,
+                    { color: selectedTab === 'closed' ? '#ffffff' : theme.colors.text },
+                  ]}
+                  maxFontSizeMultiplier={1.3}
+                >
+                  Closed
+                </Text>
+                <View
+                  style={[
+                    styles.notionTabCount,
+                    {
+                      backgroundColor:
+                        selectedTab === 'closed' ? 'rgba(255,255,255,0.22)' : theme.colors.primary + '18',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.notionTabCountText,
+                      { color: selectedTab === 'closed' ? '#ffffff' : theme.colors.primary },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
+                    {closedMeetingsCount}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.notionHairline, { backgroundColor: theme.colors.border }]} />
+
+            <View style={styles.notionListSection}>
+              <View style={styles.listHeaderRow}>
+                <Text style={[styles.listHeaderTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {selectedTab === 'open' ? 'Open meetings' : 'Closed meetings'}
+                </Text>
+                <View style={[styles.listCountBadge, { backgroundColor: theme.colors.primary + '16' }]}>
+                  <Text style={[styles.listCountText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                    {filteredMeetings.length}
+                  </Text>
+                </View>
+              </View>
+
+              {filteredMeetings.map((meeting) => (
+                <MeetingCard key={meeting.id} meeting={meeting} />
+              ))}
+
+              {filteredMeetings.length === 0 && (
+                <View style={styles.emptyState}>
+                  <Calendar size={40} color={theme.colors.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    No {selectedTab === 'open' ? 'open' : 'closed'} meetings
+                  </Text>
+                  <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    {selectedTab === 'open'
+                      ? 'Create your first meeting to get started'
+                      : 'Closed meetings will appear here'}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
+        </ScrollView>
+
+        <View
+          style={[
+            styles.geBottomDock,
+            {
+              borderTopColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+              paddingBottom: Math.max(insets.bottom, 10),
+            },
+          ]}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.footerNavigationContent}
+          >
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Home size={FOOTER_NAV_ICON_SIZE} color="#0a66c2" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Home
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Club
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/(tabs)/meetings')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Meeting
+              </Text>
+            </TouchableOpacity>
+            {isExComm ? (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/(tabs)/admin')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Shield size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Admin
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/(tabs)/settings')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Settings size={FOOTER_NAV_ICON_SIZE} color="#6b7280" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Settings
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/buy-us-a-coffee')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Coffee
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Support
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Globe size={FOOTER_NAV_ICON_SIZE} color="#334155" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Web
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -770,68 +915,145 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
   },
-
-  createMeetingHeroWrap: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 10,
-    borderRadius: 12,
-    padding: 0,
+  pageMain: {
+    flex: 1,
+    minHeight: 0,
   },
-  createMeetingHeroButton: {
-    borderRadius: 12,
-    paddingVertical: 16,
+  pageScroll: {
+    flex: 1,
+  },
+  pageScrollContent: {
     paddingHorizontal: 16,
-    borderWidth: 1,
+    paddingTop: 16,
+    paddingBottom: 16,
   },
-  createMeetingHeroRow: {
+  notionSheet: {
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  notionClubBlock: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  notionHairline: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+  },
+  notionCreateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 14,
   },
-  createMeetingHeroIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  notionCreateIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createMeetingHeroTextCol: {
+  notionCreateTextCol: {
     flex: 1,
+    minWidth: 0,
   },
-  createMeetingHeroTitle: {
+  notionCreateTitle: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: -0.2,
   },
-  createMeetingHeroSubtext: {
+  notionCreateSubtext: {
     fontSize: 12.5,
     fontWeight: '600',
     lineHeight: 18,
-    marginTop: 3,
+    marginTop: 4,
   },
-  createMeetingHeroArrow: {
-    fontSize: 26,
+  notionTabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  notionTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+  },
+  notionTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  notionTabCount: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 0,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  notionTabCountText: {
+    fontSize: 11,
     fontWeight: '700',
-    lineHeight: 26,
   },
-  content: {
+  notionListSection: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    paddingBottom: 18,
+  },
+  listHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  listHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '700',
     flex: 1,
   },
-  managementMasterBox: {
-    marginHorizontal: 12,
-    marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  clubCard: {
-    marginHorizontal: 0,
-    marginTop: 0,
+  listCountBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 0,
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+  },
+  listCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 8,
+  },
+  footerNavigationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    minWidth: 62,
+    paddingVertical: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   clubHeader: {
     flexDirection: 'row',
@@ -840,7 +1062,7 @@ const styles = StyleSheet.create({
   clubIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -848,10 +1070,16 @@ const styles = StyleSheet.create({
   clubInfo: {
     flex: 1,
   },
+  clubNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   clubName: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    flex: 1,
   },
   clubMeta: {
     flexDirection: 'row',
@@ -866,51 +1094,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 12,
+    borderRadius: 0,
   },
   roleText: {
     fontSize: 10,
     fontWeight: '600',
     color: '#ffffff',
     marginLeft: 4,
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginRight: 6,
-  },
-  tabCount: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    minWidth: 20,
-    alignItems: 'center',
-  },
-  tabCountText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  meetingsSection: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 16,
   },
   warningCard: {
     marginHorizontal: 16,
@@ -941,16 +1131,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 16,
-  },
   meetingCard: {
-    borderRadius: 12,
+    borderRadius: 0,
     padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
+    marginBottom: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#E5E7EB',
   },
   meetingInfo: {
@@ -981,7 +1166,7 @@ const styles = StyleSheet.create({
   statusTag: {
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 10,
+    borderRadius: 0,
   },
   statusText: {
     fontSize: 10,
@@ -1008,8 +1193,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   actionButtonContainer: {
     alignItems: 'center',
@@ -1018,11 +1202,10 @@ const styles = StyleSheet.create({
   actionButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   actionButtonLabel: {
     fontSize: 11,
@@ -1050,48 +1233,5 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     lineHeight: 20,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  navSpacer: {
-    flex: 1,
-    minHeight: 24,
-  },
-  navigationSection: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  navigationBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  navItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  navIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  navLabel: {
-    fontSize: 9,
-    fontWeight: '500',
-    textAlign: 'center',
   },
 });

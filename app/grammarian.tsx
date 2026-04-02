@@ -11,7 +11,7 @@ import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
 import { fetchGrammarianCornerSnapshot, fetchGrammarianClubMembersDirectory } from '@/lib/grammarianCornerQuery';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
 import { GrammarianNotesScreen } from './grammarian-notes';
-import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus, ClipboardCheck, Vote } from 'lucide-react-native';
 
 /** Match Toastmaster / corner bottom dock icon size */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -26,6 +26,33 @@ interface Meeting {
   meeting_end_time: string | null;
   meeting_mode: string;
   meeting_status: string;
+}
+
+function formatTimeForGrammarianDisplay(t: string): string {
+  const p = t.split(':');
+  if (p.length >= 2) return `${p[0]}:${p[1]}`;
+  return t;
+}
+
+function grammarianMeetingModeLabel(m: Meeting): string {
+  return m.meeting_mode === 'in_person' ? 'In Person' : m.meeting_mode === 'online' ? 'Online' : 'Hybrid';
+}
+
+/** Matches General Evaluator / Toastmaster Corner meta line */
+function formatGrammarianConsolidatedMeetingMeta(m: Meeting): string {
+  const date = new Date(m.meeting_date);
+  const monthDay = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const weekdayShort = date.toLocaleDateString('en-US', { weekday: 'short' });
+  const parts: string[] = [monthDay, weekdayShort];
+  if (m.meeting_start_time && m.meeting_end_time) {
+    parts.push(
+      `${formatTimeForGrammarianDisplay(m.meeting_start_time)} - ${formatTimeForGrammarianDisplay(m.meeting_end_time)}`
+    );
+  } else if (m.meeting_start_time) {
+    parts.push(formatTimeForGrammarianDisplay(m.meeting_start_time));
+  }
+  parts.push(grammarianMeetingModeLabel(m));
+  return parts.join(' | ');
 }
 
 interface AssignedGrammarian {
@@ -119,7 +146,8 @@ export default function GrammarianReport() {
   const [idiomOfTheDay, setIdiomOfTheDay] = useState<IdiomOfTheDay | null>(null);
   const [quoteOfTheDay, setQuoteOfTheDay] = useState<QuoteOfTheDay | null>(null);
   const [activeTab, setActiveTab] = useState<'corner' | 'summary'>('summary');
-  const [summarySubTab, setSummarySubTab] = useState<'word' | 'idiom' | 'quote' | 'report'>('word');
+  const [summaryMainTab, setSummaryMainTab] = useState<'lexicon' | 'reports'>('lexicon');
+  const [summarySubTab, setSummarySubTab] = useState<'word' | 'idiom' | 'quote'>('word');
   const [usageTracking, setUsageTracking] = useState<UsageTracking>({
     word_usage: 0,
     idiom_usage: 0,
@@ -159,6 +187,8 @@ export default function GrammarianReport() {
   const [isLoadingClubMembers, setIsLoadingClubMembers] = useState(false);
   const [assigningGrammarianRole, setAssigningGrammarianRole] = useState(false);
   const [cornerLiveSubTab, setCornerLiveSubTab] = useState<'good-usage' | 'improvements' | 'stats'>('good-usage');
+  /** Sub-tabs under Grammarian Corner: prep shortcuts vs live meeting tools */
+  const [cornerPhaseTab, setCornerPhaseTab] = useState<'pre-meeting' | 'live-meeting'>('pre-meeting');
   const [showGrammarianInfoModal, setShowGrammarianInfoModal] = useState(false);
 
   const wordOfTheDayDotScale = wordOfTheDayPulse.interpolate({
@@ -1208,6 +1238,119 @@ export default function GrammarianReport() {
     </TouchableOpacity>
   );
 
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+
+  /** Same 7-action dock as General Evaluator Report */
+  const renderGrammarianGeDock = () => (
+    <View
+      style={[
+        styles.geBottomDock,
+        {
+          borderTopColor: theme.colors.border,
+          backgroundColor: theme.colors.surface,
+        },
+      ]}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.footerNavigationContent}
+      >
+        <TouchableOpacity
+          style={styles.footerNavItem}
+          onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
+        >
+          <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+            <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
+          </View>
+          <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Book the role
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.footerNavItem}
+          onPress={() =>
+            router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id, initialTab: 'my_bookings' } })
+          }
+        >
+          <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+            <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
+          </View>
+          <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Withdraw role
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.footerNavItem}
+          onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting.id } })}
+        >
+          <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+            <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
+          </View>
+          <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Attendance
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.footerNavItem}
+          onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting.id } })}
+        >
+          <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+            <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
+          </View>
+          <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Role completion
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.footerNavItem}
+          onPress={() =>
+            router.push({
+              pathname: '/grammarian-notes',
+              params: { meetingId: meeting.id, clubId: user?.currentClubId ?? '' },
+            })
+          }
+        >
+          <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+            <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
+          </View>
+          <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            prep space
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.footerNavItem}
+          onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting.id } })}
+        >
+          <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+            <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+          </View>
+          <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            AGENDA
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.footerNavItem}
+          onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting.id } })}
+        >
+          <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+            <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
+          </View>
+          <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            VOTING
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -1237,8 +1380,9 @@ export default function GrammarianReport() {
   // Check if no Grammarian is assigned
   if (!assignedGrammarian) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        {/* Header */}
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+        <View style={{ flex: 1 }}>
         <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <ArrowLeft size={24} color={theme.colors.text} />
@@ -1247,8 +1391,13 @@ export default function GrammarianReport() {
           <View style={styles.headerSpacer} />
         </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
-          <View style={styles.tabContentWrapper}>
+        <View style={styles.mainBody}>
+        <ScrollView
+          style={styles.scrollMain}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+        >
+          <View style={styles.contentTop}>
           <View style={[styles.noAssignmentNotionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={styles.meetingCardContent}>
               <View style={[styles.dateBox, {
@@ -1265,25 +1414,24 @@ export default function GrammarianReport() {
                 <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   {meeting.meeting_title}
                 </Text>
-                <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Day: {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
+                <Text
+                  style={[styles.meetingCardMetaCompact, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.25}
+                >
+                  {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'short' })} • {meeting.meeting_start_time || '--:--'}
+                  {meeting.meeting_end_time ? ` - ${meeting.meeting_end_time}` : ''}
                 </Text>
-                {meeting.meeting_start_time && (
-                  <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Time: {meeting.meeting_start_time}
-                    {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
-                  </Text>
-                )}
-                <Text style={[styles.meetingCardMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Mode: {meeting.meeting_mode === 'in_person' ? 'In Person' :
-                         meeting.meeting_mode === 'online' ? 'Online' : 'Hybrid'}
+                <Text
+                  style={[styles.meetingCardMetaCompact, styles.meetingCardMetaModeLine, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.25}
+                >
+                  {grammarianMeetingModeLabel(meeting)}
                 </Text>
               </View>
             </View>
 
             <View style={[styles.noAssignmentDivider, { backgroundColor: theme.colors.border }]} />
 
-            {/* No Grammarian Assigned State */}
             <View style={[styles.noAssignmentState, styles.noAssignmentStateInCard]}>
             <BookOpen size={64} color={theme.colors.textSecondary} />
             <Text style={[styles.noAssignmentSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
@@ -1308,158 +1456,28 @@ export default function GrammarianReport() {
                 </Text>
               )}
             </TouchableOpacity>
+            {isVPEClub ? (
+              <TouchableOpacity
+                style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12 }}
+                onPress={() => setShowAssignGrammarianModal(true)}
+                disabled={bookingGrammarianRole || assigningGrammarianRole}
+                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.primary }} maxFontSizeMultiplier={1.25}>
+                  Assign to a member
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             </View>
             <View style={styles.meetingCardDecoration} />
           </View>
           </View>
-
-          {/* Navigation Quick Actions — same dock sizing as assigned Grammarian Report (FOOTER_NAV_ICON_SIZE, quickAction*) */}
-          <View
-            style={[
-              styles.quickActionsBoxContainer,
-              {
-                backgroundColor: theme.colors.surface,
-                borderTopColor: theme.colors.border,
-                marginTop: 8,
-              },
-            ]}
-          >
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                  <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5E5' }]}>
-                  <Bell size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId, initialTab: 'my_bookings' } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
-                  <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
-              </TouchableOpacity>
-
-              {isVPEClub && (
-                <TouchableOpacity
-                  style={styles.quickActionItem}
-                  onPress={() => setShowAssignGrammarianModal(true)}
-                  disabled={bookingGrammarianRole || assigningGrammarianRole}
-                >
-                  <View style={[styles.quickActionIcon, { backgroundColor: '#ECFDF5' }]}>
-                    <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#059669" />
-                  </View>
-                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Assign</Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
-                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5D9' }]}>
-                  <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                  <Star size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/live-voting', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
-                  <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#E7F5EF' }]}>
-                  <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#059669" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                  <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Roles</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                  <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId } })}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#F0E7FE' }]}>
-                  <Timer size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
         </ScrollView>
+        {renderGrammarianGeDock()}
+        </View>
+
+        </View>
+        </KeyboardAvoidingView>
 
         <Modal
           visible={showAssignGrammarianModal}
@@ -1564,8 +1582,9 @@ export default function GrammarianReport() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <View style={{ flex: 1 }}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -1585,71 +1604,86 @@ export default function GrammarianReport() {
         )}
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
-        {/* Meeting Info Card */}
-        <View style={[styles.meetingCard, {
-          backgroundColor: theme.colors.surface,
-          borderWidth: 1,
-          borderColor: theme.colors.border
-        }]}>
-          <View style={styles.meetingCardContent}>
-            <View style={[styles.dateBox, {
-              backgroundColor: theme.colors.primary + '15'
-            }]}>
-              <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).getDate()}
-              </Text>
-              <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.meetingDetails}>
-              <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {meeting.meeting_title}
-              </Text>
-              <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Day: {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
-              </Text>
-              {meeting.meeting_start_time && (
-                <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Time: {meeting.meeting_start_time}
-                  {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
-                </Text>
-              )}
-              <Text style={[styles.meetingCardMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Mode: {meeting.meeting_mode === 'in_person' ? 'In Person' :
-                       meeting.meeting_mode === 'online' ? 'Online' : 'Hybrid'}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Assigned Grammarian Section */}
+      <View style={styles.mainBody}>
+      <ScrollView
+        style={styles.scrollMain}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+      >
+        <View style={styles.contentTop}>
+        {/* Flat header — same pattern as General Evaluator Report */}
         {assignedGrammarian && (
-          <View style={[styles.assignedGrammarianSection, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.assignedGrammarianCard}>
-              <View style={styles.assignedGrammarianInfo}>
-                <View style={styles.assignedGrammarianAvatar}>
-                  {assignedGrammarian.avatar_url ? (
-                    <Image source={{ uri: assignedGrammarian.avatar_url }} style={styles.assignedGrammarianAvatarImage} />
-                  ) : (
-                    <User size={24} color="#ffffff" />
-                  )}
-                </View>
-                <View style={styles.assignedGrammarianDetails}>
-                  <Text style={[styles.assignedGrammarianName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {assignedGrammarian.full_name}
-                  </Text>
-                  <Text style={[styles.assignedGrammarianRoleLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Grammarian
-                  </Text>
-                </View>
+          <View
+            style={[
+              styles.consolidatedCornerCard,
+              {
+                backgroundColor: theme.colors.background,
+                borderBottomColor: theme.colors.border,
+                marginHorizontal: 16,
+                marginTop: 8,
+              },
+            ]}
+          >
+            <View style={styles.consolidatedClubBadge}>
+              <Text
+                style={[
+                  styles.consolidatedClubTitle,
+                  { color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666' },
+                ]}
+                maxFontSizeMultiplier={1.3}
+              >
+                {clubName || meeting.meeting_title}
+              </Text>
+            </View>
+
+            <View style={styles.consolidatedProfileStack}>
+              <View
+                style={[
+                  styles.consolidatedAvatarWrap,
+                  {
+                    borderColor: theme.mode === 'dark' ? theme.colors.border : '#E8E8E8',
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.background : '#F4F4F5',
+                  },
+                ]}
+              >
+                {assignedGrammarian.avatar_url ? (
+                  <Image source={{ uri: assignedGrammarian.avatar_url }} style={styles.consolidatedAvatarImage} />
+                ) : (
+                  <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
+                )}
               </View>
-              {isAssignedGrammarian() && (
-                <View style={styles.toastmasterActionWrapper}>
-                  {/* Note icon removed per user request */}
-                </View>
-              )}
+              <Text
+                style={[
+                  styles.consolidatedPersonName,
+                  { color: theme.mode === 'dark' ? theme.colors.text : '#111111' },
+                ]}
+                maxFontSizeMultiplier={1.25}
+              >
+                {assignedGrammarian.full_name}
+              </Text>
+              <Text
+                style={[
+                  styles.consolidatedPersonRole,
+                  { color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666' },
+                ]}
+                maxFontSizeMultiplier={1.2}
+              >
+                Grammarian
+              </Text>
+            </View>
+
+            <View style={[styles.consolidatedBottomDivider, { backgroundColor: theme.colors.border }]} />
+            <View style={styles.consolidatedMeetingMetaBlock}>
+              <Text
+                style={[
+                  styles.consolidatedMeetingMetaSingle,
+                  { color: theme.mode === 'dark' ? '#A3A3A3' : '#999999' },
+                ]}
+                maxFontSizeMultiplier={1.2}
+              >
+                {formatGrammarianConsolidatedMeetingMeta(meeting)}
+              </Text>
             </View>
           </View>
         )}
@@ -1698,190 +1732,227 @@ export default function GrammarianReport() {
         <View style={styles.tabContentWrapper}>
         {canEditGrammarianCorner() && activeTab === 'corner' ? (
           <>
-            {/* Pre-meeting shortcuts for assigned Grammarian */}
-            <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface }]}>
-              <Text style={[styles.preMeetingHeader, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Pre meeting!
-              </Text>
-
-              <View style={styles.preMeetingIconsRow}>
-                <TouchableOpacity
+            {/* Grammarian Corner: Pre meeting vs Live meeting */}
+            <View
+              style={[
+                styles.cornerPhaseTabRow,
+                { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border },
+              ]}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.cornerPhaseTab,
+                  cornerPhaseTab === 'pre-meeting' && styles.cornerPhaseTabActive,
+                  cornerPhaseTab === 'pre-meeting' && { borderBottomColor: theme.colors.primary },
+                ]}
+                onPress={() => setCornerPhaseTab('pre-meeting')}
+              >
+                <Text
                   style={[
-                    styles.preMeetingIconCard,
-                    !hasWordOfTheDay && styles.preMeetingIconCardPending,
+                    styles.cornerPhaseTabText,
+                    { color: theme.colors.textSecondary },
+                    cornerPhaseTab === 'pre-meeting' && styles.cornerPhaseTabTextActive,
+                    cornerPhaseTab === 'pre-meeting' && { color: theme.colors.primary },
                   ]}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/grammarian-word-prep',
-                      params: { meetingId: meeting?.id as string },
-                    })
-                  }
+                  maxFontSizeMultiplier={1.3}
                 >
-                  <View style={[styles.preMeetingIconWrap, { backgroundColor: '#EFF6FF' }]}>
-                    <BookOpen size={18} color="#2563eb" />
-                  </View>
+                  Pre meeting
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.cornerPhaseTab,
+                  cornerPhaseTab === 'live-meeting' && styles.cornerPhaseTabActive,
+                  cornerPhaseTab === 'live-meeting' && { borderBottomColor: theme.colors.primary },
+                ]}
+                onPress={() => setCornerPhaseTab('live-meeting')}
+              >
+                <Text
+                  style={[
+                    styles.cornerPhaseTabText,
+                    { color: theme.colors.textSecondary },
+                    cornerPhaseTab === 'live-meeting' && styles.cornerPhaseTabTextActive,
+                    cornerPhaseTab === 'live-meeting' && { color: theme.colors.primary },
+                  ]}
+                  maxFontSizeMultiplier={1.3}
+                >
+                  Live meeting
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-                  {/* Journey-style pending highlight dot for Word of the day */}
-                  {!hasWordOfTheDay && (
-                    <Animated.View
-                      pointerEvents="none"
+            {cornerPhaseTab === 'pre-meeting' ? (
+              <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface }]}>
+                <View style={styles.preMeetingIconsRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.preMeetingIconCard,
+                      !hasWordOfTheDay && styles.preMeetingIconCardPending,
+                    ]}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/grammarian-word-prep',
+                        params: { meetingId: meeting?.id as string },
+                      })
+                    }
+                  >
+                    <View style={[styles.preMeetingIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                      <BookOpen size={18} color="#2563eb" />
+                    </View>
+
+                    {!hasWordOfTheDay && (
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.preMeetingPendingDot,
+                          {
+                            backgroundColor: '#f97316',
+                            borderColor: '#fdba74',
+                            opacity: wordOfTheDayDotOpacity,
+                            transform: [{ scale: wordOfTheDayDotScale }],
+                          },
+                        ]}
+                      />
+                    )}
+                    <Text style={[styles.preMeetingIconLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      Word of the day
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.preMeetingIconCard}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/grammarian-quote-prep',
+                        params: { meetingId: meeting?.id as string },
+                      })
+                    }
+                  >
+                    <View style={[styles.preMeetingIconWrap, { backgroundColor: '#F5F3FF' }]}>
+                      <MessageSquareQuote size={18} color="#7c3aed" />
+                    </View>
+                    <Text style={[styles.preMeetingIconLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      Quote of the day
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.preMeetingIconCard}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/grammarian-idiom-prep',
+                        params: { meetingId: meeting?.id as string },
+                      })
+                    }
+                  >
+                    <View style={[styles.preMeetingIconWrap, { backgroundColor: '#FFFBEB' }]}>
+                      <Lightbulb size={18} color="#f59e0b" />
+                    </View>
+                    <Text style={[styles.preMeetingIconLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      Idiom of the day
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <>
+                <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface, paddingTop: 14 }]}>
+                  <View style={[styles.liveSegmentControl, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}>
+                    <TouchableOpacity
                       style={[
-                        styles.preMeetingPendingDot,
-                        {
-                          backgroundColor: '#f97316',
-                          borderColor: '#fdba74',
-                          opacity: wordOfTheDayDotOpacity,
-                          transform: [{ scale: wordOfTheDayDotScale }],
-                        },
+                        styles.liveSegmentTab,
+                        cornerLiveSubTab === 'good-usage' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
                       ]}
-                    />
-                  )}
-                  <Text style={[styles.preMeetingIconLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Word of the day
-                  </Text>
-                </TouchableOpacity>
+                      onPress={() => {
+                        setCornerLiveSubTab('good-usage');
+                      }}
+                    >
+                      <CheckCircle2
+                        size={14}
+                        color={cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.liveSegmentTabText,
+                          {
+                            color: cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary,
+                            fontWeight: cornerLiveSubTab === 'good-usage' ? '700' : '600',
+                          },
+                        ]}
+                        maxFontSizeMultiplier={1.3}
+                      >
+                        Good Usage
+                      </Text>
+                    </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.preMeetingIconCard}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/grammarian-quote-prep',
-                      params: { meetingId: meeting?.id as string },
-                    })
-                  }
-                >
-                  <View style={[styles.preMeetingIconWrap, { backgroundColor: '#F5F3FF' }]}>
-                    <MessageSquareQuote size={18} color="#7c3aed" />
+                    <View style={[styles.liveSegmentDivider, { backgroundColor: '#CBD5E1' }]} />
+
+                    <TouchableOpacity
+                      style={[
+                        styles.liveSegmentTab,
+                        cornerLiveSubTab === 'improvements' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
+                      ]}
+                      onPress={() => {
+                        setCornerLiveSubTab('improvements');
+                      }}
+                    >
+                      <AlertTriangle
+                        size={14}
+                        color={cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.liveSegmentTabText,
+                          {
+                            color: cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary,
+                            fontWeight: cornerLiveSubTab === 'improvements' ? '700' : '600',
+                          },
+                        ]}
+                        maxFontSizeMultiplier={1.3}
+                      >
+                        Opportunity
+                      </Text>
+                    </TouchableOpacity>
+
+                    <View style={[styles.liveSegmentDivider, { backgroundColor: '#CBD5E1' }]} />
+
+                    <TouchableOpacity
+                      style={[
+                        styles.liveSegmentTab,
+                        cornerLiveSubTab === 'stats' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
+                      ]}
+                      onPress={() => {
+                        setCornerLiveSubTab('stats');
+                      }}
+                    >
+                      <TrendingUp
+                        size={14}
+                        color={cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.liveSegmentTabText,
+                          {
+                            color: cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary,
+                            fontWeight: cornerLiveSubTab === 'stats' ? '700' : '600',
+                          },
+                        ]}
+                        maxFontSizeMultiplier={1.3}
+                      >
+                        Stats
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={[styles.preMeetingIconLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Quote of the day
-                  </Text>
-                </TouchableOpacity>
+                </View>
 
-                <TouchableOpacity
-                  style={styles.preMeetingIconCard}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/grammarian-idiom-prep',
-                      params: { meetingId: meeting?.id as string },
-                    })
-                  }
-                >
-                  <View style={[styles.preMeetingIconWrap, { backgroundColor: '#FFFBEB' }]}>
-                    <Lightbulb size={18} color="#f59e0b" />
-                  </View>
-                  <Text style={[styles.preMeetingIconLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Idiom of the day
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Live meeting tabs (quick open) */}
-            <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface, paddingTop: 14 }]}>
-              <Text style={[styles.preMeetingHeader, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Live meeting
-              </Text>
-
-              <View style={[styles.liveSegmentControl, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}>
-                <TouchableOpacity
-                  style={[
-                    styles.liveSegmentTab,
-                    cornerLiveSubTab === 'good-usage' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
-                  ]}
-                  onPress={() => {
-                    setCornerLiveSubTab('good-usage');
-                  }}
-                >
-                  <CheckCircle2
-                    size={14}
-                    color={cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary}
+                <View style={styles.inlineLiveMeetingPanel}>
+                  <GrammarianNotesScreen
+                    variant="live-inline"
+                    liveSubTab={cornerLiveSubTab}
+                    meetingId={meeting?.id}
                   />
-                  <Text
-                    style={[
-                      styles.liveSegmentTabText,
-                      {
-                        color: cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary,
-                        fontWeight: cornerLiveSubTab === 'good-usage' ? '700' : '600',
-                      },
-                    ]}
-                    maxFontSizeMultiplier={1.3}
-                  >
-                    Good Usage
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={[styles.liveSegmentDivider, { backgroundColor: '#CBD5E1' }]} />
-
-                <TouchableOpacity
-                  style={[
-                    styles.liveSegmentTab,
-                    cornerLiveSubTab === 'improvements' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
-                  ]}
-                  onPress={() => {
-                    setCornerLiveSubTab('improvements');
-                  }}
-                >
-                  <AlertTriangle
-                    size={14}
-                    color={cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary}
-                  />
-                  <Text
-                    style={[
-                      styles.liveSegmentTabText,
-                      {
-                        color: cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary,
-                        fontWeight: cornerLiveSubTab === 'improvements' ? '700' : '600',
-                      },
-                    ]}
-                    maxFontSizeMultiplier={1.3}
-                  >
-                    Opportunity
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={[styles.liveSegmentDivider, { backgroundColor: '#CBD5E1' }]} />
-
-                <TouchableOpacity
-                  style={[
-                    styles.liveSegmentTab,
-                    cornerLiveSubTab === 'stats' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
-                  ]}
-                  onPress={() => {
-                    setCornerLiveSubTab('stats');
-                  }}
-                >
-                  <TrendingUp
-                    size={14}
-                    color={cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary}
-                  />
-                  <Text
-                    style={[
-                      styles.liveSegmentTabText,
-                      {
-                        color: cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary,
-                        fontWeight: cornerLiveSubTab === 'stats' ? '700' : '600',
-                      },
-                    ]}
-                    maxFontSizeMultiplier={1.3}
-                  >
-                    Stats
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Hint removed: users can tap tabs to see Live meeting below. */}
-            </View>
-
-            {/* Inline Live meeting panel */}
-            {canEditGrammarianCorner() && (
-              <View style={styles.inlineLiveMeetingPanel}>
-                <GrammarianNotesScreen
-                  variant="live-inline"
-                  liveSubTab={cornerLiveSubTab}
-                  meetingId={meeting?.id}
-                />
-              </View>
+                </View>
+              </>
             )}
 
             {/* Grammarian role guidance removed (requested by user). */}
@@ -1987,7 +2058,7 @@ export default function GrammarianReport() {
                   ) : (
                     <View style={styles.noFeedbackState}>
                       <Text style={[styles.noFeedbackText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        No feedback added yet. Tap "Add Feedback" to provide member feedback.
+                        {`No feedback added yet. Tap "Add Feedback" to provide member feedback.`}
                       </Text>
                     </View>
                   )}
@@ -2001,6 +2072,8 @@ export default function GrammarianReport() {
           <GrammarianReportSummarySection
             theme={theme}
             styles={styles}
+            summaryMainTab={summaryMainTab}
+            setSummaryMainTab={setSummaryMainTab}
             summarySubTab={summarySubTab}
             setSummarySubTab={setSummarySubTab}
             wordOfTheDay={wordOfTheDay}
@@ -2013,237 +2086,10 @@ export default function GrammarianReport() {
           />
         )}
         </View>
-
-        {/* Navigation Quick Actions — Word / Quote / Idiom first; same dock as unassigned (quickAction*) */}
-        <View
-          style={[
-            styles.quickActionsBoxContainer,
-            {
-              backgroundColor: theme.colors.surface,
-              borderTopColor: theme.colors.border,
-            },
-          ]}
-        >
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
-            {canEditGrammarianCorner() && (
-              <>
-                <TouchableOpacity
-                  style={styles.quickActionItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/grammarian-word-prep',
-                      params: { meetingId: meeting?.id as string },
-                    })
-                  }
-                >
-                  <View style={[styles.quickActionIcon, { backgroundColor: '#EFF6FF' }]}>
-                    <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#2563eb" />
-                  </View>
-                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Word</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.quickActionItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/grammarian-quote-prep',
-                      params: { meetingId: meeting?.id as string },
-                    })
-                  }
-                >
-                  <View style={[styles.quickActionIcon, { backgroundColor: '#F5F3FF' }]}>
-                    <MessageSquareQuote size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
-                  </View>
-                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Quote</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.quickActionItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/grammarian-idiom-prep',
-                      params: { meetingId: meeting?.id as string },
-                    })
-                  }
-                >
-                  <View style={[styles.quickActionIcon, { backgroundColor: '#FFFBEB' }]}>
-                    <Lightbulb size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-                  </View>
-                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Idiom</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.quickActionItem}
-                  onPress={() =>
-                    router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id, initialTab: 'my_bookings' } })
-                  }
-                >
-                  <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
-                    <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
-                  </View>
-                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.quickActionItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/grammarian-live-meeting',
-                      params: { meetingId: meeting?.id as string },
-                    })
-                  }
-                >
-                  <View style={[styles.quickActionIcon, { backgroundColor: '#ECFDF5' }]}>
-                    <ThumbsUp size={FOOTER_NAV_ICON_SIZE} color="#059669" />
-                  </View>
-                  <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5E5' }]}>
-                <Bell size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance Report</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5D9' }]}>
-                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Corner</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/general-evaluator-notes', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <Star size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>General Evaluator</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                <Mic size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote Speaker</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
-                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live Voting</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/quick-overview', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <Eye size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Quick Overview</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role Completion</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FECACA' }]}>
-                <Award size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speech Evaluation</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/meeting-details', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E7F5EF' }]}>
-                <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#059669" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#F0E7FE' }]}>
-                <Timer size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting?.id } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TTM</Text>
-            </TouchableOpacity>
-          </ScrollView>
         </View>
-
       </ScrollView>
+      {renderGrammarianGeDock()}
+      </View>
 
       {/* Daily Elements Modal */}
       <Modal
@@ -2511,12 +2357,16 @@ export default function GrammarianReport() {
 You will see two tabs: Grammarian Corner and Grammarian Summary.
 All other members will be able to view only the Grammarian Summary.
 
-📝 Pre-Meeting
+In Grammarian Summary, Lexicon shows Word, Idiom, and Quote of the Day; Reports opens the full meeting report when available.
+
+Under Grammarian Corner, use Pre meeting for prep shortcuts and Live meeting for Good usage, Opportunity, and Stats.
+
+📝 Pre meeting
 Add the Word of the Day, Quote, and Idiom
 Once added, they are saved automatically
 All members can view them in the Grammarian Summary
 
-🎤 During the Meeting
+🎤 Live meeting
 Capture key observations:
 Good usage of language
 Opportunities for improvement
@@ -2694,6 +2544,7 @@ Finally, don’t forget to share the Grammarian Report with all club members.
           </View>
         </SafeAreaView>
       </Modal>
+      </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -2760,9 +2611,157 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flexGrow: 1,
+    flexDirection: 'column',
+  },
+  mainBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  scrollMain: {
+    flex: 1,
+  },
+  contentTop: {},
+  /** One unified bottom panel — same as General Evaluator / Toastmaster Corner */
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingHorizontal: 8,
+  },
+  footerNavigationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    minWidth: 62,
+    paddingVertical: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  /** Flat Notion-style header — same as General Evaluator Report */
+  consolidatedCornerCard: {
+    marginBottom: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: 720,
+    overflow: 'visible',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  consolidatedClubBadge: {
+    marginTop: 0,
+    marginBottom: 16,
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+  },
+  consolidatedClubTitle: {
+    fontSize: 18,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 23,
+  },
+  consolidatedProfileStack: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  consolidatedAvatarWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  consolidatedAvatarImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+  },
+  consolidatedPersonName: {
+    fontSize: 19,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 12,
+    letterSpacing: -0.3,
+  },
+  consolidatedPersonRole: {
+    fontSize: 14,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  consolidatedBottomDivider: {
+    width: '100%',
+    maxWidth: 280,
+    height: StyleSheet.hairlineWidth,
+    alignSelf: 'center',
+    marginTop: 18,
+    marginBottom: 16,
+  },
+  consolidatedMeetingMetaBlock: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  consolidatedMeetingMetaSingle: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
+    letterSpacing: 0.2,
+  },
+  meetingCardMetaCompact: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
+  meetingCardMetaModeLine: {
+    marginTop: 3,
   },
   tabContentWrapper: {
     flex: 1,
+  },
+  /** Sub-tabs under Grammarian Corner (Pre meeting / Live meeting) */
+  cornerPhaseTabRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  cornerPhaseTab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  cornerPhaseTabActive: {
+    borderBottomWidth: 2,
+  },
+  cornerPhaseTabText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  cornerPhaseTabTextActive: {
+    fontWeight: '700',
   },
   noAssignmentNotionCard: {
     marginHorizontal: 13,

@@ -433,8 +433,8 @@ Welcome to a seamless digital experience! 🚀`;
               <SettingItem
                 icon={themedIcon(DollarSign, '#92400E')}
                 iconBackgroundColor="#FEF3C7"
-                title="Buy us a coffee"
-                description="Support T360 with a small contribution"
+                title="Buy a coffee!"
+                description="Proudly built for the community."
                 onPress={handleBuyUsACoffee}
               />
               <SettingItem

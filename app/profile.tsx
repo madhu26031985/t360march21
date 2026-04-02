@@ -1,15 +1,16 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, Image, Linking } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Home, User, Mail, MapPin, Camera, X, Facebook, Twitter, Linkedin, Instagram, Youtube, ChevronRight, Phone, Lock, Info, Users, Calendar, Settings, ArrowLeft } from 'lucide-react-native';
-import { Image, Linking } from 'react-native';
+import { Home, User, Mail, MapPin, Camera, X, Facebook, Twitter, Linkedin, Instagram, Youtube, ChevronRight, Phone, Lock, Info, Users, Calendar, Settings, ArrowLeft, Shield, Coffee, MessageCircle, Globe } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 const FOOTER_NAV_ICON_SIZE = 15;
+const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
+const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
 
 interface ProfileData {
   full_name: string;
@@ -28,6 +29,11 @@ interface ProfileData {
 export default function Profile() {
   const { theme } = useTheme();
   const { user, refreshUserProfile } = useAuth();
+  const insets = useSafeAreaInsets();
+
+  const isExComm =
+    user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
 
   const [profileData, setProfileData] = useState<ProfileData>({
     full_name: '',
@@ -53,7 +59,6 @@ export default function Profile() {
   const [tempSocialUrl, setTempSocialUrl] = useState('');
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
-  const [isExComm, setIsExComm] = useState(false);
   const infoIconBlinkOpacity = useRef(new Animated.Value(1)).current;
   const infoIconPulseScale = useRef(new Animated.Value(1)).current;
   const [infoAnimRunKey, setInfoAnimRunKey] = useState(0);
@@ -65,7 +70,6 @@ export default function Profile() {
     }
     setIsLoading(true);
     loadProfile();
-    loadUserRole();
   }, [user?.id]);
 
   useEffect(() => {
@@ -222,27 +226,25 @@ export default function Profile() {
     }
   };
 
-  const loadUserRole = async () => {
-    if (!user?.id || !user?.currentClubId) return;
-
+  const openWhatsAppSupport = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('app_club_user_relationship')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading user role:', error);
-        return;
-      }
-
-      setIsExComm(data?.role === 'excomm');
-    } catch (error) {
-      console.error('Error loading user role:', error);
+      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
+      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
+      else Alert.alert('Error', 'Cannot open WhatsApp');
+    } catch {
+      Alert.alert('Error', 'Failed to open WhatsApp');
     }
-  };
+  }, []);
+
+  const openWebLogin = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
+      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
+      else Alert.alert('Error', 'Cannot open web login');
+    } catch {
+      Alert.alert('Error', 'Failed to open web login');
+    }
+  }, []);
 
   const updateField = (field: keyof ProfileData, value: string) => {
     const characterLimits: Partial<Record<keyof ProfileData, number>> = {
@@ -551,26 +553,35 @@ export default function Profile() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText} maxFontSizeMultiplier={1.3}>Loading profile...</Text>
+          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading profile...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {/* Header */}
-        <View style={styles.header}>
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: theme.colors.surface,
+              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomColor: theme.colors.border,
+            },
+          ]}
+        >
           <TouchableOpacity style={styles.headerBackButton} onPress={() => router.back()}>
-            <ArrowLeft size={24} color={theme.colors.text} />
+            <ArrowLeft size={24} color={theme.colors.text} strokeWidth={2} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} maxFontSizeMultiplier={1.3}>Edit Profile</Text>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Edit Profile</Text>
           <Animated.View style={[styles.infoButtonPulseWrap, { opacity: infoIconBlinkOpacity, transform: [{ scale: infoIconPulseScale }] }]}>
             <TouchableOpacity
               style={[styles.infoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
@@ -582,8 +593,22 @@ export default function Profile() {
           </Animated.View>
         </View>
 
-        <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContentContainer}>
-          <View style={styles.contentCard}>
+        <View style={styles.pageMain}>
+        <ScrollView
+          style={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContentContainer,
+            { paddingBottom: 24 + 72 + Math.max(insets.bottom, 10) },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View
+            style={[
+              styles.contentCard,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            ]}
+          >
             {/* Profile Picture */}
             <View style={styles.avatarSection}>
               <View style={styles.avatarWrapper}>
@@ -617,10 +642,18 @@ export default function Profile() {
 
             {/* Full Name - Read Only */}
             <View style={styles.formField}>
-              <Text style={styles.fieldLabel} maxFontSizeMultiplier={1.3}>Full Name</Text>
-              <View style={styles.inputContainerReadOnly}>
+              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Full Name</Text>
+              <View
+                style={[
+                  styles.inputContainerReadOnly,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.backgroundSecondary : '#F9FAFB',
+                  },
+                ]}
+              >
                 <User size={18} color="#6B7280" />
-                <Text style={styles.readOnlyText} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.readOnlyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {profileData.full_name || 'Not set'}
                 </Text>
                 <Lock size={16} color="#6B7280" />
@@ -630,9 +663,17 @@ export default function Profile() {
 
             {/* Email - Read Only */}
             <View style={styles.formField}>
-              <View style={styles.inputContainerReadOnly}>
+              <View
+                style={[
+                  styles.inputContainerReadOnly,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.backgroundSecondary : '#F9FAFB',
+                  },
+                ]}
+              >
                 <Mail size={18} color="#6B7280" />
-                <Text style={styles.readOnlyText} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.readOnlyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {profileData.email || 'Not set'}
                 </Text>
               </View>
@@ -641,10 +682,15 @@ export default function Profile() {
 
             {/* Phone Number */}
             <View style={styles.formField}>
-              <View style={styles.inputContainer}>
+              <View
+                style={[
+                  styles.inputContainer,
+                  { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+                ]}
+              >
                 <Phone size={18} color="#6B7280" />
                 <TextInput
-                  style={styles.textInput}
+                  style={[styles.textInput, { color: theme.colors.text }]}
                   placeholder="Enter your phone number"
                   placeholderTextColor="#9CA3AF"
                   value={profileData.phone_number}
@@ -657,10 +703,15 @@ export default function Profile() {
 
             {/* Location */}
             <View style={styles.formField}>
-              <View style={styles.inputContainer}>
+              <View
+                style={[
+                  styles.inputContainer,
+                  { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+                ]}
+              >
                 <MapPin size={18} color="#6B7280" />
                 <TextInput
-                  style={styles.textInput}
+                  style={[styles.textInput, { color: theme.colors.text }]}
                   placeholder="Enter your location"
                   placeholderTextColor="#9CA3AF"
                   value={profileData.location}
@@ -672,13 +723,16 @@ export default function Profile() {
             {/* About */}
             <View style={styles.formField}>
               <View style={styles.fieldHeader}>
-                <Text style={styles.fieldLabel} maxFontSizeMultiplier={1.3}>About</Text>
-                <Text style={styles.characterCount} maxFontSizeMultiplier={1.3}>
+                <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>About</Text>
+                <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {getCharacterCount()}
                 </Text>
               </View>
               <TextInput
-                style={styles.textAreaInput}
+                style={[
+                  styles.textAreaInput,
+                  { borderColor: theme.colors.border, backgroundColor: theme.colors.surface, color: theme.colors.text },
+                ]}
                 placeholder="Tell us about yourself..."
                 placeholderTextColor="#9CA3AF"
                 value={profileData['About']}
@@ -692,7 +746,7 @@ export default function Profile() {
 
             {/* Social Media */}
             <View style={styles.formField}>
-              <Text style={styles.fieldLabel} maxFontSizeMultiplier={1.3}>Social Media</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Social Media</Text>
               <View style={styles.socialMediaGrid}>
                 {['linkedin_url', 'twitter_url', 'instagram_url', 'youtube_url'].map((platform) => {
                   return (
@@ -734,66 +788,109 @@ export default function Profile() {
             </TouchableOpacity>
 
           </View>
-
-          <View style={styles.navSpacer} />
-
-          {/* Navigation Icons */}
-          <View style={styles.navigationSection}>
-            <View style={styles.navigationBar}>
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/club')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/meetings')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/settings')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
-              </TouchableOpacity>
-
-              {isExComm && (
-                <TouchableOpacity
-                  style={styles.navItem}
-                  onPress={() => router.push('/(tabs)/admin')}
-                >
-                  <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                    <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                  </View>
-                  <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
         </ScrollView>
+
+        <View
+          style={[
+            styles.geBottomDock,
+            {
+              borderTopColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+              paddingBottom: Math.max(insets.bottom, 10),
+            },
+          ]}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.footerNavigationContent}
+          >
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Home size={FOOTER_NAV_ICON_SIZE} color="#0a66c2" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Home
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Club
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/(tabs)/meetings')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Meeting
+              </Text>
+            </TouchableOpacity>
+            {isExComm ? (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/(tabs)/admin')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Shield size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Admin
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/(tabs)/settings')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Settings size={FOOTER_NAV_ICON_SIZE} color="#6b7280" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Settings
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/buy-us-a-coffee')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Coffee
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Support
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Globe size={FOOTER_NAV_ICON_SIZE} color="#334155" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Web
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+        </View>
       </KeyboardAvoidingView>
 
       {/* Image Picker Modal */}
@@ -1055,7 +1152,6 @@ export default function Profile() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
   },
   loadingContainer: {
     flex: 1,
@@ -1065,7 +1161,6 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#111827',
   },
   header: {
     flexDirection: 'row',
@@ -1073,7 +1168,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
   },
   headerBackButton: {
     flexDirection: 'row',
@@ -1081,7 +1175,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
   },
   infoButton: {
     width: 36,
@@ -1105,7 +1199,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#111827',
     position: 'absolute',
     left: 0,
     right: 0,
@@ -1121,30 +1214,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  pageMain: {
+    flex: 1,
+    minHeight: 0,
+  },
   scrollContent: {
     flex: 1,
   },
   scrollContentContainer: {
     flexGrow: 1,
-  },
-  navSpacer: {
-    flex: 1,
-    minHeight: 24,
+    paddingTop: 16,
   },
   contentCard: {
-    marginHorizontal: 20,
-    marginVertical: 24,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 24,
-    shadowColor: '#000000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 8,
+    overflow: 'hidden',
   },
   avatarSection: {
     alignItems: 'center',
@@ -1201,23 +1288,19 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
     marginBottom: 8,
   },
   characterCount: {
     fontSize: 12,
     fontWeight: '400',
-    color: '#6B7280',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: 10,
   },
   inputContainerReadOnly: {
@@ -1225,23 +1308,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 14,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: 10,
   },
   textInput: {
     flex: 1,
     fontSize: 15,
     fontWeight: '400',
-    color: '#111827',
   },
   readOnlyText: {
     flex: 1,
     fontSize: 15,
     fontWeight: '400',
-    color: '#6B7280',
   },
   fieldNote: {
     fontSize: 11,
@@ -1253,13 +1332,10 @@ const styles = StyleSheet.create({
   textAreaInput: {
     paddingHorizontal: 14,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     fontSize: 15,
     fontWeight: '400',
-    color: '#111827',
     minHeight: 100,
   },
   socialMediaGrid: {
@@ -1270,22 +1346,14 @@ const styles = StyleSheet.create({
   socialMediaIcon: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   saveButtonBottom: {
     width: '100%',
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 24,
@@ -1425,43 +1493,33 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 4,
   },
-  navigationSection: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 24,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: '#000000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 8,
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 8,
   },
-  navigationBar: {
+  footerNavigationContent: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
   },
-  navItem: {
+  footerNavItem: {
     alignItems: 'center',
-    flex: 1,
+    minWidth: 62,
+    paddingVertical: 2,
   },
-  navIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  navLabel: {
+  footerNavLabel: {
     fontSize: 9,
     fontWeight: '500',
-    color: '#111827',
     textAlign: 'center',
   },
 });

@@ -229,11 +229,7 @@ export default function MeetingRecords() {
   };
 
   const MeetingCard = ({ meeting }: { meeting: Meeting }) => (
-    <TouchableOpacity 
-      style={[styles.meetingCard, { backgroundColor: N.surface, borderColor: N.border }]}
-      onPress={() => handleMeetingPress(meeting)}
-      activeOpacity={0.7}
-    >
+    <View style={[styles.meetingCard, { backgroundColor: N.surface, borderColor: N.border }]}>
       <View style={styles.meetingHeader}>
         <View style={[styles.meetingIcon, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
           <Lock size={20} color={N.iconMuted} />
@@ -312,6 +308,7 @@ export default function MeetingRecords() {
                 <Text style={[styles.expandedTabText, { color: expandedTab === tab ? N.text : N.textSecondary }]} maxFontSizeMultiplier={1.2}>
                   {tab === 'actions' ? 'Actions' : tab === 'roles' ? 'Roles' : 'Evaluation'}
                 </Text>
+                {expandedTab === tab && <View style={styles.expandedTabIndicator} />}
               </TouchableOpacity>
             ))}
           </View>
@@ -319,6 +316,7 @@ export default function MeetingRecords() {
           {expandedTab === 'actions' && (
             <View style={styles.expandedSection}>
               <Text style={[styles.expandedSectionLabel, { color: N.text }]} maxFontSizeMultiplier={1.2}>Core</Text>
+              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
               <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/book-a-role?meetingId=${meeting.id}`)}>
                 <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
                   <Calendar size={16} color={N.textSecondary} />
@@ -349,18 +347,90 @@ export default function MeetingRecords() {
                 </View>
                 <ChevronRight size={16} color={N.textSecondary} />
               </TouchableOpacity>
+
+              <Text style={[styles.expandedSectionLabel, { color: N.text, marginTop: 8 }]} maxFontSizeMultiplier={1.2}>Operations</Text>
+              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
+              <View style={styles.expandedGrid}>
+                <TouchableOpacity style={[styles.expandedGridCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-details?meetingId=${meeting.id}`)}>
+                  <View style={[styles.expandedGridIcon, { backgroundColor: N.surfaceSoft }]}>
+                    <ClipboardCheck size={18} color={N.textSecondary} />
+                  </View>
+                  <Text style={[styles.expandedGridTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Role Completion</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.expandedGridCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/attendance-report?meetingId=${meeting.id}`)}>
+                  <View style={[styles.expandedGridIcon, { backgroundColor: N.surfaceSoft }]}>
+                    <UserCheck size={18} color={N.textSecondary} />
+                  </View>
+                  <Text style={[styles.expandedGridTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Attendance</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.expandedSectionLabel, { color: N.text, marginTop: 8 }]} maxFontSizeMultiplier={1.2}>Closing and Reports</Text>
+              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-minutes?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <FileText size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Meeting Minutes</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Read and manage minutes for this meeting</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push('/club?section=reports')}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <Eye size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Club Reports</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View member and meeting reports</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
             </View>
           )}
 
           {expandedTab === 'roles' && (
             <View style={styles.expandedSection}>
+              <Text style={[styles.expandedSectionLabel, { color: N.text }]} maxFontSizeMultiplier={1.2}>Key Roles</Text>
+              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
               <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-details?meetingId=${meeting.id}`)}>
                 <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
                   <ClipboardCheck size={16} color={N.textSecondary} />
                 </View>
                 <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Roles</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View booked and completed meeting roles</Text>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Roles Overview</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View all booked and completed roles</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/toastmaster-corner?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <Crown size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Toastmaster Corner</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Toastmaster role details and readiness</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/table-topic-corner?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <Users size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Table Topic Corner</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Manage topics and participant flow</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/general-evaluator-report?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <Shield size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>General Evaluator</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Review GE corner and summary status</Text>
                 </View>
                 <ChevronRight size={16} color={N.textSecondary} />
               </TouchableOpacity>
@@ -369,13 +439,57 @@ export default function MeetingRecords() {
 
           {expandedTab === 'evaluation' && (
             <View style={styles.expandedSection}>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-details?meetingId=${meeting.id}`)}>
+              <Text style={[styles.expandedSectionLabel, { color: N.text }]} maxFontSizeMultiplier={1.2}>Evaluations</Text>
+              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/evaluation-corner?meetingId=${meeting.id}`)}>
                 <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
                   <Vote size={16} color={N.textSecondary} />
                 </View>
                 <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Evaluation</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Open evaluation and reports for this meeting</Text>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Evaluation Corner</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Open speech evaluation workflows</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/prepared-speech-evaluations?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <ClipboardCheck size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Prepared Speech Evaluations</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Track and review prepared speech scores</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/educational-corner?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <User size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Educational Corner</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View educational speaker details and notes</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/keynote-speaker-corner?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <Crown size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Keynote Speaker</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Review keynote speaker preparation and output</Text>
+                </View>
+                <ChevronRight size={16} color={N.textSecondary} />
+              </TouchableOpacity>
+              <Text style={[styles.expandedSectionLabel, { color: N.text, marginTop: 8 }]} maxFontSizeMultiplier={1.2}>Reports</Text>
+              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-details?meetingId=${meeting.id}`)}>
+                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
+                  <Eye size={16} color={N.textSecondary} />
+                </View>
+                <View style={styles.expandedRowTextWrap}>
+                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Evaluation Reports</Text>
+                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Open all evaluation reports for this meeting</Text>
                 </View>
                 <ChevronRight size={16} color={N.textSecondary} />
               </TouchableOpacity>
@@ -383,7 +497,7 @@ export default function MeetingRecords() {
           )}
         </View>
       )}
-    </TouchableOpacity>
+    </View>
   );
 
   if (isLoading) {
@@ -424,7 +538,7 @@ export default function MeetingRecords() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={22} color={N.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Meeting Records</Text>
+        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>Completed Meetings</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -471,27 +585,28 @@ export default function MeetingRecords() {
               onChangeText={setSearchQuery}
             />
           </View>
-
           {/* Date Filter */}
-          <TouchableOpacity
-            style={[styles.filterButton, { backgroundColor: N.surface, borderColor: N.border }]}
-            onPress={() => setShowDateFilter(true)}
-          >
-            <Filter size={16} color={N.textSecondary} />
-            <Text style={[styles.filterButtonText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-              {getDateFilterLabel()}
-            </Text>
-            <ChevronDown size={14} color={N.textSecondary} />
-          </TouchableOpacity>
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              style={[styles.filterButton, { backgroundColor: N.surface, borderColor: N.border }]}
+              onPress={() => setShowDateFilter(true)}
+            >
+              <Filter size={16} color={N.textSecondary} />
+              <Text style={[styles.filterButtonText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                {getDateFilterLabel()}
+              </Text>
+              <ChevronDown size={14} color={N.textSecondary} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Meetings Section */}
         <View style={styles.meetingsSection}>
           <Text style={[styles.sectionTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-            Closed Meetings ({filteredMeetings.length})
+            Completed Meetings ({filteredMeetings.length})
           </Text>
           <Text style={[styles.sectionSubtitle, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Completed meetings that have been closed
+            Browse completed meeting records
           </Text>
           
           {filteredMeetings.length > 0 ? (
@@ -504,7 +619,7 @@ export default function MeetingRecords() {
             <View style={styles.noMeetingsState}>
               <Lock size={48} color={N.textSecondary} />
               <Text style={[styles.noMeetingsText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-                No Closed Meetings
+                No Completed Meetings
               </Text>
               <Text style={[styles.noMeetingsSubtext, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 There are no closed meetings to display
@@ -783,27 +898,20 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   searchFilterSection: {
-    flexDirection: 'row',
     paddingHorizontal: 16,
     paddingTop: 16,
-    gap: 8,
+    gap: 10,
   },
   searchContainer: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+  },
+  filterRow: {
+    flexDirection: 'row',
   },
   searchInput: {
     flex: 1,
@@ -814,17 +922,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    alignSelf: 'flex-start',
   },
   filterButtonText: {
     fontSize: 12,
@@ -935,19 +1036,12 @@ const styles = StyleSheet.create({
   },
   meetingCard: {
     borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    padding: 16,
   },
   meetingHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   meetingIcon: {
     width: 50,
@@ -1013,6 +1107,7 @@ const styles = StyleSheet.create({
   },
   openCloseBtn: {
     marginLeft: 12,
+    alignSelf: 'flex-start',
     minWidth: 82,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -1045,7 +1140,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 8,
   },
   expandedTabActive: {
@@ -1056,6 +1151,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  expandedTabIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    width: 26,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#0ea5e9',
+  },
   expandedSection: {
     gap: 8,
   },
@@ -1064,12 +1167,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 2,
   },
+  expandedSectionDivider: {
+    height: 1,
+    marginBottom: 4,
+  },
   expandedRowCard: {
     borderRadius: 10,
     borderWidth: 1,
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  expandedGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  expandedGridCard: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    minHeight: 96,
+  },
+  expandedGridIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  expandedGridTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   expandedRowIcon: {
     width: 34,
@@ -1114,15 +1248,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 12,
+    borderWidth: 1,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   clubHeader: {
     flexDirection: 'row',

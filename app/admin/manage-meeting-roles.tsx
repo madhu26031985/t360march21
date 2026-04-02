@@ -1,13 +1,48 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput, KeyboardAvoidingView, Platform, Linking } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Users, User, Crown, Shield, Eye, UserCheck, Building2, Calendar, Clock, MapPin, Search, X, Trash2, UserRoundCog, UserPlus, Info } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Users,
+  User,
+  Crown,
+  Shield,
+  Eye,
+  UserCheck,
+  Building2,
+  Calendar,
+  Search,
+  X,
+  Trash2,
+  UserRoundCog,
+  UserPlus,
+  Info,
+  Home,
+  Settings,
+  Coffee,
+  MessageCircle,
+  Globe,
+  Filter,
+  Check,
+  Layers,
+  Tag,
+  Mic,
+  Briefcase,
+  Star,
+  MessageSquare,
+  GraduationCap,
+  ChevronDown,
+} from 'lucide-react-native';
 import { Image } from 'react-native';
 import React from 'react';
+
+const BOOK_ROLE_DOCK_ICON_SIZE = 15;
+const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
+const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
  
 interface Meeting {
   id: string;
@@ -63,6 +98,18 @@ interface ClassificationTab {
   color: string;
 }
 
+function isHiddenIceBreakerAdminRole(role: MeetingRoleAssignment): boolean {
+  const cls = (role.role_classification || '').trim().toLowerCase();
+  if (cls === 'ice breaker') return true;
+  const value = (role.role_name || '').trim().toLowerCase();
+  const m = value.match(/ice\s*breaker(?:\s*speech)?\s*(\d+)/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    return n >= 1 && n <= 5;
+  }
+  return false;
+}
+
 export default function ManageMeetingRoles() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -77,8 +124,30 @@ export default function ManageMeetingRoles() {
   const [showRolesInfoModal, setShowRolesInfoModal] = useState(false);
   const [selectedRoleForAssignment, setSelectedRoleForAssignment] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<'available' | 'deleted'>('available');
-  const [selectedClassification, setSelectedClassification] = useState<string>('');
+  const [selectedClassification, setSelectedClassification] = useState<string>('all');
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [showCategoryFilterModal, setShowCategoryFilterModal] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  const openWhatsAppSupport = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
+      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
+      else Alert.alert('Error', 'Cannot open WhatsApp');
+    } catch {
+      Alert.alert('Error', 'Failed to open WhatsApp');
+    }
+  }, []);
+
+  const openWebLogin = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
+      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
+      else Alert.alert('Error', 'Cannot open web login');
+    } catch {
+      Alert.alert('Error', 'Failed to open web login');
+    }
+  }, []);
 
   useEffect(() => {
     if (meetingId) {
@@ -86,26 +155,29 @@ export default function ManageMeetingRoles() {
     }
   }, [meetingId]);
 
-  // Memoize filtered roles by tab
+  const visibleRoles = useMemo(
+    () => meetingRoles.filter((r) => !isHiddenIceBreakerAdminRole(r)),
+    [meetingRoles]
+  );
+
   const rolesByTab = useMemo(() => {
     return selectedTab === 'available'
-      ? meetingRoles.filter(role => role.role_status === 'Available')
-      : meetingRoles.filter(role => role.role_status === 'Deleted');
-  }, [meetingRoles, selectedTab]);
+      ? visibleRoles.filter((role) => role.role_status === 'Available')
+      : visibleRoles.filter((role) => role.role_status === 'Deleted');
+  }, [visibleRoles, selectedTab]);
 
-  // Memoize classification tabs
   const classificationTabs = useMemo(() => {
+    if (!rolesByTab.length) return [];
+
     const classificationCounts = rolesByTab.reduce((acc, role) => {
       const classification = role.role_classification || 'Others';
       acc[classification] = (acc[classification] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    const tabs: ClassificationTab[] = [];
     const classificationDefinitions = [
       { key: 'Key Speakers', label: 'Key Speakers', color: '#ef4444' },
       { key: 'Keynote Speaker', label: 'Keynote Speaker', color: '#dc2626' },
-      { key: 'Ice Breaker', label: 'Ice Breaker', color: '#10b981' },
       { key: 'Prepared Speaker', label: 'Prepared Speaker', color: '#3b82f6' },
       { key: 'Club Speakers', label: 'Club Speakers', color: '#8b5cf6' },
       { key: 'Educational speaker', label: 'Educational', color: '#f59e0b' },
@@ -119,14 +191,29 @@ export default function ManageMeetingRoles() {
       { key: 'Others', label: 'Others', color: '#9ca3af' },
     ];
 
-    classificationDefinitions.forEach(classDef => {
+    const tabs: ClassificationTab[] = [
+      { value: 'all', label: 'All Roles', count: rolesByTab.length, color: '#6b7280' },
+    ];
+
+    classificationDefinitions.forEach((classDef) => {
       const count = classificationCounts[classDef.key] || 0;
       if (count > 0) {
         tabs.push({
           value: classDef.key,
           label: classDef.label,
-          count: count,
-          color: classDef.color
+          count,
+          color: classDef.color,
+        });
+      }
+    });
+
+    Object.entries(classificationCounts).forEach(([classification, count]) => {
+      if (!classificationDefinitions.some((def) => def.key === classification) && count > 0) {
+        tabs.push({
+          value: classification,
+          label: classification,
+          count,
+          color: '#3b82f6',
         });
       }
     });
@@ -136,18 +223,30 @@ export default function ManageMeetingRoles() {
 
   // Auto-select first classification when tabs change
   useEffect(() => {
-    if (classificationTabs.length > 0 && (!selectedClassification || !classificationTabs.find(t => t.value === selectedClassification))) {
-      setSelectedClassification(classificationTabs[0].value);
-    }
-  }, [classificationTabs]);
+    if (selectedTab !== 'available' && selectedTab !== 'deleted') return;
+    setShowCategoryFilterModal(false);
+  }, [selectedTab]);
 
-  // Memoize filtered roles by classification
-  const filteredRoles = useMemo(() => {
-    if (!selectedClassification) {
-      return rolesByTab;
+  useEffect(() => {
+    if (classificationTabs.length === 0) return;
+    if (!classificationTabs.some((t) => t.value === selectedClassification)) {
+      setSelectedClassification('all');
     }
-    return rolesByTab.filter(role => role.role_classification === selectedClassification);
+  }, [classificationTabs, selectedClassification]);
+
+  const filteredRoles = useMemo(() => {
+    if (selectedClassification === 'all' || !selectedClassification) return rolesByTab;
+    return rolesByTab.filter((role) => (role.role_classification || 'Others') === selectedClassification);
   }, [rolesByTab, selectedClassification]);
+
+  const availableVisibleCount = useMemo(
+    () => visibleRoles.filter((r) => r.role_status === 'Available').length,
+    [visibleRoles]
+  );
+  const deletedVisibleCount = useMemo(
+    () => visibleRoles.filter((r) => r.role_status === 'Deleted').length,
+    [visibleRoles]
+  );
 
   // Memoize filtered members
   const filteredMembers = useMemo(() => {
@@ -527,6 +626,64 @@ export default function ManageMeetingRoles() {
     }
   };
 
+  const currentClub = user?.clubs?.find((c) => c.id === user.currentClubId) || user?.clubs?.[0];
+  const isExComm =
+    user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+
+  const getCategoryIcon = (classification: string, isLarge: boolean = false, isSelected: boolean = false) => {
+    const iconProps = {
+      size: isLarge ? 15 : 7,
+      color: isSelected ? '#ffffff' : '#3b82f6',
+      strokeWidth: isLarge ? 2 : 1.3,
+    };
+    const k = classification.toLowerCase();
+    switch (k) {
+      case 'all':
+      case 'all roles':
+        return <Layers {...iconProps} />;
+      case 'tag roles':
+      case 'tag role':
+        return <Tag {...iconProps} />;
+      case 'educational speaker':
+      case 'educational':
+        return <GraduationCap {...iconProps} />;
+      case 'speech evaluator':
+      case 'speech evaluvator':
+      case 'evaluator':
+        return <Mic {...iconProps} />;
+      case 'functionary roles':
+      case 'functionary role':
+        return <Briefcase {...iconProps} />;
+      case 'key speakers':
+      case 'prepared speaker':
+        return <User {...iconProps} />;
+      case 'keynote speaker':
+        return <Star {...iconProps} />;
+      case 'master evaluator':
+      case 'master evaluvator':
+      case 'general evaluator':
+        return <Star {...iconProps} />;
+      case 'ancillary speaker':
+      case 'ancillary':
+        return <MessageSquare {...iconProps} />;
+      case 'club speakers':
+        return <Users {...iconProps} />;
+      case 'tt evaluator':
+      case 'tt _ evaluvator':
+        return <Mic {...iconProps} />;
+      case 'on-the-spot speaking':
+      case 'table topics':
+        return <MessageSquare {...iconProps} />;
+      case 'judge':
+        return <Shield {...iconProps} />;
+      case 'others':
+        return <Layers {...iconProps} />;
+      default:
+        return <Building2 {...iconProps} />;
+    }
+  };
+
   const RoleCard = React.memo(({ role }: { role: MeetingRoleAssignment }) => {
     const isAssigned = role.assigned_user_id;
     const assignedMember = isAssigned ? clubMembers.find(m => m.id === role.assigned_user_id) : null;
@@ -546,7 +703,7 @@ export default function ManageMeetingRoles() {
 
     return (
       <TouchableOpacity
-        style={[styles.roleCard, { backgroundColor: theme.colors.surface }]}
+        style={[styles.roleCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
         onPress={handleCardPress}
         activeOpacity={0.7}
       >
@@ -644,9 +801,9 @@ export default function ManageMeetingRoles() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-      {/* Header */}
+      <View style={styles.manageMain}>
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={theme.colors.text} />
@@ -662,211 +819,239 @@ export default function ManageMeetingRoles() {
           </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.rolesMasterBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-        {/* Meeting Info Card */}
-        <View style={[styles.meetingCard, { backgroundColor: 'transparent' }]}>
-          <View style={styles.meetingHeader}>
-            <View style={[styles.meetingIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-              <Building2 size={24} color={theme.colors.primary} />
-            </View>
-            <View style={styles.meetingInfo}>
-              <Text style={[styles.meetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {meeting.meeting_title}
-              </Text>
-              <View style={styles.meetingMeta}>
-                <View style={styles.meetingDate}>
-                  <Calendar size={12} color={theme.colors.textSecondary} />
-                  <Text style={[styles.meetingDateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {new Date(meeting.meeting_date).toLocaleDateString()}
-                  </Text>
+      <ScrollView
+        style={styles.manageScroll}
+        contentContainerStyle={styles.manageScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View
+          style={[
+            styles.notionSheet,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          {currentClub && (
+            <View
+              style={[
+                styles.notionClubBlock,
+                { backgroundColor: theme.mode === 'dark' ? theme.colors.background : '#fffbeb' },
+              ]}
+            >
+              <View style={styles.clubHeader}>
+                <View style={[styles.clubIcon, { backgroundColor: theme.colors.primary + '20' }]}>
+                  <Building2 size={20} color={theme.colors.primary} />
                 </View>
-                {meeting.meeting_number && (
-                  <Text style={[styles.meetingNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    #{meeting.meeting_number}
-                  </Text>
-                )}
-              </View>
-              {meeting.meeting_start_time && (
-                <View style={styles.meetingTime}>
-                  <Clock size={12} color={theme.colors.textSecondary} />
-                  <Text style={[styles.meetingTimeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {meeting.meeting_start_time}
-                    {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.meetingMode}>
-                <MapPin size={12} color={theme.colors.textSecondary} />
-                <Text style={[styles.meetingModeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  {meeting.meeting_mode === 'in_person' ? 'In Person' : 
-                   meeting.meeting_mode === 'online' ? 'Online' : 'Hybrid'}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              {
-                backgroundColor: selectedTab === 'available' ? theme.colors.background : theme.colors.surface,
-                borderColor: theme.colors.border,
-              }
-            ]}
-            onPress={() => setSelectedTab('available')}
-          >
-            <Text style={[
-              styles.tabText,
-              { color: theme.colors.text }
-            ]} maxFontSizeMultiplier={1.3}>
-              Available Roles
-            </Text>
-            <View style={[
-              styles.tabCount,
-              { backgroundColor: theme.colors.border }
-            ]}>
-              <Text style={[
-                styles.tabCountText,
-                { color: theme.colors.textSecondary }
-              ]} maxFontSizeMultiplier={1.3}>
-                {meetingRoles.filter(role => role.role_status === 'Available').length}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              {
-                backgroundColor: selectedTab === 'deleted' ? theme.colors.background : theme.colors.surface,
-                borderColor: theme.colors.border,
-              }
-            ]}
-            onPress={() => setSelectedTab('deleted')}
-          >
-            <Text style={[
-              styles.tabText,
-              { color: theme.colors.text }
-            ]} maxFontSizeMultiplier={1.3}>
-              Deleted Roles
-            </Text>
-            <View style={[
-              styles.tabCount,
-              { backgroundColor: theme.colors.border }
-            ]}>
-              <Text style={[
-                styles.tabCountText,
-                { color: theme.colors.textSecondary }
-              ]} maxFontSizeMultiplier={1.3}>
-                {meetingRoles.filter(role => role.role_status === 'Deleted').length}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Two Column Layout: Filters and Roles */}
-        {classificationTabs.length > 0 ? (
-          <View style={styles.twoColumnContainer}>
-            {/* Left Column: Filter Categories with Vertical Scroll */}
-            <View style={[styles.filterSidebar, { backgroundColor: 'transparent' }]}>
-              <ScrollView
-                style={styles.filterScrollView}
-                showsVerticalScrollIndicator={false}
-                nestedScrollEnabled={true}
-              >
-                {classificationTabs.map((tab) => {
-                  const isSelected = selectedClassification === tab.value;
-
-                  return (
-                    <TouchableOpacity
-                      key={tab.value}
-                      style={[
-                        styles.categoryTile,
-                        {
-                          backgroundColor: isSelected ? theme.colors.background : theme.colors.surface,
-                          borderColor: theme.colors.border,
-                        }
-                      ]}
-                      onPress={() => setSelectedClassification(tab.value)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[
-                          styles.categoryLabel,
-                          {
-                            color: theme.colors.text,
-                          }
-                        ]}
-                        numberOfLines={2} maxFontSizeMultiplier={1.3}>
-                        {tab.label}
-                      </Text>
-                      <View
-                        style={[
-                          styles.categoryCount,
-                          {
-                            backgroundColor: theme.colors.border,
-                          }
-                        ]}
-                      >
-                        <Text style={[
-                            styles.categoryCountText,
-                            {
-                              color: theme.colors.textSecondary,
-                            }
-                          ]} maxFontSizeMultiplier={1.3}>
-                          {tab.count}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            {/* Right Column: Roles List with Scroll */}
-            <View style={styles.rolesColumn}>
-              <ScrollView
-                style={styles.rolesScrollView}
-                showsVerticalScrollIndicator={false}
-                nestedScrollEnabled={true}
-              >
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {selectedClassification
-                    ? `${classificationTabs.find(t => t.value === selectedClassification)?.label}(${filteredRoles.length})`
-                    : `${selectedTab === 'available' ? 'Available Roles' : 'Deleted Roles'} (${filteredRoles.length})`
-                  }
-                </Text>
-
-                {filteredRoles.map((role) => (
-                  <RoleCard key={role.id} role={role} />
-                ))}
-
-                {filteredRoles.length === 0 && (
-                  <View style={styles.emptyState}>
-                    <Users size={48} color={theme.colors.textSecondary} />
-                    <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      {selectedTab === 'available' ? 'No available roles' : 'No deleted roles'}
-                    </Text>
-                    <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      {selectedTab === 'available'
-                        ? 'All roles have been deleted'
-                        : 'Deleted roles will appear here'
-                      }
+                <View style={styles.clubInfo}>
+                  <View style={styles.clubNameRow}>
+                    <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      {currentClub.name}
                     </Text>
                   </View>
+                  <View style={styles.clubMeta}>
+                    {currentClub.club_number && (
+                      <Text style={[styles.clubNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                        Club #{currentClub.club_number}
+                      </Text>
+                    )}
+                    <View style={[styles.roleTag, { backgroundColor: getRoleColor(currentClub.role) }]}>
+                      {getRoleIcon(currentClub.role)}
+                      <Text style={styles.roleText} maxFontSizeMultiplier={1.3}>
+                        {formatRole(currentClub.role)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {currentClub ? <View style={[styles.notionHairline, { backgroundColor: theme.colors.border }]} /> : null}
+
+          <View style={styles.notionMeetingBlock}>
+            <View style={styles.meetingCardContent}>
+              <View style={[styles.dateBox, { backgroundColor: theme.colors.primary + '15' }]}>
+                <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {new Date(meeting.meeting_date).getDate()}
+                </Text>
+                <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.meetingDetails}>
+                <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {meeting.meeting_title}
+                </Text>
+                <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Day: {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
+                </Text>
+                {meeting.meeting_number ? (
+                  <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    Meeting #{meeting.meeting_number}
+                  </Text>
+                ) : null}
+                {meeting.meeting_start_time && (
+                  <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    Time: {meeting.meeting_start_time}
+                    {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
+                  </Text>
                 )}
-              </ScrollView>
+                <Text style={[styles.meetingCardMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Mode:{' '}
+                  {meeting.meeting_mode === 'in_person'
+                    ? 'In Person'
+                    : meeting.meeting_mode === 'online'
+                      ? 'Online'
+                      : 'Hybrid'}
+                </Text>
+              </View>
             </View>
           </View>
-        ) : (
-          <View style={styles.rolesSection}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              {selectedTab === 'available' ? 'Available Meeting Roles' : 'Deleted Meeting Roles'}
-              ({filteredRoles.length})
-            </Text>
+
+          <View style={[styles.notionHairline, { backgroundColor: theme.colors.border }]} />
+
+          <View style={styles.notionTabsRow}>
+            <TouchableOpacity
+              style={[
+                styles.notionTab,
+                {
+                  backgroundColor: selectedTab === 'available' ? theme.colors.primary : 'transparent',
+                  borderColor: selectedTab === 'available' ? theme.colors.primary : theme.colors.border,
+                },
+              ]}
+              onPress={() => setSelectedTab('available')}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.notionTabText,
+                  { color: selectedTab === 'available' ? '#ffffff' : theme.colors.text },
+                ]}
+                maxFontSizeMultiplier={1.3}
+              >
+                Available
+              </Text>
+              <View
+                style={[
+                  styles.notionTabCount,
+                  {
+                    backgroundColor:
+                      selectedTab === 'available' ? 'rgba(255,255,255,0.22)' : theme.colors.primary + '18',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.notionTabCountText,
+                    { color: selectedTab === 'available' ? '#ffffff' : theme.colors.primary },
+                  ]}
+                  maxFontSizeMultiplier={1.3}
+                >
+                  {availableVisibleCount}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.notionTab,
+                {
+                  backgroundColor: selectedTab === 'deleted' ? theme.colors.primary : 'transparent',
+                  borderColor: selectedTab === 'deleted' ? theme.colors.primary : theme.colors.border,
+                },
+              ]}
+              onPress={() => setSelectedTab('deleted')}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.notionTabText,
+                  { color: selectedTab === 'deleted' ? '#ffffff' : theme.colors.text },
+                ]}
+                maxFontSizeMultiplier={1.3}
+              >
+                Deleted
+              </Text>
+              <View
+                style={[
+                  styles.notionTabCount,
+                  {
+                    backgroundColor:
+                      selectedTab === 'deleted' ? 'rgba(255,255,255,0.22)' : theme.colors.primary + '18',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.notionTabCountText,
+                    { color: selectedTab === 'deleted' ? '#ffffff' : theme.colors.primary },
+                  ]}
+                  maxFontSizeMultiplier={1.3}
+                >
+                  {deletedVisibleCount}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {classificationTabs.length > 1 ? (
+            <>
+              <View style={[styles.notionHairline, { backgroundColor: theme.colors.border }]} />
+              <TouchableOpacity
+                style={[
+                  styles.categoryFilterBar,
+                  {
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.primary,
+                  },
+                ]}
+                onPress={() => setShowCategoryFilterModal(true)}
+                activeOpacity={0.88}
+                accessibilityRole="button"
+                accessibilityLabel="Filter roles by category"
+              >
+                <Filter size={20} color={theme.colors.primary} strokeWidth={2.2} />
+                <Text
+                  style={[styles.categoryFilterBarText, { color: theme.colors.text }]}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={1.25}
+                >
+                  {selectedClassification === 'all'
+                    ? selectedTab === 'available'
+                      ? `Showing all ${classificationTabs.find((t) => t.value === 'all')?.count ?? rolesByTab.length} available roles`
+                      : `Showing all ${classificationTabs.find((t) => t.value === 'all')?.count ?? rolesByTab.length} deleted roles`
+                    : (() => {
+                        const t = classificationTabs.find((x) => x.value === selectedClassification);
+                        return t ? `Showing ${t.label} (${t.count})` : 'Showing filtered roles';
+                      })()}
+                </Text>
+                <ChevronDown size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+              </TouchableOpacity>
+            </>
+          ) : null}
+
+          <View style={[styles.notionHairline, { backgroundColor: theme.colors.border }]} />
+
+          <View style={styles.notionRolesSection}>
+            <View style={styles.rolesHeader}>
+              <Text style={[styles.rolesHeaderTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                {selectedTab === 'available'
+                  ? selectedClassification === 'all'
+                    ? 'Available roles'
+                    : classificationTabs.find((t) => t.value === selectedClassification)?.label || 'Roles'
+                  : selectedClassification === 'all'
+                    ? 'Deleted roles'
+                    : classificationTabs.find((t) => t.value === selectedClassification)?.label || 'Roles'}
+              </Text>
+              <View style={[styles.rolesCountBadge, { backgroundColor: theme.colors.primary + '16' }]}>
+                <Text style={[styles.rolesCountText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                  {filteredRoles.length}
+                </Text>
+              </View>
+            </View>
 
             {filteredRoles.map((role) => (
               <RoleCard key={role.id} role={role} />
@@ -874,22 +1059,211 @@ export default function ManageMeetingRoles() {
 
             {filteredRoles.length === 0 && (
               <View style={styles.emptyState}>
-                <Users size={48} color={theme.colors.textSecondary} />
+                <Users size={40} color={theme.colors.textSecondary} />
                 <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   {selectedTab === 'available' ? 'No available roles' : 'No deleted roles'}
                 </Text>
                 <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   {selectedTab === 'available'
                     ? 'All roles have been deleted'
-                    : 'Deleted roles will appear here'
-                  }
+                    : 'Deleted roles will appear here'}
                 </Text>
               </View>
             )}
           </View>
-        )}
         </View>
       </ScrollView>
+
+      <View
+        style={[
+          styles.geBottomDock,
+          {
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            paddingBottom: Math.max(insets.bottom, 10),
+          },
+        ]}
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.footerNavigationContent}
+        >
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Home size={BOOK_ROLE_DOCK_ICON_SIZE} color="#0a66c2" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Home
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Users size={BOOK_ROLE_DOCK_ICON_SIZE} color="#d97706" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Club
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push('/(tabs)/meetings')}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Calendar size={BOOK_ROLE_DOCK_ICON_SIZE} color="#0ea5e9" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Meeting
+            </Text>
+          </TouchableOpacity>
+          {isExComm ? (
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/(tabs)/admin')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Shield size={BOOK_ROLE_DOCK_ICON_SIZE} color="#7c3aed" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Admin
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push('/(tabs)/settings')}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Settings size={BOOK_ROLE_DOCK_ICON_SIZE} color="#6b7280" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Settings
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push('/buy-us-a-coffee')}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Coffee size={BOOK_ROLE_DOCK_ICON_SIZE} color="#92400e" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Coffee
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <MessageCircle size={BOOK_ROLE_DOCK_ICON_SIZE} color="#22c55e" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Support
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Globe size={BOOK_ROLE_DOCK_ICON_SIZE} color="#334155" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Web
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+      </View>
+
+      <Modal
+        visible={showCategoryFilterModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCategoryFilterModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.categoryFilterModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowCategoryFilterModal(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.categoryFilterModalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={[styles.categoryFilterModalHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.categoryFilterModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                Roles by category
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowCategoryFilterModal(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityLabel="Close"
+              >
+                <X size={22} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.categoryFilterModalList}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {classificationTabs.map((tab) => {
+                const isSel = selectedClassification === tab.value;
+                return (
+                  <TouchableOpacity
+                    key={tab.value}
+                    style={[
+                      styles.categoryFilterModalRow,
+                      {
+                        backgroundColor: isSel ? theme.colors.primary + '14' : 'transparent',
+                        borderBottomColor: theme.colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      setSelectedClassification(tab.value);
+                      setShowCategoryFilterModal(false);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <View
+                      style={[
+                        styles.categoryFilterModalRowIcon,
+                        {
+                          backgroundColor: isSel ? theme.colors.primary + '30' : theme.colors.primary + '12',
+                        },
+                      ]}
+                    >
+                      {getCategoryIcon(tab.label, true, isSel)}
+                    </View>
+                    <View style={styles.categoryFilterModalRowText}>
+                      <Text
+                        style={[styles.categoryFilterModalRowLabel, { color: theme.colors.text }]}
+                        numberOfLines={2}
+                        maxFontSizeMultiplier={1.25}
+                      >
+                        {tab.label}
+                      </Text>
+                      <Text
+                        style={[styles.categoryFilterModalRowMeta, { color: theme.colors.textSecondary }]}
+                        maxFontSizeMultiplier={1.2}
+                      >
+                        {tab.count} {tab.count === 1 ? 'role' : 'roles'}
+                      </Text>
+                    </View>
+                    {isSel ? (
+                      <Check size={22} color={theme.colors.primary} strokeWidth={2.5} />
+                    ) : (
+                      <View style={styles.categoryFilterModalCheckSpacer} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Member Assignment Modal */}
       <Modal
@@ -1088,78 +1462,288 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  rolesMasterBox: {
-    marginHorizontal: 12,
-    marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
+  manageMain: {
+    flex: 1,
+    minHeight: 0,
   },
-  meetingCard: {
-    marginHorizontal: 0,
-    marginTop: 0,
-    borderRadius: 0,
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  meetingHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  meetingIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  meetingInfo: {
+  manageScroll: {
     flex: 1,
   },
-  meetingTitle: {
-    fontSize: 18,
+  manageScrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+  notionSheet: {
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  notionClubBlock: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  notionHairline: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+  },
+  notionMeetingBlock: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  meetingCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
+  },
+  dateBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateDay: {
+    fontSize: 22,
     fontWeight: '700',
-    marginBottom: 8,
-    lineHeight: 24,
+    lineHeight: 26,
   },
-  meetingMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 6,
-    flexWrap: 'wrap',
+  dateMonth: {
+    fontSize: 9,
+    fontWeight: '600',
+    marginTop: -2,
   },
-  meetingDate: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  meetingDetails: {
+    flex: 1,
   },
-  meetingDateText: {
-    fontSize: 13,
+  meetingCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  meetingCardDateTime: {
+    fontSize: 10,
     fontWeight: '500',
-    marginLeft: 4,
+    marginBottom: 2,
   },
-  meetingNumber: {
-    fontSize: 13,
+  meetingCardMode: {
+    fontSize: 10,
     fontWeight: '500',
   },
-  meetingTime: {
+  clubHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  clubIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  clubInfo: {
+    flex: 1,
+  },
+  clubNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 4,
   },
-  meetingTimeText: {
-    fontSize: 13,
-    marginLeft: 4,
+  clubName: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
   },
-  meetingMode: {
+  clubMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
-  meetingModeText: {
+  clubNumber: {
     fontSize: 13,
+  },
+  roleTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 0,
+  },
+  roleText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#ffffff',
     marginLeft: 4,
+  },
+  notionTabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  notionTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+  },
+  notionTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  notionTabCount: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 0,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  notionTabCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  categoryFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginVertical: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 0,
+    borderWidth: 2,
+    gap: 12,
+  },
+  categoryFilterBarText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  categoryFilterModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  categoryFilterModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '72%',
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  categoryFilterModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  categoryFilterModalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    flex: 1,
+    marginRight: 8,
+  },
+  categoryFilterModalList: {
+    maxHeight: 420,
+  },
+  categoryFilterModalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+  },
+  categoryFilterModalRowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryFilterModalRowText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  categoryFilterModalRowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  categoryFilterModalRowMeta: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  categoryFilterModalCheckSpacer: {
+    width: 22,
+    height: 22,
+  },
+  notionRolesSection: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    paddingBottom: 18,
+  },
+  rolesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  rolesHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+  },
+  rolesCountBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 0,
+  },
+  rolesCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 8,
+  },
+  footerNavigationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    minWidth: 62,
+    paddingVertical: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   rolesSection: {
     paddingHorizontal: 16,
@@ -1172,10 +1756,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   roleCard: {
-    borderRadius: 10,
-    padding: 13,
-    marginBottom: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#E5E7EB',
   },
   roleHeader: {
@@ -1201,7 +1785,7 @@ const styles = StyleSheet.create({
   },
   deleteRoleButton: {
     padding: 8,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1214,7 +1798,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 8,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
   },
   assignButtonText: {
@@ -1225,7 +1809,7 @@ const styles = StyleSheet.create({
   restoreButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
   },
   restoreButtonText: {
@@ -1240,7 +1824,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 10,
+    borderRadius: 0,
   },
   statusText: {
     fontSize: 10,
@@ -1436,90 +2020,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#ffffff',
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 6,
-    gap: 8,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginRight: 6,
-  },
-  tabCount: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    minWidth: 20,
-    alignItems: 'center',
-  },
-  tabCountText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  twoColumnContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 16,
-    gap: 12,
-    minHeight: 500,
-  },
-  filterSidebar: {
-    width: '18%',
-    minWidth: 60,
-    maxWidth: 105,
-    paddingRight: 0,
-    alignSelf: 'flex-start',
-    maxHeight: 336,
-  },
-  filterScrollView: {
-    flex: 1,
-  },
-  categoryTile: {
-    aspectRatio: 1,
-    borderRadius: 7,
-    marginBottom: 4,
-    padding: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  categoryLabel: {
-    fontSize: 6.3,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 2,
-    lineHeight: 7,
-  },
-  categoryCount: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  categoryCountText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  rolesColumn: {
-    flex: 1,
-  },
-  rolesScrollView: {
-    flex: 1,
   },
 });

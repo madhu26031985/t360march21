@@ -1,17 +1,16 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Pressable, Switch } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { fetchGeneralEvaluatorReportBundle, generalEvaluatorReportQueryKeys } from '@/lib/generalEvaluatorReportQuery';
-import { exportAgendaToPDF } from '@/lib/pdfExportUtils';
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
-import { ArrowLeft, Calendar, Clock, MapPin, Building2, Star, Info, CircleCheck as CheckCircle, Circle, CircleAlert as AlertCircle, X, NotebookPen, Bell, FileText, Users, MessageSquare, MessageCircle, Mic, BookOpen, CheckSquare, ClipboardCheck, FileBarChart, Search, UserPlus, Vote, Settings, UserCog, LayoutDashboard, Download } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Star, X, NotebookPen, FileText, Users, RotateCcw, ClipboardCheck, Search, Vote } from 'lucide-react-native';
 import { Crown, User, Shield, Eye, EyeOff, UserCheck } from 'lucide-react-native';
 
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -19,6 +18,104 @@ const FOOTER_NAV_ICON_SIZE = 15;
 /** General Evaluator Corner ratings use a 1–10 scale per question. */
 const GE_RATING_MIN = 1;
 const GE_RATING_MAX = 10;
+
+/** Amazon-style rating stars (filled yellow / gray empty). */
+const GE_STAR_FILL = '#FFC940';
+const GE_STAR_STROKE = '#E47911';
+const GE_STAR_EMPTY_STROKE = '#D5D4D4';
+
+/** Notion-style palette (light) — text, muted, accent blue, page background. */
+const NOTION_TEXT = '#37352F';
+const NOTION_TEXT_MUTED = '#787774';
+const NOTION_ACCENT = '#2383E2';
+const NOTION_PAGE_BG = '#FBFBFA';
+const NOTION_SURFACE = '#FFFFFF';
+const NOTION_DIVIDER = 'rgba(55, 53, 47, 0.09)';
+
+const NOTION_FONT_FAMILY =
+  Platform.OS === 'web'
+    ? 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
+    : undefined;
+
+/** Map a 1–10 per-question score to 0–5 stars (10 → 5, 9 → 4.5, 8 → 4). */
+function geTenPointToStars(score: number | null | undefined): number {
+  if (score == null || typeof score !== 'number' || !Number.isFinite(score)) return 0;
+  const s = Math.max(GE_RATING_MIN, Math.min(GE_RATING_MAX, score));
+  return s / 2;
+}
+
+/** Map total score vs max (e.g. 100/100) to 0–5 stars for the summary header. */
+function geTotalToStars(total: number, maxTotal: number): number {
+  if (maxTotal <= 0 || !Number.isFinite(total)) return 0;
+  return Math.min(5, Math.max(0, (total / maxTotal) * 5));
+}
+
+function GeFiveStarRow({
+  rating,
+  size = 16,
+  filledColor = GE_STAR_FILL,
+  emptyStrokeColor = GE_STAR_EMPTY_STROKE,
+  strokeColor = GE_STAR_STROKE,
+}: {
+  rating: number;
+  size?: number;
+  /** Interior fill for scored portion (Amazon-style yellow). */
+  filledColor?: string;
+  /** Outline for empty / background stars. */
+  emptyStrokeColor?: string;
+  /** Outline on filled stars (slightly darker). */
+  strokeColor?: string;
+}) {
+  const clamped = Math.min(5, Math.max(0, rating));
+  return (
+    <View style={geFiveStarRowStyles.row}>
+      {[0, 1, 2, 3, 4].map((i) => {
+        const fill = Math.min(1, Math.max(0, clamped - i));
+        return (
+          <View key={i} style={{ width: size, height: size }} collapsable={false}>
+            <View style={{ position: 'absolute', left: 0, top: 0, width: size, height: size }}>
+              <Star
+                size={size}
+                color={emptyStrokeColor}
+                fill="none"
+                stroke={emptyStrokeColor}
+                strokeWidth={1.25}
+              />
+            </View>
+            {fill > 0 ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  width: size * fill,
+                  height: size,
+                  overflow: 'hidden',
+                }}
+              >
+                <Star
+                  size={size}
+                  color={strokeColor}
+                  fill={filledColor}
+                  stroke={strokeColor}
+                  strokeWidth={1}
+                />
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const geFiveStarRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+});
 
 function normalizeStoredGeRating(raw: unknown): number | null {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
@@ -50,6 +147,33 @@ interface Meeting {
   meeting_location: string | null;
   meeting_link: string | null;
   meeting_status: string;
+}
+
+function formatTimeForDisplay(t: string): string {
+  const p = t.split(':');
+  if (p.length >= 2) return `${p[0]}:${p[1]}`;
+  return t;
+}
+
+function meetingModeLabel(m: Meeting): string {
+  return m.meeting_mode === 'in_person' ? 'In Person' : m.meeting_mode === 'online' ? 'Online' : 'Hybrid';
+}
+
+/** e.g. "April 4 | Sat | 19:30 - 20:30 | In Person" — matches Toastmaster Corner */
+function formatConsolidatedMeetingMetaSingleLine(m: Meeting): string {
+  const date = new Date(m.meeting_date);
+  const monthDay = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const weekdayShort = date.toLocaleDateString('en-US', { weekday: 'short' });
+  const parts: string[] = [monthDay, weekdayShort];
+  if (m.meeting_start_time && m.meeting_end_time) {
+    parts.push(
+      `${formatTimeForDisplay(m.meeting_start_time)} - ${formatTimeForDisplay(m.meeting_end_time)}`
+    );
+  } else if (m.meeting_start_time) {
+    parts.push(formatTimeForDisplay(m.meeting_start_time));
+  }
+  parts.push(meetingModeLabel(m));
+  return parts.join(' | ');
 }
 
 interface GeneralEvaluator {
@@ -101,6 +225,25 @@ interface FeedbackForm {
 }
 export default function GeneralEvaluatorReport() {
   const { theme } = useTheme();
+  const notion =
+    theme.mode === 'light'
+      ? {
+          text: NOTION_TEXT,
+          muted: NOTION_TEXT_MUTED,
+          accent: NOTION_ACCENT,
+          divider: NOTION_DIVIDER,
+          surface: NOTION_SURFACE,
+          page: NOTION_PAGE_BG,
+        }
+      : {
+          text: theme.colors.text,
+          muted: theme.colors.textSecondary,
+          accent: theme.colors.primary,
+          divider: theme.colors.border,
+          surface: theme.colors.surface,
+          page: theme.colors.background,
+        };
+  const notionType = NOTION_FONT_FAMILY ? ({ fontFamily: NOTION_FONT_FAMILY } as const) : {};
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams();
@@ -112,7 +255,6 @@ export default function GeneralEvaluatorReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [responses, setResponses] = useState<Record<string, number | null>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
   const [feedbackForm, setFeedbackForm] = useState<FeedbackForm>({
     summary: '',
     whatWentWell: '',
@@ -131,16 +273,18 @@ export default function GeneralEvaluatorReport() {
   const [summaryVisibleToMembers, setSummaryVisibleToMembers] = useState(true);
   const [supportsSummaryVisibilityColumn, setSupportsSummaryVisibilityColumn] = useState(true);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
+  /** Always call latest loader from focus effect (withdraw/book flows update DB without remounting this screen). */
+  const loadGeneralEvaluatorDataRef = useRef<() => Promise<void>>(async () => {});
 
   const evaluationQuestions: EvaluationQuestion[] = [
     {
       id: 'q1_preparation_setup',
-      title: '1. Preparation & Setup',
+      title: '1. Meeting Prep & Setup',
       description: 'Was the meeting well-prepared (venue, agenda, and roles assigned in advance)?',
     },
     {
       id: 'q2_opening_quality',
-      title: '2. Opening Quality',
+      title: '2. Meeting Opening',
       description: 'Did the meeting start on time with an engaging and confident opening?',
     },
     {
@@ -150,7 +294,7 @@ export default function GeneralEvaluatorReport() {
     },
     {
       id: 'q4_meeting_leadership',
-      title: '4. Meeting Leadership (Toastmaster)',
+      title: '4. Meeting Leadership',
       description: 'Did the Toastmaster clearly manage the theme, flow, and transitions?',
     },
     {
@@ -160,12 +304,12 @@ export default function GeneralEvaluatorReport() {
     },
     {
       id: 'q6_speaker_intro_support',
-      title: '6. Speaker Introduction & Support',
-      description: 'Were speakers introduced well and supported throughout their speeches?',
+      title: '6. Speaker Effectiveness',
+      description: 'How effectively were speakers prepared, introduced, and supported?',
     },
     {
       id: 'q7_time_discipline',
-      title: '7. Time Discipline (Speakers & Agenda)',
+      title: '7. Time Management',
       description: 'Did speakers and segments stay within the allotted time?',
     },
     {
@@ -175,7 +319,7 @@ export default function GeneralEvaluatorReport() {
     },
     {
       id: 'q9_flow_feedback_collection',
-      title: '9. Flow & Feedback Collection',
+      title: '9. Feedback collection',
       description: 'Was the meeting well-paced, and were feedback/comments gathered from guests and visiting Toastmasters?',
     },
     {
@@ -185,11 +329,20 @@ export default function GeneralEvaluatorReport() {
     },
   ];
 
-  useEffect(() => {
-    if (meetingId) {
-      void loadGeneralEvaluatorData();
-    }
-  }, [meetingId, user?.currentClubId]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!meetingId || !user?.currentClubId) {
+        setIsLoading(false);
+        return;
+      }
+      const uid = user?.id ?? 'anon';
+      /** Drop cached snapshot so back navigation from Book a Role shows current GE assignment. */
+      queryClient.removeQueries({
+        queryKey: generalEvaluatorReportQueryKeys.snapshot(meetingId, user.currentClubId, uid),
+      });
+      void loadGeneralEvaluatorDataRef.current();
+    }, [meetingId, user?.currentClubId, user?.id, queryClient])
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -221,7 +374,7 @@ export default function GeneralEvaluatorReport() {
             effectiveUserId || 'anon'
           ),
           queryFn: () => fetchGeneralEvaluatorReportBundle(meetingId, user.currentClubId, effectiveUserId),
-          staleTime: 60 * 1000,
+          staleTime: 0,
         });
         setMeeting(bundle.meeting as Meeting | null);
         setClubInfo(bundle.clubInfo);
@@ -443,7 +596,6 @@ export default function GeneralEvaluatorReport() {
   const canAccessGeneralEvaluatorCorner = isGeneralEvaluator() || isVPEClub;
   const canEditGeneralEvaluatorCorner = canAccessGeneralEvaluatorCorner;
   const isGeRoleBooked = generalEvaluator?.booking_status === 'booked';
-  const isExComm = (user?.clubRole || user?.role || '').toLowerCase() === 'excomm';
   const isMissingSummaryVisibilityColumnError = (error: any): boolean => {
     const message = String(error?.message ?? '').toLowerCase();
     return (error?.code === 'PGRST204' || error?.code === '42703') && message.includes('summary_visible_to_members');
@@ -733,30 +885,6 @@ export default function GeneralEvaluatorReport() {
     }
   };
 
-  const handleInfoClick = () => {
-    Alert.alert('Coming soon');
-  };
-
-  const handleExportPDF = async () => {
-    if (Platform.OS !== 'web') {
-      Alert.alert('PDF Export', 'PDF export is available on the web version of this app.');
-      return;
-    }
-    setIsExporting(true);
-    try {
-      const clubName = (clubInfo?.name || 'Club').replace(/[^a-z0-9]/gi, '_');
-      const meetingNum = meeting?.meeting_number || 'X';
-      const date = meeting?.meeting_date ? new Date(meeting.meeting_date).toISOString().split('T')[0] : 'date';
-      const filename = `${clubName}_Meeting_${meetingNum}_General_Evaluator_Report_${date}.pdf`;
-      await exportAgendaToPDF('general-evaluator-report-content', filename);
-    } catch (error) {
-      console.error('Error exporting GE PDF:', error);
-      Alert.alert('Export Failed', 'Failed to export PDF. Please try again.');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   const formatMeetingMode = (mode: string) => {
     switch (mode) {
       case 'in_person': return 'In Person';
@@ -766,16 +894,12 @@ export default function GeneralEvaluatorReport() {
     }
   };
 
-  const formatConsolidatedMeetingMetaSingleLine = (m: Meeting): string => {
-    const date = new Date(m.meeting_date);
-    const day = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-    const weekday = date.toLocaleDateString('en-US', { weekday: 'short' });
-    const start = m.meeting_start_time || '--:--';
-    const end = m.meeting_end_time || '--:--';
-    return `${day} | ${weekday} | ${start} - ${end} | ${formatMeetingMode(m.meeting_mode)}`;
-  };
-
   const geTotalMax = evaluationQuestions.length * GE_RATING_MAX;
+  /** Icons sit inside the single bottom dock — no per-tile boxes. */
+  const footerIconTileStyle = {
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  } as const;
   const totalScore = evaluationQuestions.reduce((sum, q) => sum + (typeof responses[q.id] === 'number' ? (responses[q.id] as number) : 0), 0);
   const getOverallRating = (score: number): 'Excellent' | 'Good' | 'Needs Improvement' => {
     if (score >= Math.round((56 / 72) * geTotalMax)) return 'Excellent';
@@ -788,40 +912,45 @@ export default function GeneralEvaluatorReport() {
 
   const renderGeTotalScoreCard = (opts: { showMemberVisibilityToggle: boolean }) => {
     const showToggle = opts.showMemberVisibilityToggle && canEditGeneralEvaluatorCorner;
+    const overallStarRating = geTotalToStars(totalScore, geTotalMax);
+    const emptyStarStroke = theme.mode === 'dark' ? '#6b7280' : GE_STAR_EMPTY_STROKE;
     return (
-      <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+      <View style={[styles.summaryCard, { backgroundColor: notion.surface, borderBottomColor: notion.divider }]}>
         <View style={styles.summaryCardTopRow}>
           <View style={styles.summaryScoreTexts}>
-            <Text style={[styles.summaryText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Total Score: {totalScore} / {geTotalMax}
-            </Text>
-            <Text style={[styles.summaryText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-              Overall Rating: {getOverallRating(totalScore)}
-            </Text>
+            <View style={styles.overallRatingRow}>
+              <Text
+                style={[styles.summaryText, styles.overallRatingLabel, notionType, { color: notion.text }]}
+                maxFontSizeMultiplier={1.2}
+              >
+                Overall Rating: {getOverallRating(totalScore)}
+              </Text>
+              <GeFiveStarRow rating={overallStarRating} size={20} emptyStrokeColor={emptyStarStroke} />
+            </View>
           </View>
           {showToggle ? (
             <View style={styles.summaryVisibilityToggleWrap}>
               {summaryVisibleToMembers ? (
-                <Eye size={20} color={theme.colors.primary} />
+                <Eye size={20} color={notion.accent} />
               ) : (
-                <EyeOff size={20} color={theme.colors.textSecondary} />
+                <EyeOff size={20} color={notion.muted} />
               )}
-              <Text style={[styles.summaryVisibilityLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+              <Text style={[styles.summaryVisibilityLabel, notionType, { color: notion.muted }]} maxFontSizeMultiplier={1.1}>
                 Members
               </Text>
               <Switch
                 value={summaryVisibleToMembers}
                 onValueChange={handleSummaryVisibilityChange}
                 trackColor={{ false: '#d1d5db', true: '#93c5fd' }}
-                thumbColor={Platform.OS === 'android' ? (summaryVisibleToMembers ? theme.colors.primary : '#f4f3f4') : undefined}
+                thumbColor={Platform.OS === 'android' ? (summaryVisibleToMembers ? notion.accent : '#f4f3f4') : undefined}
               />
             </View>
           ) : null}
         </View>
         {showToggle ? (
-          <Text style={[styles.summaryVisibilityHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.05}>
+          <Text style={[styles.summaryVisibilityHint, notionType, { color: notion.muted }]} maxFontSizeMultiplier={1.05}>
             {summaryVisibleToMembers
-              ? 'Members can see this summary on the General Evaluator Summary tab.'
+              ? 'Members can see this summary on the GE Summary tab.'
               : 'Hidden from members — only you and VPE see scores on Summary.'}
           </Text>
         ) : null}
@@ -838,11 +967,11 @@ export default function GeneralEvaluatorReport() {
   const RatingCard = ({ question }: { question: EvaluationQuestion }) => {
     const current = responses[question.id];
     return (
-      <View style={[styles.ratingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-        <Text style={[styles.ratingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+      <View style={[styles.ratingCard, { backgroundColor: notion.surface, borderBottomColor: notion.divider }]}>
+        <Text style={[styles.ratingCardTitle, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.3}>
           {question.title}
         </Text>
-        <Text style={[styles.ratingCardDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+        <Text style={[styles.ratingCardDesc, notionType, { color: notion.muted }]} maxFontSizeMultiplier={1.2}>
           {question.description}
         </Text>
 
@@ -855,7 +984,7 @@ export default function GeneralEvaluatorReport() {
                 style={[
                   styles.sliderStep,
                   {
-                    backgroundColor: current != null && value <= current ? theme.colors.primary : '#E5E7EB',
+                    backgroundColor: current != null && value <= current ? notion.accent : theme.mode === 'light' ? 'rgba(55, 53, 47, 0.08)' : '#E5E7EB',
                   },
                 ]}
                 onPress={() => handleRatingChange(question.id, value)}
@@ -868,7 +997,7 @@ export default function GeneralEvaluatorReport() {
           {Array.from({ length: 10 }, (_, i) => {
             const value = i + GE_RATING_MIN;
             return (
-              <Text key={`${question.id}-scale-${value}`} style={[styles.scaleTick, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+              <Text key={`${question.id}-scale-${value}`} style={[styles.scaleTick, notionType, { color: notion.muted }]} maxFontSizeMultiplier={1.1}>
                 {value}
               </Text>
             );
@@ -876,10 +1005,10 @@ export default function GeneralEvaluatorReport() {
         </View>
 
         <View style={styles.ratingMetaRow}>
-          <Text style={[styles.selectedValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+          <Text style={[styles.selectedValue, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.2}>
             Selected: {current == null ? '-' : `${current}/${GE_RATING_MAX}`}
           </Text>
-          <Text style={[styles.scoreBadge, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+          <Text style={[styles.scoreBadge, { color: notion.accent }]} maxFontSizeMultiplier={1.2}>
             {getScoreLabel(current)}
           </Text>
         </View>
@@ -887,11 +1016,13 @@ export default function GeneralEvaluatorReport() {
     );
   };
 
+  loadGeneralEvaluatorDataRef.current = loadGeneralEvaluatorData;
+
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: notion.page }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading General Evaluator Report...</Text>
+          <Text style={[styles.loadingText, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.3}>Loading General Evaluator Report...</Text>
         </View>
       </SafeAreaView>
     );
@@ -899,11 +1030,11 @@ export default function GeneralEvaluatorReport() {
 
   if (!meeting) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: notion.page }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting not found</Text>
+          <Text style={[styles.loadingText, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.3}>Meeting not found</Text>
           <TouchableOpacity 
-            style={[styles.backButton, { backgroundColor: theme.colors.primary, marginTop: 16 }]}
+            style={[styles.backButton, { backgroundColor: notion.accent, marginTop: 16 }]}
             onPress={() => router.back()}
           >
             <Text style={styles.backButtonText} maxFontSizeMultiplier={1.3}>Go Back</Text>
@@ -916,79 +1047,100 @@ export default function GeneralEvaluatorReport() {
   const { totalQuestions, answeredQuestions, hasFeedback } = getCompletionStats();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: notion.page }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <View style={styles.kavInner}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+      <View style={[styles.header, { backgroundColor: notion.surface, borderBottomColor: notion.divider }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+          <ArrowLeft size={24} color={notion.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>General Evaluator Report</Text>
-        {isGeRoleBooked ? (
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.infoButton}
-              onPress={handleExportPDF}
-              disabled={isExporting}
-            >
-              <Download size={20} color={theme.colors.text} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.infoButton}
-              onPress={handleInfoClick}
-            >
-              <Info size={20} color={theme.colors.text} />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.infoButton} />
-        )}
+        <Text style={[styles.headerTitle, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.3}>General Evaluator Report</Text>
+        <View style={styles.infoButton} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentContainer}>
+      <View style={styles.mainBody}>
+      <ScrollView
+        style={styles.scrollMain}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+      >
         <View style={styles.contentTop} nativeID="general-evaluator-report-content">
         {/* General Evaluator Assignment Section */}
         {generalEvaluator?.assigned_user_id && generalEvaluator.app_user_profiles ? (
-          <View style={[styles.evaluatorSection, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.evaluatorClubName, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-              {clubInfo?.name || 'Club'}
-            </Text>
-            <View style={styles.evaluatorCard}>
-              {canEditGeneralEvaluatorCorner && (
-                <TouchableOpacity
-                  style={[styles.prepSpaceIcon, styles.prepSpaceIconFloating, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                  onPress={() => router.push(`/general-evaluator-notes?meetingId=${meetingId}`)}
-                >
-                  <NotebookPen size={18} color={theme.colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-              <View style={styles.evaluatorInfoCentered}>
-                <View style={styles.evaluatorAvatarLarge}>
-                  {generalEvaluator.app_user_profiles.avatar_url ? (
-                    <Image
-                      source={{ uri: generalEvaluator.app_user_profiles.avatar_url }}
-                      style={styles.evaluatorAvatarImage}
-                    />
-                  ) : (
-                    <Star size={28} color="#ffffff" />
-                  )}
-                </View>
-                <Text style={[styles.evaluatorNameCentered, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {generalEvaluator.app_user_profiles.full_name}
-                </Text>
-                <Text style={[styles.evaluatorRoleLabelCentered, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  General evaluator
-                </Text>
+          <View
+            style={[
+              styles.consolidatedCornerCard,
+              {
+                backgroundColor: notion.page,
+                borderBottomColor: notion.divider,
+                marginHorizontal: 16,
+                marginTop: 8,
+              },
+            ]}
+          >
+            <View style={styles.consolidatedClubBadge}>
+              <Text
+                style={[
+                  styles.consolidatedClubTitle,
+                  notionType,
+                  { color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666' },
+                ]}
+                maxFontSizeMultiplier={1.3}
+              >
+                {clubInfo?.name || 'Club'}
+              </Text>
+            </View>
+
+            <View style={styles.consolidatedProfileStack}>
+              <View
+                style={[
+                  styles.consolidatedAvatarWrap,
+                  {
+                    borderColor: theme.mode === 'dark' ? theme.colors.border : '#E8E8E8',
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.background : '#F4F4F5',
+                  },
+                ]}
+              >
+                {generalEvaluator.app_user_profiles.avatar_url ? (
+                  <Image
+                    source={{ uri: generalEvaluator.app_user_profiles.avatar_url }}
+                    style={styles.consolidatedAvatarImage}
+                  />
+                ) : (
+                  <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
+                )}
               </View>
+              <Text
+                style={[
+                  styles.consolidatedPersonName,
+                  notionType,
+                  { color: theme.mode === 'dark' ? theme.colors.text : '#111111' },
+                ]}
+                maxFontSizeMultiplier={1.25}
+              >
+                {generalEvaluator.app_user_profiles.full_name}
+              </Text>
+              <Text
+                style={[
+                  styles.consolidatedPersonRole,
+                  notionType,
+                  { color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666' },
+                ]}
+                maxFontSizeMultiplier={1.2}
+              >
+                General evaluator
+              </Text>
             </View>
 
             {isGeRoleBooked && (
               <>
-                <View style={[styles.consolidatedBottomDivider, { backgroundColor: '#EAEAEA' }]} />
+                <View style={[styles.consolidatedBottomDivider, { backgroundColor: notion.divider }]} />
                 <View style={styles.consolidatedMeetingMetaBlock}>
                   <Text
                     style={[
                       styles.consolidatedMeetingMetaSingle,
+                      notionType,
                       { color: theme.mode === 'dark' ? '#A3A3A3' : '#999999' },
                     ]}
                     maxFontSizeMultiplier={1.2}
@@ -1080,27 +1232,28 @@ export default function GeneralEvaluatorReport() {
         {isGeRoleBooked && (
           <>
             {/* Tab Selector */}
-            <View style={[styles.tabContainer, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.tabContainer, { backgroundColor: notion.page, borderBottomColor: notion.divider }]}>
               {canAccessGeneralEvaluatorCorner && (
                 <TouchableOpacity
                   style={[
                     styles.tab,
                     activeTab === 'categories' && styles.activeTab,
-                    { borderBottomColor: activeTab === 'categories' ? theme.colors.primary : 'transparent' }
+                    { borderBottomColor: activeTab === 'categories' ? notion.accent : 'transparent' },
                   ]}
                   onPress={() => setActiveTab('categories')}
                 >
                   <Text
                     style={[
                       styles.tabText,
-                      { color: activeTab === 'categories' ? theme.colors.primary : theme.colors.textSecondary }
+                      notionType,
+                      { color: activeTab === 'categories' ? notion.accent : notion.muted },
                     ]}
                     maxFontSizeMultiplier={1.1}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.7}
                   >
-                    General Evaluator Corner
+                    GE corner
                   </Text>
                 </TouchableOpacity>
               )}
@@ -1108,21 +1261,22 @@ export default function GeneralEvaluatorReport() {
                 style={[
                   styles.tab,
                   activeTab === 'feedback' && styles.activeTab,
-                  { borderBottomColor: activeTab === 'feedback' ? theme.colors.primary : 'transparent' }
+                  { borderBottomColor: activeTab === 'feedback' ? notion.accent : 'transparent' },
                 ]}
                 onPress={() => setActiveTab('feedback')}
               >
                 <Text
                   style={[
                     styles.tabText,
-                    { color: activeTab === 'feedback' ? theme.colors.primary : theme.colors.textSecondary }
+                    notionType,
+                    { color: activeTab === 'feedback' ? notion.accent : notion.muted },
                   ]}
                   maxFontSizeMultiplier={1.1}
                   numberOfLines={1}
                   adjustsFontSizeToFit
                   minimumFontScale={0.7}
                 >
-                  General Evaluator Summary
+                  GE Summary
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1146,7 +1300,7 @@ export default function GeneralEvaluatorReport() {
                   <>
                     {renderGeTotalScoreCard({ showMemberVisibilityToggle: false })}
 
-                    <View style={[styles.scoreListCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                    <View style={[styles.scoreListCard, { backgroundColor: notion.surface, borderBottomColor: notion.divider }]}>
                       {evaluationQuestions.map((question, index) => {
                         const score = responses[question.id];
                         return (
@@ -1154,18 +1308,24 @@ export default function GeneralEvaluatorReport() {
                             key={`summary-${question.id}`}
                             style={[
                               styles.scoreListRow,
-                              { borderBottomColor: theme.colors.border },
+                              { borderBottomColor: notion.divider },
                               index === evaluationQuestions.length - 1 && styles.scoreListRowLast,
                             ]}
                           >
-                            <Text style={[styles.scoreQuestionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                            <Text style={[styles.scoreQuestionTitle, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.2}>
                               {question.title}
                             </Text>
-                            <View style={[styles.scoreValuePill, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                              <Text style={[styles.scoreValueText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.1}>
-                                {score == null ? '-' : `${score}/${GE_RATING_MAX}`}
+                            {score == null ? (
+                              <Text style={[styles.scoreValueDash, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                                —
                               </Text>
-                            </View>
+                            ) : (
+                              <GeFiveStarRow
+                                rating={geTenPointToStars(score)}
+                                size={15}
+                                emptyStrokeColor={theme.mode === 'dark' ? '#6b7280' : GE_STAR_EMPTY_STROKE}
+                              />
+                            )}
                           </View>
                         );
                       })}
@@ -1175,11 +1335,11 @@ export default function GeneralEvaluatorReport() {
                   <View
                     style={[
                       styles.summaryHiddenPlaceholder,
-                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                      { backgroundColor: notion.page, borderBottomColor: notion.divider },
                     ]}
                   >
-                    <EyeOff size={36} color={theme.colors.textSecondary} />
-                    <Text style={[styles.summaryHiddenTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                    <EyeOff size={36} color={notion.muted} />
+                    <Text style={[styles.summaryHiddenTitle, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.25}>
                       General evalutor is yet to publish the evalution score
                     </Text>
                   </View>
@@ -1191,13 +1351,17 @@ export default function GeneralEvaluatorReport() {
 
         </View>
 
-        {/* Footer Navigation */}
-        <View style={[styles.footerNavigationInline, {
-            backgroundColor: theme.colors.surface,
-            borderTopColor: theme.colors.border,
-            marginTop: 0,
-            marginBottom: 16,
-          }]}>
+      </ScrollView>
+
+        <View
+          style={[
+            styles.geBottomDock,
+            {
+              borderTopColor: notion.divider,
+              backgroundColor: notion.surface,
+            },
+          ]}
+        >
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1206,185 +1370,79 @@ export default function GeneralEvaluatorReport() {
             >
               <TouchableOpacity
                 style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting.id } })}
+                onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3E7' }]}>
-                  <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book the role</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meeting.id } })}
+                onPress={() =>
+                  router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id, initialTab: 'my_bookings' } })
+                }
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                  <Bell size={FOOTER_NAV_ICON_SIZE} color="#772432" />
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw role</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.footerNavItem}
                 onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting.id } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                   <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance</Text>
               </TouchableOpacity>
 
-              {isVPEClub && !generalEvaluator?.assigned_user_id && (
-                <TouchableOpacity
-                  style={styles.footerNavItem}
-                  onPress={() => {
-                    setShowAssignGeModal(true);
-                    void loadClubMembers();
-                  }}
-                  disabled={bookingGeRole || assigningGeRole}
-                >
-                  <View style={[styles.footerNavIcon, { backgroundColor: '#ECFDF5' }]}>
-                    <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#059669" />
-                  </View>
-                  <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Assign</Text>
-                </TouchableOpacity>
-              )}
-
               <TouchableOpacity
                 style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
+                onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting.id } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#E6EFF4' }]}>
-                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role completion</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting.id } })}
+                onPress={() => router.push(`/general-evaluator-notes?meetingId=${meetingId}`)}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#F0FDF4' }]}>
-                  <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#16a34a" />
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>prep space</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId: meeting.id } })}
+                onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting.id } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FFF7ED' }]}>
-                  <Eye size={FOOTER_NAV_ICON_SIZE} color="#ea580c" />
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Gen Eval</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meeting.id } })}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#EEF2FF' }]}>
-                  <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>AGENDA</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.footerNavItem}
                 onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting.id } })}
               >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FDF4FF' }]}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                   <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>VOTING</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting.id } })}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FEFBF0' }]}>
-                  <Mic size={FOOTER_NAV_ICON_SIZE} color="#C9B84E" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting.id } })}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#E6F4FF' }]}>
-                  <Clock size={FOOTER_NAV_ICON_SIZE} color="#0369a1" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId: meeting.id } })}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FFF1F2' }]}>
-                  <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#e11d48" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>TT Corner</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meeting.id } })}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#FCE7F3' }]}>
-                  <Mic size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.footerNavItem}
-                onPress={() => router.push({ pathname: '/admin/voting-operations' })}
-              >
-                <View style={[styles.footerNavIcon, { backgroundColor: '#F9E8EB' }]}>
-                  <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#772432" />
-                </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Vote Ops</Text>
-              </TouchableOpacity>
-
-              {isExComm && (
-                <>
-                  <TouchableOpacity
-                    style={styles.footerNavItem}
-                    onPress={() => router.push('/admin/club-operations')}
-                  >
-                    <View style={[styles.footerNavIcon, { backgroundColor: '#D1FAE5' }]}>
-                      <Settings size={FOOTER_NAV_ICON_SIZE} color="#10b981" />
-                    </View>
-                    <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.footerNavItem}
-                    onPress={() => router.push('/admin/meeting-management')}
-                  >
-                    <View style={[styles.footerNavIcon, { backgroundColor: '#DBEAFE' }]}>
-                      <LayoutDashboard size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-                    </View>
-                    <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.footerNavItem}
-                    onPress={() => router.push('/admin/manage-club-users')}
-                  >
-                    <View style={[styles.footerNavIcon, { backgroundColor: '#FEF3C7' }]}>
-                      <UserCog size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-                    </View>
-                    <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Users</Text>
-                  </TouchableOpacity>
-                </>
-              )}
             </ScrollView>
-          </View>
+        </View>
+      </View>
+      </View>
 
         <Modal
           visible={showAssignGeModal}
@@ -1480,7 +1538,6 @@ export default function GeneralEvaluatorReport() {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
-      </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1523,7 +1580,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  content: {
+  kavInner: {
+    flex: 1,
+    minHeight: 0,
+  },
+  mainBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  scrollMain: {
     flex: 1,
   },
   contentContainer: {
@@ -1532,34 +1597,27 @@ const styles = StyleSheet.create({
   },
   contentTop: {
   },
+  /** One unified bottom panel for shortcuts (not a separate floating card in the scroll). */
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingHorizontal: 8,
+  },
   navSpacer: {
     flex: 1,
     minHeight: 16,
   },
-  footerNavigationInline: {
-    borderTopWidth: 1,
-    paddingVertical: 9,
-    paddingHorizontal: 6,
-    borderRadius: 16,
-    marginHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
   footerNavigationContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
-    paddingHorizontal: 6,
+    gap: 10,
+    paddingHorizontal: 4,
   },
   footerNavItem: {
     alignItems: 'center',
-    minWidth: 45,
+    minWidth: 62,
+    paddingVertical: 2,
   },
   footerNavIcon: {
     width: 30,
@@ -1567,11 +1625,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 3,
+    marginBottom: 4,
   },
   footerNavLabel: {
-    fontSize: 8,
-    fontWeight: '600',
+    fontSize: 9,
+    fontWeight: '500',
     textAlign: 'center',
   },
   meetingCard: {
@@ -1649,25 +1707,62 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '500',
   },
-  evaluatorSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+  /** Flat Notion-style header — same surface as page, no card chrome. */
+  consolidatedCornerCard: {
+    marginBottom: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: 720,
+    overflow: 'visible',
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  evaluatorClubName: {
-    fontSize: 16,
+  consolidatedClubBadge: {
+    marginTop: 0,
+    marginBottom: 16,
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+  },
+  consolidatedClubTitle: {
+    fontSize: 18,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 23,
+  },
+  consolidatedProfileStack: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  consolidatedAvatarWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  consolidatedAvatarImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+  },
+  consolidatedPersonName: {
+    fontSize: 19,
     fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 10,
+    marginTop: 12,
+    letterSpacing: -0.3,
+  },
+  consolidatedPersonRole: {
+    fontSize: 14,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginTop: 6,
   },
   evaluatorHeader: {
     flexDirection: 'row',
@@ -1688,21 +1783,9 @@ const styles = StyleSheet.create({
     flex: 1,
     letterSpacing: -0.3,
   },
-  evaluatorCard: {
-    backgroundColor: 'transparent',
-    borderRadius: 0,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderLeftWidth: 0,
-    position: 'relative',
-  },
   evaluatorInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  evaluatorInfoCentered: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   evaluatorAvatar: {
     width: 49,
@@ -1713,22 +1796,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 11,
     overflow: 'hidden',
-  },
-  evaluatorAvatarLarge: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: '#3b82f6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    marginBottom: 10,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-  },
-  evaluatorAvatarImage: {
-    width: '100%',
-    height: '100%',
   },
   evaluatorDetails: {
     flex: 1,
@@ -1743,18 +1810,6 @@ const styles = StyleSheet.create({
   evaluatorRoleLabel: {
     fontSize: 12,
     fontWeight: '500',
-  },
-  evaluatorNameCentered: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.4,
-    textAlign: 'center',
-  },
-  evaluatorRoleLabelCentered: {
-    marginTop: 4,
-    fontSize: 15,
-    fontWeight: '500',
-    textAlign: 'center',
   },
   prepSpaceIcon: {
     width: 36,
@@ -1987,17 +2042,10 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    marginTop: 12,
+    borderBottomWidth: 1,
+    borderRadius: 0,
+    overflow: 'visible',
   },
   inlineTabContainer: {
     marginHorizontal: 0,
@@ -2010,17 +2058,18 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 16,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    borderBottomWidth: 3,
+    borderBottomWidth: 2,
+    marginBottom: -1,
   },
   activeTab: {
     // Active tab styling handled by borderBottomColor
   },
   tabText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
     textAlign: 'center',
     width: '100%',
   },
@@ -2099,29 +2148,35 @@ const styles = StyleSheet.create({
   },
   categoriesSection: {
     paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 16,
-    gap: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 0,
   },
   consolidatedBottomDivider: {
-    height: 1,
-    marginTop: 10,
-    marginBottom: 10,
+    width: '100%',
+    maxWidth: 280,
+    height: StyleSheet.hairlineWidth,
+    alignSelf: 'center',
+    marginTop: 18,
+    marginBottom: 16,
   },
   consolidatedMeetingMetaBlock: {
+    alignSelf: 'stretch',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
   consolidatedMeetingMetaSingle: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 12,
     textAlign: 'center',
+    lineHeight: 17,
+    letterSpacing: 0.2,
   },
   summaryCard: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 6,
     paddingVertical: 12,
+    borderBottomWidth: 1,
   },
   summaryCardTopRow: {
     flexDirection: 'row',
@@ -2152,12 +2207,13 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   summaryHiddenPlaceholder: {
-    borderWidth: 1,
-    borderRadius: 12,
+    borderWidth: 0,
+    borderRadius: 0,
     paddingVertical: 28,
     paddingHorizontal: 20,
     alignItems: 'center',
     gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   summaryHiddenTitle: {
     fontSize: 16,
@@ -2174,10 +2230,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 20,
   },
+  overallRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 0,
+    gap: 10,
+  },
+  overallRatingLabel: {
+    flex: 1,
+    marginRight: 4,
+  },
   scoreListCard: {
-    borderWidth: 1,
-    borderRadius: 10,
+    borderWidth: 0,
+    borderRadius: 0,
     overflow: 'hidden',
+    borderBottomWidth: 1,
   },
   scoreListRow: {
     flexDirection: 'row',
@@ -2197,23 +2265,18 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
-  scoreValuePill: {
-    minWidth: 56,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scoreValueText: {
-    fontSize: 12,
-    fontWeight: '700',
+  scoreValueDash: {
+    fontSize: 14,
+    fontWeight: '600',
+    minWidth: 20,
+    textAlign: 'right',
   },
   ratingCard: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 6,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
   },
   ratingCardTitle: {
     fontSize: 15,
@@ -2337,16 +2400,11 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   questionCard: {
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderRadius: 0,
+    borderWidth: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
   },
   questionText: {
     fontSize: 15,

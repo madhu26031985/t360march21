@@ -10,15 +10,31 @@ import {
   KeyboardAvoidingView,
   Modal,
   Pressable,
+  Linking,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useState, useEffect, useCallback } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, supabaseUrl } from '@/lib/supabase';
-import { ArrowLeft, Save } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Save,
+  Home,
+  Users,
+  Calendar,
+  Settings,
+  Coffee,
+  MessageCircle,
+  Globe,
+  Shield,
+} from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+
+const FOOTER_NAV_ICON_SIZE = 15;
+const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
+const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
 
 interface MeetingForm {
   title: string;
@@ -40,7 +56,32 @@ function normalizeRouteParam(value: string | string[] | undefined): string | und
 export default function EditMeeting() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+
+  const isExComm =
+    user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+
+  const openWhatsAppSupport = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
+      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
+      else Alert.alert('Error', 'Cannot open WhatsApp');
+    } catch {
+      Alert.alert('Error', 'Failed to open WhatsApp');
+    }
+  }, []);
+
+  const openWebLogin = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
+      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
+      else Alert.alert('Error', 'Cannot open web login');
+    } catch {
+      Alert.alert('Error', 'Failed to open web login');
+    }
+  }, []);
   /** Web / Expo Router can pass query params as string | string[] */
   const meetingId = normalizeRouteParam(params.meetingId as string | string[] | undefined);
 
@@ -376,10 +417,16 @@ export default function EditMeeting() {
     );
   }
 
+  const inputSurfaceStyle = {
+    backgroundColor: theme.colors.background,
+    borderColor: theme.colors.border,
+    color: theme.colors.text,
+  } as const;
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-      {/* Header */}
+      <View style={styles.pageMain}>
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={theme.colors.text} />
@@ -388,62 +435,91 @@ export default function EditMeeting() {
         <View style={styles.placeholder} />
       </View>
 
-      {/* Tab Navigation */}
-      <View style={[styles.tabContainer, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
+      <ScrollView
+        style={styles.pageScroll}
+        contentContainerStyle={styles.pageScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View
           style={[
-            styles.tab,
-            activeTab === 'info' && { borderBottomColor: theme.colors.primary, borderBottomWidth: 2 }
+            styles.notionSheet,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            },
           ]}
-          onPress={() => setActiveTab('info')}
         >
-          <Text style={[
-            styles.tabText,
-            { color: activeTab === 'info' ? theme.colors.primary : theme.colors.textSecondary }
-          ]} maxFontSizeMultiplier={1.3}>
-            Meeting Info
-          </Text>
-        </TouchableOpacity>
+          <View style={styles.notionTabsRow}>
+            <TouchableOpacity
+              style={[
+                styles.notionTab,
+                {
+                  backgroundColor: activeTab === 'info' ? theme.colors.primary : 'transparent',
+                  borderColor: activeTab === 'info' ? theme.colors.primary : theme.colors.border,
+                },
+              ]}
+              onPress={() => setActiveTab('info')}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[styles.notionTabText, { color: activeTab === 'info' ? '#ffffff' : theme.colors.text }]}
+                numberOfLines={2}
+                maxFontSizeMultiplier={1.25}
+              >
+                Info
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.notionTab,
+                {
+                  backgroundColor: activeTab === 'mode' ? theme.colors.primary : 'transparent',
+                  borderColor: activeTab === 'mode' ? theme.colors.primary : theme.colors.border,
+                },
+              ]}
+              onPress={() => setActiveTab('mode')}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[styles.notionTabText, { color: activeTab === 'mode' ? '#ffffff' : theme.colors.text }]}
+                numberOfLines={2}
+                maxFontSizeMultiplier={1.25}
+              >
+                Mode
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.notionTab,
+                {
+                  backgroundColor: activeTab === 'datetime' ? theme.colors.primary : 'transparent',
+                  borderColor: activeTab === 'datetime' ? theme.colors.primary : theme.colors.border,
+                },
+              ]}
+              onPress={() => setActiveTab('datetime')}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[styles.notionTabText, { color: activeTab === 'datetime' ? '#ffffff' : theme.colors.text }]}
+                numberOfLines={2}
+                maxFontSizeMultiplier={1.25}
+              >
+                Date & time
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'mode' && { borderBottomColor: theme.colors.primary, borderBottomWidth: 2 }
-          ]}
-          onPress={() => setActiveTab('mode')}
-        >
-          <Text style={[
-            styles.tabText,
-            { color: activeTab === 'mode' ? theme.colors.primary : theme.colors.textSecondary }
-          ]} maxFontSizeMultiplier={1.3}>
-            Meeting Mode
-          </Text>
-        </TouchableOpacity>
+          <View style={[styles.notionHairline, { backgroundColor: theme.colors.border }]} />
 
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'datetime' && { borderBottomColor: theme.colors.primary, borderBottomWidth: 2 }
-          ]}
-          onPress={() => setActiveTab('datetime')}
-        >
-          <Text style={[
-            styles.tabText,
-            { color: activeTab === 'datetime' ? theme.colors.primary : theme.colors.textSecondary }
-          ]} maxFontSizeMultiplier={1.3}>
-            Date & Time
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.notionFormSection}>
         {/* Tab 1: Meeting Info */}
         {activeTab === 'info' && (
           <View>
             <View style={styles.formField}>
               <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Title *</Text>
               <TextInput
-                style={[styles.textInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
+                style={[styles.textInput, inputSurfaceStyle]}
                 placeholder="Enter meeting title"
                 placeholderTextColor={theme.colors.textSecondary}
                 value={meetingForm.title}
@@ -454,7 +530,7 @@ export default function EditMeeting() {
             <View style={styles.formField}>
               <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Number *</Text>
               <TextInput
-                style={[styles.textInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
+                style={[styles.textInput, inputSurfaceStyle]}
                 placeholder="e.g., 123"
                 placeholderTextColor={theme.colors.textSecondary}
                 value={meetingForm.number}
@@ -484,7 +560,7 @@ export default function EditMeeting() {
                     style={[
                       styles.compactModeOption,
                       {
-                        backgroundColor: meetingForm.mode === option.value ? theme.colors.primary : theme.colors.surface,
+                        backgroundColor: meetingForm.mode === option.value ? theme.colors.primary : theme.colors.background,
                         borderColor: meetingForm.mode === option.value ? theme.colors.primary : theme.colors.border,
                       }
                     ]}
@@ -505,7 +581,7 @@ export default function EditMeeting() {
               <View style={styles.formField}>
                 <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Location *</Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
+                  style={[styles.textInput, inputSurfaceStyle]}
                   placeholder="Enter meeting location"
                   placeholderTextColor={theme.colors.textSecondary}
                   value={meetingForm.location}
@@ -518,7 +594,7 @@ export default function EditMeeting() {
               <View style={styles.formField}>
                 <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Link *</Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
+                  style={[styles.textInput, inputSurfaceStyle]}
                   placeholder="Enter meeting link"
                   placeholderTextColor={theme.colors.textSecondary}
                   value={meetingForm.link}
@@ -542,7 +618,7 @@ export default function EditMeeting() {
         {activeTab === 'datetime' && (
           <View>
             <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text, alignSelf: 'center', width: '80%' }]} maxFontSizeMultiplier={1.3}>Meeting Date *</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Date *</Text>
               {Platform.OS === 'web' ? (
                 <input
                   type="date"
@@ -556,21 +632,21 @@ export default function EditMeeting() {
                   style={{
                     fontSize: 15,
                     padding: 10,
-                    borderRadius: 10,
-                    border: `1.5px solid ${theme.colors.border}`,
-                    backgroundColor: theme.colors.surface,
+                    borderRadius: 0,
+                    border: `1px solid ${theme.colors.border}`,
+                    backgroundColor: theme.colors.background,
                     color: theme.colors.text,
-                    minHeight: 38,
-                    width: '80%',
+                    minHeight: 40,
+                    width: '100%',
+                    boxSizing: 'border-box' as const,
                     fontWeight: '400',
                     fontFamily: 'system-ui',
-                    alignSelf: 'center',
                   }}
                 />
               ) : (
                 <>
                   <TouchableOpacity
-                    style={[styles.dateTimeButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                    style={[styles.dateTimeButton, inputSurfaceStyle]}
                     onPress={() => setShowDatePicker(true)}
                   >
                     <Text style={[styles.dateTimeText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -585,7 +661,7 @@ export default function EditMeeting() {
                         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                         onChange={handleDateChange}
                         textColor={theme.colors.text}
-                        themeVariant={theme.isDark ? 'dark' : 'light'}
+                        themeVariant={theme.mode === 'dark' ? 'dark' : 'light'}
                       />
                       {Platform.OS === 'ios' && (
                         <TouchableOpacity
@@ -602,7 +678,7 @@ export default function EditMeeting() {
             </View>
 
             <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text, alignSelf: 'center', width: '80%' }]} maxFontSizeMultiplier={1.3}>Start Time *</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Start Time *</Text>
               {Platform.OS === 'web' ? (
                 <input
                   type="time"
@@ -616,21 +692,21 @@ export default function EditMeeting() {
                   style={{
                     fontSize: 15,
                     padding: 10,
-                    borderRadius: 10,
-                    border: `1.5px solid ${theme.colors.border}`,
-                    backgroundColor: theme.colors.surface,
+                    borderRadius: 0,
+                    border: `1px solid ${theme.colors.border}`,
+                    backgroundColor: theme.colors.background,
                     color: theme.colors.text,
-                    minHeight: 38,
-                    width: '80%',
+                    minHeight: 40,
+                    width: '100%',
+                    boxSizing: 'border-box' as const,
                     fontWeight: '400',
                     fontFamily: 'system-ui',
-                    alignSelf: 'center',
                   }}
                 />
               ) : (
                 <>
                   <TouchableOpacity
-                    style={[styles.dateTimeButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                    style={[styles.dateTimeButton, inputSurfaceStyle]}
                     onPress={() => setShowStartTimePicker(true)}
                   >
                     <Text style={[styles.dateTimeText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -645,7 +721,7 @@ export default function EditMeeting() {
                         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                         onChange={handleStartTimeChange}
                         textColor={theme.colors.text}
-                        themeVariant={theme.isDark ? 'dark' : 'light'}
+                        themeVariant={theme.mode === 'dark' ? 'dark' : 'light'}
                       />
                       {Platform.OS === 'ios' && (
                         <TouchableOpacity
@@ -662,7 +738,7 @@ export default function EditMeeting() {
             </View>
 
             <View style={styles.formField}>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text, alignSelf: 'center', width: '80%' }]} maxFontSizeMultiplier={1.3}>End Time *</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>End Time *</Text>
               {Platform.OS === 'web' ? (
                 <input
                   type="time"
@@ -676,21 +752,21 @@ export default function EditMeeting() {
                   style={{
                     fontSize: 15,
                     padding: 10,
-                    borderRadius: 10,
-                    border: `1.5px solid ${theme.colors.border}`,
-                    backgroundColor: theme.colors.surface,
+                    borderRadius: 0,
+                    border: `1px solid ${theme.colors.border}`,
+                    backgroundColor: theme.colors.background,
                     color: theme.colors.text,
-                    minHeight: 38,
-                    width: '80%',
+                    minHeight: 40,
+                    width: '100%',
+                    boxSizing: 'border-box' as const,
                     fontWeight: '400',
                     fontFamily: 'system-ui',
-                    alignSelf: 'center',
                   }}
                 />
               ) : (
                 <>
                   <TouchableOpacity
-                    style={[styles.dateTimeButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                    style={[styles.dateTimeButton, inputSurfaceStyle]}
                     onPress={() => setShowEndTimePicker(true)}
                   >
                     <Text style={[styles.dateTimeText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -705,7 +781,7 @@ export default function EditMeeting() {
                         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                         onChange={handleEndTimeChange}
                         textColor={theme.colors.text}
-                        themeVariant={theme.isDark ? 'dark' : 'light'}
+                        themeVariant={theme.mode === 'dark' ? 'dark' : 'light'}
                       />
                       {Platform.OS === 'ios' && (
                         <TouchableOpacity
@@ -739,9 +815,113 @@ export default function EditMeeting() {
             </TouchableOpacity>
           </View>
         )}
+          </View>
+        </View>
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+        <View
+          style={[
+            styles.geBottomDock,
+            {
+              borderTopColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+              paddingBottom: Math.max(insets.bottom, 10),
+            },
+          ]}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.footerNavigationContent}
+          >
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Home size={FOOTER_NAV_ICON_SIZE} color="#0a66c2" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Home
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Club
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/(tabs)/meetings')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Meeting
+              </Text>
+            </TouchableOpacity>
+            {isExComm ? (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/(tabs)/admin')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Shield size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Admin
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/(tabs)/settings')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Settings size={FOOTER_NAV_ICON_SIZE} color="#6b7280" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Settings
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/buy-us-a-coffee')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Coffee
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Support
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Globe size={FOOTER_NAV_ICON_SIZE} color="#334155" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Web
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
 
       <Modal
         visible={showUpdateConfirmModal}
@@ -754,7 +934,7 @@ export default function EditMeeting() {
             style={StyleSheet.absoluteFill}
             onPress={() => !isSaving && setShowUpdateConfirmModal(false)}
           />
-          <View style={[styles.updateConfirmCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.updateConfirmCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={[styles.updateConfirmIconWrap, { backgroundColor: '#e3f2fd' }]}>
               <Save size={32} color={theme.colors.primary} />
             </View>
@@ -828,24 +1008,81 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 40,
   },
-  tabContainer: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-  },
-  tab: {
+  pageMain: {
     flex: 1,
-    paddingVertical: 14,
+    minHeight: 0,
+  },
+  pageScroll: {
+    flex: 1,
+  },
+  pageScrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  notionSheet: {
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  notionTabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  notionTab: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 44,
   },
-  tabText: {
-    fontSize: 14,
+  notionTabText: {
+    fontSize: 12,
     fontWeight: '600',
+    textAlign: 'center',
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 24,
+  notionHairline: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+  },
+  notionFormSection: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 8,
+  },
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 8,
+  },
+  footerNavigationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    minWidth: 62,
+    paddingVertical: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   formField: {
     marginBottom: 18,
@@ -863,24 +1100,24 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   textInput: {
-    borderWidth: 1.5,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 15,
-    minHeight: 38,
-    width: '80%',
-    alignSelf: 'center',
+    minHeight: 44,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   dateTimeButton: {
-    borderWidth: 1.5,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    minHeight: 38,
+    paddingVertical: 12,
+    minHeight: 44,
     justifyContent: 'center',
-    width: '80%',
-    alignSelf: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   dateTimeText: {
     fontSize: 15,
@@ -891,7 +1128,7 @@ const styles = StyleSheet.create({
   doneButton: {
     marginTop: 8,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 0,
     alignItems: 'center',
   },
   doneButtonText: {
@@ -907,8 +1144,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     minHeight: 48,
     justifyContent: 'center',
@@ -921,11 +1158,11 @@ const styles = StyleSheet.create({
   nextButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: 0,
     paddingVertical: 16,
     marginTop: 20,
-    width: '80%',
-    alignSelf: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   nextButtonText: {
     fontSize: 16,
@@ -936,20 +1173,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: 0,
     paddingVertical: 16,
     marginTop: 20,
-    marginBottom: 20,
-    width: '80%',
-    alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: 8,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   saveButtonText: {
     fontSize: 16,
@@ -958,7 +1187,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   bottomSpacing: {
-    height: 40,
+    height: 16,
   },
   updateConfirmOverlay: {
     flex: 1,
@@ -970,19 +1199,15 @@ const styles = StyleSheet.create({
   updateConfirmCard: {
     width: '100%',
     maxWidth: 400,
-    borderRadius: 16,
+    borderRadius: 0,
     padding: 28,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   updateConfirmIconWrap: {
     width: 72,
     height: 72,
-    borderRadius: 36,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 18,
@@ -1007,8 +1232,8 @@ const styles = StyleSheet.create({
   updateConfirmCancelBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 10,
-    borderWidth: 1.5,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1019,7 +1244,7 @@ const styles = StyleSheet.create({
   updateConfirmOkBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

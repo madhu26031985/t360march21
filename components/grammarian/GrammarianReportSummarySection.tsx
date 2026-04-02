@@ -2,11 +2,15 @@ import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet } from 'rea
 import { router } from 'expo-router';
 import { BookOpen, ChevronRight, Lightbulb, MessageSquare } from 'lucide-react-native';
 
-export type SummarySubTab = 'word' | 'idiom' | 'quote' | 'report';
+export type SummarySubTab = 'word' | 'idiom' | 'quote';
+
+export type SummaryMainTab = 'lexicon' | 'reports';
 
 type Props = {
   theme: { colors: Record<string, string> };
   styles: Record<string, any>;
+  summaryMainTab: SummaryMainTab;
+  setSummaryMainTab: (t: SummaryMainTab) => void;
   summarySubTab: SummarySubTab;
   setSummarySubTab: (t: SummarySubTab) => void;
   wordOfTheDay: {
@@ -34,16 +38,17 @@ type Props = {
   hasPublishedLiveObservations: boolean;
 };
 
-const TABS: { key: SummarySubTab; label: string }[] = [
+const LEXICON_TABS: { key: SummarySubTab; label: string }[] = [
   { key: 'word', label: 'WORD OF THE DAY' },
   { key: 'idiom', label: 'IDIOM OF THE DAY' },
   { key: 'quote', label: 'QUOTE OF THE DAY' },
-  { key: 'report', label: 'REPORT' },
 ];
 
 export function GrammarianReportSummarySection({
   theme,
   styles: g,
+  summaryMainTab,
+  setSummaryMainTab,
   summarySubTab,
   setSummarySubTab,
   wordOfTheDay,
@@ -66,41 +71,91 @@ export function GrammarianReportSummarySection({
 
   return (
     <View style={local.summaryRoot}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[local.subTabScroll, { borderBottomColor: theme.colors.border }]}
+      <View
+        style={[
+          local.mainTabRow,
+          { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border },
+        ]}
       >
-        {TABS.map((tab) => {
-          const active = summarySubTab === tab.key;
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              onPress={() => setSummarySubTab(tab.key)}
-              style={[
-                local.subTabPill,
-                { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-                active && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '12' },
-              ]}
-              activeOpacity={0.85}
-            >
-              <Text
-                style={[
-                  local.subTabPillText,
-                  { color: theme.colors.textSecondary },
-                  active && { color: theme.colors.primary, fontWeight: '700' },
-                ]}
-                maxFontSizeMultiplier={1.2}
-                numberOfLines={1}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+        <TouchableOpacity
+          style={[
+            local.mainTab,
+            summaryMainTab === 'lexicon' && local.mainTabActive,
+            summaryMainTab === 'lexicon' && { borderBottomColor: theme.colors.primary },
+          ]}
+          onPress={() => setSummaryMainTab('lexicon')}
+        >
+          <Text
+            style={[
+              local.mainTabText,
+              { color: theme.colors.textSecondary },
+              summaryMainTab === 'lexicon' && local.mainTabTextActive,
+              summaryMainTab === 'lexicon' && { color: theme.colors.primary },
+            ]}
+            maxFontSizeMultiplier={1.3}
+          >
+            Lexicon
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            local.mainTab,
+            summaryMainTab === 'reports' && local.mainTabActive,
+            summaryMainTab === 'reports' && { borderBottomColor: theme.colors.primary },
+          ]}
+          onPress={() => setSummaryMainTab('reports')}
+        >
+          <Text
+            style={[
+              local.mainTabText,
+              { color: theme.colors.textSecondary },
+              summaryMainTab === 'reports' && local.mainTabTextActive,
+              summaryMainTab === 'reports' && { color: theme.colors.primary },
+            ]}
+            maxFontSizeMultiplier={1.3}
+          >
+            Reports
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-      <View style={local.panel}>
+      {summaryMainTab === 'lexicon' ? (
+        <>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[local.subTabScroll, { borderBottomColor: theme.colors.border }]}
+          >
+            {LEXICON_TABS.map((tab) => {
+              const active = summarySubTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setSummarySubTab(tab.key)}
+                  style={[
+                    local.subTabPill,
+                    { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+                    active && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '12' },
+                  ]}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      local.subTabPillText,
+                      { color: theme.colors.textSecondary },
+                      active && { color: theme.colors.primary, fontWeight: '700' },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                    numberOfLines={1}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={local.panel}>
         {summarySubTab === 'word' && (
           <>
             {hasWord ? (
@@ -378,55 +433,55 @@ export function GrammarianReportSummarySection({
             )}
           </>
         )}
-
-        {summarySubTab === 'report' && (
-          <>
-            {hasAnyPublishedData ? (
-              <View style={g.summaryCardContainer}>
-                <View style={[g.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  <View style={g.summaryCardHeader}>
-                    <View style={g.summaryCardIconWrap}>
-                      <BookOpen size={22} color="#4f6ef7" />
-                    </View>
-                    <View style={g.summaryCardTextWrap}>
-                      <Text style={[g.summaryCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        View Full Grammarian Report
-                      </Text>
-                      <Text style={[g.summaryCardSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        Detailed language insights, member usage & corrections
-                      </Text>
-                    </View>
+          </View>
+        </>
+      ) : (
+        <View style={local.panel}>
+          {hasAnyPublishedData ? (
+            <View style={g.summaryCardContainer}>
+              <View style={[g.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={g.summaryCardHeader}>
+                  <View style={g.summaryCardIconWrap}>
+                    <BookOpen size={22} color="#4f6ef7" />
                   </View>
-                  <TouchableOpacity
-                    style={g.summaryCardButton}
-                    onPress={() => router.push(`/grammarian-consolidated-report?meetingId=${meetingId}`)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={g.summaryCardButtonText} maxFontSizeMultiplier={1.3}>
-                      Open Grammarian Report
+                  <View style={g.summaryCardTextWrap}>
+                    <Text style={[g.summaryCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      View Full Grammarian Report
                     </Text>
-                    <ChevronRight size={18} color="#ffffff" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={g.summaryRedirectContainer}>
-                <View style={g.summaryRedirectContent}>
-                  <View style={[g.summaryIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
-                    <BookOpen size={32} color={theme.colors.primary} />
+                    <Text style={[g.summaryCardSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      Detailed language insights, member usage & corrections
+                    </Text>
                   </View>
-                  <Text style={[g.summaryRedirectTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Summary Coming Soon
-                  </Text>
-                  <Text style={[g.summaryRedirectDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    The Grammarian will share the report at the end of the meeting — stay tuned!
-                  </Text>
                 </View>
+                <TouchableOpacity
+                  style={g.summaryCardButton}
+                  onPress={() => router.push(`/grammarian-consolidated-report?meetingId=${meetingId}`)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={g.summaryCardButtonText} maxFontSizeMultiplier={1.3}>
+                    Open Grammarian Report
+                  </Text>
+                  <ChevronRight size={18} color="#ffffff" />
+                </TouchableOpacity>
               </View>
-            )}
-          </>
-        )}
-      </View>
+            </View>
+          ) : (
+            <View style={g.summaryRedirectContainer}>
+              <View style={g.summaryRedirectContent}>
+                <View style={[g.summaryIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
+                  <BookOpen size={32} color={theme.colors.primary} />
+                </View>
+                <Text style={[g.summaryRedirectTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Summary Coming Soon
+                </Text>
+                <Text style={[g.summaryRedirectDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  The Grammarian will share the report at the end of the meeting — stay tuned!
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -435,6 +490,29 @@ const local = StyleSheet.create({
   summaryRoot: {
     width: '100%',
     paddingBottom: 8,
+  },
+  mainTabRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  mainTab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  mainTabActive: {
+    borderBottomWidth: 2,
+  },
+  mainTabText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  mainTabTextActive: {
+    fontWeight: '700',
   },
   subTabScroll: {
     flexDirection: 'row',

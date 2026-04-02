@@ -172,7 +172,7 @@ export default function ClubSwitcher({
               styles.clubIcon,
               {
                 backgroundColor: clubIconBackgroundColor || (isNotion ? N.iconTile : theme.colors.primary + '20'),
-                borderRadius: isNotion ? 4 : 20,
+                borderRadius: isNotion ? 0 : 20,
               },
             ]}
           >
@@ -204,7 +204,7 @@ export default function ClubSwitcher({
                     isNotion
                       ? {
                           backgroundColor: notionRolePill(currentClub.role).bg,
-                          borderRadius: 4,
+                          borderRadius: 0,
                           paddingVertical: 3,
                         }
                       : { backgroundColor: getRoleColor(currentClub.role) },
@@ -248,7 +248,7 @@ export default function ClubSwitcher({
                 backgroundColor: isNotion ? N.surface : theme.colors.surface,
                 borderWidth: isNotion ? 1 : 0,
                 borderColor: isNotion ? N.border : undefined,
-                borderRadius: isNotion ? 4 : 12,
+                borderRadius: isNotion ? 0 : 12,
               },
             ]}
           >
@@ -297,7 +297,7 @@ export default function ClubSwitcher({
                           isNotion
                             ? {
                                 backgroundColor: notionRolePill(club.role).bg,
-                                borderRadius: 4,
+                                borderRadius: 0,
                                 paddingVertical: 3,
                               }
                             : { backgroundColor: getRoleColor(club.role) + '20' },

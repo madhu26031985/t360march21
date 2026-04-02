@@ -1994,8 +1994,8 @@ export default function ClubMeetings() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {user?.currentClubId ? (
-          <View style={[styles.meetingsMasterBox, { backgroundColor: theme.colors.surface }]}>
-            <ClubSwitcher showRole={true} embedded />
+          <View style={[styles.meetingsMasterBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <ClubSwitcher showRole={true} embedded variant="notion" />
             <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
             {/* Open Meetings Section */}
             <View style={styles.meetingsSection}>
@@ -2004,7 +2004,7 @@ export default function ClubMeetings() {
             </Text>
 
             {isLoading ? (
-              <View style={[styles.noMeetingsCard, { backgroundColor: theme.colors.surface }]}>
+              <View style={[styles.noMeetingsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                 <Text style={[styles.noMeetingsText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   Loading meetings...
                 </Text>
@@ -2127,7 +2127,7 @@ export default function ClubMeetings() {
                 })()}
               </View>
             ) : (
-              <View style={[styles.noMeetingsCard, { backgroundColor: theme.colors.surface }]}>
+              <View style={[styles.noMeetingsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                 <Text style={[styles.noMeetingsEmoji, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   👩‍🍳🔥
                 </Text>
@@ -2296,39 +2296,9 @@ export default function ClubMeetings() {
             </>
           )}
 
-          <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
-          <View style={styles.nextMeetingsSection}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Meeting History
-            </Text>
-            <TouchableOpacity
-              style={[
-                styles.lockedHeroMeetingCard,
-                { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
-              ]}
-              onPress={() => router.push('/meeting-records')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.heroCardContent}>
-                <View style={[styles.comingSoonIcon, { backgroundColor: theme.colors.textSecondary + '15' }]}>
-                  <ScrollText size={24} color={theme.colors.textSecondary} />
-                </View>
-                <View style={styles.comingSoonContent}>
-                  <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Meeting History
-                  </Text>
-                  <Text style={[styles.comingSoonSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Access previous closed meetings
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={theme.colors.textSecondary} />
-              </View>
-              <View style={styles.heroCardDecoration} />
-            </TouchableOpacity>
-          </View>
           </View>
         ) : (
-          <View style={[styles.noClubCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.noClubCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={[styles.noClubIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
               <Building2 size={20} color={theme.colors.textSecondary} />
             </View>
@@ -2376,24 +2346,16 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   featureCard: {
-    borderRadius: 8,
+    borderRadius: 0,
     padding: 16,
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   iconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     backgroundColor: '#e7f3ff',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2414,23 +2376,16 @@ const styles = StyleSheet.create({
   noClubCard: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 8,
+    borderRadius: 0,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   noClubIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -2450,14 +2405,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 32,
-    padding: 20,
-    borderRadius: 20,
+    padding: 16,
+    borderRadius: 0,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 3,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   meetingsMasterDivider: {
     height: 1,
@@ -2476,19 +2427,11 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   heroMeetingCard: {
-    borderRadius: 11,
+    borderRadius: 0,
     padding: 14,
     minHeight: 84,
     overflow: 'hidden',
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   heroCardContent: {
     flexDirection: 'row',
@@ -2508,7 +2451,7 @@ const styles = StyleSheet.create({
   dateBadge: {
     width: 49,
     height: 49,
-    borderRadius: 8,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2545,16 +2488,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 20,
+    borderRadius: 0,
     gap: 4,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-    elevation: 2,
   },
   enterMeetingButtonText: {
     fontSize: 14,
@@ -2562,14 +2497,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   unifiedExpandedMeetingCard: {
-    borderRadius: 16,
+    borderRadius: 0,
     overflow: 'hidden',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   unifiedMeetingBar: {
     padding: 14,
@@ -2587,14 +2517,10 @@ const styles = StyleSheet.create({
   },
   meetingMasterBox: {
     padding: 20,
-    borderRadius: 20,
+    borderRadius: 0,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 3,
     marginBottom: 4,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   openMeetingTabs: {
     flexDirection: 'row',
@@ -2602,15 +2528,15 @@ const styles = StyleSheet.create({
     marginVertical: 12,
     paddingHorizontal: 4,
     paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   openMeetingTab: {
     flex: 1,
     paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: 0,
   },
   openMeetingTabActive: {
     fontWeight: '600',
@@ -2629,7 +2555,7 @@ const styles = StyleSheet.create({
     marginLeft: -16,
     width: 32,
     height: 3,
-    borderRadius: 2,
+    borderRadius: 0,
   },
   rolesTabContainer: {
     paddingBottom: 8,
@@ -2653,8 +2579,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   keyRoleCardTmodAlert: {
     borderColor: PENDING_ACTION_UI.border,
@@ -2666,7 +2592,7 @@ const styles = StyleSheet.create({
   keyRoleIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -2678,7 +2604,7 @@ const styles = StyleSheet.create({
   keyRoleIconAvatarImage: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 0,
   },
   keyRoleContent: {
     flex: 1,
@@ -2701,8 +2627,8 @@ const styles = StyleSheet.create({
     width: '30%',
     minWidth: 0,
     padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     position: 'relative',
   },
@@ -2718,7 +2644,7 @@ const styles = StyleSheet.create({
   speakingRoleIcon: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
@@ -2730,7 +2656,7 @@ const styles = StyleSheet.create({
   speakingRoleIconAvatarImage: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
   },
   speakingRoleTitle: {
     fontSize: 9,
@@ -2747,13 +2673,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   supportRoleIcon: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -2765,7 +2691,7 @@ const styles = StyleSheet.create({
   supportRoleIconAvatarImage: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 0,
   },
   supportRoleTitle: {
     flex: 1,
@@ -2780,13 +2706,13 @@ const styles = StyleSheet.create({
   evaluationCard: {
     width: '31%',
     padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
   },
   emptyTabState: {
     padding: 24,
-    borderRadius: 10,
+    borderRadius: 0,
     alignItems: 'center',
   },
   emptyTabText: {
@@ -2822,8 +2748,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   actionCardHalf: {
     flex: 1,
@@ -2831,13 +2757,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   actionCardIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -2876,8 +2802,8 @@ const styles = StyleSheet.create({
   actionCard: {
     width: '31%',
     padding: 8,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     minHeight: 85,
     justifyContent: 'center',
@@ -2885,7 +2811,7 @@ const styles = StyleSheet.create({
   actionIcon: {
     width: 30,
     height: 30,
-    borderRadius: 15,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 5,
@@ -2900,7 +2826,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f59e0b',
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: 0,
     marginTop: 4,
   },
   comingSoonBadgeText: {
@@ -2911,9 +2837,10 @@ const styles = StyleSheet.create({
   },
   noMeetingsCard: {
     padding: 24,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   noMeetingsEmoji: {
     fontSize: 48,
@@ -2943,19 +2870,23 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   lockedHeroMeetingCard: {
-    borderRadius: 11,
+    borderRadius: 0,
     padding: 14,
     minHeight: 84,
     overflow: 'hidden',
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  },
+  nextMeetingPlanButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 0,
+  },
+  nextMeetingPlanButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   lockedIconButton: {
     alignItems: 'center',
@@ -2968,16 +2899,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 20,
+    borderRadius: 0,
     gap: 4,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-    elevation: 2,
   },
   preplanButtonText: {
     fontSize: 14,
@@ -2986,24 +2909,17 @@ const styles = StyleSheet.create({
   },
   lockedMeetingCard: {
     width: '48%',
-    borderRadius: 16,
+    borderRadius: 0,
     padding: 20,
     minHeight: 160,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   lockedDateBadge: {
     width: 60,
     height: 60,
-    borderRadius: 30,
+    borderRadius: 0,
     backgroundColor: 'rgba(156, 163, 175, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -3038,7 +2954,7 @@ const styles = StyleSheet.create({
   comingSoonIcon: {
     width: 60,
     height: 60,
-    borderRadius: 30,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -65,7 +65,8 @@ export function isPreparedSpeakerRole(r: MeetingRoleRow): boolean {
 
 export function isTableTopicsMasterRole(r: MeetingRoleRow): boolean {
   const n = norm(r.role_name);
-  return n.includes('table') && n.includes('topics') && n.includes('master');
+  // "Table Topics Master" and "Table Topic Master" (and similar)
+  return n.includes('table') && n.includes('topic') && n.includes('master');
 }
 
 export function isTableTopicsSpeakerRole(r: MeetingRoleRow): boolean {
