@@ -15,6 +15,18 @@
   to = "/weblogin/:clubId/agenda/:meetingNo/:meetingId"
   status = 302
 
+# Short public agenda: /a/{meetingId}
+[[redirects]]
+  from = "/a/:meetingId"
+  to = "/weblogin/a/:meetingId"
+  status = 302
+
+# Branded short agenda: /{club-slug}/a/{meetingId}
+[[redirects]]
+  from = "/:brand/a/:meetingId"
+  to = "/weblogin/:brand/a/:meetingId"
+  status = 302
+
 # Root → app lives under /weblogin (Expo baseUrl)
 [[redirects]]
   from = "/"

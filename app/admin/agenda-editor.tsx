@@ -23,7 +23,7 @@ import { supabase } from '@/lib/supabase';
 import * as Clipboard from 'expo-clipboard';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import { normalizeStoredPublicAgendaSkin } from '@/lib/publicAgendaSkin';
-import { buildAgendaWebUrl } from '@/lib/agendaWebLink';
+import { buildAgendaWebUrl, buildShortAgendaWebUrl } from '@/lib/agendaWebLink';
 import { ChevronLeft, Save, Clock, Eye, EyeOff, Trash2, UserPlus, Search, X, ChevronUp, ChevronDown, RotateCcw, FileText, Zap, PencilLine, Users2, Filter, Check, Square, ListOrdered, ExternalLink, Copy } from 'lucide-react-native';
 import { useCallback } from 'react';
 
@@ -256,6 +256,7 @@ export default function AgendaEditor() {
   const [isAgendaVisible, setIsAgendaVisible] = useState(true);
   const [publicAgendaSkin, setPublicAgendaSkin] = useState<PublicAgendaSkinId>('default');
   const [meetingClubIdForWeb, setMeetingClubIdForWeb] = useState<string | null>(null);
+  const [meetingClubDisplayNameForWeb, setMeetingClubDisplayNameForWeb] = useState<string | null>(null);
   const [meetingNumberForWeb, setMeetingNumberForWeb] = useState<string | null>(null);
   const [publicWebLinkCopied, setPublicWebLinkCopied] = useState(false);
   const publicWebLinkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -950,8 +951,37 @@ export default function AgendaEditor() {
         setQuoteOfTheDay(data.quote_of_the_day || '');
         setIsAgendaVisible(data.is_agenda_visible ?? true);
         setPublicAgendaSkin(normalizeStoredPublicAgendaSkin((data as { public_agenda_skin?: string | null }).public_agenda_skin));
-        setMeetingClubIdForWeb((data as { club_id?: string | null }).club_id ?? null);
+        const cid = (data as { club_id?: string | null }).club_id ?? null;
+        setMeetingClubIdForWeb(cid);
         setMeetingNumberForWeb((data as { meeting_number?: string | null }).meeting_number ?? null);
+        if (cid) {
+          const { data: clubRow, error: clubErr } = await supabase
+            .from('clubs')
+            .select('name, club_profiles(club_name)')
+            .eq('id', cid)
+            .maybeSingle();
+          if (clubErr) {
+            console.error('Error loading club name for public link:', clubErr);
+            setMeetingClubDisplayNameForWeb(null);
+          } else {
+            const rawProfile = clubRow?.club_profiles as
+              | { club_name?: string | null }
+              | { club_name?: string | null }[]
+              | null
+              | undefined;
+            const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
+            const fromProfile = profile?.club_name?.trim();
+            const fromTable =
+              typeof clubRow?.name === 'string' && clubRow.name.trim() !== ''
+                ? clubRow.name.trim()
+                : null;
+            const display =
+              fromProfile && fromProfile.length > 0 ? fromProfile : fromTable;
+            setMeetingClubDisplayNameForWeb(display);
+          }
+        } else {
+          setMeetingClubDisplayNameForWeb(null);
+        }
         console.log('✓ Loaded meeting start time:', data.meeting_start_time);
       } else {
         console.log('No meeting found with ID:', meetingId);
@@ -2629,11 +2659,21 @@ export default function AgendaEditor() {
         })
       : null;
 
+  const publicWebAgendaShortUrl =
+    meetingClubIdForWeb && meetingId
+      ? buildShortAgendaWebUrl({
+          meetingId,
+          skin: publicAgendaSkin,
+          clubDisplayName: meetingClubDisplayNameForWeb,
+        })
+      : null;
+
   const handleOpenPublicWebAgenda = async () => {
-    if (!publicWebAgendaUrl) return;
+    const url = publicWebAgendaShortUrl ?? publicWebAgendaUrl;
+    if (!url) return;
     try {
-      const supported = await Linking.canOpenURL(publicWebAgendaUrl);
-      if (supported) await Linking.openURL(publicWebAgendaUrl);
+      const supported = await Linking.canOpenURL(url);
+      if (supported) await Linking.openURL(url);
       else Alert.alert('Error', 'Unable to open this link');
     } catch (e) {
       console.error('Open public web agenda:', e);
@@ -2641,23 +2681,31 @@ export default function AgendaEditor() {
     }
   };
 
+  const flashPublicWebLinkCopied = (message: string) => {
+    if (publicWebLinkCopiedTimerRef.current) {
+      clearTimeout(publicWebLinkCopiedTimerRef.current);
+    }
+    setPublicWebLinkCopied(true);
+    publicWebLinkCopiedTimerRef.current = setTimeout(() => {
+      setPublicWebLinkCopied(false);
+      publicWebLinkCopiedTimerRef.current = null;
+    }, 2800);
+    Alert.alert('Copied', message);
+  };
+
   const handleCopyPublicWebAgendaLink = async () => {
-    const url = publicWebAgendaUrl?.trim();
+    const url = publicWebAgendaShortUrl?.trim() ?? publicWebAgendaUrl?.trim();
     if (!url) {
       Alert.alert('Nothing to copy', 'The public link is not available yet.');
       return;
     }
 
     const flashCopied = () => {
-      if (publicWebLinkCopiedTimerRef.current) {
-        clearTimeout(publicWebLinkCopiedTimerRef.current);
-      }
-      setPublicWebLinkCopied(true);
-      publicWebLinkCopiedTimerRef.current = setTimeout(() => {
-        setPublicWebLinkCopied(false);
-        publicWebLinkCopiedTimerRef.current = null;
-      }, 2800);
-      Alert.alert('Copied', 'Public agenda link copied to clipboard.');
+      flashPublicWebLinkCopied(
+        publicWebAgendaShortUrl
+          ? 'Short agenda link copied to clipboard.'
+          : 'Public agenda link copied to clipboard.'
+      );
     };
 
     try {
@@ -2689,6 +2737,34 @@ export default function AgendaEditor() {
           ? 'Your browser may block clipboard access. Select the link text above and copy manually, or try again.'
           : 'Select the link text above to copy manually, or try again.'
       );
+    }
+  };
+
+  const handleCopyFullPublicWebAgendaLink = async () => {
+    const url = publicWebAgendaUrl?.trim();
+    if (!url) {
+      Alert.alert('Nothing to copy', 'The full link is not available yet.');
+      return;
+    }
+    try {
+      if (Platform.OS === 'web') {
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+          flashPublicWebLinkCopied('Full agenda link copied to clipboard.');
+          return;
+        }
+        const ok = await Clipboard.setStringAsync(url);
+        if (!ok) throw new Error('Clipboard API returned false');
+        flashPublicWebLinkCopied('Full agenda link copied to clipboard.');
+        return;
+      }
+      const ok = await Clipboard.setStringAsync(url);
+      if (!ok) throw new Error('Clipboard unavailable');
+      flashPublicWebLinkCopied('Full agenda link copied to clipboard.');
+    } catch (e) {
+      console.error('Copy full public web agenda link:', e);
+      setPublicWebLinkCopied(false);
+      Alert.alert('Could not copy', 'Try selecting the full URL from another device or paste the short link.');
     }
   };
 
@@ -3648,11 +3724,11 @@ export default function AgendaEditor() {
               >
                 <Text
                   style={[styles.publicWebLinkText, { color: theme.colors.textSecondary }]}
-                  numberOfLines={6}
+                  numberOfLines={4}
                   maxFontSizeMultiplier={1.15}
                   selectable
                 >
-                  {publicWebAgendaUrl}
+                  {publicWebAgendaShortUrl ?? publicWebAgendaUrl}
                 </Text>
                 {isAgendaVisible === false ? (
                   <Text style={[styles.publicWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.1}>
@@ -3689,10 +3765,27 @@ export default function AgendaEditor() {
                 >
                   <Copy size={16} color={theme.colors.primary} />
                   <Text style={[styles.publicWebLinkOutlineButtonLabel, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.1}>
-                    {publicWebLinkCopied ? 'Copied!' : 'Copy link'}
+                    {publicWebLinkCopied ? 'Copied!' : 'Copy short link'}
                   </Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={[
+                  styles.notionPublicWebCopyFullRow,
+                  {
+                    borderTopColor: theme.colors.border,
+                    backgroundColor: theme.colors.surface,
+                  },
+                ]}
+                onPress={() => {
+                  void handleCopyFullPublicWebAgendaLink();
+                }}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.notionPublicWebCopyFullLabel, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.1}>
+                  Copy full URL (club path)
+                </Text>
+              </TouchableOpacity>
             </>
           ) : (
             <View style={styles.notionPublicWebEmptyRow}>
@@ -6471,6 +6564,16 @@ const styles = StyleSheet.create({
   notionPublicWebEmptyRow: {
     paddingHorizontal: 14,
     paddingVertical: 14,
+  },
+  notionPublicWebCopyFullRow: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+  },
+  notionPublicWebCopyFullLabel: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   notionBannerColorsSubtitle: {
     fontSize: 12,

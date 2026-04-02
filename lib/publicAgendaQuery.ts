@@ -60,6 +60,19 @@ export type PublicAgendaFetchResult =
   | { ok: true; data: PublicAgendaPayload }
   | { ok: false; code: PublicAgendaErrorCode; message: string };
 
+/** RPC ignores club/meeting path segments; placeholders satisfy the signature. */
+const PUBLIC_AGENDA_RPC_PLACEHOLDER_CLUB_ID = '00000000-0000-0000-0000-000000000000';
+
+export async function fetchPublicMeetingAgendaByMeetingId(
+  meetingId: string
+): Promise<PublicAgendaFetchResult> {
+  return fetchPublicMeetingAgenda({
+    meetingId,
+    clubId: PUBLIC_AGENDA_RPC_PLACEHOLDER_CLUB_ID,
+    meetingNo: '0',
+  });
+}
+
 export async function fetchPublicMeetingAgenda(params: {
   meetingId: string;
   clubId: string;

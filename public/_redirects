@@ -1,6 +1,12 @@
 # /{clubId}/agenda/{meetingNo}/{meetingId} → Expo baseUrl (see app.json experiments.baseUrl)
 /:clubId/agenda/:meetingNo/:meetingId  /weblogin/:clubId/agenda/:meetingNo/:meetingId  302
 
+# Short public agenda: /a/{meetingId}
+/a/:meetingId  /weblogin/a/:meetingId  302
+
+# Branded short agenda: /{club-slug}/a/{meetingId}
+/:brand/a/:meetingId  /weblogin/:brand/a/:meetingId  302
+
 # Netlify redirects for SPA routing at /weblogin
 /weblogin    /weblogin/    301
 /weblogin/*  /weblogin/index.html  200

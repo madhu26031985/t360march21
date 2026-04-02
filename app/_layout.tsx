@@ -48,6 +48,8 @@ function AppContent() {
         <Stack.Screen name="feedback-form" options={{ headerShown: false }} />
         <Stack.Screen name="meeting-agenda-view" options={{ headerShown: false }} />
         <Stack.Screen name="[clubId]/agenda/[meetingNo]/[meetingId]" options={{ headerShown: false }} />
+        <Stack.Screen name="[clubId]/a/[meetingId]" options={{ headerShown: false }} />
+        <Stack.Screen name="a/[meetingId]" options={{ headerShown: false }} />
         <Stack.Screen name="version-debug" options={{ headerShown: false }} />
       </Stack>
 
