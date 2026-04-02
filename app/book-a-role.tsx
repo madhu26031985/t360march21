@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, Users, User, Crown, Shield, Eye, UserCheck, Building2, X, Save, BookOpen, GraduationCap, MessageSquare, Lightbulb, CreditCard as Edit, Clock, MapPin, FileText, CreditCard as Edit2, ChevronDown, Layers, Tag, Mic, Briefcase, Star, Bell, MousePointerClick, Filter, Check, Home, Settings, Coffee, MessageCircle, Globe } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Users, User, Crown, Shield, Eye, UserCheck, Building2, X, Save, BookOpen, GraduationCap, MessageSquare, Lightbulb, CreditCard as Edit, Clock, MapPin, FileText, CreditCard as Edit2, ChevronDown, Layers, Tag, Mic, Briefcase, Star, MousePointerClick, Filter, Check, Home, Settings, Coffee, MessageCircle, Globe } from 'lucide-react-native';
 
 const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
 const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
@@ -1011,14 +1011,14 @@ export default function BookARole() {
                 </Animated.View>
               )}
 
-              {/* Grammarian bell */}
+              {/* Grammarian — same action tile as Timer / Educational Speaker */}
               {isGrammarian && (
                 <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
                   <TouchableOpacity
-                    style={{ paddingHorizontal: 4, paddingVertical: 4 }}
+                    style={[styles.educationCornerButton, { backgroundColor: theme.colors.primary }]}
                     onPress={() => router.push(`/grammarian?meetingId=${selectedMeeting?.id}`)}
                   >
-                    <Bell size={18} color={theme.colors.primary} />
+                    <MousePointerClick size={14} color="#ffffff" />
                   </TouchableOpacity>
                 </Animated.View>
               )}
