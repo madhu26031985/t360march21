@@ -7,6 +7,14 @@ let grammarianSnapshotRpcDisabledUntil = 0;
 const FALLBACK_CACHE_TTL_MS = 30_000;
 const fallbackSnapshotCache = new Map<string, { at: number; value: GrammarianCornerSnapshot | null }>();
 
+export function invalidateGrammarianCornerSnapshotCache(
+  meetingId: string,
+  userId: string,
+  clubId: string
+): void {
+  fallbackSnapshotCache.delete(`${meetingId}:${userId}:${clubId}`);
+}
+
 export type GrammarianCornerMeeting = {
   id: string;
   meeting_title: string;

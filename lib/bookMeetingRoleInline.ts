@@ -97,11 +97,12 @@ export async function fetchOpenMeetingRoleId(
   meetingId: string,
   filters: OpenRoleFilters
 ): Promise<string | null> {
+  // Match book-a-role: NULL role_status means a normal open role; only 'Deleted' is excluded.
   let q = supabase
     .from('app_meeting_roles_management')
     .select('id')
     .eq('meeting_id', meetingId)
-    .eq('role_status', 'Available')
+    .or('role_status.is.null,role_status.eq.Available')
     .is('assigned_user_id', null);
 
   if ('orRoleName' in filters) {

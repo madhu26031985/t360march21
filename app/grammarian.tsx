@@ -8,7 +8,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { PENDING_ACTION_UI } from '@/lib/pendingActionUi';
-import { fetchGrammarianCornerSnapshot, fetchGrammarianClubMembersDirectory } from '@/lib/grammarianCornerQuery';
+import {
+  fetchGrammarianCornerSnapshot,
+  fetchGrammarianClubMembersDirectory,
+  invalidateGrammarianCornerSnapshotCache,
+} from '@/lib/grammarianCornerQuery';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
 import { GrammarianNotesScreen } from './grammarian-notes';
 import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus, ClipboardCheck, Vote } from 'lucide-react-native';
@@ -250,17 +254,20 @@ export default function GrammarianReport() {
     }, [meetingId])
   );
 
-  const loadData = async () => {
+  const loadData = async (opts?: { force?: boolean }) => {
     if (!meetingId || !user?.currentClubId || !user?.id) {
       setIsLoading(false);
       return;
     }
 
     if (loadInFlightRef.current) return loadInFlightRef.current;
-    if (Date.now() - lastLoadAtRef.current < 1200) return;
+    if (!opts?.force && Date.now() - lastLoadAtRef.current < 1200) return;
 
     const run = async () => {
       try {
+        if (opts?.force) {
+          invalidateGrammarianCornerSnapshotCache(meetingId, user.id, user.currentClubId);
+        }
         const snap = await fetchGrammarianCornerSnapshot(meetingId, user.id, user.currentClubId);
 
         let assigned: AssignedGrammarian | null = null;
@@ -386,10 +393,13 @@ export default function GrammarianReport() {
         'Grammarian is already booked or not set up for this meeting.'
       );
       if (result.ok) {
-        await loadData();
+        await loadData({ force: true });
       } else {
         Alert.alert('Could not book', result.message);
       }
+    } catch (e) {
+      console.error('Book Grammarian:', e);
+      Alert.alert('Error', 'Something went wrong while booking. Please try again.');
     } finally {
       setBookingGrammarianRole(false);
     }
@@ -411,7 +421,7 @@ export default function GrammarianReport() {
       if (result.ok) {
         setShowAssignGrammarianModal(false);
         setAssignGrammarianSearch('');
-        await loadData();
+        await loadData({ force: true });
         Alert.alert('Assigned', `${member.full_name} is now the Grammarian for this meeting.`);
       } else {
         Alert.alert('Could not assign', result.message);
