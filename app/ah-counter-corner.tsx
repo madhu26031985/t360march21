@@ -95,7 +95,8 @@ export default function AhCounterCorner() {
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [assignedAhCounter, setAssignedAhCounter] = useState<AssignedAhCounter | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Don't block navigation on Slow 4G — render the page immediately and hydrate data in the background.
+  const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('audit');
   const hasLoadedOnce = useRef<boolean>(false);
   const hasFocusedOnceRef = useRef<boolean>(false);
@@ -130,11 +131,23 @@ export default function AhCounterCorner() {
 
   useEffect(() => {
     if (meetingId && user?.currentClubId) {
-      loadData();
+      void loadData();
     } else if (!hasLoadedOnce.current) {
       setIsLoading(false);
     }
   }, [meetingId, user?.currentClubId]);
+
+  // Lazy-load the heavy lists by tab to keep initial page load fast.
+  useEffect(() => {
+    if (!hasLoadedOnce.current) return;
+    if (!meetingId || !user?.currentClubId) return;
+    if (activeTab === 'audit' && auditMembers.length === 0 && !auditMembersLoading) {
+      void loadAuditMembers();
+    }
+    if (activeTab === 'report' && reportEntries.length === 0) {
+      void loadReportEntries();
+    }
+  }, [activeTab, meetingId, user?.currentClubId, auditMembers.length, auditMembersLoading, reportEntries.length]);
 
   // Reload report stats and audit members when screen comes into focus
   useFocusEffect(
@@ -154,9 +167,11 @@ export default function AhCounterCorner() {
   useEffect(() => {
     // Avoid duplicate mount-time fetches; refresh only after the first successful load.
     if (activeTab === 'audit' && hasLoadedOnce.current && meetingId && user?.currentClubId) {
+      // Refresh snapshot (counts / assignment) without blocking UI,
+      // and ensure the audit member list is fetched on-demand.
       void loadData();
     }
-  }, [activeTab, meetingId, user?.currentClubId]);
+  }, [activeTab, meetingId, user?.currentClubId, auditMembers.length]);
 
   const handleBookAhCounterInline = async () => {
     if (!meetingId || !user?.id) {
@@ -258,29 +273,6 @@ export default function AhCounterCorner() {
     if (isFirstLoad) setIsLoading(true);
     if (loadInFlightRef.current) return loadInFlightRef.current;
 
-    const mapReportRowsToEntries = (rows: Record<string, unknown>[]) => {
-      const entries: ReportEntry[] = [];
-      for (const row of rows) {
-        const avatarUrl = ((row as any).app_user_profiles?.avatar_url as string | null) ?? null;
-        for (const [col, word] of Object.entries(COLUMN_TO_FILLER_WORD)) {
-          const count = ((row as any)[col] as number) || 0;
-          for (let i = 0; i < count; i++) {
-            entries.push({
-              id: `${(row as any).id}_${col}_${i}`,
-              memberId: ((row as any).speaker_user_id as string) || `guest_${(row as any).speaker_name}`,
-              memberName: ((row as any).speaker_name as string) || '',
-              fillerWord: word,
-              avatarUrl,
-              dbRowId: (row as any).id as string,
-              dbColumn: col,
-            });
-          }
-        }
-      }
-      entries.sort((a, b) => a.memberName.localeCompare(b.memberName));
-      return entries;
-    };
-
     const run = async () => {
     try {
       const effectiveUserId = user?.id ?? '';
@@ -306,8 +298,7 @@ export default function AhCounterCorner() {
         });
         setPublishedCount(snap.published_count);
         setIsPublished(snap.total_reports > 0 && snap.published_count === snap.total_reports);
-        setReportEntries(mapReportRowsToEntries(snap.report_rows));
-        setAuditMembers(snap.audit_members);
+        // Heavy lists are loaded on-demand per tab (to keep initial load < 1s).
       } else {
         await Promise.all([
           loadMeeting(),
@@ -315,7 +306,6 @@ export default function AhCounterCorner() {
           loadReportStats(),
           loadUserRole(),
           loadIsVPEClub(),
-          loadReportEntries(),
           loadPublishStatus(),
         ]);
       }
@@ -526,15 +516,13 @@ export default function AhCounterCorner() {
   const loadReportEntries = async () => {
     if (!meetingId || !user?.currentClubId) return;
     try {
-      const columns = Object.values(FILLER_WORD_TO_COLUMN).join(', ');
-      const { data, error } = await supabase
-        .from('ah_counter_reports')
-        .select(`id, speaker_user_id, speaker_name, ${columns}, app_user_profiles!ah_counter_reports_speaker_user_id_fkey(avatar_url)`)
-        .eq('meeting_id', meetingId)
-        .eq('club_id', user.currentClubId);
-
-      if (error) { console.error('Error loading report entries:', error); return; }
-
+      const { data, error } = await (supabase as any).rpc('get_ah_counter_report_rows', {
+        p_meeting_id: meetingId,
+      });
+      if (error || !Array.isArray(data)) {
+        console.error('Error loading report entries:', error);
+        return;
+      }
       const entries: ReportEntry[] = [];
       for (const row of (data || [])) {
         const avatarUrl = (row as any).app_user_profiles?.avatar_url ?? null;
@@ -564,44 +552,21 @@ export default function AhCounterCorner() {
     if (!meetingId || !user?.currentClubId) return;
     setAuditMembersLoading(true);
     try {
-      const { data: tracked } = await supabase
-        .from('ah_counter_tracked_members')
-        .select('user_id, is_unavailable')
-        .eq('meeting_id', meetingId)
-        .eq('club_id', user.currentClubId);
-
-      const hasTracked = tracked && tracked.length > 0;
-      const attendingUserIds: string[] = hasTracked
-        ? (tracked || []).filter((t: any) => !t.is_unavailable).map((t: any) => t.user_id)
-        : [];
-
-      let userIds: string[] = attendingUserIds;
-
-      if (!hasTracked) {
-        const { data: relationships } = await supabase
-          .from('app_club_user_relationship')
-          .select('user_id')
-          .eq('club_id', user.currentClubId)
-          .eq('is_authenticated', true);
-        userIds = relationships?.map((r: any) => r.user_id) || [];
-      }
-
-      if (userIds.length === 0) {
+      const { data, error } = await (supabase as any).rpc('get_ah_counter_audit_members', {
+        p_meeting_id: meetingId,
+      });
+      if (error || !Array.isArray(data)) {
+        console.error('Error loading audit members:', error);
         setAuditMembers([]);
         return;
       }
-
-      const { data: profiles } = await supabase
-        .from('app_user_profiles')
-        .select('id, full_name, avatar_url')
-        .in('id', userIds)
-        .order('full_name');
-
-      setAuditMembers((profiles || []).map((p: any) => ({
-        user_id: p.id,
-        full_name: p.full_name,
-        avatar_url: p.avatar_url,
-      })));
+      setAuditMembers(
+        (data || []).map((p: any) => ({
+          user_id: p.user_id,
+          full_name: p.full_name,
+          avatar_url: p.avatar_url,
+        }))
+      );
     } catch (error) {
       console.error('Error loading audit members:', error);
     } finally {
@@ -775,22 +740,8 @@ export default function AhCounterCorner() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <ArrowLeft size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-        <View style={styles.centerContainer}>
-          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Loading...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // Note: we intentionally do not return a full-screen loading state.
+  // The screen should open instantly; sections show their own spinners/placeholders.
 
   if (!meeting) {
     return (

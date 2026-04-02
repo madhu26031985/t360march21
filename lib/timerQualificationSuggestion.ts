@@ -20,10 +20,10 @@ function preparedSpeakerQualified(totalSeconds: number): boolean {
   return false;
 }
 
-/** Table topics: 0–1 min No, 1:00–1:59 Yes, 2:00+ No */
+/** Table topics: 0–1 min No, 1:00–2:30 Yes, above 2:30 No */
 function tableTopicQualified(totalSeconds: number): boolean {
   if (totalSeconds < 1 * MIN) return false;
-  if (totalSeconds < 2 * MIN) return true;
+  if (totalSeconds <= 2.5 * MIN) return true;
   return false;
 }
 

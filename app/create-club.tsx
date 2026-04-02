@@ -162,7 +162,16 @@ export default function CreateClub() {
     }
 
     setIsLoading(true);
-    setShowConfirmModal(false);
+
+    const showError = (title: string, message: string) => {
+      if (Platform.OS === 'web') {
+        // RN `Alert` is unreliable on web; use a browser dialog so failures are visible.
+        // eslint-disable-next-line no-alert
+        alert(`${title}\n\n${message}`);
+      } else {
+        Alert.alert(title, message);
+      }
+    };
 
     try {
       console.log('Creating new club with data:', clubForm);
@@ -177,7 +186,7 @@ export default function CreateClub() {
 
       if (profileCheckError) {
         console.error('Error checking user profile:', profileCheckError);
-        Alert.alert('Error', 'Failed to verify user profile. Please try again.');
+        showError('Error', 'Failed to verify user profile. Please try again.');
         setIsLoading(false);
         return;
       }
@@ -198,7 +207,7 @@ export default function CreateClub() {
 
         if (createProfileError) {
           console.error('Error creating user profile:', createProfileError);
-          Alert.alert('Error', 'Failed to create user profile. Please contact support.');
+          showError('Error', 'Failed to create user profile. Please contact support.');
           setIsLoading(false);
           return;
         }
@@ -225,11 +234,11 @@ export default function CreateClub() {
         console.error('Error creating club:', clubError);
         
         if (clubError.code === '23505') {
-          Alert.alert('Error', 'A club with this number already exists. Please use a different club number.');
+          showError('Error', 'A club with this number already exists. Please use a different club number.');
         } else if (clubError.code === '42501') {
-          Alert.alert('Error', 'You do not have permission to create clubs. Please contact your administrator.');
+          showError('Error', 'You do not have permission to create clubs. Please contact your administrator.');
         } else {
-          Alert.alert('Error', `Failed to create club: ${clubError.message}`);
+          showError('Error', `Failed to create club: ${clubError.message}`);
         }
         return;
       }
@@ -262,7 +271,7 @@ export default function CreateClub() {
           details: relationshipError.details,
           hint: relationshipError.hint,
         });
-        Alert.alert('Error', `Club created but failed to assign membership: ${relationshipError.message}. Please contact support.`);
+        showError('Error', `Club created but failed to assign membership: ${relationshipError.message}. Please contact support.`);
         return;
       }
 
@@ -272,6 +281,7 @@ export default function CreateClub() {
 
       // Show success modal
       setShowSuccessModal(true);
+      setShowConfirmModal(false);
 
       // Refresh user profile to update club list
       setTimeout(() => {
@@ -280,7 +290,7 @@ export default function CreateClub() {
 
     } catch (error) {
       console.error('Error creating club:', error);
-      Alert.alert('Error', 'An unexpected error occurred while creating the club');
+      showError('Error', 'An unexpected error occurred while creating the club');
     } finally {
       setIsLoading(false);
     }

@@ -190,6 +190,17 @@ export default function GrammarianReport() {
   /** Sub-tabs under Grammarian Corner: prep shortcuts vs live meeting tools */
   const [cornerPhaseTab, setCornerPhaseTab] = useState<'pre-meeting' | 'live-meeting'>('pre-meeting');
   const [showGrammarianInfoModal, setShowGrammarianInfoModal] = useState(false);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
+  const lastLoadAtRef = useRef<number>(0);
+  const liveDataLoadedRef = useRef(false);
+  const preMeetingDataLoadedRef = useRef(false);
+  const preMeetingBackgroundQueuedRef = useRef(false);
+
+  useEffect(() => {
+    preMeetingDataLoadedRef.current = false;
+    liveDataLoadedRef.current = false;
+    preMeetingBackgroundQueuedRef.current = false;
+  }, [meetingId]);
 
   const wordOfTheDayDotScale = wordOfTheDayPulse.interpolate({
     inputRange: [1, 1.08],
@@ -212,7 +223,7 @@ export default function GrammarianReport() {
     if (!user?.currentClubId || !user?.id) {
       return;
     }
-    loadData();
+    void loadData();
   }, [meetingId, user?.id, user?.currentClubId]);
 
   useEffect(() => {
@@ -245,39 +256,121 @@ export default function GrammarianReport() {
       return;
     }
 
-    try {
-      const snap = await fetchGrammarianCornerSnapshot(meetingId, user.id, user.currentClubId);
+    if (loadInFlightRef.current) return loadInFlightRef.current;
+    if (Date.now() - lastLoadAtRef.current < 1200) return;
 
-      if (snap) {
-        setMeeting(snap.meeting as Meeting);
-        if (snap.club_name) setClubName(snap.club_name);
-        setIsVPEClub(snap.is_vpe_for_club);
+    const run = async () => {
+      try {
+        const snap = await fetchGrammarianCornerSnapshot(meetingId, user.id, user.currentClubId);
 
-        if (snap.assigned_grammarian) {
-          setAssignedGrammarian(snap.assigned_grammarian);
+        let assigned: AssignedGrammarian | null = null;
 
-          if (snap.assigned_grammarian.id === user.id) {
-            await loadDailyElements();
-            await loadGrammarianReport();
+        if (snap) {
+          setMeeting(snap.meeting as Meeting);
+          if (snap.club_name) setClubName(snap.club_name);
+          setIsVPEClub(snap.is_vpe_for_club);
+          setHasPublishedLiveObservations(Boolean(snap.has_published_live_observations));
+          assigned = snap.assigned_grammarian;
+          setAssignedGrammarian(assigned);
+
+          // Use bundled pre-meeting data from snapshot to avoid extra first-load requests.
+          if (snap.word_of_the_day) {
+            const w = snap.word_of_the_day;
+            setWordOfTheDay({
+              id: w.id,
+              word: w.word || '',
+              part_of_speech: (w.part_of_speech || undefined) as string | undefined,
+              meaning: w.meaning || '',
+              usage: w.usage || '',
+              is_published: Boolean(w.is_published),
+              created_at: w.created_at || undefined,
+              published_at: w.published_at || undefined,
+            });
           }
+          if (snap.idiom_of_the_day) {
+            const i = snap.idiom_of_the_day;
+            setIdiomOfTheDay({
+              id: i.id,
+              idiom: i.idiom || '',
+              meaning: i.meaning || '',
+              usage: i.usage || '',
+              is_published: Boolean(i.is_published),
+              created_at: i.created_at || undefined,
+              published_at: i.published_at || undefined,
+              grammarian_user_id: i.grammarian_user_id || undefined,
+            });
+          }
+          if (snap.quote_of_the_day) {
+            const q = snap.quote_of_the_day;
+            setQuoteOfTheDay({
+              id: q.id,
+              quote: q.quote || '',
+              meaning: q.meaning || '',
+              usage: q.usage || '',
+              is_published: Boolean(q.is_published),
+              created_at: q.created_at || undefined,
+              published_at: q.published_at || undefined,
+              grammarian_user_id: q.grammarian_user_id || undefined,
+            });
+          }
+          if (snap.daily_elements) {
+            setDailyElements({
+              word_of_the_day: snap.daily_elements.word_of_the_day || '',
+              idiom_of_the_day: snap.daily_elements.idiom_of_the_day || '',
+              phrase_of_the_day: snap.daily_elements.phrase_of_the_day || '',
+              quote_of_the_day: snap.daily_elements.quote_of_the_day || '',
+            });
+          }
+        } else {
+          await Promise.all([loadMeeting(), loadClubName(), loadIsVPEClub()]);
+          assigned = await loadAssignedGrammarian();
+        }
 
-          await loadWordOfTheDay();
-          await loadIdiomOfTheDay();
-          await loadQuoteOfTheDay();
-          await loadPublishedLiveObservations();
+        if (assigned) {
+          if (!preMeetingDataLoadedRef.current) {
+            // Fast-first strategy: load Word of the Day first (primary click path).
+            if (!snap?.word_of_the_day) {
+              await loadWordOfTheDay();
+            }
+            preMeetingDataLoadedRef.current = true;
+
+            // Defer secondary pre-meeting data so screen appears faster.
+            if (!preMeetingBackgroundQueuedRef.current) {
+              preMeetingBackgroundQueuedRef.current = true;
+              setTimeout(() => {
+                void Promise.all([
+                  assigned.id === user.id && !snap?.daily_elements ? loadDailyElements() : Promise.resolve(),
+                  !snap?.idiom_of_the_day ? loadIdiomOfTheDay() : Promise.resolve(),
+                  !snap?.quote_of_the_day ? loadQuoteOfTheDay() : Promise.resolve(),
+                ]);
+              }, 0);
+            }
+          }
         } else {
           setAssignedGrammarian(null);
         }
-      } else {
-        await Promise.all([loadMeeting(), loadAssignedGrammarian(), loadClubName(), loadIsVPEClub()]);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        Alert.alert('Error', 'Failed to load Grammarian data');
+      } finally {
+        lastLoadAtRef.current = Date.now();
+        setIsLoading(false);
+        loadInFlightRef.current = null;
       }
-    } catch (error) {
-      console.error('Error loading data:', error);
-      Alert.alert('Error', 'Failed to load Grammarian data');
-    } finally {
-      setIsLoading(false);
-    }
+    };
+
+    loadInFlightRef.current = run();
+    return loadInFlightRef.current;
   };
+
+  useEffect(() => {
+    if (cornerPhaseTab !== 'live-meeting') return;
+    if (!meetingId) return;
+    if (liveDataLoadedRef.current) return;
+
+    liveDataLoadedRef.current = true;
+    void Promise.all([loadPublishedLiveObservations(), loadGrammarianReport()]);
+  }, [cornerPhaseTab, meetingId]);
 
   const handleBookGrammarianInline = async () => {
     if (!meetingId || !user?.id) {
@@ -367,8 +460,8 @@ export default function GrammarianReport() {
     }
   };
 
-  const loadAssignedGrammarian = async () => {
-    if (!meetingId || !user?.currentClubId) return;
+  const loadAssignedGrammarian = async (): Promise<AssignedGrammarian | null> => {
+    if (!meetingId || !user?.currentClubId) return null;
 
     try {
       const { data, error } = await supabase
@@ -390,35 +483,27 @@ export default function GrammarianReport() {
 
       if (error) {
         console.error('Error loading assigned Grammarian:', error);
-        return;
+        return null;
       }
 
       if (data && (data as any).app_user_profiles) {
         const profile = (data as any).app_user_profiles;
-        setAssignedGrammarian({
+        const assigned = {
           id: profile.id,
           full_name: profile.full_name,
           email: profile.email,
           avatar_url: profile.avatar_url,
-        });
-
-        // Load daily elements if user is the assigned grammarian
-        if (profile.id === user?.id) {
-          await loadDailyElements();
-          await loadGrammarianReport();
-        }
-
-        // Load Word of the Day, Idiom of the Day, and Quote of the Day for all users (grammarians and non-grammarians)
-        await loadWordOfTheDay();
-        await loadIdiomOfTheDay();
-        await loadQuoteOfTheDay();
-        await loadPublishedLiveObservations();
+        } as AssignedGrammarian;
+        setAssignedGrammarian(assigned);
+        return assigned;
       } else {
         // Explicitly clear when no grammarian is assigned.
         setAssignedGrammarian(null);
+        return null;
       }
     } catch (error) {
       console.error('Error loading assigned Grammarian:', error);
+      return null;
     }
   };
 
@@ -1857,11 +1942,11 @@ export default function GrammarianReport() {
             ) : (
               <>
                 <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface, paddingTop: 14 }]}>
-                  <View style={[styles.liveSegmentControl, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}>
+                  <View style={[styles.liveSegmentControl, { backgroundColor: '#F8FAFC', borderColor: '#DBEAFE' }]}>
                     <TouchableOpacity
                       style={[
                         styles.liveSegmentTab,
-                        cornerLiveSubTab === 'good-usage' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
+                        cornerLiveSubTab === 'good-usage' && [styles.liveSegmentTabActive, { backgroundColor: '#EFF6FF' }],
                       ]}
                       onPress={() => {
                         setCornerLiveSubTab('good-usage');
@@ -1885,12 +1970,12 @@ export default function GrammarianReport() {
                       </Text>
                     </TouchableOpacity>
 
-                    <View style={[styles.liveSegmentDivider, { backgroundColor: '#CBD5E1' }]} />
+                    <View style={[styles.liveSegmentDivider, { backgroundColor: '#DBEAFE' }]} />
 
                     <TouchableOpacity
                       style={[
                         styles.liveSegmentTab,
-                        cornerLiveSubTab === 'improvements' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
+                        cornerLiveSubTab === 'improvements' && [styles.liveSegmentTabActive, { backgroundColor: '#EFF6FF' }],
                       ]}
                       onPress={() => {
                         setCornerLiveSubTab('improvements');
@@ -1914,12 +1999,12 @@ export default function GrammarianReport() {
                       </Text>
                     </TouchableOpacity>
 
-                    <View style={[styles.liveSegmentDivider, { backgroundColor: '#CBD5E1' }]} />
+                    <View style={[styles.liveSegmentDivider, { backgroundColor: '#DBEAFE' }]} />
 
                     <TouchableOpacity
                       style={[
                         styles.liveSegmentTab,
-                        cornerLiveSubTab === 'stats' && [styles.liveSegmentTabActive, { backgroundColor: '#ffffff' }],
+                        cornerLiveSubTab === 'stats' && [styles.liveSegmentTabActive, { backgroundColor: '#EFF6FF' }],
                       ]}
                       onPress={() => {
                         setCornerLiveSubTab('stats');
@@ -2894,7 +2979,7 @@ const styles = StyleSheet.create({
   },
   preMeetingIconCard: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 0,
     padding: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
@@ -2909,7 +2994,7 @@ const styles = StyleSheet.create({
   preMeetingIconWrap: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -2923,41 +3008,34 @@ const styles = StyleSheet.create({
   liveSegmentControl: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 999,
+    borderRadius: 0,
     borderWidth: 1,
-    padding: 4,
-    gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
+    padding: 0,
+    gap: 0,
+    overflow: 'hidden',
   },
   liveSegmentTab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 10,
-    borderRadius: 50,
+    borderRadius: 0,
     gap: 5,
     width: '100%',
+    borderWidth: 0,
   },
   liveSegmentTabActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: 0,
   },
   liveSegmentTabText: {
     fontSize: 11,
   },
   liveSegmentDivider: {
     width: 1,
-    height: 18,
-    opacity: 0.5,
+    alignSelf: 'stretch',
+    opacity: 1,
   },
   liveSegmentHint: {
     fontSize: 12,
@@ -2967,9 +3045,8 @@ const styles = StyleSheet.create({
   },
   inlineLiveMeetingPanel: {
     marginTop: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderRadius: 0,
+    borderWidth: 0,
     overflow: 'hidden',
     backgroundColor: 'transparent',
   },

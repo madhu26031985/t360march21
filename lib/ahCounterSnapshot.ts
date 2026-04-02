@@ -21,6 +21,8 @@ export type AhCounterSnapshot = {
   };
   is_excomm: boolean;
   is_vpe_for_club: boolean;
+  // Heavy arrays intentionally excluded from the snapshot for performance.
+  // Fetch via `get_ah_counter_audit_members` / `get_ah_counter_report_rows` RPCs.
   report_rows: Record<string, unknown>[];
   audit_members: {
     user_id: string;
@@ -34,9 +36,19 @@ export type AhCounterSnapshot = {
 export async function fetchAhCounterSnapshot(
   meetingId: string
 ): Promise<AhCounterSnapshot | null> {
-  const { data, error } = await (supabase as any).rpc('get_ah_counter_corner_snapshot', {
+  // Prefer the small snapshot RPC for <1s initial load.
+  // Fall back to the legacy/heavy snapshot if the small RPC is not deployed yet.
+  const trySmall = await (supabase as any).rpc('get_ah_counter_corner_snapshot_small', {
     p_meeting_id: meetingId,
   });
+  const tryLegacy =
+    trySmall.error
+      ? await (supabase as any).rpc('get_ah_counter_corner_snapshot', { p_meeting_id: meetingId })
+      : null;
+
+  const data = (trySmall.error ? tryLegacy?.data : trySmall.data) as unknown;
+  const error = (trySmall.error ? tryLegacy?.error : trySmall.error) as any;
+
   if (error || !data || typeof data !== 'object' || Array.isArray(data)) return null;
   const raw = data as Record<string, unknown>;
   return {
@@ -51,6 +63,7 @@ export async function fetchAhCounterSnapshot(
     },
     is_excomm: Boolean(raw.is_excomm),
     is_vpe_for_club: Boolean(raw.is_vpe_for_club),
+    // Backward-compatible fields; new RPC returns [] for these.
     report_rows: Array.isArray(raw.report_rows) ? (raw.report_rows as Record<string, unknown>[]) : [],
     audit_members: Array.isArray(raw.audit_members)
       ? (raw.audit_members as AhCounterSnapshot['audit_members'])

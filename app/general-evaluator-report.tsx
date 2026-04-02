@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Pressable, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -901,6 +901,7 @@ export default function GeneralEvaluatorReport() {
     backgroundColor: 'transparent',
   } as const;
   const totalScore = evaluationQuestions.reduce((sum, q) => sum + (typeof responses[q.id] === 'number' ? (responses[q.id] as number) : 0), 0);
+  const overallScoreOutOfFive = geTotalToStars(totalScore, geTotalMax);
   const getOverallRating = (score: number): 'Excellent' | 'Good' | 'Needs Improvement' => {
     if (score >= Math.round((56 / 72) * geTotalMax)) return 'Excellent';
     if (score >= Math.round((36 / 72) * geTotalMax)) return 'Good';
@@ -910,8 +911,7 @@ export default function GeneralEvaluatorReport() {
   // Summary tab score visibility is controlled only by the members toggle.
   const showGeSummaryToViewer = summaryVisibleToMembers;
 
-  const renderGeTotalScoreCard = (opts: { showMemberVisibilityToggle: boolean }) => {
-    const showToggle = opts.showMemberVisibilityToggle && canEditGeneralEvaluatorCorner;
+  const renderGeTotalScoreCard = () => {
     const overallStarRating = geTotalToStars(totalScore, geTotalMax);
     const emptyStarStroke = theme.mode === 'dark' ? '#6b7280' : GE_STAR_EMPTY_STROKE;
     return (
@@ -928,32 +928,7 @@ export default function GeneralEvaluatorReport() {
               <GeFiveStarRow rating={overallStarRating} size={20} emptyStrokeColor={emptyStarStroke} />
             </View>
           </View>
-          {showToggle ? (
-            <View style={styles.summaryVisibilityToggleWrap}>
-              {summaryVisibleToMembers ? (
-                <Eye size={20} color={notion.accent} />
-              ) : (
-                <EyeOff size={20} color={notion.muted} />
-              )}
-              <Text style={[styles.summaryVisibilityLabel, notionType, { color: notion.muted }]} maxFontSizeMultiplier={1.1}>
-                Members
-              </Text>
-              <Switch
-                value={summaryVisibleToMembers}
-                onValueChange={handleSummaryVisibilityChange}
-                trackColor={{ false: '#d1d5db', true: '#93c5fd' }}
-                thumbColor={Platform.OS === 'android' ? (summaryVisibleToMembers ? notion.accent : '#f4f3f4') : undefined}
-              />
-            </View>
-          ) : null}
         </View>
-        {showToggle ? (
-          <Text style={[styles.summaryVisibilityHint, notionType, { color: notion.muted }]} maxFontSizeMultiplier={1.05}>
-            {summaryVisibleToMembers
-              ? 'Members can see this summary on the GE Summary tab.'
-              : 'Hidden from members — only you and VPE see scores on Summary.'}
-          </Text>
-        ) : null}
       </View>
     );
   };
@@ -1285,7 +1260,45 @@ export default function GeneralEvaluatorReport() {
             {canAccessGeneralEvaluatorCorner && activeTab === 'categories' && (
               <>
                 <View style={styles.categoriesSection}>
-                  {renderGeTotalScoreCard({ showMemberVisibilityToggle: true })}
+                  {canEditGeneralEvaluatorCorner && (
+                    <View style={[styles.geVisibilityCard, { backgroundColor: notion.surface, borderColor: notion.divider }]}>
+                      <View style={styles.geVisibilityLeft}>
+                        {summaryVisibleToMembers ? (
+                          <Eye size={18} color={notion.accent} />
+                        ) : (
+                          <EyeOff size={18} color={notion.muted} />
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.geVisibilityTitle, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.2}>
+                            Show GE report to Member
+                          </Text>
+                          <Text style={[styles.geVisibilityHint, notionType, { color: notion.muted }]} maxFontSizeMultiplier={1.1}>
+                            {summaryVisibleToMembers
+                              ? 'Members can see GE Summary on screen.'
+                              : 'Hidden from members. Only General Evaluator and VPE can view it.'}
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.geVisibilityButton,
+                          {
+                            backgroundColor: summaryVisibleToMembers ? notion.accent : notion.page,
+                            borderColor: summaryVisibleToMembers ? notion.accent : notion.divider,
+                          },
+                        ]}
+                        onPress={() => handleSummaryVisibilityChange(!summaryVisibleToMembers)}
+                      >
+                        {summaryVisibleToMembers ? (
+                          <Eye size={16} color="#ffffff" />
+                        ) : (
+                          <EyeOff size={16} color={notion.muted} />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {renderGeTotalScoreCard()}
 
                   {evaluationQuestions.map((question) => (
                     <RatingCard key={question.id} question={question} />
@@ -1298,11 +1311,27 @@ export default function GeneralEvaluatorReport() {
               <View style={styles.categoriesSection}>
                 {showGeSummaryToViewer ? (
                   <>
-                    {renderGeTotalScoreCard({ showMemberVisibilityToggle: false })}
+                    {renderGeTotalScoreCard()}
 
-                    <View style={[styles.scoreListCard, { backgroundColor: notion.surface, borderBottomColor: notion.divider }]}>
+                    <View style={[styles.scoreSummaryHeader, { backgroundColor: notion.surface, borderColor: notion.divider }]}>
+                      <View style={styles.scoreSummaryHeaderTopRow}>
+                        <Text style={[styles.scoreSummaryHeaderTitle, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.2}>
+                          Final Summary Ratings
+                        </Text>
+                        <View style={[styles.scoreSummaryValueChip, { backgroundColor: '#EFF6FF', borderColor: '#DBEAFE' }]}>
+                          <Text style={[styles.scoreSummaryValueChipText, { color: notion.accent }]} maxFontSizeMultiplier={1.1}>
+                            {overallScoreOutOfFive.toFixed(1)}/5
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.scoreSummaryHeaderSub, notionType, { color: notion.muted }]} maxFontSizeMultiplier={1.1}>
+                        Final evaluation snapshot for all criteria
+                      </Text>
+                    </View>
+                    <View style={[styles.scoreListCard, { backgroundColor: notion.surface, borderColor: notion.divider }]}>
                       {evaluationQuestions.map((question, index) => {
                         const score = responses[question.id];
+                        const cleanTitle = question.title.replace(/^\d+\.\s*/, '');
                         return (
                           <View
                             key={`summary-${question.id}`}
@@ -1312,13 +1341,22 @@ export default function GeneralEvaluatorReport() {
                               index === evaluationQuestions.length - 1 && styles.scoreListRowLast,
                             ]}
                           >
-                            <Text style={[styles.scoreQuestionTitle, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.2}>
-                              {question.title}
-                            </Text>
-                            {score == null ? (
-                              <Text style={[styles.scoreValueDash, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                                —
+                            <View style={styles.scoreQuestionWrap}>
+                              <View style={[styles.scoreQuestionIndex, { backgroundColor: '#EFF6FF', borderColor: '#DBEAFE' }]}>
+                                <Text style={[styles.scoreQuestionIndexText, { color: notion.accent }]} maxFontSizeMultiplier={1.1}>
+                                  {index + 1}
+                                </Text>
+                              </View>
+                              <Text style={[styles.scoreQuestionTitle, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.2}>
+                                {cleanTitle}
                               </Text>
+                            </View>
+                            {score == null ? (
+                              <View style={[styles.unratedPill, { backgroundColor: '#F8FAFC', borderColor: notion.divider }]}>
+                                <Text style={[styles.scoreValueDash, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                                  Not rated
+                                </Text>
+                              </View>
                             ) : (
                               <GeFiveStarRow
                                 rating={geTenPointToStars(score)}
@@ -2178,6 +2216,39 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
+  geVisibilityCard: {
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 6,
+  },
+  geVisibilityLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  geVisibilityTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  geVisibilityHint: {
+    fontSize: 11,
+    marginTop: 3,
+  },
+  geVisibilityButton: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   summaryCardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2236,28 +2307,84 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 0,
     gap: 10,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   overallRatingLabel: {
     flex: 1,
     marginRight: 4,
   },
   scoreListCard: {
-    borderWidth: 0,
+    borderWidth: 1,
     borderRadius: 0,
     overflow: 'hidden',
     borderBottomWidth: 1,
+    marginTop: 8,
+  },
+  scoreSummaryHeader: {
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  scoreSummaryHeaderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  scoreSummaryHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
+  },
+  scoreSummaryValueChip: {
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  scoreSummaryValueChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  scoreSummaryHeaderSub: {
+    fontSize: 11,
+    marginTop: 3,
   },
   scoreListRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     gap: 8,
   },
   scoreListRowLast: {
     borderBottomWidth: 0,
+  },
+  scoreQuestionWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  scoreQuestionIndex: {
+    width: 22,
+    height: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 0,
+  },
+  scoreQuestionIndexText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   scoreQuestionTitle: {
     fontSize: 13,
@@ -2265,8 +2392,14 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
+  unratedPill: {
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 0,
+  },
   scoreValueDash: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '600',
     minWidth: 20,
     textAlign: 'right',

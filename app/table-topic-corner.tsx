@@ -234,18 +234,10 @@ export default function TableTopicCorner(): JSX.Element {
         setParticipants(bundle.participants);
         setAssignedQuestions(bundle.assignedQuestions);
         setPublishedQuestions(bundle.publishedQuestions);
-        const { data: vpeData } = await supabase
-          .from('club_profiles')
-          .select('vpe_id')
-          .eq('club_id', user.currentClubId)
-          .maybeSingle();
-        setIsVPEClub(vpeData?.vpe_id === user.id);
+        setIsVPEClub(bundle.isVpe);
 
-        const questionsMap: ParticipantQuestion = {};
-        bundle.assignedQuestions.forEach((q) => {
-          questionsMap[q.participant_id] = q.question_text;
-        });
-        setParticipantQuestions(questionsMap);
+        // Note: `participantQuestions` is not used elsewhere in this screen.
+        // Keeping bundle fetch lightweight via the optimized snapshot payload.
       } catch (error) {
         console.error('Error loading table topic corner data:', error);
         Alert.alert('Error', 'Failed to load table topic data');
@@ -265,7 +257,7 @@ export default function TableTopicCorner(): JSX.Element {
     try {
       const { data, error } = await supabase
         .from('app_meeting_tabletopicscorner')
-        .select('*')
+        .select('id')
         .eq('meeting_id', meetingId)
         .eq('club_id', user.currentClubId)
         .eq('is_active', true)
@@ -277,31 +269,8 @@ export default function TableTopicCorner(): JSX.Element {
         return;
       }
 
-      // Fetch participant avatars
-      const questions = data || [];
-      const participantIds = questions
-        .filter(q => q.participant_id)
-        .map(q => q.participant_id);
-
-      if (participantIds.length > 0) {
-        const { data: profiles, error: profilesError } = await supabase
-          .from('app_user_profiles')
-          .select('id, avatar_url')
-          .in('id', participantIds);
-
-        if (!profilesError && profiles) {
-          const profileMap = new Map(profiles.map(p => [p.id, p.avatar_url]));
-          const questionsWithAvatars = questions.map(q => ({
-            ...q,
-            participant_avatar: q.participant_id ? profileMap.get(q.participant_id) : null
-          }));
-          setPublishedQuestions(questionsWithAvatars);
-        } else {
-          setPublishedQuestions(questions);
-        }
-      } else {
-        setPublishedQuestions(questions);
-      }
+      // On this screen we only need `publishedQuestions.length`.
+      setPublishedQuestions((data || []) as any);
     } catch (error) {
       console.error('Error loading published questions:', error);
     }
@@ -350,21 +319,8 @@ export default function TableTopicCorner(): JSX.Element {
         return;
       }
 
-      // Fetch club profile for banner color
-      const { data: profileData, error: profileError } = await supabase
-        .from('club_profiles')
-        .select('banner_color')
-        .eq('club_id', user.currentClubId)
-        .single();
-
-      if (profileError) {
-        console.error('Error loading club profile:', profileError);
-      }
-
-      setClubInfo({
-        ...clubData,
-        banner_color: profileData?.banner_color || null
-      });
+      // Banner color is already included in the snapshot RPC; keep this as a no-op fallback.
+      setClubInfo((prev) => prev ?? ({ ...clubData, banner_color: null } as any));
     } catch (error) {
       console.error('Error loading club info:', error);
     }
@@ -1160,7 +1116,6 @@ export default function TableTopicCorner(): JSX.Element {
    * Participant Card Component
    */
   const ParticipantCard = ({ participant }: { participant: TableTopicParticipant }): JSX.Element => {
-    const hasQuestion = assignedQuestions.find(aq => aq.participant_id === participant.assigned_user_id);
     const isBooked = participant.booking_status === 'booked' && participant.assigned_user_id;
 
     return (

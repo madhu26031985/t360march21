@@ -8,59 +8,41 @@ import {
   Pressable,
   Platform,
   Image,
+  KeyboardAvoidingView,
+  Linking,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useMemo } from 'react';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft,
   Building2,
   UserCheck,
-  ClipboardCheck,
   CircleCheck as CheckCircle,
   X as XCircle,
   CircleAlert as AlertCircle,
   User,
+  Users,
   Crown,
   Shield,
   Eye,
-  FileText,
-  Bell,
-  BookOpen,
-  CheckSquare,
-  Clock,
-  Languages,
+  Calendar,
+  Home,
+  Settings,
+  Coffee,
+  MessageCircle,
+  Globe,
 } from 'lucide-react-native';
 
-const N = {
-  canvas: '#F7F7F5',
-  shell: '#FFFFFF',
-  ink: '#37352F',
-  muted: '#787774',
-  faint: 'rgba(55, 53, 47, 0.08)',
-  hairline: 'rgba(55, 53, 47, 0.09)',
-  segment: '#E3E2E0',
-  inset: '#FAFAF8',
-  accent: '#6BA8F0',
-  accentSoft: 'rgba(107, 168, 240, 0.18)',
-};
-
-const ATTENDANCE_SHORTCUT_ICON_SIZE = 15;
+const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
+const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
+const BOOK_ROLE_DOCK_ICON_SIZE = 15;
 
 type AttendanceScopeTab = 'my_attendance' | 'all_attendance';
-
-const ATTENDANCE_SHORTCUTS = [
-  { pathname: '/meeting-agenda-view' as const, label: 'Agenda', Icon: FileText },
-  { pathname: '/role-completion-report' as const, label: 'Role completion', Icon: ClipboardCheck },
-  { pathname: '/live-voting' as const, label: 'Voting', Icon: CheckSquare },
-  { pathname: '/ah-counter-corner' as const, label: 'Ah counter', Icon: Bell },
-  { pathname: '/grammarian' as const, label: 'Grammarian', Icon: Languages },
-  { pathname: '/timer-report-details' as const, label: 'Timer', Icon: Clock },
-  { pathname: '/educational-corner' as const, label: 'Educational', Icon: BookOpen },
-  { pathname: '/toastmaster-corner' as const, label: 'Toastmaster', Icon: Crown },
-] as const;
 
 interface Meeting {
   id: string;
@@ -92,10 +74,61 @@ interface AttendanceRecord {
   user_avatar_url?: string | null;
 }
 
+const ATTENDANCE_BASE_SELECT = `
+  id,
+  meeting_id,
+  user_id,
+  club_id,
+  user_full_name,
+  user_email,
+  user_role,
+  attendance_status,
+  attendance_marked_by,
+  attendance_marked_at,
+  is_attendance_open,
+  created_at,
+  updated_at
+`;
+
+function sanitizeAvatarUrl(url: string | null | undefined): string | null {
+  const trimmed = (url || '').trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('data:')) return null;
+  if (trimmed.length > 2048) return null;
+  return trimmed;
+}
+
 export default function AttendanceReport() {
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { shouldShowCoffee } = useCoffeePromptEligibility();
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
+
+  const isExComm =
+    user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+
+  const openWhatsAppSupport = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
+      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
+      else Alert.alert('Error', 'Cannot open WhatsApp');
+    } catch {
+      Alert.alert('Error', 'Failed to open WhatsApp');
+    }
+  }, []);
+
+  const openWebLogin = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
+      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
+      else Alert.alert('Error', 'Cannot open web login');
+    } catch {
+      Alert.alert('Error', 'Failed to open web login');
+    }
+  }, []);
   
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
@@ -105,6 +138,7 @@ export default function AttendanceReport() {
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('all');
   const [updatingRecords, setUpdatingRecords] = useState<Set<string>>(new Set());
   const [roleFilters, setRoleFilters] = useState<Array<{ role: string; count: number }>>([]);
+  const [allAttendanceLoaded, setAllAttendanceLoaded] = useState(false);
 
   useEffect(() => {
     if (meetingId) {
@@ -117,6 +151,12 @@ export default function AttendanceReport() {
       setSelectedRoleFilter('all');
     }
   }, [attendanceScopeTab]);
+
+  useEffect(() => {
+    if (attendanceScopeTab === 'all_attendance' && !allAttendanceLoaded) {
+      void loadAllAttendanceRows();
+    }
+  }, [attendanceScopeTab, allAttendanceLoaded]);
 
   useEffect(() => {
     calculateRoleFilters();
@@ -185,10 +225,7 @@ export default function AttendanceReport() {
     }
 
     try {
-      await Promise.all([
-        loadMeeting(),
-        loadAttendanceRecords()
-      ]);
+      await loadAttendanceSnapshot();
     } catch (error) {
       console.error('Error loading attendance data:', error);
       Alert.alert('Error', 'Failed to load attendance data');
@@ -197,70 +234,91 @@ export default function AttendanceReport() {
     }
   };
 
-  const loadMeeting = async () => {
+  const loadMeetingLite = async () => {
     if (!meetingId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_club_meeting')
-        .select('*')
-        .eq('id', meetingId)
-        .single();
-
-      if (error) {
-        console.error('Error loading meeting:', error);
-        return;
-      }
-
-      setMeeting(data);
-    } catch (error) {
-      console.error('Error loading meeting:', error);
-    }
+    const { data, error } = await supabase
+      .from('app_club_meeting')
+      .select('id,meeting_title,meeting_date,meeting_number,meeting_start_time,meeting_end_time,meeting_mode,meeting_location,meeting_link,meeting_status')
+      .eq('id', meetingId)
+      .single();
+    if (!error && data) setMeeting(data as Meeting);
   };
 
-  const loadAttendanceRecords = async () => {
-    if (!meetingId) return;
-
+  const loadAttendanceSnapshot = async () => {
+    if (!meetingId || !user?.id) return;
     try {
-      console.log('Loading attendance records for meeting:', meetingId);
-      
-      const { data, error } = await supabase
-        .from('app_meeting_attendance')
-        .select(`
-          *,
-          app_user_profiles!fk_app_meeting_attendance_user_id (
-            avatar_url
-          )
-        `)
-        .eq('meeting_id', meetingId)
-        .order('user_full_name');
-
-      console.log('Attendance records query result:', {
-        count: data?.length || 0,
-        error: error?.message || 'none',
-        sampleData: data?.slice(0, 3).map(d => ({
-          name: d.user_full_name,
-          status: d.attendance_status,
-          markedBy: d.attendance_marked_by,
-          hasAvatar: !!(d as any).app_user_profiles?.avatar_url
-        })) || []
+      const { data, error } = await (supabase as any).rpc('get_attendance_report_snapshot', {
+        p_meeting_id: meetingId,
       });
-
-      if (error) {
-        console.error('Error loading attendance records:', error);
+      if (!error && data && typeof data === 'object') {
+        const raw = data as any;
+        if (raw.meeting) {
+          setMeeting(raw.meeting as Meeting);
+        }
+        const myRows = Array.isArray(raw.my_records) ? raw.my_records : [];
+        setAttendanceRecords(
+          myRows.map((r: any) => ({
+            ...r,
+            user_avatar_url: sanitizeAvatarUrl(r.user_avatar_url),
+          }))
+        );
+        setAllAttendanceLoaded(false);
         return;
       }
-
-      // Process the data to include avatar URLs
-      const processedData = (data || []).map(record => ({
-        ...record,
-        user_avatar_url: (record as any).app_user_profiles?.avatar_url || null
-      }));
-      
-      setAttendanceRecords(processedData);
     } catch (error) {
-      console.error('Error loading attendance records:', error);
+      console.warn('Attendance snapshot RPC failed, using fallback:', error);
     }
+
+    await Promise.all([loadMeetingLite(), loadMyAttendanceRowsFallback()]);
+  };
+
+  const loadMyAttendanceRowsFallback = async () => {
+    if (!meetingId || !user?.id) return;
+    const { data, error } = await supabase
+      .from('app_meeting_attendance')
+      .select(ATTENDANCE_BASE_SELECT)
+      .eq('meeting_id', meetingId)
+      .eq('user_id', user.id)
+      .order('user_full_name');
+    if (error) {
+      console.error('Error loading my attendance rows:', error);
+      return;
+    }
+    setAttendanceRecords((data || []).map((r) => ({ ...r, user_avatar_url: null } as AttendanceRecord)));
+    setAllAttendanceLoaded(false);
+  };
+
+  const loadAllAttendanceRows = async () => {
+    if (!meetingId) return;
+    try {
+      const { data, error } = await (supabase as any).rpc('get_attendance_report_rows', {
+        p_meeting_id: meetingId,
+      });
+      if (!error && Array.isArray(data)) {
+        setAttendanceRecords(
+          data.map((r: any) => ({
+            ...r,
+            user_avatar_url: sanitizeAvatarUrl(r.user_avatar_url),
+          }))
+        );
+        setAllAttendanceLoaded(true);
+        return;
+      }
+    } catch (error) {
+      console.warn('Attendance rows RPC failed, using fallback:', error);
+    }
+
+    const { data, error } = await supabase
+      .from('app_meeting_attendance')
+      .select(ATTENDANCE_BASE_SELECT)
+      .eq('meeting_id', meetingId)
+      .order('user_full_name');
+    if (error) {
+      console.error('Error loading all attendance rows:', error);
+      return;
+    }
+    setAttendanceRecords((data || []).map((r) => ({ ...r, user_avatar_url: null } as AttendanceRecord)));
+    setAllAttendanceLoaded(true);
   };
 
   const calculateRoleFilters = () => {
@@ -282,8 +340,6 @@ export default function AttendanceReport() {
     setUpdatingRecords(prev => new Set([...prev, recordId]));
     
     try {
-      console.log('Marking attendance:', { recordId, status, markedBy: user?.id });
-      
       const { error } = await supabase
         .from('app_meeting_attendance')
         .update({
@@ -314,7 +370,6 @@ export default function AttendanceReport() {
         )
       );
       
-      console.log('Attendance marked successfully');
     } catch (error) {
       console.error('Error marking attendance:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -356,10 +411,11 @@ export default function AttendanceReport() {
   /** Subtle role chip backgrounds (no bright purple/green). */
   const getRoleNotionTint = (role: string) => {
     const r = role.toLowerCase();
-    if (r === 'excomm') return { bg: N.accentSoft, border: N.hairline };
-    if (r === 'member') return { bg: N.inset, border: N.hairline };
-    if (r === 'guest') return { bg: 'rgba(55, 53, 47, 0.05)', border: N.hairline };
-    return { bg: N.segment, border: N.hairline };
+    const hairline = theme.colors.border;
+    if (r === 'excomm') return { bg: theme.colors.primary + '22', border: hairline };
+    if (r === 'member') return { bg: theme.colors.backgroundSecondary, border: hairline };
+    if (r === 'guest') return { bg: theme.colors.border + '33', border: hairline };
+    return { bg: theme.colors.backgroundSecondary, border: hairline };
   };
 
   const formatRole = (role: string) => {
@@ -376,13 +432,13 @@ export default function AttendanceReport() {
   const getStatusBadgeStyle = (status: string) => {
     switch (status) {
       case 'present':
-        return { bg: N.accentSoft, fg: N.accent };
+        return { bg: theme.colors.primary + '22', fg: theme.colors.primary };
       case 'absent':
-        return { bg: 'rgba(55, 53, 47, 0.08)', fg: N.ink };
+        return { bg: theme.colors.border + '55', fg: theme.colors.text };
       case 'not_applicable':
-        return { bg: 'rgba(55, 53, 47, 0.06)', fg: N.muted };
+        return { bg: theme.colors.border + '44', fg: theme.colors.textSecondary };
       default:
-        return { bg: 'rgba(55, 53, 47, 0.06)', fg: N.muted };
+        return { bg: theme.colors.border + '44', fg: theme.colors.textSecondary };
     }
   };
 
@@ -424,11 +480,19 @@ export default function AttendanceReport() {
     const isAbsent = record.attendance_status === 'absent';
     const isNA = record.attendance_status === 'not_applicable';
 
+    const ink = theme.colors.text;
+    const muted = theme.colors.textSecondary;
+    const hairline = theme.colors.border;
+    const shell = theme.colors.surface;
+    const accent = theme.colors.primary;
+    const accentSoft = theme.colors.primary + '22';
+    const inset = theme.colors.backgroundSecondary;
+
     return (
-      <View style={[styles.attendanceCard, { borderBottomColor: N.hairline }]}>
+      <View style={[styles.attendanceCard, { borderBottomColor: hairline }]}>
         <View style={styles.cardHeader}>
           <View style={styles.memberInfo}>
-            <View style={[styles.memberAvatar, { backgroundColor: N.inset, borderColor: N.hairline }]}>
+            <View style={[styles.memberAvatar, { backgroundColor: inset, borderColor: hairline }]}>
               {record.user_avatar_url ? (
                 <Image
                   source={{ uri: record.user_avatar_url }}
@@ -438,7 +502,7 @@ export default function AttendanceReport() {
                   }}
                 />
               ) : (
-                <Text style={[styles.memberInitials, { color: N.ink }]} maxFontSizeMultiplier={1.25}>
+                <Text style={[styles.memberInitials, { color: ink }]} maxFontSizeMultiplier={1.25}>
                   {record.user_full_name
                     .split(' ')
                     .map((n) => n[0])
@@ -450,7 +514,7 @@ export default function AttendanceReport() {
             </View>
 
             <View style={styles.memberDetails}>
-              <Text style={[styles.memberName, { color: N.ink }]} maxFontSizeMultiplier={1.25}>
+              <Text style={[styles.memberName, { color: ink }]} maxFontSizeMultiplier={1.25}>
                 {record.user_full_name}
               </Text>
               <View
@@ -459,15 +523,15 @@ export default function AttendanceReport() {
                   { backgroundColor: roleTint.bg, borderColor: roleTint.border, borderWidth: 1 },
                 ]}
               >
-                {getRoleIcon(record.user_role, 12, N.muted)}
-                <Text style={[styles.roleText, { color: N.ink }]} maxFontSizeMultiplier={1.15}>
+                {getRoleIcon(record.user_role, 12, muted)}
+                <Text style={[styles.roleText, { color: ink }]} maxFontSizeMultiplier={1.15}>
                   {formatRole(record.user_role)}
                 </Text>
               </View>
             </View>
           </View>
 
-          <View style={[styles.statusBadgeCircle, { backgroundColor: statusStyle.bg }]}>
+          <View style={[styles.statusBadgeSquare, { backgroundColor: statusStyle.bg }]}>
             <Text style={[styles.statusBadgeText, { color: statusStyle.fg }]} maxFontSizeMultiplier={1.15}>
               {getStatusLabel(record.attendance_status)}
             </Text>
@@ -475,7 +539,7 @@ export default function AttendanceReport() {
         </View>
 
         {record.attendance_marked_by !== null && (
-          <Text style={[styles.markedByText, { color: N.muted }]} maxFontSizeMultiplier={1.15}>
+          <Text style={[styles.markedByText, { color: muted }]} maxFontSizeMultiplier={1.15}>
             {isMarkedByCurrentUser ? 'Marked by you' : 'Marked by ExComm'}
           </Text>
         )}
@@ -488,14 +552,14 @@ export default function AttendanceReport() {
               style={({ pressed }) => [
                 styles.statusPill,
                 {
-                  borderColor: isPresent ? N.accent : N.hairline,
-                  backgroundColor: isPresent ? N.accentSoft : N.shell,
+                  borderColor: isPresent ? accent : hairline,
+                  backgroundColor: isPresent ? accentSoft : shell,
                   opacity: pressed ? 0.88 : isUpdating ? 0.55 : 1,
                 },
               ]}
             >
-              <CheckCircle size={12} color={isPresent ? N.accent : N.muted} />
-              <Text style={[styles.statusPillText, { color: isPresent ? N.accent : N.muted }]} maxFontSizeMultiplier={1.1}>
+              <CheckCircle size={12} color={isPresent ? accent : muted} />
+              <Text style={[styles.statusPillText, { color: isPresent ? accent : muted }]} maxFontSizeMultiplier={1.1}>
                 Here
               </Text>
             </Pressable>
@@ -506,14 +570,14 @@ export default function AttendanceReport() {
               style={({ pressed }) => [
                 styles.statusPill,
                 {
-                  borderColor: isAbsent ? N.ink : N.hairline,
-                  backgroundColor: isAbsent ? 'rgba(55, 53, 47, 0.08)' : N.shell,
+                  borderColor: isAbsent ? ink : hairline,
+                  backgroundColor: isAbsent ? theme.colors.border + '44' : shell,
                   opacity: pressed ? 0.88 : isUpdating ? 0.55 : 1,
                 },
               ]}
             >
-              <XCircle size={12} color={isAbsent ? N.ink : N.muted} />
-              <Text style={[styles.statusPillText, { color: isAbsent ? N.ink : N.muted }]} maxFontSizeMultiplier={1.1}>
+              <XCircle size={12} color={isAbsent ? ink : muted} />
+              <Text style={[styles.statusPillText, { color: isAbsent ? ink : muted }]} maxFontSizeMultiplier={1.1}>
                 Away
               </Text>
             </Pressable>
@@ -524,14 +588,14 @@ export default function AttendanceReport() {
               style={({ pressed }) => [
                 styles.statusPill,
                 {
-                  borderColor: isNA ? N.muted : N.hairline,
-                  backgroundColor: isNA ? N.inset : N.shell,
+                  borderColor: isNA ? muted : hairline,
+                  backgroundColor: isNA ? inset : shell,
                   opacity: pressed ? 0.88 : isUpdating ? 0.55 : 1,
                 },
               ]}
             >
-              <AlertCircle size={12} color={N.muted} />
-              <Text style={[styles.statusPillText, { color: isNA ? N.ink : N.muted }]} maxFontSizeMultiplier={1.1}>
+              <AlertCircle size={12} color={muted} />
+              <Text style={[styles.statusPillText, { color: isNA ? ink : muted }]} maxFontSizeMultiplier={1.1}>
                 N/A
               </Text>
             </Pressable>
@@ -548,9 +612,9 @@ export default function AttendanceReport() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: N.canvas }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: N.ink }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
             Loading attendance…
           </Text>
         </View>
@@ -560,16 +624,16 @@ export default function AttendanceReport() {
 
   if (!meeting) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: N.canvas }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: N.ink }]} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
             Meeting not found
           </Text>
           <TouchableOpacity
-            style={[styles.ghostBackBtn, { borderColor: N.hairline, marginTop: 16 }]}
+            style={[styles.ghostBackBtn, { borderColor: theme.colors.border, marginTop: 16 }]}
             onPress={() => router.back()}
           >
-            <Text style={[styles.ghostBackBtnText, { color: N.ink }]} maxFontSizeMultiplier={1.2}>
+            <Text style={[styles.ghostBackBtnText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
               Go back
             </Text>
           </TouchableOpacity>
@@ -586,11 +650,17 @@ export default function AttendanceReport() {
         onPress={() => setSelectedTab(key)}
         style={({ pressed }) => [
           styles.notionStatusPill,
-          selected && styles.notionStatusPillActive,
-          { opacity: pressed ? 0.92 : 1 },
+          {
+            opacity: pressed ? 0.92 : 1,
+            borderColor: selected ? theme.colors.primary : theme.colors.border,
+            backgroundColor: selected ? theme.colors.primary + '18' : theme.colors.surface,
+          },
         ]}
       >
-        <Text style={[styles.notionStatusPillText, { color: selected ? N.ink : N.muted }]} maxFontSizeMultiplier={1.1}>
+        <Text
+          style={[styles.notionStatusPillText, { color: selected ? theme.colors.text : theme.colors.textSecondary }]}
+          maxFontSizeMultiplier={1.1}
+        >
           {label}{' '}
           <Text style={{ fontWeight: '700' }}>({count})</Text>
         </Text>
@@ -598,296 +668,400 @@ export default function AttendanceReport() {
     );
   };
 
+  const tc = theme.colors;
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: N.canvas }]}>
-      <View style={styles.notionTopBar}>
-        <TouchableOpacity style={styles.topBarBtn} onPress={() => router.back()} hitSlop={12}>
-          <ArrowLeft size={22} color={N.ink} />
-        </TouchableOpacity>
-        <Text style={[styles.notionTopTitle, { color: N.ink }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-          Attendance
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      <ScrollView
-        style={styles.notionScroll}
-        contentContainerStyle={styles.notionScrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView style={[styles.container, { backgroundColor: tc.background }]} edges={['top']}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
       >
-        <View style={[styles.notionShell, { backgroundColor: N.shell, borderColor: N.faint }]}>
-          <View style={styles.meetingMetaRow}>
-            <View style={[styles.dateChip, { backgroundColor: N.inset }]}>
-              <Text style={[styles.dateChipDay, { color: N.ink }]} maxFontSizeMultiplier={1.2}>
-                {new Date(meeting.meeting_date).getDate()}
-              </Text>
-              <Text style={[styles.dateChipMonth, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-                {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.meetingMetaText}>
-              <Text style={[styles.meetingMetaTitle, { color: N.ink }]} maxFontSizeMultiplier={1.15}>
-                {meeting.meeting_title}
-              </Text>
-              <Text style={[styles.meetingMetaLine, { color: N.muted }]} maxFontSizeMultiplier={1.15}>
-                {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
-                {meeting.meeting_number != null && String(meeting.meeting_number).trim() !== ''
-                  ? ` · Meeting ${meeting.meeting_number}`
-                  : ''}
-              </Text>
-              {meeting.meeting_start_time ? (
-                <Text style={[styles.meetingMetaLine, { color: N.muted }]} maxFontSizeMultiplier={1.15}>
-                  {meeting.meeting_start_time}
-                  {meeting.meeting_end_time ? ` – ${meeting.meeting_end_time}` : ''}
-                  {' · '}
-                  {formatMeetingMode(meeting.meeting_mode)}
-                </Text>
-              ) : (
-                <Text style={[styles.meetingMetaLine, { color: N.muted }]} maxFontSizeMultiplier={1.15}>
-                  {formatMeetingMode(meeting.meeting_mode)}
-                </Text>
-              )}
-            </View>
-          </View>
-
-          <View style={[styles.notionSegment, { backgroundColor: N.segment }]}>
-            <View style={styles.notionSegmentRow}>
-              <Pressable
-                onPress={() => setAttendanceScopeTab('my_attendance')}
-                style={({ pressed }) => [
-                  styles.notionSegPill,
-                  attendanceScopeTab === 'my_attendance' && styles.notionSegPillActive,
-                  { opacity: pressed ? 0.92 : 1 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.notionSegPillText,
-                    { color: attendanceScopeTab === 'my_attendance' ? N.ink : N.muted },
-                  ]}
-                  maxFontSizeMultiplier={1.12}
-                >
-                  My attendance
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setAttendanceScopeTab('all_attendance')}
-                style={({ pressed }) => [
-                  styles.notionSegPill,
-                  attendanceScopeTab === 'all_attendance' && styles.notionSegPillActive,
-                  { opacity: pressed ? 0.92 : 1 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.notionSegPillText,
-                    { color: attendanceScopeTab === 'all_attendance' ? N.ink : N.muted },
-                  ]}
-                  maxFontSizeMultiplier={1.12}
-                >
-                  All attendance
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
-
-          <View style={styles.notionStatsRow}>
-            <View style={[styles.notionStatCell, { backgroundColor: N.inset, borderColor: N.hairline }]}>
-              <Text style={[styles.notionStatNum, { color: N.ink }]} maxFontSizeMultiplier={1.15}>
-                {scopedStats.total_members}
-              </Text>
-              <Text style={[styles.notionStatLbl, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-                In view
-              </Text>
-            </View>
-            <View style={[styles.notionStatCell, { backgroundColor: N.accentSoft, borderColor: N.hairline }]}>
-              <Text style={[styles.notionStatNum, { color: N.accent }]} maxFontSizeMultiplier={1.15}>
-                {scopedStats.present_count}
-              </Text>
-              <Text style={[styles.notionStatLbl, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-                Here
-              </Text>
-            </View>
-            <View style={[styles.notionStatCell, { backgroundColor: N.inset, borderColor: N.hairline }]}>
-              <Text style={[styles.notionStatNum, { color: N.ink }]} maxFontSizeMultiplier={1.15}>
-                {scopedStats.absent_count}
-              </Text>
-              <Text style={[styles.notionStatLbl, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-                Away
-              </Text>
-            </View>
-          </View>
-          <Text style={[styles.notionNaNote, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-            N/A · {scopedStats.not_applicable_count}
-          </Text>
-
-          <View style={styles.progressBlock}>
-            <View style={styles.progressHeader}>
-              <Text style={[styles.progressTitle, { color: N.ink }]} maxFontSizeMultiplier={1.15}>
-                Marked
-              </Text>
-              <Text style={[styles.progressPercentage, { color: N.accent }]} maxFontSizeMultiplier={1.15}>
-                {completionPct}%
-              </Text>
-            </View>
-            <View style={[styles.progressBar, { backgroundColor: N.hairline }]}>
-              <View style={[styles.progressFill, { backgroundColor: N.accent, width: `${completionPct}%` }]} />
-            </View>
-            <Text style={[styles.progressText, { color: N.muted }]} maxFontSizeMultiplier={1.12}>
-              {scopedStats.marked_count} of {scopedStats.total_members} rows marked
+        <View style={styles.bookRoleMain}>
+          <View style={[styles.header, { backgroundColor: tc.surface, borderBottomColor: tc.border }]}>
+            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+              <ArrowLeft size={24} color={tc.text} />
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
+              Attendance
             </Text>
+            <View style={styles.headerSpacer} />
           </View>
 
-          <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
-
-          <Text style={[styles.listCaption, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-            Filter by status
-          </Text>
           <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.notionStatusScroll}
+            style={styles.bookRoleScroll}
+            contentContainerStyle={styles.scrollContentContainer}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            {statusTab('all', 'All', tabCounts.all)}
-            {statusTab('present', 'Here', tabCounts.present)}
-            {statusTab('absent', 'Away', tabCounts.absent)}
-            {statusTab('not_applicable', 'N/A', tabCounts.not_applicable)}
-          </ScrollView>
-
-          {attendanceScopeTab === 'all_attendance' && roleFilters.length > 0 ? (
-            <>
-              <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
-              <Text style={[styles.listCaption, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-                Filter by role
-              </Text>
-              <Pressable
-                onPress={() => setSelectedRoleFilter('all')}
-                style={({ pressed }) => [
-                  styles.roleFilterRow,
-                  {
-                    borderColor: selectedRoleFilter === 'all' ? N.accent : N.hairline,
-                    backgroundColor: selectedRoleFilter === 'all' ? N.accentSoft : N.shell,
-                    opacity: pressed ? 0.92 : 1,
-                  },
-                ]}
-              >
-                <View style={styles.roleFilterRowLeft}>
-                  <View style={[styles.roleFilterIconWrap, { backgroundColor: N.inset }]}>
-                    <Building2 size={12} color={selectedRoleFilter === 'all' ? N.accent : N.muted} />
-                  </View>
-                  <Text style={[styles.roleFilterRowText, { color: N.ink }]} maxFontSizeMultiplier={1.12}>
-                    All roles
+            <View style={[styles.notionSheet, { backgroundColor: tc.surface, borderColor: tc.border }]}>
+              <View style={styles.meetingMetaRow}>
+                <View style={[styles.dateChip, { backgroundColor: tc.backgroundSecondary }]}>
+                  <Text style={[styles.dateChipDay, { color: tc.text }]} maxFontSizeMultiplier={1.2}>
+                    {new Date(meeting.meeting_date).getDate()}
+                  </Text>
+                  <Text style={[styles.dateChipMonth, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                    {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
                   </Text>
                 </View>
-                <Text style={[styles.roleFilterRowCount, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-                  {attendanceRecords.length}
-                </Text>
-              </Pressable>
-              {roleFilters.map(({ role, count }) => {
-                const sel = selectedRoleFilter === role;
-                const tint = getRoleNotionTint(role);
-                return (
+                <View style={styles.meetingMetaText}>
+                  <Text style={[styles.meetingMetaTitle, { color: tc.text }]} maxFontSizeMultiplier={1.15}>
+                    {meeting.meeting_title}
+                  </Text>
+                  <Text style={[styles.meetingMetaLine, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.15}>
+                    {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
+                    {meeting.meeting_number != null && String(meeting.meeting_number).trim() !== ''
+                      ? ` · Meeting ${meeting.meeting_number}`
+                      : ''}
+                  </Text>
+                  {meeting.meeting_start_time ? (
+                    <Text style={[styles.meetingMetaLine, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.15}>
+                      {meeting.meeting_start_time}
+                      {meeting.meeting_end_time ? ` – ${meeting.meeting_end_time}` : ''}
+                      {' · '}
+                      {formatMeetingMode(meeting.meeting_mode)}
+                    </Text>
+                  ) : (
+                    <Text style={[styles.meetingMetaLine, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.15}>
+                      {formatMeetingMode(meeting.meeting_mode)}
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              <View style={[styles.notionHairline, { backgroundColor: tc.border }]} />
+
+              <View style={styles.notionTabsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.notionTab,
+                    {
+                      backgroundColor:
+                        attendanceScopeTab === 'my_attendance' ? tc.primary : 'transparent',
+                      borderColor:
+                        attendanceScopeTab === 'my_attendance' ? tc.primary : tc.border,
+                    },
+                  ]}
+                  onPress={() => setAttendanceScopeTab('my_attendance')}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.notionTabText,
+                      {
+                        color: attendanceScopeTab === 'my_attendance' ? '#ffffff' : tc.text,
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.12}
+                  >
+                    My attendance
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.notionTab,
+                    {
+                      backgroundColor:
+                        attendanceScopeTab === 'all_attendance' ? tc.primary : 'transparent',
+                      borderColor:
+                        attendanceScopeTab === 'all_attendance' ? tc.primary : tc.border,
+                    },
+                  ]}
+                  onPress={() => setAttendanceScopeTab('all_attendance')}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.notionTabText,
+                      {
+                        color: attendanceScopeTab === 'all_attendance' ? '#ffffff' : tc.text,
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.12}
+                  >
+                    All attendance
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {attendanceScopeTab === 'all_attendance' && (
+                <>
+                  <View style={[styles.notionHairline, { backgroundColor: tc.border }]} />
+
+                  <View style={styles.notionStatsRow}>
+                    <View style={[styles.notionStatCell, { backgroundColor: tc.backgroundSecondary, borderColor: tc.border }]}>
+                      <Text style={[styles.notionStatNum, { color: tc.text }]} maxFontSizeMultiplier={1.15}>
+                        {scopedStats.total_members}
+                      </Text>
+                      <Text style={[styles.notionStatLbl, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                        In view
+                      </Text>
+                    </View>
+                    <View style={[styles.notionStatCell, { backgroundColor: tc.primary + '22', borderColor: tc.border }]}>
+                      <Text style={[styles.notionStatNum, { color: tc.primary }]} maxFontSizeMultiplier={1.15}>
+                        {scopedStats.present_count}
+                      </Text>
+                      <Text style={[styles.notionStatLbl, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                        Here
+                      </Text>
+                    </View>
+                    <View style={[styles.notionStatCell, { backgroundColor: tc.backgroundSecondary, borderColor: tc.border }]}>
+                      <Text style={[styles.notionStatNum, { color: tc.text }]} maxFontSizeMultiplier={1.15}>
+                        {scopedStats.absent_count}
+                      </Text>
+                      <Text style={[styles.notionStatLbl, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                        Away
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.notionNaNote, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                    N/A · {scopedStats.not_applicable_count}
+                  </Text>
+
+                  <View style={styles.progressBlock}>
+                    <View style={styles.progressHeader}>
+                      <Text style={[styles.progressTitle, { color: tc.text }]} maxFontSizeMultiplier={1.15}>
+                        Marked
+                      </Text>
+                      <Text style={[styles.progressPercentage, { color: tc.primary }]} maxFontSizeMultiplier={1.15}>
+                        {completionPct}%
+                      </Text>
+                    </View>
+                    <View style={[styles.progressBar, { backgroundColor: tc.border }]}>
+                      <View style={[styles.progressFill, { backgroundColor: tc.primary, width: `${completionPct}%` }]} />
+                    </View>
+                    <Text style={[styles.progressText, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.12}>
+                      {scopedStats.marked_count} of {scopedStats.total_members} rows marked
+                    </Text>
+                  </View>
+
+                  <View style={[styles.notionHairline, { backgroundColor: tc.border }]} />
+
+                  <Text style={[styles.listCaption, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                    Filter by status
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.notionStatusScroll}
+                  >
+                    {statusTab('all', 'All', tabCounts.all)}
+                    {statusTab('present', 'Here', tabCounts.present)}
+                    {statusTab('absent', 'Away', tabCounts.absent)}
+                    {statusTab('not_applicable', 'N/A', tabCounts.not_applicable)}
+                  </ScrollView>
+                </>
+              )}
+
+              {attendanceScopeTab === 'all_attendance' && roleFilters.length > 0 ? (
+                <>
+                  <View style={[styles.notionHairline, { backgroundColor: tc.border }]} />
+                  <Text style={[styles.listCaption, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                    Filter by role
+                  </Text>
                   <Pressable
-                    key={role}
-                    onPress={() => setSelectedRoleFilter(role)}
+                    onPress={() => setSelectedRoleFilter('all')}
                     style={({ pressed }) => [
                       styles.roleFilterRow,
                       {
-                        borderColor: sel ? N.accent : N.hairline,
-                        backgroundColor: sel ? N.accentSoft : N.shell,
+                        borderColor: selectedRoleFilter === 'all' ? tc.primary : tc.border,
+                        backgroundColor: selectedRoleFilter === 'all' ? tc.primary + '18' : tc.surface,
                         opacity: pressed ? 0.92 : 1,
                       },
                     ]}
                   >
                     <View style={styles.roleFilterRowLeft}>
-                      <View style={[styles.roleFilterIconWrap, { backgroundColor: tint.bg }]}>
-                        {getRoleIcon(role, 12, sel ? N.accent : N.muted)}
+                      <View style={[styles.roleFilterIconWrap, { backgroundColor: tc.backgroundSecondary }]}>
+                        <Building2 size={12} color={selectedRoleFilter === 'all' ? tc.primary : tc.textSecondary} />
                       </View>
-                      <Text style={[styles.roleFilterRowText, { color: N.ink }]} maxFontSizeMultiplier={1.12}>
-                        {formatRole(role)}
+                      <Text style={[styles.roleFilterRowText, { color: tc.text }]} maxFontSizeMultiplier={1.12}>
+                        All roles
                       </Text>
                     </View>
-                    <Text style={[styles.roleFilterRowCount, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-                      {count}
+                    <Text style={[styles.roleFilterRowCount, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                      {attendanceRecords.length}
                     </Text>
                   </Pressable>
-                );
-              })}
-            </>
-          ) : null}
+                  {roleFilters.map(({ role, count }) => {
+                    const sel = selectedRoleFilter === role;
+                    const tint = getRoleNotionTint(role);
+                    return (
+                      <Pressable
+                        key={role}
+                        onPress={() => setSelectedRoleFilter(role)}
+                        style={({ pressed }) => [
+                          styles.roleFilterRow,
+                          {
+                            borderColor: sel ? tc.primary : tc.border,
+                            backgroundColor: sel ? tc.primary + '18' : tc.surface,
+                            opacity: pressed ? 0.92 : 1,
+                          },
+                        ]}
+                      >
+                        <View style={styles.roleFilterRowLeft}>
+                          <View style={[styles.roleFilterIconWrap, { backgroundColor: tint.bg }]}>
+                            {getRoleIcon(role, 12, sel ? tc.primary : tc.textSecondary)}
+                          </View>
+                          <Text style={[styles.roleFilterRowText, { color: tc.text }]} maxFontSizeMultiplier={1.12}>
+                            {formatRole(role)}
+                          </Text>
+                        </View>
+                        <Text style={[styles.roleFilterRowCount, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                          {count}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </>
+              ) : null}
 
-          <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
+              <View style={[styles.notionHairline, { backgroundColor: tc.border }]} />
 
-          <Text style={[styles.listCaption, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
-            {attendanceScopeTab === 'my_attendance'
-              ? 'Your row'
-              : selectedTab === 'all'
-                ? 'Everyone'
-                : selectedTab === 'present'
-                  ? 'Here'
-                  : selectedTab === 'absent'
-                    ? 'Away'
-                    : selectedTab === 'not_applicable'
-                      ? 'N/A'
-                      : 'Unmarked'}{' '}
-            ({filteredRecords.length})
-          </Text>
-
-          {filteredRecords.length > 0 ? (
-            <View>
-              {filteredRecords.map((record) => (
-                <AttendanceCard key={record.id} record={record} />
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <UserCheck size={36} color={N.muted} />
-              <Text style={[styles.emptyStateText, { color: N.ink }]} maxFontSizeMultiplier={1.2}>
+              <Text style={[styles.listCaption, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.1}>
                 {attendanceScopeTab === 'my_attendance'
-                  ? 'No attendance row for you'
-                  : 'No one in this filter'}
+                  ? 'Your row'
+                  : selectedTab === 'all'
+                    ? 'Everyone'
+                    : selectedTab === 'present'
+                      ? 'Here'
+                      : selectedTab === 'absent'
+                        ? 'Away'
+                        : selectedTab === 'not_applicable'
+                          ? 'N/A'
+                          : 'Unmarked'}{' '}
+                ({filteredRecords.length})
               </Text>
-              <Text style={[styles.emptyStateSubtext, { color: N.muted }]} maxFontSizeMultiplier={1.12}>
-                {attendanceScopeTab === 'my_attendance'
-                  ? 'You may not be on the guest list for this meeting yet.'
-                  : 'Try another status or role filter.'}
-              </Text>
-            </View>
-          )}
 
-          <View style={[styles.notionDivider, { backgroundColor: N.hairline, marginTop: 8 }]} />
-          <Text style={[styles.listCaption, { color: N.muted, marginBottom: 10 }]} maxFontSizeMultiplier={1.1}>
-            Shortcuts
-          </Text>
-          <View style={styles.quickActionsInner}>
+              {filteredRecords.length > 0 ? (
+                <View>
+                  {filteredRecords.map((record) => (
+                    <AttendanceCard key={record.id} record={record} />
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <UserCheck size={36} color={tc.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: tc.text }]} maxFontSizeMultiplier={1.2}>
+                    {attendanceScopeTab === 'my_attendance'
+                      ? 'No attendance row for you'
+                      : 'No one in this filter'}
+                  </Text>
+                  <Text style={[styles.emptyStateSubtext, { color: tc.textSecondary }]} maxFontSizeMultiplier={1.12}>
+                    {attendanceScopeTab === 'my_attendance'
+                      ? 'You may not be on the guest list for this meeting yet.'
+                      : 'Try another status or role filter.'}
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.bottomPadding} />
+            </View>
+          </ScrollView>
+
+          <View
+            style={[
+              styles.geBottomDock,
+              {
+                borderTopColor: tc.border,
+                backgroundColor: tc.surface,
+                paddingBottom: Math.max(insets.bottom, 10),
+              },
+            ]}
+          >
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.quickActionsContent}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.footerNavigationContent}
             >
-              {ATTENDANCE_SHORTCUTS.map(({ pathname, label, Icon }) => (
+              <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Home size={BOOK_ROLE_DOCK_ICON_SIZE} color="#0a66c2" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
+                  Home
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Users size={BOOK_ROLE_DOCK_ICON_SIZE} color="#d97706" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
+                  Club
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/(tabs)/meetings')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Calendar size={BOOK_ROLE_DOCK_ICON_SIZE} color="#0ea5e9" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
+                  Meeting
+                </Text>
+              </TouchableOpacity>
+              {isExComm ? (
                 <TouchableOpacity
-                  key={pathname}
-                  style={styles.quickActionItem}
-                  onPress={() => router.push({ pathname, params: { meetingId: meeting?.id } })}
+                  style={styles.footerNavItem}
+                  onPress={() => router.push('/(tabs)/admin')}
+                  activeOpacity={0.75}
                 >
-                  <View style={[styles.quickActionIcon, { backgroundColor: N.inset, borderColor: N.hairline }]}>
-                    <Icon size={ATTENDANCE_SHORTCUT_ICON_SIZE} color={N.accent} />
+                  <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                    <Shield size={BOOK_ROLE_DOCK_ICON_SIZE} color="#7c3aed" />
                   </View>
-                  <Text style={[styles.quickActionLabel, { color: N.ink }]} maxFontSizeMultiplier={1.15}>
-                    {label}
+                  <Text style={[styles.footerNavLabel, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
+                    Admin
                   </Text>
                 </TouchableOpacity>
-              ))}
+              ) : null}
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/(tabs)/settings')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Settings size={BOOK_ROLE_DOCK_ICON_SIZE} color="#6b7280" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
+                  Settings
+                </Text>
+              </TouchableOpacity>
+              {shouldShowCoffee ? (
+                <TouchableOpacity
+                  style={styles.footerNavItem}
+                  onPress={() => router.push('/buy-us-a-coffee')}
+                  activeOpacity={0.75}
+                >
+                  <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                    <Coffee size={BOOK_ROLE_DOCK_ICON_SIZE} color="#92400e" />
+                  </View>
+                  <Text style={[styles.footerNavLabel, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
+                    Coffee
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <MessageCircle size={BOOK_ROLE_DOCK_ICON_SIZE} color="#22c55e" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
+                  Support
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Globe size={BOOK_ROLE_DOCK_ICON_SIZE} color="#334155" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
+                  Web
+                </Text>
+              </TouchableOpacity>
             </ScrollView>
           </View>
-
-          <View style={styles.bottomPadding} />
         </View>
-      </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -908,48 +1082,53 @@ const styles = StyleSheet.create({
   ghostBackBtn: {
     paddingVertical: 10,
     paddingHorizontal: 18,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   ghostBackBtnText: {
     fontSize: 14,
     fontWeight: '600',
   },
-  notionTopBar: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: N.canvas,
-  },
-  topBarBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  notionTopTitle: {
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '600',
-    letterSpacing: -0.3,
-    textAlign: 'center',
-    marginHorizontal: 8,
-  },
-  notionScroll: {
-    flex: 1,
-  },
-  notionScrollContent: {
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 24,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  notionShell: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingTop: 18,
+  backButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 16,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  bookRoleMain: {
+    flex: 1,
+    minHeight: 0,
+  },
+  bookRoleScroll: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 16,
+  },
+  notionSheet: {
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
     ...Platform.select({
       web: {
         maxWidth: 720,
@@ -958,11 +1137,60 @@ const styles = StyleSheet.create({
       },
       default: {},
     }),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
+  },
+  notionHairline: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+    marginVertical: 12,
+  },
+  notionTabsRow: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  notionTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+  },
+  notionTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 8,
+  },
+  footerNavigationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    minWidth: 62,
+    paddingVertical: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   meetingMetaRow: {
     flexDirection: 'row',
@@ -973,7 +1201,7 @@ const styles = StyleSheet.create({
   dateChip: {
     width: 48,
     height: 48,
-    borderRadius: 8,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1001,39 +1229,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 2,
   },
-  notionSegment: {
-    borderRadius: 9,
-    padding: 3,
-    alignSelf: 'stretch',
-    marginBottom: 4,
-  },
-  notionSegmentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  notionSegPill: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  notionSegPillActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  notionSegPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  notionDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: 14,
-  },
   notionStatsRow: {
     flexDirection: 'row',
     gap: 8,
@@ -1041,8 +1236,8 @@ const styles = StyleSheet.create({
   },
   notionStatCell: {
     flex: 1,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingVertical: 10,
     paddingHorizontal: 8,
     alignItems: 'center',
@@ -1080,13 +1275,13 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: 6,
-    borderRadius: 3,
+    borderRadius: 0,
     marginBottom: 8,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 0,
   },
   progressText: {
     fontSize: 12,
@@ -1109,14 +1304,8 @@ const styles = StyleSheet.create({
   notionStatusPill: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: N.hairline,
-    backgroundColor: N.shell,
-  },
-  notionStatusPillActive: {
-    borderColor: N.accent,
-    backgroundColor: N.accentSoft,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   notionStatusPillText: {
     fontSize: 12,
@@ -1128,8 +1317,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     marginBottom: 6,
   },
   roleFilterRowLeft: {
@@ -1142,7 +1331,7 @@ const styles = StyleSheet.create({
   roleFilterIconWrap: {
     width: 28,
     height: 28,
-    borderRadius: 7,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1205,17 +1394,17 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: 0,
     gap: 4,
   },
   roleText: {
     fontSize: 11,
     fontWeight: '600',
   },
-  statusBadgeCircle: {
+  statusBadgeSquare: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
@@ -1242,8 +1431,8 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 9,
     paddingHorizontal: 8,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   statusPillText: {
     fontSize: 12,
@@ -1265,35 +1454,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: 'center',
     lineHeight: 19,
-  },
-  quickActionsInner: {
-    marginHorizontal: -4,
-  },
-  quickActionsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    paddingHorizontal: 6,
-    paddingBottom: 2,
-  },
-  quickActionItem: {
-    alignItems: 'center',
-    minWidth: 45,
-  },
-  quickActionIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 3,
-    borderWidth: 1,
-  },
-  quickActionLabel: {
-    fontSize: 8,
-    fontWeight: '600',
-    textAlign: 'center',
-    maxWidth: 56,
   },
   bottomPadding: {
     height: 8,

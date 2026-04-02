@@ -179,8 +179,9 @@ export default function EvaluationUpload() {
         return;
       }
 
-      if (file.size && file.size > 10 * 1024 * 1024) {
-        Alert.alert('Error', 'File size must be less than 10MB');
+      if (file.size && file.size > 2 * 1024 * 1024) {
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+        Alert.alert('PDF too large', `Selected PDF is ${sizeMb} MB. Please upload a PDF under 2 MB for faster upload.`);
         return;
       }
 

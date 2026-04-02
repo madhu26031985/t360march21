@@ -1,4 +1,19 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Linking, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Linking,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  InputAccessoryView,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -175,6 +190,8 @@ export default function AgendaEditor() {
   const [saving, setSaving] = useState(false);
   const isRecalculatingRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  /** After Done/Enter on this item id, blur still fires — skip duplicate debounced save. */
+  const skipDurationBlurForItemRef = useRef<string | null>(null);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [assignmentModalVisible, setAssignmentModalVisible] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -240,6 +257,8 @@ export default function AgendaEditor() {
   const [publicAgendaSkin, setPublicAgendaSkin] = useState<PublicAgendaSkinId>('default');
   const [meetingClubIdForWeb, setMeetingClubIdForWeb] = useState<string | null>(null);
   const [meetingNumberForWeb, setMeetingNumberForWeb] = useState<string | null>(null);
+  const [publicWebLinkCopied, setPublicWebLinkCopied] = useState(false);
+  const publicWebLinkCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [preparedSpeakers, setPreparedSpeakers] = useState<PreparedSpeaker[]>([]);
   const [preparedSpeakerRoleDefs, setPreparedSpeakerRoleDefs] = useState<
     Array<{ slot: number; role_name: string }>
@@ -251,6 +270,7 @@ export default function AgendaEditor() {
   const [sectionFilter, setSectionFilter] = useState<'all' | Set<string>>('all');
   const [sectionFilterModalVisible, setSectionFilterModalVisible] = useState(false);
   const [manageSequenceModalVisible, setManageSequenceModalVisible] = useState(false);
+  const [agendaEditorTab, setAgendaEditorTab] = useState<'settings' | 'sections'>('settings');
 
   /** Active booking only, latest row — avoids stale/cancelled duplicates. */
   const fetchLatestBookedAssignee = async (
@@ -312,6 +332,14 @@ export default function AgendaEditor() {
   useEffect(() => {
     agendaItemsRef.current = agendaItems;
   }, [agendaItems]);
+
+  useEffect(() => {
+    return () => {
+      if (publicWebLinkCopiedTimerRef.current) {
+        clearTimeout(publicWebLinkCopiedTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     loadMeetingData();
@@ -2472,27 +2500,18 @@ export default function AgendaEditor() {
     const updatedItems = [...itemsToUpdate];
     let currentTime = meetingStartTime;
 
-    // Calculate times for all sections starting from meeting start time
+    // Contiguous times for every section in order (visibility only affects member-facing agenda, not clock math)
     for (let i = 0; i < updatedItems.length; i++) {
-      if (updatedItems[i].is_visible) {
-        // Visible sections start at current time
-        updatedItems[i].start_time = currentTime;
+      updatedItems[i].start_time = currentTime;
+      const duration = updatedItems[i].duration_minutes || 0;
+      console.log(
+        `Section ${i + 1} (${updatedItems[i].section_name}): visible=${updatedItems[i].is_visible}, duration=${duration}, start=${currentTime}`
+      );
 
-        // Calculate end time based on duration
-        const duration = updatedItems[i].duration_minutes || 0;
-        console.log(`Section ${i + 1} (${updatedItems[i].section_name}): duration=${duration}, start=${currentTime}`);
+      updatedItems[i].end_time = addMinutesToTime(currentTime, duration);
+      console.log(`  -> end=${updatedItems[i].end_time}`);
 
-        updatedItems[i].end_time = addMinutesToTime(currentTime, duration);
-        console.log(`  -> end=${updatedItems[i].end_time}`);
-
-        // Next section starts where this one ends
-        currentTime = updatedItems[i].end_time!;
-      } else {
-        // Hidden sections don't get times
-        console.log(`Section ${i + 1} (${updatedItems[i].section_name}): HIDDEN`);
-        updatedItems[i].start_time = null;
-        updatedItems[i].end_time = null;
-      }
+      currentTime = updatedItems[i].end_time!;
     }
 
     console.log('=== UPDATING STATE AND DB ===');
@@ -2521,14 +2540,8 @@ export default function AgendaEditor() {
     console.log('=== DONE ===');
   };
 
-  const saveDuration = (itemId: string) => {
-    // Clear any pending save
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // Debounce the save operation
-    saveTimeoutRef.current = setTimeout(async () => {
+  const performDurationSave = async (itemId: string) => {
+    try {
       const currentItems = agendaItemsRef.current;
       const item = currentItems.find(i => i.id === itemId);
       if (!item) {
@@ -2538,7 +2551,6 @@ export default function AgendaEditor() {
 
       console.log('Saving duration for item:', item.section_name, 'Duration:', item.duration_minutes);
 
-      // First save the duration to database
       const { error } = await supabase
         .from('meeting_agenda_items')
         .update({ duration_minutes: item.duration_minutes })
@@ -2553,9 +2565,43 @@ export default function AgendaEditor() {
       console.log('✓ Duration saved successfully');
       console.log('Recalculating times with items:', currentItems.map(i => ({ name: i.section_name, dur: i.duration_minutes })));
 
-      // Then recalculate all times with the updated items
       await recalculateAllTimes(currentItems);
-    }, 500); // Wait 500ms after user stops typing
+    } finally {
+      if (skipDurationBlurForItemRef.current === itemId) {
+        skipDurationBlurForItemRef.current = null;
+      }
+    }
+  };
+
+  /** Debounced save while typing multi-digit minutes (blur still triggers this). */
+  const saveDuration = (itemId: string) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
+      void performDurationSave(itemId);
+    }, 500);
+  };
+
+  /** Save immediately when user presses Done/Enter (onBlur alone misses submit on some platforms). */
+  const commitDurationNow = (itemId: string) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    // Defer one tick so the last onChangeText has committed to state/ref
+    setTimeout(() => {
+      void performDurationSave(itemId);
+    }, 0);
+  };
+
+  /** Web/Android IME "Done" / iOS accessory bar — number pads often omit Return. */
+  const submitDurationFromKeyboard = (itemId: string) => {
+    skipDurationBlurForItemRef.current = itemId;
+    Keyboard.dismiss();
+    commitDurationNow(itemId);
   };
 
   const persistPublicAgendaSkin = async (skin: PublicAgendaSkinId) => {
@@ -2596,13 +2642,53 @@ export default function AgendaEditor() {
   };
 
   const handleCopyPublicWebAgendaLink = async () => {
-    if (!publicWebAgendaUrl) return;
+    const url = publicWebAgendaUrl?.trim();
+    if (!url) {
+      Alert.alert('Nothing to copy', 'The public link is not available yet.');
+      return;
+    }
+
+    const flashCopied = () => {
+      if (publicWebLinkCopiedTimerRef.current) {
+        clearTimeout(publicWebLinkCopiedTimerRef.current);
+      }
+      setPublicWebLinkCopied(true);
+      publicWebLinkCopiedTimerRef.current = setTimeout(() => {
+        setPublicWebLinkCopied(false);
+        publicWebLinkCopiedTimerRef.current = null;
+      }, 2800);
+      Alert.alert('Copied', 'Public agenda link copied to clipboard.');
+    };
+
     try {
-      await Clipboard.setStringAsync(publicWebAgendaUrl);
-      Alert.alert('Copied', 'Public agenda link copied to clipboard');
+      if (Platform.OS === 'web') {
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+          flashCopied();
+          return;
+        }
+        const ok = await Clipboard.setStringAsync(url);
+        if (!ok) {
+          throw new Error('Clipboard API returned false');
+        }
+        flashCopied();
+        return;
+      }
+
+      const ok = await Clipboard.setStringAsync(url);
+      if (!ok) {
+        throw new Error('Clipboard unavailable');
+      }
+      flashCopied();
     } catch (e) {
       console.error('Copy public web agenda link:', e);
-      Alert.alert('Error', 'Could not copy link');
+      setPublicWebLinkCopied(false);
+      Alert.alert(
+        'Could not copy',
+        Platform.OS === 'web'
+          ? 'Your browser may block clipboard access. Select the link text above and copy manually, or try again.'
+          : 'Select the link text above to copy manually, or try again.'
+      );
     }
   };
 
@@ -3105,6 +3191,18 @@ export default function AgendaEditor() {
     if (sectionFilter === 'all') return agendaItems;
     return agendaItems.filter((i) => sectionFilter.has(i.section_name));
   }, [agendaItems, sectionFilter]);
+
+  const sectionBulkVisibilityState = useMemo(() => {
+    const visibleCount = agendaItems.filter((i) => i.is_visible).length;
+    const total = agendaItems.length;
+    return {
+      visibleCount,
+      hiddenCount: total - visibleCount,
+      allVisible: total > 0 && visibleCount === total,
+      allHidden: total > 0 && visibleCount === 0,
+    };
+  }, [agendaItems]);
+
   const toggleSectionInFilter = (name: string) => {
     if (sectionFilter === 'all') {
       const next = new Set(allSectionNames.filter((n) => n !== name));
@@ -3292,69 +3390,195 @@ export default function AgendaEditor() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.agendaVisibilityCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <Text style={[styles.agendaVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Agenda Visibility
-          </Text>
-          <Text style={[styles.agendaVisibilitySubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Control whether members can see the meeting agenda. If hidden, section-level visibility is disabled. The public web share link only works when the agenda is visible to members.
-          </Text>
-
-          <TouchableOpacity
-            style={[styles.visibilityButton, {
-              backgroundColor: isAgendaVisible ? theme.colors.background : '#ef4444',
-              borderColor: isAgendaVisible ? theme.colors.primary : '#ef4444',
-            }]}
-            onPress={toggleAgendaVisibility}
-            activeOpacity={0.75}
+      <View
+        style={[
+          styles.editorTabRow,
+          { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface },
+        ]}
+      >
+        <TouchableOpacity
+          style={[
+            styles.editorTab,
+            {
+              backgroundColor: agendaEditorTab === 'settings' ? theme.colors.primary : 'transparent',
+              borderColor: agendaEditorTab === 'settings' ? theme.colors.primary : theme.colors.border,
+            },
+          ]}
+          onPress={() => setAgendaEditorTab('settings')}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.editorTabText,
+              { color: agendaEditorTab === 'settings' ? '#ffffff' : theme.colors.text },
+            ]}
+            maxFontSizeMultiplier={1.12}
           >
-            {isAgendaVisible ? (
-              <>
-                <Eye size={18} color={theme.colors.primary} />
-                <Text style={[styles.visibilityButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                  Visible to members
+            Agenda Settings
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.editorTab,
+            {
+              backgroundColor: agendaEditorTab === 'sections' ? theme.colors.primary : 'transparent',
+              borderColor: agendaEditorTab === 'sections' ? theme.colors.primary : theme.colors.border,
+            },
+          ]}
+          onPress={() => setAgendaEditorTab('sections')}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.editorTabText,
+              { color: agendaEditorTab === 'sections' ? '#ffffff' : theme.colors.text },
+            ]}
+            maxFontSizeMultiplier={1.12}
+          >
+            Agenda Section
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {agendaEditorTab === 'settings' ? (
+        <>
+        <View
+          style={[
+            styles.notionAgendaVisibilitySheet,
+            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+          <View
+            style={[
+              styles.notionVisibilitySheetHeader,
+              { borderBottomColor: theme.colors.border },
+            ]}
+          >
+            <Text style={[styles.notionVisibilitySheetTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Agenda Visibility
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.notionVisibilityMemberRow,
+              agendaItems.length > 0 && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: theme.colors.border,
+              },
+            ]}
+          >
+            <View style={styles.agendaMemberVisibilityLeft}>
+              {isAgendaVisible ? (
+                <Eye size={20} color={theme.colors.primary} />
+              ) : (
+                <EyeOff size={20} color={theme.colors.textSecondary} />
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.agendaMemberVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Show meeting agenda to members
                 </Text>
-              </>
-            ) : (
-              <>
-                <EyeOff size={18} color="#ffffff" />
-                <Text style={[styles.visibilityButtonText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>
-                  Hidden from members
+                <Text style={[styles.agendaMemberVisibilityHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                  {isAgendaVisible ? 'Visible to members' : 'Hidden from members'}
                 </Text>
-              </>
-            )}
-          </TouchableOpacity>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.agendaMemberVisibilityToggle,
+                {
+                  backgroundColor: isAgendaVisible ? theme.colors.primary : theme.colors.background,
+                  borderColor: isAgendaVisible ? theme.colors.primary : theme.colors.border,
+                },
+              ]}
+              onPress={toggleAgendaVisibility}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={isAgendaVisible ? 'Hide agenda from members' : 'Show agenda to members'}
+            >
+              {isAgendaVisible ? (
+                <Eye size={16} color="#ffffff" />
+              ) : (
+                <EyeOff size={16} color={theme.colors.textSecondary} />
+              )}
+            </TouchableOpacity>
+          </View>
 
           {agendaItems.length > 0 && (
             <>
-              <Text style={[styles.sectionVisibilityCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {agendaItems.filter(i => i.is_visible).length} sections visible / {agendaItems.filter(i => !i.is_visible).length} sections hidden
-              </Text>
-              <View style={styles.sectionVisibilityButtons}>
+              <View
+                style={[
+                  styles.notionVisibilityMetaRow,
+                  { borderBottomColor: theme.colors.border },
+                ]}
+              >
+                <Text style={[styles.notionVisibilityMetaText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.25}>
+                  {sectionBulkVisibilityState.visibleCount} visible · {sectionBulkVisibilityState.hiddenCount} hidden
+                </Text>
+              </View>
+              <View style={styles.notionVisibilitySegmentRow}>
                 <TouchableOpacity
-                  style={[styles.sectionVisibilityButton, {
-                    borderColor: theme.colors.border,
-                    backgroundColor: theme.colors.background,
-                  }]}
+                  style={[
+                    styles.notionVisibilitySegmentHalf,
+                    sectionBulkVisibilityState.allVisible && { backgroundColor: theme.colors.primary },
+                  ]}
                   onPress={() => setAllSectionsVisibility(true)}
                   activeOpacity={0.75}
                 >
-                  <Eye size={16} color={theme.colors.primary} />
-                  <Text style={[styles.sectionVisibilityButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                  <Eye
+                    size={16}
+                    color={
+                      sectionBulkVisibilityState.allVisible
+                        ? '#ffffff'
+                        : sectionBulkVisibilityState.allHidden
+                          ? theme.colors.textSecondary
+                          : theme.colors.primary
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.sectionVisibilityButtonText,
+                      {
+                        color: sectionBulkVisibilityState.allVisible
+                          ? '#ffffff'
+                          : sectionBulkVisibilityState.allHidden
+                            ? theme.colors.textSecondary
+                            : theme.colors.primary,
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
                     Show all
                   </Text>
                 </TouchableOpacity>
+                <View
+                  style={[
+                    styles.notionVisibilitySegmentDivider,
+                    { backgroundColor: theme.colors.border },
+                  ]}
+                />
                 <TouchableOpacity
-                  style={[styles.sectionVisibilityButton, {
-                    borderColor: theme.colors.border,
-                    backgroundColor: theme.colors.background,
-                  }]}
+                  style={[
+                    styles.notionVisibilitySegmentHalf,
+                    sectionBulkVisibilityState.allHidden && { backgroundColor: theme.colors.primary },
+                  ]}
                   onPress={() => setAllSectionsVisibility(false)}
                   activeOpacity={0.75}
                 >
-                  <EyeOff size={16} color={theme.colors.textSecondary} />
-                  <Text style={[styles.sectionVisibilityButtonText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  <EyeOff
+                    size={16}
+                    color={sectionBulkVisibilityState.allHidden ? '#ffffff' : theme.colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.sectionVisibilityButtonText,
+                      {
+                        color: sectionBulkVisibilityState.allHidden ? '#ffffff' : theme.colors.textSecondary,
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
                     Hide all
                   </Text>
                 </TouchableOpacity>
@@ -3363,54 +3587,82 @@ export default function AgendaEditor() {
           )}
         </View>
 
-        <View style={[styles.agendaVisibilityCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <Text style={[styles.agendaVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Public web layout
-          </Text>
-          <Text style={[styles.agendaVisibilitySubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Choose how the shareable web agenda looks. Adding ?skin=minimal or ?skin=vibrant to the link still overrides this for one-off previews.
-          </Text>
+        <View
+          style={[
+            styles.notionAgendaVisibilitySheet,
+            { marginTop: 0, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+          <View
+            style={[
+              styles.notionVisibilitySheetHeader,
+              { borderBottomColor: theme.colors.border },
+            ]}
+          >
+            <Text style={[styles.notionVisibilitySheetTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Public web layout
+            </Text>
+          </View>
           {(
             [
               { id: 'default' as const, title: 'Default', subtitle: 'Banners and section cards' },
               { id: 'minimal' as const, title: 'Minimal', subtitle: 'Simple list' },
               { id: 'vibrant' as const, title: 'Vibrant', subtitle: 'Bold cards' },
             ] as const
-          ).map(opt => (
-            <TouchableOpacity
-              key={opt.id}
-              style={[
-                styles.publicWebSkinOption,
-                {
-                  borderColor: publicAgendaSkin === opt.id ? theme.colors.primary : theme.colors.border,
-                  borderWidth: publicAgendaSkin === opt.id ? 2 : 1,
-                  backgroundColor: theme.colors.background,
-                },
-              ]}
-              onPress={() => persistPublicAgendaSkin(opt.id)}
-              activeOpacity={0.75}
-            >
-              <Text style={[styles.publicWebSkinOptionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-                {opt.title}
-              </Text>
-              <Text style={[styles.publicWebSkinOptionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
-                {opt.subtitle}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          ).map((opt) => {
+            const selected = publicAgendaSkin === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                style={[
+                  styles.notionPublicWebSkinRow,
+                  {
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: theme.colors.border,
+                    backgroundColor: selected ? theme.colors.primary + '14' : 'transparent',
+                    borderLeftWidth: selected ? 3 : 0,
+                    borderLeftColor: theme.colors.primary,
+                  },
+                ]}
+                onPress={() => persistPublicAgendaSkin(opt.id)}
+                activeOpacity={0.75}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.publicWebSkinOptionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                    {opt.title}
+                  </Text>
+                  <Text style={[styles.publicWebSkinOptionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
+                    {opt.subtitle}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
           {publicWebAgendaUrl ? (
             <>
-              <Text style={[styles.publicWebLinkText, { color: theme.colors.textSecondary }]} numberOfLines={4} maxFontSizeMultiplier={1.15}>
-                {publicWebAgendaUrl}
-              </Text>
-              {isAgendaVisible === false ? (
-                <Text style={[styles.publicWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.1}>
-                  Public web link will not open until Agenda Visibility is set to Visible to members.
+              <View
+                style={[
+                  styles.notionPublicWebMetaBlock,
+                  { borderBottomColor: theme.colors.border },
+                ]}
+              >
+                <Text
+                  style={[styles.publicWebLinkText, { color: theme.colors.textSecondary }]}
+                  numberOfLines={6}
+                  maxFontSizeMultiplier={1.15}
+                  selectable
+                >
+                  {publicWebAgendaUrl}
                 </Text>
-              ) : null}
-              <View style={styles.publicWebLinkActions}>
+                {isAgendaVisible === false ? (
+                  <Text style={[styles.publicWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.1}>
+                    Public web link will not open until Agenda Visibility is set to Visible to members.
+                  </Text>
+                ) : null}
+              </View>
+              <View style={styles.notionPublicWebActionsRow}>
                 <TouchableOpacity
-                  style={[styles.publicWebLinkPrimaryButton, { backgroundColor: theme.colors.primary }]}
+                  style={[styles.notionPublicWebActionPrimary, { backgroundColor: theme.colors.primary }]}
                   onPress={handleOpenPublicWebAgenda}
                   activeOpacity={0.85}
                 >
@@ -3419,161 +3671,143 @@ export default function AgendaEditor() {
                     Open
                   </Text>
                 </TouchableOpacity>
+                <View
+                  style={[
+                    styles.notionPublicWebActionDivider,
+                    { backgroundColor: theme.colors.border },
+                  ]}
+                />
                 <TouchableOpacity
-                  style={[styles.publicWebLinkOutlineButton, { borderColor: theme.colors.border }]}
-                  onPress={handleCopyPublicWebAgendaLink}
+                  style={[
+                    styles.notionPublicWebActionOutline,
+                    { backgroundColor: theme.colors.surface },
+                  ]}
+                  onPress={() => {
+                    void handleCopyPublicWebAgendaLink();
+                  }}
                   activeOpacity={0.85}
                 >
                   <Copy size={16} color={theme.colors.primary} />
                   <Text style={[styles.publicWebLinkOutlineButtonLabel, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.1}>
-                    Copy link
+                    {publicWebLinkCopied ? 'Copied!' : 'Copy link'}
                   </Text>
                 </TouchableOpacity>
               </View>
             </>
           ) : (
-            <Text style={[styles.publicWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
-              Save meeting details first to generate a public web link.
-            </Text>
+            <View style={styles.notionPublicWebEmptyRow}>
+              <Text style={[styles.publicWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                Save meeting details first to generate a public web link.
+              </Text>
+            </View>
           )}
         </View>
 
-        <View style={[styles.masterAutoFillCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <Text style={[styles.masterAutoFillTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Master Auto Fill
-          </Text>
-          <Text style={[styles.masterAutoFillSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Auto-fill assignments and corner details for the entire agenda.
-          </Text>
-          <TouchableOpacity
+        <View
+          style={[
+            styles.notionAgendaVisibilitySheet,
+            { marginTop: 0, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+          <View
             style={[
-              styles.masterAutoFillButton,
-              { backgroundColor: theme.colors.primary, opacity: masterAutoFillLoading ? 0.6 : 1 },
+              styles.notionVisibilitySheetHeader,
+              { borderBottomColor: theme.colors.border },
             ]}
-            onPress={autoFillEntireAgenda}
-            disabled={masterAutoFillLoading}
-            activeOpacity={0.8}
           >
-            {masterAutoFillLoading ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                <Zap size={18} color="#ffffff" />
-                <Text style={styles.masterAutoFillButtonText} maxFontSizeMultiplier={1.3}>
-                  Auto Fill Entire Agenda
+            <Text style={[styles.notionVisibilitySheetTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Banner Colors
+            </Text>
+            <Text style={[styles.notionBannerColorsSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              Used on the public web agenda banners.
+            </Text>
+          </View>
+          {(
+            [
+              { id: 'club_info' as const, label: 'Club Info Banner', value: clubInfoBannerColor },
+              { id: 'datetime' as const, label: 'Date/Time Banner', value: datetimeBannerColor },
+              { id: 'footer1' as const, label: 'Footer Banner 1', value: footerBanner1Color },
+              { id: 'footer2' as const, label: 'Footer Banner 2', value: footerBanner2Color },
+            ] as const
+          ).map((row, index, arr) => (
+            <TouchableOpacity
+              key={row.id}
+              style={[
+                styles.notionBannerColorRow,
+                {
+                  borderBottomWidth: index < arr.length - 1 ? StyleSheet.hairlineWidth : 0,
+                  borderBottomColor: theme.colors.border,
+                },
+              ]}
+              onPress={() => openColorPicker(row.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.notionBannerColorRowLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                {row.label}
+              </Text>
+              <View style={[styles.colorPreview, { backgroundColor: row.value, borderColor: theme.colors.border }]} />
+              <View
+                style={[
+                  styles.colorInput,
+                  {
+                    backgroundColor: theme.colors.background,
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.colorInputText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {row.value}
                 </Text>
               </View>
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          ))}
         </View>
+        </>
+        ) : null}
 
-        <View style={[styles.colorSettingsCard, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.colorSettingsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Banner Colors
-          </Text>
-          <Text style={[styles.colorSettingsSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Customize the colors of the meeting agenda banners
-          </Text>
-
-          <View style={styles.colorPickerRow}>
-            <View style={styles.colorPickerItem}>
-              <Text style={[styles.colorLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Club Info Banner
+        {agendaEditorTab === 'sections' ? (
+        <View
+          style={[
+            styles.notionSectionsSheet,
+            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+        <TouchableOpacity
+          style={[
+            styles.notionSectionsToolbarRow,
+            {
+              backgroundColor: theme.colors.primary + '18',
+              borderBottomColor: theme.colors.border,
+              opacity: masterAutoFillLoading ? 0.6 : 1,
+              justifyContent: masterAutoFillLoading ? 'center' : 'flex-start',
+            },
+          ]}
+          onPress={autoFillEntireAgenda}
+          disabled={masterAutoFillLoading}
+          activeOpacity={0.7}
+        >
+          {masterAutoFillLoading ? (
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          ) : (
+            <>
+              <Zap size={20} color={theme.colors.primary} />
+              <Text style={[styles.manageSequenceButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                Auto Fill Entire Agenda
               </Text>
-              <TouchableOpacity
-                style={styles.colorInputRow}
-                onPress={() => openColorPicker('club_info')}
-              >
-                <View style={[styles.colorPreview, { backgroundColor: clubInfoBannerColor }]} />
-                <View style={[styles.colorInput, {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.border
-                }]}>
-                  <Text style={[styles.colorInputText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {clubInfoBannerColor}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.colorPickerItem}>
-              <Text style={[styles.colorLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Date/Time Banner
-              </Text>
-              <TouchableOpacity
-                style={styles.colorInputRow}
-                onPress={() => openColorPicker('datetime')}
-              >
-                <View style={[styles.colorPreview, { backgroundColor: datetimeBannerColor }]} />
-                <View style={[styles.colorInput, {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.border
-                }]}>
-                  <Text style={[styles.colorInputText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {datetimeBannerColor}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.colorPickerItem}>
-              <Text style={[styles.colorLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Footer Banner 1
-              </Text>
-              <TouchableOpacity
-                style={styles.colorInputRow}
-                onPress={() => openColorPicker('footer1')}
-              >
-                <View style={[styles.colorPreview, { backgroundColor: footerBanner1Color }]} />
-                <View style={[styles.colorInput, {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.border
-                }]}>
-                  <Text style={[styles.colorInputText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {footerBanner1Color}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.colorPickerItem}>
-              <Text style={[styles.colorLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Footer Banner 2
-              </Text>
-              <TouchableOpacity
-                style={styles.colorInputRow}
-                onPress={() => openColorPicker('footer2')}
-              >
-                <View style={[styles.colorPreview, { backgroundColor: footerBanner2Color }]} />
-                <View style={[styles.colorInput, {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.border
-                }]}>
-                  <Text style={[styles.colorInputText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {footerBanner2Color}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        <View style={[styles.sectionHeader, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <Text style={[styles.sectionHeaderTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Agenda Sections
-          </Text>
-          <Text style={[styles.sectionHeaderSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Toggle visibility, edit times, and assign roles for each section below
-          </Text>
-        </View>
+            </>
+          )}
+        </TouchableOpacity>
 
         {agendaItems.length > 0 && (
           <TouchableOpacity
             onPress={() => setManageSequenceModalVisible(true)}
-            style={[styles.manageSequenceButton, {
-              backgroundColor: theme.colors.primary + '18',
-              borderColor: theme.colors.primary,
-            }]}
+            style={[
+              styles.notionSectionsToolbarRow,
+              {
+                backgroundColor: theme.colors.primary + '18',
+                borderBottomColor: theme.colors.border,
+              },
+            ]}
             activeOpacity={0.7}
           >
             <ListOrdered size={20} color={theme.colors.primary} />
@@ -3586,14 +3820,17 @@ export default function AgendaEditor() {
         {agendaItems.length > 0 && (
           <TouchableOpacity
             onPress={() => setSectionFilterModalVisible(true)}
-            style={[styles.sectionFilterDropdown, {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-            }]}
+            style={[
+              styles.notionSectionsToolbarRow,
+              {
+                backgroundColor: theme.colors.surface,
+                borderBottomColor: theme.colors.border,
+              },
+            ]}
             activeOpacity={0.7}
           >
             <Filter size={18} color={theme.colors.primary} />
-            <Text style={[styles.sectionFilterDropdownText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text style={[styles.notionSectionsToolbarRowText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
               {sectionFilter === 'all'
                 ? `Showing all ${agendaItems.length} sections`
                 : `Showing ${filteredAgendaItems.length} of ${agendaItems.length} sections`}
@@ -3603,7 +3840,7 @@ export default function AgendaEditor() {
         )}
 
         {agendaItems.length === 0 ? (
-          <View style={[styles.emptyStateCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={styles.notionSectionsEmptyState}>
             <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
               No Agenda Sections Found
             </Text>
@@ -3620,7 +3857,7 @@ export default function AgendaEditor() {
             </TouchableOpacity>
           </View>
         ) : filteredAgendaItems.length === 0 ? (
-          <View style={[styles.emptyStateCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={styles.notionSectionsEmptyState}>
             <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
               No sections selected
             </Text>
@@ -3629,14 +3866,19 @@ export default function AgendaEditor() {
             </Text>
           </View>
         ) : (
-          filteredAgendaItems.map((item) => {
+          filteredAgendaItems.map((item, rowIndex) => {
           const index = agendaItems.findIndex((i) => i.id === item.id);
+          const isLastRow = rowIndex === filteredAgendaItems.length - 1;
           return (
           <View
             key={item.id}
             style={[
               styles.agendaCard,
               { backgroundColor: theme.colors.surface },
+              !isLastRow && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: theme.colors.border,
+              },
             ]}
           >
             <View style={styles.cardHeader}>
@@ -3739,6 +3981,29 @@ export default function AgendaEditor() {
                   <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     Duration (minutes):
                   </Text>
+                  {Platform.OS === 'ios' ? (
+                    <InputAccessoryView nativeID={`agenda-duration-${item.id}`}>
+                      <View
+                        style={[
+                          styles.durationInputAccessoryBar,
+                          {
+                            backgroundColor: theme.colors.surface,
+                            borderTopColor: theme.colors.border,
+                          },
+                        ]}
+                      >
+                        <TouchableOpacity
+                          onPress={() => submitDurationFromKeyboard(item.id)}
+                          style={styles.durationInputAccessoryButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 16, right: 16 }}
+                        >
+                          <Text style={[styles.durationInputAccessoryButtonText, { color: theme.colors.primary }]}>
+                            Done
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </InputAccessoryView>
+                  ) : null}
                   <TextInput
                     style={[styles.durationInput, {
                       color: theme.colors.text,
@@ -3747,8 +4012,22 @@ export default function AgendaEditor() {
                     }]}
                     value={item.duration_minutes?.toString() || ''}
                     onChangeText={(text) => updateDuration(item.id, text)}
-                    onBlur={() => saveDuration(item.id)}
+                    onBlur={() => {
+                      if (skipDurationBlurForItemRef.current === item.id) {
+                        skipDurationBlurForItemRef.current = null;
+                        return;
+                      }
+                      saveDuration(item.id);
+                    }}
+                    onSubmitEditing={() => submitDurationFromKeyboard(item.id)}
+                    blurOnSubmit
+                    multiline={false}
+                    returnKeyType="done"
                     keyboardType="numeric"
+                    inputAccessoryViewID={Platform.OS === 'ios' ? `agenda-duration-${item.id}` : undefined}
+                    {...(Platform.OS === 'android'
+                      ? { submitBehavior: 'blurAndSubmit' as const }
+                      : {})}
                     placeholder="0"
                     placeholderTextColor={theme.colors.textSecondary}
                   />
@@ -5417,6 +5696,8 @@ export default function AgendaEditor() {
           );
         })
         )}
+        </View>
+        ) : null}
 
         <View style={styles.bottomSpace} />
       </ScrollView>
@@ -5428,8 +5709,8 @@ export default function AgendaEditor() {
         onRequestClose={closeAssignmentModal}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Assign Role
               </Text>
@@ -5440,7 +5721,7 @@ export default function AgendaEditor() {
 
             <View style={[styles.searchBox, {
               backgroundColor: theme.colors.background,
-              borderColor: theme.colors.border
+              borderBottomColor: theme.colors.border,
             }]}>
               <Search size={20} color={theme.colors.textSecondary} />
               <TextInput
@@ -5459,7 +5740,7 @@ export default function AgendaEditor() {
                     onPress={unassignMember}
                     style={[styles.unassignButton, {
                       backgroundColor: '#fee',
-                      borderColor: '#dc2626'
+                      borderColor: '#dc2626',
                     }]}
                   >
                     <Text style={[styles.unassignButtonText, { color: '#dc2626' }]} maxFontSizeMultiplier={1.3}>
@@ -5470,8 +5751,8 @@ export default function AgendaEditor() {
                 </View>
               )}
 
-              <View style={styles.customNameSection}>
-                <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              <View style={[styles.customNameSection, { borderBottomColor: theme.colors.border }]}>
+                <Text style={[styles.modalFormSectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   Or type custom name:
                 </Text>
                 <View style={styles.customNameRow}>
@@ -5495,9 +5776,11 @@ export default function AgendaEditor() {
                 </View>
               </View>
 
-              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Club Members:
-              </Text>
+              <View style={styles.modalMembersSectionTitle}>
+                <Text style={[styles.modalFormSectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Club Members:
+                </Text>
+              </View>
               {clubMembers
                 .filter(member =>
                   member.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -5506,10 +5789,7 @@ export default function AgendaEditor() {
                   <TouchableOpacity
                     key={member.id}
                     onPress={() => assignMember(member.id, member.full_name)}
-                    style={[styles.memberItem, {
-                      backgroundColor: theme.colors.background,
-                      borderColor: theme.colors.border
-                    }]}
+                    style={[styles.memberItem, { borderBottomColor: theme.colors.border }]}
                   >
                     <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {member.full_name}
@@ -5529,8 +5809,8 @@ export default function AgendaEditor() {
         onRequestClose={() => setSectionFilterModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Filter sections
               </Text>
@@ -5538,10 +5818,10 @@ export default function AgendaEditor() {
                 <X size={24} color={theme.colors.text} />
               </TouchableOpacity>
             </View>
-            <View style={styles.sectionFilterModalActions}>
+            <View style={[styles.sectionFilterModalActions, { borderBottomColor: theme.colors.border }]}>
               <TouchableOpacity
                 onPress={() => setSectionFilter('all')}
-                style={[styles.sectionFilterActionButton, { borderColor: theme.colors.primary }]}
+                style={[styles.sectionFilterActionButton, { borderRightColor: theme.colors.border }]}
               >
                 <Text style={[styles.sectionFilterActionText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
                   Select all
@@ -5549,7 +5829,7 @@ export default function AgendaEditor() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setSectionFilter(new Set())}
-                style={[styles.sectionFilterActionButton, { borderColor: theme.colors.border }]}
+                style={[styles.sectionFilterActionButton, { borderRightWidth: 0 }]}
               >
                 <Text style={[styles.sectionFilterActionText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                   Deselect all
@@ -5561,10 +5841,7 @@ export default function AgendaEditor() {
                 <TouchableOpacity
                   key={name}
                   onPress={() => toggleSectionInFilter(name)}
-                  style={[styles.sectionFilterRow, {
-                    backgroundColor: theme.colors.background,
-                    borderColor: theme.colors.border,
-                  }]}
+                  style={[styles.sectionFilterRow, { borderBottomColor: theme.colors.border }]}
                   activeOpacity={0.7}
                 >
                   {isSectionSelected(name) ? (
@@ -5589,8 +5866,8 @@ export default function AgendaEditor() {
         onRequestClose={() => setManageSequenceModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.manageSequenceModalContent, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.manageSequenceModalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Manage sequence
               </Text>
@@ -5611,10 +5888,7 @@ export default function AgendaEditor() {
               {agendaItems.map((item, index) => (
                 <View
                   key={item.id}
-                  style={[styles.manageSequenceRow, {
-                    backgroundColor: theme.colors.background,
-                    borderColor: theme.colors.border,
-                  }]}
+                  style={[styles.manageSequenceRow, { borderBottomColor: theme.colors.border }]}
                 >
                   <Text style={[styles.manageSequenceOrder, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {index + 1}
@@ -5663,7 +5937,7 @@ export default function AgendaEditor() {
             </ScrollView>
             <TouchableOpacity
               onPress={() => setManageSequenceModalVisible(false)}
-              style={[styles.manageSequenceDoneButton, { backgroundColor: theme.colors.primary }]}
+              style={[styles.manageSequenceDoneButton, { backgroundColor: theme.colors.primary, borderTopColor: theme.colors.border }]}
             >
               <Text style={styles.manageSequenceDoneButtonText} maxFontSizeMultiplier={1.3}>Done</Text>
             </TouchableOpacity>
@@ -5681,8 +5955,8 @@ export default function AgendaEditor() {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Assign Sergeant at Arms
               </Text>
@@ -5696,7 +5970,7 @@ export default function AgendaEditor() {
 
             <View style={[styles.searchBox, {
               backgroundColor: theme.colors.background,
-              borderColor: theme.colors.border
+              borderBottomColor: theme.colors.border,
             }]}>
               <Search size={18} color={theme.colors.textSecondary} />
               <TextInput
@@ -5709,9 +5983,11 @@ export default function AgendaEditor() {
             </View>
 
             <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Club Members:
-              </Text>
+              <View style={styles.modalMembersSectionTitle}>
+                <Text style={[styles.modalFormSectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Club Members:
+                </Text>
+              </View>
               {clubMembers
                 .filter(member =>
                   member.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -5720,10 +5996,7 @@ export default function AgendaEditor() {
                   <TouchableOpacity
                     key={member.id}
                     onPress={() => assignSergeantAtArms(member.id, member.full_name)}
-                    style={[styles.memberItem, {
-                      backgroundColor: theme.colors.background,
-                      borderColor: theme.colors.border
-                    }]}
+                    style={[styles.memberItem, { borderBottomColor: theme.colors.border }]}
                   >
                     <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {member.full_name}
@@ -5747,8 +6020,8 @@ export default function AgendaEditor() {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Assign Timer
               </Text>
@@ -5762,7 +6035,7 @@ export default function AgendaEditor() {
 
             <View style={[styles.searchBox, {
               backgroundColor: theme.colors.background,
-              borderColor: theme.colors.border
+              borderBottomColor: theme.colors.border,
             }]}>
               <Search size={18} color={theme.colors.textSecondary} />
               <TextInput
@@ -5775,9 +6048,11 @@ export default function AgendaEditor() {
             </View>
 
             <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Club Members:
-              </Text>
+              <View style={styles.modalMembersSectionTitle}>
+                <Text style={[styles.modalFormSectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Club Members:
+                </Text>
+              </View>
               {clubMembers
                 .filter(member =>
                   member.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -5786,10 +6061,7 @@ export default function AgendaEditor() {
                   <TouchableOpacity
                     key={member.id}
                     onPress={() => assignTimer(member.id, member.full_name)}
-                    style={[styles.memberItem, {
-                      backgroundColor: theme.colors.background,
-                      borderColor: theme.colors.border
-                    }]}
+                    style={[styles.memberItem, { borderBottomColor: theme.colors.border }]}
                   >
                     <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {member.full_name}
@@ -5813,8 +6085,8 @@ export default function AgendaEditor() {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Assign Ah Counter
               </Text>
@@ -5828,7 +6100,7 @@ export default function AgendaEditor() {
 
             <View style={[styles.searchBox, {
               backgroundColor: theme.colors.background,
-              borderColor: theme.colors.border
+              borderBottomColor: theme.colors.border,
             }]}>
               <Search size={18} color={theme.colors.textSecondary} />
               <TextInput
@@ -5841,9 +6113,11 @@ export default function AgendaEditor() {
             </View>
 
             <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Club Members:
-              </Text>
+              <View style={styles.modalMembersSectionTitle}>
+                <Text style={[styles.modalFormSectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Club Members:
+                </Text>
+              </View>
               {clubMembers
                 .filter(member =>
                   member.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -5852,10 +6126,7 @@ export default function AgendaEditor() {
                   <TouchableOpacity
                     key={member.id}
                     onPress={() => assignAhCounter(member.id, member.full_name)}
-                    style={[styles.memberItem, {
-                      backgroundColor: theme.colors.background,
-                      borderColor: theme.colors.border
-                    }]}
+                    style={[styles.memberItem, { borderBottomColor: theme.colors.border }]}
                   >
                     <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {member.full_name}
@@ -5879,8 +6150,8 @@ export default function AgendaEditor() {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Assign Grammarian
               </Text>
@@ -5894,7 +6165,7 @@ export default function AgendaEditor() {
 
             <View style={[styles.searchBox, {
               backgroundColor: theme.colors.background,
-              borderColor: theme.colors.border
+              borderBottomColor: theme.colors.border,
             }]}>
               <Search size={18} color={theme.colors.textSecondary} />
               <TextInput
@@ -5907,9 +6178,11 @@ export default function AgendaEditor() {
             </View>
 
             <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Club Members:
-              </Text>
+              <View style={styles.modalMembersSectionTitle}>
+                <Text style={[styles.modalFormSectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Club Members:
+                </Text>
+              </View>
               {clubMembers
                 .filter(member =>
                   member.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -5918,10 +6191,7 @@ export default function AgendaEditor() {
                   <TouchableOpacity
                     key={member.id}
                     onPress={() => assignGrammarian(member.id, member.full_name)}
-                    style={[styles.memberItem, {
-                      backgroundColor: theme.colors.background,
-                      borderColor: theme.colors.border
-                    }]}
+                    style={[styles.memberItem, { borderBottomColor: theme.colors.border }]}
                   >
                     <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {member.full_name}
@@ -5942,7 +6212,7 @@ export default function AgendaEditor() {
         onRequestClose={() => setGeSubRoleModalVisible(false)}
       >
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Assign {selectedGeSubRole?.sub_role_name}
@@ -5955,9 +6225,9 @@ export default function AgendaEditor() {
               </TouchableOpacity>
             </View>
 
-            <View style={[styles.searchContainer, {
+            <View style={[styles.searchBox, {
               backgroundColor: theme.colors.background,
-              borderColor: theme.colors.border
+              borderBottomColor: theme.colors.border,
             }]}>
               <Search size={20} color={theme.colors.textSecondary} />
               <TextInput
@@ -5969,7 +6239,12 @@ export default function AgendaEditor() {
               />
             </View>
 
-            <ScrollView style={styles.memberList}>
+            <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
+              <View style={styles.modalMembersSectionTitle}>
+                <Text style={[styles.modalFormSectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Club Members:
+                </Text>
+              </View>
               {clubMembers
                 .filter(member =>
                   member.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -6054,6 +6329,166 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  editorTabRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  editorTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+  },
+  editorTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  /** Single Notion-style surface for Agenda Section tab (matches book-a-role notionSheet) */
+  notionSectionsSheet: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 16,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  notionSectionsToolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  notionSectionsToolbarRowText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  notionSectionsEmptyState: {
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  /** Agenda Settings — single flat surface for visibility (matches notionSectionsSheet) */
+  notionAgendaVisibilitySheet: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 16,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  notionVisibilitySheetHeader: {
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  notionVisibilitySheetTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  notionVisibilityMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  notionVisibilityMetaRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  notionVisibilityMetaText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  notionVisibilitySegmentRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  notionVisibilitySegmentHalf: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+  },
+  notionVisibilitySegmentDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+  },
+  notionPublicWebSkinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  notionPublicWebMetaBlock: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  notionPublicWebActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  notionPublicWebActionPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+  },
+  notionPublicWebActionOutline: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+  },
+  notionPublicWebActionDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+  },
+  notionPublicWebEmptyRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  notionBannerColorsSubtitle: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  notionBannerColorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  notionBannerColorRowLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   infoBox: {
     margin: 16,
     padding: 16,
@@ -6082,15 +6517,13 @@ const styles = StyleSheet.create({
     color: '#ef4444',
   },
   agendaCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginHorizontal: 0,
+    marginBottom: 0,
+    borderRadius: 0,
+    padding: 14,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -6110,7 +6543,7 @@ const styles = StyleSheet.create({
   tagTeamIconWrap: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -6131,7 +6564,7 @@ const styles = StyleSheet.create({
   sectionTypeTag: {
     paddingVertical: 3,
     paddingHorizontal: 8,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
   },
   sectionTypeTagText: {
@@ -6143,7 +6576,7 @@ const styles = StyleSheet.create({
   hiddenBadge: {
     paddingVertical: 3,
     paddingHorizontal: 8,
-    borderRadius: 6,
+    borderRadius: 0,
     backgroundColor: '#ef444415',
     borderWidth: 1,
     borderColor: '#ef4444',
@@ -6167,11 +6600,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
   },
-  reorderButton: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: '#f3f4f6',
-  },
   reorderButtonDisabled: {
     opacity: 0.3,
   },
@@ -6193,7 +6621,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 0,
   },
   timeChipText: {
     fontSize: 12,
@@ -6212,18 +6640,35 @@ const styles = StyleSheet.create({
     width: 80,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  durationInputAccessoryBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  durationInputAccessoryButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  durationInputAccessoryButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
   },
   assignmentButton: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
   },
   assignmentValueRow: {
@@ -6239,7 +6684,7 @@ const styles = StyleSheet.create({
   autoFillButton: {
     paddingVertical: 12,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -6311,7 +6756,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingVertical: 4,
     paddingHorizontal: 10,
-    borderRadius: 6,
+    borderRadius: 0,
     backgroundColor: '#8b5cf620',
   },
   autoGenText: {
@@ -6338,7 +6783,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 0,
     borderWidth: 1,
   },
   meetAndGreetEditText: {
@@ -6352,7 +6797,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 0,
     borderWidth: 1,
   },
   meetAndGreetAutoText: {
@@ -6370,24 +6815,26 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    borderRadius: 20,
-    paddingTop: 20,
+    borderRadius: 0,
+    paddingTop: 0,
     width: '100%',
     maxWidth: 600,
     maxHeight: '85%',
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '600',
   },
   closeButton: {
     padding: 4,
@@ -6396,11 +6843,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    margin: 16,
-    borderRadius: 12,
-    borderWidth: 1,
+    margin: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   searchInput: {
     flex: 1,
@@ -6409,30 +6857,35 @@ const styles = StyleSheet.create({
   membersList: {
     minHeight: 200,
     maxHeight: 400,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingHorizontal: 0,
+    paddingBottom: 8,
   },
   unassignSection: {
-    marginBottom: 20,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    marginBottom: 0,
   },
   unassignButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1.5,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: 8,
+    width: '100%',
   },
   unassignButtonText: {
     fontSize: 15,
     fontWeight: '600',
   },
   customNameSection: {
-    marginBottom: 24,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    marginBottom: 0,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   sectionTitle: {
     fontSize: 13,
@@ -6440,6 +6893,18 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 12,
     letterSpacing: 0.5,
+  },
+  modalMembersSectionTitle: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  modalFormSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
   },
   customNameRow: {
     flexDirection: 'row',
@@ -6449,14 +6914,14 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     fontSize: 14,
   },
   saveCustomButton: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -6469,10 +6934,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginBottom: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 0,
   },
   memberName: {
     fontSize: 15,
@@ -6508,52 +6975,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  agendaVisibilityCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
+  agendaMemberVisibilityLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
   },
-  agendaVisibilityTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
+  agendaMemberVisibilityTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  agendaMemberVisibilityHint: {
+    fontSize: 11,
+    marginTop: 3,
+  },
+  agendaMemberVisibilityToggle: {
+    width: 34,
+    height: 34,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 0,
   },
   agendaVisibilitySubtitle: {
     fontSize: 13,
     marginBottom: 12,
     lineHeight: 18,
   },
-  sectionVisibilityCount: {
-    fontSize: 13,
-    marginBottom: 10,
-    lineHeight: 18,
-  },
-  sectionVisibilityButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  sectionVisibilityButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    gap: 6,
-  },
   sectionVisibilityButtonText: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  publicWebSkinOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    marginBottom: 10,
   },
   publicWebSkinOptionTitle: {
     fontSize: 15,
@@ -6565,8 +7016,8 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   publicWebLinkText: {
-    fontSize: 13,
-    marginTop: 8,
+    fontSize: 12,
+    marginTop: 0,
     lineHeight: 18,
   },
   publicWebLinkHint: {
@@ -6574,147 +7025,33 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 17,
   },
-  publicWebLinkActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-  },
-  publicWebLinkPrimaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
   publicWebLinkPrimaryButtonLabel: {
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',
   },
-  publicWebLinkOutlineButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
   publicWebLinkOutlineButtonLabel: {
     fontSize: 13,
     fontWeight: '700',
   },
-  masterAutoFillCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-  },
-  masterAutoFillTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  masterAutoFillSubtitle: {
-    fontSize: 13,
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-  masterAutoFillButton: {
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  masterAutoFillButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  sectionVisibilityButton: {
-    padding: 8,
-  },
-  colorSettingsCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  colorSettingsTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  colorSettingsSubtitle: {
-    fontSize: 13,
-    marginBottom: 16,
-  },
-  colorPickerRow: {
-    gap: 16,
-    marginBottom: 16,
-  },
-  colorPickerItem: {
-    gap: 8,
-  },
-  colorLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  colorInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
   colorPreview: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
+    width: 36,
+    height: 36,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   colorInput: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
+    minWidth: 112,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
   },
   colorInputText: {
     fontSize: 14,
     fontWeight: '600',
     fontFamily: 'monospace',
-  },
-  sectionHeader: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  sectionHeaderTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  sectionHeaderSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
   },
   sectionFilterDropdown: {
     flexDirection: 'row',
@@ -6734,15 +7071,17 @@ const styles = StyleSheet.create({
   },
   sectionFilterModalActions: {
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingBottom: 12,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   sectionFilterActionButton: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingVertical: 14,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderRightWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
   },
   sectionFilterActionText: {
@@ -6751,18 +7090,19 @@ const styles = StyleSheet.create({
   },
   sectionFilterList: {
     maxHeight: 360,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingHorizontal: 0,
+    paddingBottom: 8,
   },
   sectionFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 8,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 0,
   },
   sectionFilterRowText: {
     flex: 1,
@@ -6789,20 +7129,21 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     alignSelf: 'center',
     marginVertical: 40,
-    borderRadius: 16,
+    borderRadius: 0,
     overflow: 'hidden',
     maxHeight: '88%',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   manageSequenceSubtitle: {
     fontSize: 13,
     lineHeight: 18,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 12,
   },
   manageSequenceList: {
     flexGrow: 1,
     minHeight: 220,
-    paddingHorizontal: 20,
+    paddingHorizontal: 0,
   },
   manageSequenceRow: {
     flexDirection: 'row',
@@ -6810,9 +7151,10 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 8,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 0,
   },
   manageSequenceOrder: {
     width: 28,
@@ -6836,12 +7178,13 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   manageSequenceDoneButton: {
-    marginHorizontal: 20,
-    marginTop: 12,
-    marginBottom: 20,
-    paddingVertical: 14,
-    borderRadius: 10,
+    marginHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
+    paddingVertical: 16,
+    borderRadius: 0,
     alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   manageSequenceDoneButtonText: {
     color: '#ffffff',
@@ -6875,7 +7218,7 @@ const styles = StyleSheet.create({
   createSectionsButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 0,
   },
   createSectionsButtonText: {
     color: '#ffffff',
@@ -7181,7 +7524,7 @@ const styles = StyleSheet.create({
   reorderButton: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -7468,14 +7811,10 @@ const styles = StyleSheet.create({
   sectionHeaderEyeButton: {
     width: 34,
     height: 34,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // Small eye button used on section header rows
-  sectionVisibilityButton: {
-    padding: 4,
   },
   pickerContainer: {
     marginBottom: 12,

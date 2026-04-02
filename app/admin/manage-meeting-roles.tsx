@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 import {
   ArrowLeft,
   Users,
@@ -128,6 +129,7 @@ export default function ManageMeetingRoles() {
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [showCategoryFilterModal, setShowCategoryFilterModal] = useState(false);
   const insets = useSafeAreaInsets();
+  const { shouldShowCoffee } = useCoffeePromptEligibility();
 
   const openWhatsAppSupport = useCallback(async () => {
     try {
@@ -162,8 +164,8 @@ export default function ManageMeetingRoles() {
 
   const rolesByTab = useMemo(() => {
     return selectedTab === 'available'
-      ? visibleRoles.filter((role) => role.role_status === 'Available')
-      : visibleRoles.filter((role) => role.role_status === 'Deleted');
+      ? visibleRoles.filter((role) => (role.role_status ?? 'Available') !== 'Deleted')
+      : visibleRoles.filter((role) => (role.role_status ?? 'Available') === 'Deleted');
   }, [visibleRoles, selectedTab]);
 
   const classificationTabs = useMemo(() => {
@@ -240,11 +242,11 @@ export default function ManageMeetingRoles() {
   }, [rolesByTab, selectedClassification]);
 
   const availableVisibleCount = useMemo(
-    () => visibleRoles.filter((r) => r.role_status === 'Available').length,
+    () => visibleRoles.filter((r) => (r.role_status ?? 'Available') !== 'Deleted').length,
     [visibleRoles]
   );
   const deletedVisibleCount = useMemo(
-    () => visibleRoles.filter((r) => r.role_status === 'Deleted').length,
+    () => visibleRoles.filter((r) => (r.role_status ?? 'Available') === 'Deleted').length,
     [visibleRoles]
   );
 
@@ -1144,18 +1146,20 @@ export default function ManageMeetingRoles() {
               Settings
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.footerNavItem}
-            onPress={() => router.push('/buy-us-a-coffee')}
-            activeOpacity={0.75}
-          >
-            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-              <Coffee size={BOOK_ROLE_DOCK_ICON_SIZE} color="#92400e" />
-            </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Coffee
-            </Text>
-          </TouchableOpacity>
+          {shouldShowCoffee ? (
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/buy-us-a-coffee')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Coffee size={BOOK_ROLE_DOCK_ICON_SIZE} color="#92400e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Coffee
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <MessageCircle size={BOOK_ROLE_DOCK_ICON_SIZE} color="#22c55e" />

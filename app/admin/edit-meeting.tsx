@@ -18,6 +18,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, supabaseUrl } from '@/lib/supabase';
+import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 import {
   ArrowLeft,
   Save,
@@ -56,6 +57,7 @@ function normalizeRouteParam(value: string | string[] | undefined): string | und
 export default function EditMeeting() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { shouldShowCoffee } = useCoffeePromptEligibility();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
 
@@ -891,18 +893,20 @@ export default function EditMeeting() {
                 Settings
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push('/buy-us-a-coffee')}
-              activeOpacity={0.75}
-            >
-              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Coffee
-              </Text>
-            </TouchableOpacity>
+            {shouldShowCoffee ? (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/buy-us-a-coffee')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Coffee
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
               <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                 <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />

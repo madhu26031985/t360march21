@@ -27,6 +27,7 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 
 const FOOTER_NAV_ICON_SIZE = 15;
 const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
@@ -50,6 +51,7 @@ const APP_STORE_WEB_URL = `https://apps.apple.com/app/id${IOS_APP_STORE_ID}?acti
 export default function BuyUsACoffeeScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { shouldShowCoffee, dismissCoffeePrompt } = useCoffeePromptEligibility();
   const insets = useSafeAreaInsets();
   const [reviewPickerVisible, setReviewPickerVisible] = useState(false);
 
@@ -78,6 +80,7 @@ export default function BuyUsACoffeeScreen() {
   }, []);
 
   const handleBuyCoffee = async () => {
+    await dismissCoffeePrompt();
     try {
       const supported = await Linking.canOpenURL(PAYMENT_URL);
       if (!supported) {
@@ -112,6 +115,7 @@ export default function BuyUsACoffeeScreen() {
   };
 
   const handleShareReview = async () => {
+    await dismissCoffeePrompt();
     try {
       if (Platform.OS === 'web') {
         setReviewPickerVisible(true);
@@ -260,18 +264,20 @@ export default function BuyUsACoffeeScreen() {
                 Settings
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push('/buy-us-a-coffee')}
-              activeOpacity={0.75}
-            >
-              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Coffee
-              </Text>
-            </TouchableOpacity>
+            {shouldShowCoffee ? (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/buy-us-a-coffee')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Coffee
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
               <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                 <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />

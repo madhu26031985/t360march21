@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Animated } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router } from 'expo-router';
 import { Linking } from 'react-native';
@@ -7,12 +7,34 @@ import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Plus, Book, FileText, ExternalLink, Trash2, CreditCard as Edit3, Save, X, Calendar, Info, Home, Users, Settings } from 'lucide-react-native';
+import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
+import {
+  ArrowLeft,
+  Plus,
+  Book,
+  FileText,
+  ExternalLink,
+  Trash2,
+  CreditCard as Edit3,
+  Save,
+  X,
+  Calendar,
+  Info,
+  Home,
+  Users,
+  Settings,
+  Shield,
+  Coffee,
+  MessageCircle,
+  Globe,
+} from 'lucide-react-native';
 import AddSpeechModal from '@/components/AddSpeechModal';
 import EditSpeechModal from '@/components/EditSpeechModal';
 import React from 'react';
 
 const FOOTER_NAV_ICON_SIZE = 15;
+const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
+const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
 
 interface Speech {
   id: string;
@@ -25,6 +47,8 @@ interface Speech {
 export default function SpeechRepository() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { shouldShowCoffee } = useCoffeePromptEligibility();
   
   const [speeches, setSpeeches] = useState<Speech[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,6 +62,28 @@ export default function SpeechRepository() {
   const [speechToOpen, setSpeechToOpen] = useState<Speech | null>(null);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const infoIconPulse = useRef(new Animated.Value(1)).current;
+
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+
+  const openWhatsAppSupport = async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
+      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
+      else Alert.alert('Error', 'Cannot open WhatsApp');
+    } catch {
+      Alert.alert('Error', 'Failed to open WhatsApp');
+    }
+  };
+
+  const openWebLogin = async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
+      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
+      else Alert.alert('Error', 'Cannot open web login');
+    } catch {
+      Alert.alert('Error', 'Failed to open web login');
+    }
+  };
 
   useEffect(() => {
     loadSpeeches();
@@ -276,7 +322,12 @@ export default function SpeechRepository() {
 
   const SpeechCard = ({ speech }: { speech: Speech }) => {
     return (
-      <View style={[styles.speechCard, { backgroundColor: theme.colors.surface }]}>
+      <View
+        style={[
+          styles.speechCard,
+          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        ]}
+      >
         <View style={styles.speechHeader}>
           <View style={styles.speechInfo}>
             <Text style={[styles.speechTitle, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
@@ -300,7 +351,7 @@ export default function SpeechRepository() {
           
           <View style={styles.speechActions}>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#dbeafe' }]}
+              style={[styles.actionButton, { backgroundColor: 'transparent', borderColor: '#bfdbfe' }]}
               onPress={() => handleOpenDocument(speech)}
               activeOpacity={0.7}
             >
@@ -308,7 +359,7 @@ export default function SpeechRepository() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#dbeafe' }]}
+              style={[styles.actionButton, { backgroundColor: 'transparent', borderColor: '#bfdbfe' }]}
               onPress={() => handleEditSpeech(speech)}
               activeOpacity={0.7}
             >
@@ -316,7 +367,7 @@ export default function SpeechRepository() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#fee2e2' }]}
+              style={[styles.actionButton, { backgroundColor: 'transparent', borderColor: '#fecaca' }]}
               onPress={() => handleDeleteSpeech(speech.id, speech.title)}
               activeOpacity={0.7}
             >
@@ -364,7 +415,12 @@ export default function SpeechRepository() {
         showsVerticalScrollIndicator={false}
       >
         {/* Info Card */}
-        <View style={[styles.infoCard, { backgroundColor: theme.colors.surface }]}>
+        <View
+          style={[
+            styles.infoCard,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+          ]}
+        >
           <View style={styles.speechCount}>
             <Text style={[styles.countText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
               {speeches.length}/5 speeches stored
@@ -410,65 +466,103 @@ export default function SpeechRepository() {
           </View>
         )}
 
-        <View style={styles.navSpacer} />
-
-        {/* Navigation Icons */}
-        <View style={[styles.navigationSection, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.navigationBar}>
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/club')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/meetings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/settings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
-            </TouchableOpacity>
-
-            {user?.clubRole === 'excomm' && (
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/admin')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+        <View style={{ minHeight: Math.max(insets.bottom, 10) + 80 }} />
       </ScrollView>
+
+      {/* Bottom navigation (match Edit Profile footer) */}
+      <View
+        style={[
+          styles.geBottomDock,
+          {
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            paddingBottom: Math.max(insets.bottom, 10),
+          },
+        ]}
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.footerNavigationContent}
+        >
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Home size={FOOTER_NAV_ICON_SIZE} color="#0a66c2" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Home
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Club
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/meetings')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Meeting
+            </Text>
+          </TouchableOpacity>
+
+          {user?.clubRole === 'excomm' ? (
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/admin')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Shield size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Admin
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Settings size={FOOTER_NAV_ICON_SIZE} color="#6b7280" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Settings
+            </Text>
+          </TouchableOpacity>
+
+          {shouldShowCoffee ? (
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/buy-us-a-coffee')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Coffee
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Support
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Globe size={FOOTER_NAV_ICON_SIZE} color="#334155" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Web
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
 
       {/* Info Modal */}
       <Modal
@@ -682,16 +776,9 @@ const styles = StyleSheet.create({
   infoCard: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 12,
+    borderRadius: 0,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: 1,
   },
   infoHeader: {
     flexDirection: 'row',
@@ -717,21 +804,14 @@ const styles = StyleSheet.create({
   },
   speechesList: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 10,
     paddingBottom: 0,
   },
   speechCard: {
-    borderRadius: 12,
+    borderRadius: 0,
     padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 2,
+    marginBottom: 10,
+    borderWidth: 1,
   },
   speechHeader: {
     flexDirection: 'row',
@@ -774,20 +854,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 0,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyState: {
     alignItems: 'center',
     paddingVertical: 60,
-    paddingHorizontal: 32,
+    paddingHorizontal: 16,
   },
   addSpeechButtonContainer: {
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
   },
   addSpeechButton: {
     flexDirection: 'row',
@@ -795,17 +878,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
     paddingHorizontal: 24,
-    borderRadius: 12,
+    borderRadius: 0,
     backgroundColor: '#3b82f6',
-    width: '50%',
-    shadowColor: '#3b82f6',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
+    width: '100%',
   },
   addSpeechButtonText: {
     fontSize: 15,
@@ -964,6 +1039,35 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   navLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 8,
+  },
+  footerNavigationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    minWidth: 62,
+    paddingVertical: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
     fontSize: 9,
     fontWeight: '500',
     textAlign: 'center',

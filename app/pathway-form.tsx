@@ -498,38 +498,42 @@ export default function PathwayForm() {
         return;
       }
 
-      if (file.size && file.size > 10 * 1024 * 1024) {
-        Alert.alert('Error', 'File size must be less than 10MB');
-        return;
-      }
-
       setIsUploadingPDF(true);
 
       const fileExt = file.name.split('.').pop();
       const fileName = `${user?.currentClubId}/${Date.now()}.${fileExt}`;
 
-      let fileBlob: Blob | Uint8Array;
+      let uploadPayload: Blob | File | Uint8Array;
+      const webFile = Platform.OS === 'web' ? (file as any).file : null;
+      let fileSizeBytes = typeof file.size === 'number' ? file.size : 0;
 
-      if (Platform.OS === 'web') {
-        const response = await fetch(file.uri);
-        fileBlob = await response.blob();
+      if (webFile instanceof File) {
+        // Fastest path on web: use picker File directly (no re-fetch or blob conversion).
+        fileSizeBytes = webFile.size;
+        uploadPayload = webFile;
       } else {
-        const fileInfo = await FileSystem.getInfoAsync(file.uri);
-        if (!fileInfo.exists) {
-          Alert.alert('Error', 'File does not exist');
-          setIsUploadingPDF(false);
-          return;
-        }
+        // Cross-platform fallback: load as arrayBuffer once.
+        const response = await fetch(file.uri);
+        const arrayBuffer = await response.arrayBuffer();
+        fileSizeBytes = arrayBuffer.byteLength;
+        uploadPayload = new Uint8Array(arrayBuffer);
+      }
 
-        const fileData = await FileSystem.readAsStringAsync(file.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        fileBlob = decode(fileData);
+      // Practical speed guard: keep uploads quick even on slower mobile networks.
+      const MAX_FAST_PDF_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+      if (fileSizeBytes > MAX_FAST_PDF_SIZE_BYTES) {
+        const sizeMb = (fileSizeBytes / (1024 * 1024)).toFixed(2);
+        Alert.alert(
+          'PDF too large',
+          `Selected PDF is ${sizeMb} MB. Please upload a PDF under 2 MB for faster upload.`
+        );
+        setIsUploadingPDF(false);
+        return;
       }
 
       const { data, error } = await supabase.storage
         .from('evaluation-forms')
-        .upload(fileName, fileBlob, {
+        .upload(fileName, uploadPayload, {
           contentType: 'application/pdf',
           upsert: false,
         });
@@ -554,15 +558,6 @@ export default function PathwayForm() {
     } finally {
       setIsUploadingPDF(false);
     }
-  };
-
-  const decode = (base64: string): Uint8Array => {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
   };
 
   const handleRemovePDF = () => {

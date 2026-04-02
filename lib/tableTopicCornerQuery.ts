@@ -58,6 +58,7 @@ export type TableTopicClubInfo = {
 export type TableTopicCornerBundle = {
   meeting: TableTopicMeeting | null;
   clubInfo: TableTopicClubInfo | null;
+  isVpe: boolean;
   tableTopicMaster: TableTopicMasterRow | null;
   participants: TableTopicParticipantRow[];
   assignedQuestions: TableTopicAssignedQuestionRow[];
@@ -71,6 +72,7 @@ export const tableTopicCornerQueryKeys = {
 
 type RpcSnapshot = {
   club_id: string;
+  is_vpe?: boolean;
   meeting: TableTopicMeeting | null;
   club_info: TableTopicClubInfo | null;
   table_topic_master: TableTopicMasterRow | null;
@@ -132,13 +134,13 @@ async function fetchTableTopicCornerBundleLegacy(
       .order('order_index', { ascending: true }),
     supabase
       .from('app_meeting_tabletopicscorner')
-      .select('*')
+      .select('participant_id, question_text')
       .eq('meeting_id', meetingId)
       .eq('booking_status', 'booked')
       .eq('is_active', true),
     supabase
       .from('app_meeting_tabletopicscorner')
-      .select('*')
+      .select('id')
       .eq('meeting_id', meetingId)
       .eq('club_id', clubId)
       .eq('is_active', true)
@@ -146,22 +148,10 @@ async function fetchTableTopicCornerBundleLegacy(
       .order('created_at', { ascending: true }),
   ]);
 
-  const basePublished = (publishedRes.data as TableTopicAssignedQuestionRow[] | null) ?? [];
-  let publishedWithAvatars = basePublished;
-  const participantIds = Array.from(new Set(basePublished.map((q) => q.participant_id).filter(Boolean)));
-  if (participantIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('app_user_profiles')
-      .select('id, avatar_url')
-      .in('id', participantIds);
-    if (profiles) {
-      const byId = new Map(profiles.map((p) => [p.id, p.avatar_url as string | null]));
-      publishedWithAvatars = basePublished.map((q) => ({
-        ...q,
-        participant_avatar: byId.get(q.participant_id) ?? null,
-      }));
-    }
-  }
+  // Only `publishedQuestions.length` is used on this screen, so keep payload minimal.
+  const publishedWithAvatars = ((publishedRes.data as Array<{ id: string }> | null) ?? []).map((q) => ({
+    id: q.id,
+  })) as unknown as TableTopicAssignedQuestionRow[];
 
   return {
     meeting: (meetingRes.data as TableTopicMeeting | null) ?? null,
@@ -172,6 +162,7 @@ async function fetchTableTopicCornerBundleLegacy(
           banner_color: profileRes.data?.banner_color ?? null,
         }
       : null,
+    isVpe: false,
     tableTopicMaster: (masterRes.data as TableTopicMasterRow | null) ?? null,
     participants: ((participantsRes.data as TableTopicParticipantRow[] | null) ?? []).sort(
       (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)
@@ -195,10 +186,11 @@ export async function fetchTableTopicCornerBundle(
 
   if (!error && data && typeof data === 'object' && !Array.isArray(data)) {
     const row = data as RpcSnapshot;
-    if (row.club_id === clubId) {
+    if (String(row.club_id) === String(clubId)) {
       return {
         meeting: row.meeting ?? null,
         clubInfo: row.club_info ?? null,
+        isVpe: Boolean(row.is_vpe),
         tableTopicMaster: row.table_topic_master ?? null,
         participants: row.participants ?? [],
         assignedQuestions: row.assigned_questions ?? [],

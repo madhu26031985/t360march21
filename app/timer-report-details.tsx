@@ -8,14 +8,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import { suggestTimerQualification } from '@/lib/timerQualificationSuggestion';
-import {
-  isTimerReportAssignedBySchemaError,
-  updateMeetingRoleManagement,
-} from '@/lib/updateMeetingRoleManagement';
 import { fetchTimerReportSnapshot, fetchTimerReportCategoryBundle, timerReportQueryKeys } from '@/lib/timerReportSnapshot';
 import { parseMmSs, TimerDialStopwatch } from '@/components/timer/TimerDialStopwatch';
 import { NOTION_TIMER } from '@/components/timer/TimerMinuteProgressRing';
-import { ArrowLeft, Timer, Calendar, User, ChevronDown, Save, Trash2, X, FileText, Search, Lock, MessageCircle, Snowflake, Mic, MessageSquare, Lightbulb, NotebookPen, Plus, Bell, Users, BookOpen, Star, CheckSquare, ClipboardCheck, FileBarChart, Clock, Info, HelpCircle, Upload, RotateCcw, UserPlus, Vote, Play, Pause, Square } from 'lucide-react-native';
+import { ArrowLeft, Timer, Calendar, User, ChevronDown, Save, Trash2, X, FileText, Search, Lock, MessageCircle, Snowflake, Mic, MessageSquare, Lightbulb, NotebookPen, Plus, Bell, Users, BookOpen, Star, CheckSquare, ClipboardCheck, FileBarChart, Clock, Info, HelpCircle, Upload, RotateCcw, UserPlus, Vote, Play, Pause, Square, Eye, EyeOff } from 'lucide-react-native';
 import { Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -31,16 +27,6 @@ const CATEGORY_ROLE_SELECT_EMBED = `
             email,
             avatar_url
           )
-        `;
-
-const CATEGORY_ROLE_SELECT_WITH_TIMER_COLUMN = `
-          id,
-          role_name,
-          booking_status,
-          assigned_user_id,
-          completion_notes,
-          timer_report_assigned_by,
-          ${CATEGORY_ROLE_SELECT_EMBED}
         `;
 
 const CATEGORY_ROLE_SELECT_WITHOUT_TIMER_COLUMN = `
@@ -146,6 +132,12 @@ interface TimerReport {
   recorded_by: string;
   recorded_at?: string;
   updated_at?: string;
+  summary_visible_to_members?: boolean | null;
+}
+
+function isTimerSummaryVisibleColumnError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase();
+  return (error?.code === 'PGRST204' || error?.code === '42703') && message.includes('summary_visible_to_members');
 }
 
 interface CategoryRole {
@@ -154,8 +146,6 @@ interface CategoryRole {
   booking_status: string | null;
   assigned_user_id: string | null;
   completion_notes: string | null;
-  /** Set when Timer/VPE assigned this slot from Timer Report; pre-booked roles stay null. */
-  timer_report_assigned_by?: string | null;
   app_user_profiles?: {
     id: string;
     full_name: string;
@@ -171,14 +161,9 @@ function isTimerCategoryRoleSlotFilled(role: CategoryRole): boolean {
   return !!guestName;
 }
 
-/** Unassign/Reassign only for slots filled from Timer Report, not self-booked elsewhere. */
+/** Reverted: without timer_report_assigned_by, allow manage when editor can edit. */
 function canTimerCornerManageAssignment(role: CategoryRole, canEditTimerCorner: boolean): boolean {
-  return (
-    canEditTimerCorner &&
-    isTimerCategoryRoleSlotFilled(role) &&
-    role.timer_report_assigned_by != null &&
-    role.timer_report_assigned_by !== ''
-  );
+  return canEditTimerCorner && isTimerCategoryRoleSlotFilled(role);
 }
 
 export default function TimerReportDetails() {
@@ -227,6 +212,7 @@ export default function TimerReportDetails() {
   const [seconds, setSeconds] = useState(0);
   const [selectedTab, setSelectedTab] = useState<'record' | 'reports'>('record');
   const [savedReports, setSavedReports] = useState<TimerReport[]>([]);
+  const [timerSummaryVisibleToMembers, setTimerSummaryVisibleToMembers] = useState(true);
   const [deletingReports, setDeletingReports] = useState<Set<string>>(new Set());
   const [bookedSpeakers, setBookedSpeakers] = useState<ClubMember[]>([]);
   const [bookingTimerRole, setBookingTimerRole] = useState(false);
@@ -553,7 +539,14 @@ export default function TimerReportDetails() {
           }
 
           setIsVPEClub(snap.is_vpe);
-          setSavedReports((snap.timer_reports || []) as TimerReport[]);
+          const snapReports = (snap.timer_reports || []) as TimerReport[];
+          setSavedReports(snapReports);
+          const snapVisible = snapReports.find((r) => typeof r.summary_visible_to_members === 'boolean')?.summary_visible_to_members;
+          if (typeof snapVisible === 'boolean') {
+            setTimerSummaryVisibleToMembers(snapVisible);
+          } else {
+            await loadTimerSummaryVisibility();
+          }
           applyCategoryBundleToState(snap.category_roles as CategoryRole[], snap.booked_speakers);
         } else {
           await Promise.all([
@@ -563,6 +556,7 @@ export default function TimerReportDetails() {
             loadIsVPEClub(),
             loadClubName(),
             loadSavedReports(),
+            loadTimerSummaryVisibility(),
             loadBookedSpeakersForCategory(reportData.speech_category),
             loadCategoryRolesForCategory(reportData.speech_category),
           ]);
@@ -577,6 +571,7 @@ export default function TimerReportDetails() {
             loadIsVPEClub(),
             loadClubName(),
             loadSavedReports(),
+            loadTimerSummaryVisibility(),
             loadBookedSpeakersForCategory(reportData.speech_category),
             loadCategoryRolesForCategory(reportData.speech_category),
           ]);
@@ -822,19 +817,11 @@ export default function TimerReportDetails() {
     try {
       let query = supabase
         .from('app_meeting_roles_management')
-        .select(CATEGORY_ROLE_SELECT_WITH_TIMER_COLUMN)
+        .select(CATEGORY_ROLE_SELECT_WITHOUT_TIMER_COLUMN)
         .eq('meeting_id', meetingId)
         .in('role_name', selectedCategory.roleNames);
 
-      let { data, error } = await query;
-
-      if (error && isTimerReportAssignedBySchemaError(error)) {
-        ({ data, error } = await supabase
-          .from('app_meeting_roles_management')
-          .select(CATEGORY_ROLE_SELECT_WITHOUT_TIMER_COLUMN)
-          .eq('meeting_id', meetingId)
-          .in('role_name', selectedCategory.roleNames));
-      }
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error loading category roles:', error);
@@ -867,13 +854,15 @@ export default function TimerReportDetails() {
   const handleAssignCategoryRole = async (member: ClubMember) => {
     if (!canEditTimerCorner || !roleToAssign) return;
     try {
-      const { error } = await updateMeetingRoleManagement(roleToAssign.id, {
-        assigned_user_id: member.id,
-        booking_status: 'booked',
-        completion_notes: null,
-        timer_report_assigned_by: user?.id ?? null,
-        updated_at: new Date().toISOString(),
-      });
+      const { error } = await supabase
+        .from('app_meeting_roles_management')
+        .update({
+          assigned_user_id: member.id,
+          booking_status: 'booked',
+          completion_notes: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', roleToAssign.id);
 
       if (error) {
         console.error('Error assigning category role:', error);
@@ -933,14 +922,16 @@ export default function TimerReportDetails() {
 
       const memberId = role.assigned_user_id;
 
-      const { error } = await updateMeetingRoleManagement(role.id, {
-        assigned_user_id: null,
-        booking_status: 'available',
-        completion_notes: null,
-        timer_report_assigned_by: null,
-        withdrawn_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
+      const { error } = await supabase
+        .from('app_meeting_roles_management')
+        .update({
+          assigned_user_id: null,
+          booking_status: 'available',
+          completion_notes: null,
+          withdrawn_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', role.id);
 
       if (error) {
         console.error('Error unassigning category role:', error);
@@ -1005,13 +996,15 @@ export default function TimerReportDetails() {
       return;
     }
     try {
-      const { error } = await updateMeetingRoleManagement(roleToAssign.id, {
-        assigned_user_id: null,
-        booking_status: 'booked',
-        completion_notes: `${TIMER_GUEST_PREFIX}${displayName}`,
-        timer_report_assigned_by: user?.id ?? null,
-        updated_at: new Date().toISOString(),
-      });
+      const { error } = await supabase
+        .from('app_meeting_roles_management')
+        .update({
+          assigned_user_id: null,
+          booking_status: 'booked',
+          completion_notes: `${TIMER_GUEST_PREFIX}${displayName}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', roleToAssign.id);
 
       if (error) {
         console.error('Error assigning guest to role:', error);
@@ -1155,8 +1148,37 @@ export default function TimerReportDetails() {
       }
 
       setSavedReports(data || []);
+      const visible = (data || []).find((r: any) => typeof r.summary_visible_to_members === 'boolean')?.summary_visible_to_members;
+      if (typeof visible === 'boolean') {
+        setTimerSummaryVisibleToMembers(visible);
+      }
     } catch (error) {
       console.error('Error loading saved reports:', error);
+    }
+  };
+
+  const loadTimerSummaryVisibility = async () => {
+    if (!meetingId) return;
+    try {
+      const { data, error } = await supabase
+        .from('timer_reports')
+        .select('summary_visible_to_members')
+        .eq('meeting_id', meetingId)
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        if (isTimerSummaryVisibleColumnError(error)) {
+          setTimerSummaryVisibleToMembers(true);
+          return;
+        }
+        console.error('Error loading timer summary visibility:', error);
+        return;
+      }
+      if (data && typeof (data as any).summary_visible_to_members === 'boolean') {
+        setTimerSummaryVisibleToMembers(Boolean((data as any).summary_visible_to_members));
+      }
+    } catch (error) {
+      console.error('Error loading timer summary visibility:', error);
     }
   };
 
@@ -1225,6 +1247,30 @@ export default function TimerReportDetails() {
         newSet.delete(reportId);
         return newSet;
       });
+    }
+  };
+
+  const handleTimerSummaryVisibilityChange = async (visible: boolean) => {
+    if (!canEditTimerCorner || !meetingId) return;
+    setTimerSummaryVisibleToMembers(visible);
+    try {
+      const { error } = await supabase
+        .from('timer_reports')
+        .update({ summary_visible_to_members: visible })
+        .eq('meeting_id', meetingId);
+      if (error) {
+        if (isTimerSummaryVisibleColumnError(error)) {
+          Alert.alert('Migration required', 'Run the latest timer summary visibility migration, then try again.');
+          return;
+        }
+        console.error('Error updating timer summary visibility:', error);
+        Alert.alert('Error', 'Failed to update timer summary visibility');
+        return;
+      }
+      setSavedReports((prev) => prev.map((r) => ({ ...r, summary_visible_to_members: visible })));
+    } catch (error) {
+      console.error('Error updating timer summary visibility:', error);
+      Alert.alert('Error', 'Failed to update timer summary visibility');
     }
   };
 
@@ -1316,13 +1362,14 @@ export default function TimerReportDetails() {
   };
 
   const ReportCard = ({ report }: { report: TimerReport }) => {
+    const isQualified = !!report.time_qualification;
     return (
-      <View style={[styles.reportTableRow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+      <View style={[styles.reportTableRow, { borderBottomColor: theme.colors.border }]}>
         <View style={styles.reportTableNameCell}>
           <Text style={[styles.reportTableName, { color: theme.colors.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
             {report.speaker_name}
           </Text>
-          <Text style={[styles.reportTableCategory, { color: getCategoryColor(report.speech_category) }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.reportTableCategory, { color: theme.colors.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
             {getCategoryDisplayName(report.speech_category)}
           </Text>
         </View>
@@ -1334,12 +1381,14 @@ export default function TimerReportDetails() {
         </View>
 
         <View style={styles.reportTableCenterCell}>
-          <Text style={[
-            styles.reportTableQualified,
-            { color: report.time_qualification ? '#10b981' : '#64748b' }
-          ]} maxFontSizeMultiplier={1.3}>
-            {report.time_qualification ? 'Yes' : 'No'}
-          </Text>
+          <View style={[styles.reportTableQualifiedBadge, { backgroundColor: isQualified ? '#e7f7ee' : '#fee2e2' }]}>
+            <Text style={[
+              styles.reportTableQualified,
+              { color: isQualified ? '#15803d' : '#dc2626' }
+            ]} maxFontSizeMultiplier={1.3}>
+              {isQualified ? 'Yes' : 'No'}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.reportTableActions}>
@@ -1356,6 +1405,13 @@ export default function TimerReportDetails() {
       </View>
     );
   };
+
+  const summaryCategorySections = [
+    { key: 'prepared_speaker', title: 'Prepared Speaker', accent: '#2563EB', soft: '#EFF6FF' },
+    { key: 'evaluation', title: 'Evaluators', accent: '#059669', soft: '#ECFDF5' },
+    { key: 'table_topic_speaker', title: 'Table Topic Speaker', accent: '#EA580C', soft: '#FFF7ED' },
+    { key: 'educational_session', title: 'Educational Speaker', accent: '#7C3AED', soft: '#F5F3FF' },
+  ] as const;
 
   const handleSaveReport = async () => {
     if (!canEditTimerCorner) {
@@ -1423,6 +1479,7 @@ export default function TimerReportDetails() {
         recorded_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         time_qualification: reportData.time_qualification === true,
+        summary_visible_to_members: timerSummaryVisibleToMembers,
       };
 
       if (existingReport) {
@@ -1671,21 +1728,6 @@ export default function TimerReportDetails() {
               <X size={20} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
-
-          {roleToAssign &&
-            !assigningTimerRole &&
-            canTimerCornerManageAssignment(roleToAssign, canEditTimerCorner) && (
-              <TouchableOpacity
-                style={[styles.modalUnassignButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
-                onPress={() => confirmUnassignCategoryRole(roleToAssign)}
-                activeOpacity={0.75}
-                accessibilityLabel="Unassign current speaker from this role"
-              >
-                <Text style={[styles.modalUnassignButtonText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                  Unassign
-                </Text>
-              </TouchableOpacity>
-            )}
 
           {roleToAssign && !assigningTimerRole && (
             <View style={[styles.guestAssignBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
@@ -2556,6 +2598,44 @@ export default function TimerReportDetails() {
         {/* Tab Content */}
         {effectiveTab === 'record' ? (
           <>
+            {canEditTimerCorner && (
+              <View style={[styles.summaryVisibilityCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={styles.summaryVisibilityLeft}>
+                  {timerSummaryVisibleToMembers ? (
+                    <Eye size={18} color={theme.colors.primary} />
+                  ) : (
+                    <EyeOff size={18} color={theme.colors.textSecondary} />
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.summaryVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                      Show Timer report to Member
+                    </Text>
+                    <Text style={[styles.summaryVisibilityHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                      {timerSummaryVisibleToMembers
+                        ? 'Members can see Timer Summary on screen.'
+                        : 'Hidden from members. Only Timer and VPE can view it.'}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.summaryVisibilityButton,
+                    {
+                      backgroundColor: timerSummaryVisibleToMembers ? '#2563eb' : theme.colors.background,
+                      borderColor: timerSummaryVisibleToMembers ? '#2563eb' : theme.colors.border,
+                    },
+                  ]}
+                  onPress={() => handleTimerSummaryVisibilityChange(!timerSummaryVisibleToMembers)}
+                >
+                  {timerSummaryVisibleToMembers ? (
+                    <Eye size={16} color="#ffffff" />
+                  ) : (
+                    <EyeOff size={16} color={theme.colors.textSecondary} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Category grid 2×2 (Notion-style tiles) */}
             <View style={styles.categoryRowContainer}>
               <View style={styles.categoryRowContent}>
@@ -2656,34 +2736,6 @@ export default function TimerReportDetails() {
 
                         {isSlotFilled ? (
                           <View style={styles.preparedRoleRightActions}>
-                            {canTimerCornerManageAssignment(role, canEditTimerCorner) ? (
-                              <>
-                                <TouchableOpacity
-                                  style={[styles.preparedRoleSecondaryBtn, { borderColor: theme.colors.border }]}
-                                  onPress={() => confirmUnassignCategoryRole(role)}
-                                  accessibilityLabel="Unassign speaker from this role"
-                                >
-                                  <Text
-                                    style={[styles.preparedRoleSecondaryBtnText, { color: theme.colors.textSecondary }]}
-                                    maxFontSizeMultiplier={1.15}
-                                  >
-                                    Unassign
-                                  </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={[styles.preparedRoleSecondaryBtn, { borderColor: theme.colors.primary }]}
-                                  onPress={() => openReassignCategoryRole(role)}
-                                  accessibilityLabel="Reassign this role to another person"
-                                >
-                                  <Text
-                                    style={[styles.preparedRoleSecondaryBtnText, { color: theme.colors.primary }]}
-                                    maxFontSizeMultiplier={1.15}
-                                  >
-                                    Reassign
-                                  </Text>
-                                </TouchableOpacity>
-                              </>
-                            ) : null}
                             <TouchableOpacity
                               style={[styles.preparedRoleArrowBtn, { borderColor: theme.colors.border }]}
                               onPress={() => {
@@ -2774,29 +2826,64 @@ export default function TimerReportDetails() {
           /* Summary Tab */
           <View style={styles.reportsTabContent}>
             <View style={[styles.reportsSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Text style={[styles.reportTableHeaderText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Timer Summary
-              </Text>
-              <Text style={[styles.vpeMessageSubtitle, { color: theme.colors.textSecondary, marginTop: 8, marginBottom: 14 }]} maxFontSizeMultiplier={1.2}>
-                View complete meeting timing records and qualified statuses.
-              </Text>
-              <TouchableOpacity
-                style={[styles.timerReviewButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                onPress={() => router.push(`/timer-review?meetingId=${meetingId}`)}
-              >
-                <View style={[styles.timerReviewIconWrap, { backgroundColor: '#FFF4E6' }]}>
-                  <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-                </View>
-                <View style={styles.timerReviewTextWrap}>
-                  <Text style={[styles.timerReviewTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Timer Review
-                  </Text>
-                  <Text style={[styles.timerReviewSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    View report
+              {!timerSummaryVisibleToMembers ? (
+                <View style={[styles.summaryHiddenCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+                  <EyeOff size={20} color={theme.colors.textSecondary} />
+                  <Text style={[styles.summaryHiddenTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                    Timer is yet to publish the report.
                   </Text>
                 </View>
-                <ChevronDown size={18} color={theme.colors.textSecondary} style={{ transform: [{ rotate: '-90deg' }] }} />
-              </TouchableOpacity>
+              ) : savedReports.length === 0 ? (
+                <View style={[styles.summaryHiddenCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+                  <Clock size={20} color={theme.colors.textSecondary} />
+                  <Text style={[styles.summaryHiddenTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                    No timer reports yet
+                  </Text>
+                  <Text style={[styles.summaryHiddenSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                    Timer reports will appear here once time entries are saved.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  {summaryCategorySections.map((section) => {
+                    const sectionReports = savedReports.filter((r) => r.speech_category === section.key);
+                    if (sectionReports.length === 0) return null;
+                    return (
+                      <View
+                        key={section.key}
+                        style={[
+                          styles.summaryCategorySection,
+                          { borderColor: theme.colors.border, borderLeftColor: section.accent, backgroundColor: section.soft },
+                        ]}
+                      >
+                        <View style={styles.summaryCategoryTitleRow}>
+                          <View style={[styles.summaryCategoryDot, { backgroundColor: section.accent }]} />
+                          <Text style={[styles.summaryCategoryTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                            {section.title}
+                          </Text>
+                        </View>
+                        <View style={[styles.reportTableHeader, { borderBottomColor: theme.colors.border }]}>
+                          <Text style={[styles.reportTableHeaderText, { color: theme.colors.text, flex: 1.6 }]} maxFontSizeMultiplier={1.2}>
+                            Speaker
+                          </Text>
+                          <Text style={[styles.reportTableHeaderText, { color: theme.colors.text, flex: 0.9, textAlign: 'center' }]} maxFontSizeMultiplier={1.2}>
+                            Time
+                          </Text>
+                          <Text style={[styles.reportTableHeaderText, { color: theme.colors.text, flex: 0.9, textAlign: 'center' }]} maxFontSizeMultiplier={1.2}>
+                            Qualified
+                          </Text>
+                          <View style={{ flex: 0.4 }} />
+                        </View>
+                        <View>
+                          {sectionReports.map((report) => (
+                            <ReportCard key={report.id || `${report.speaker_name}-${report.recorded_at}`} report={report} />
+                          ))}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </>
+              )}
             </View>
           </View>
         )}
@@ -4337,12 +4424,47 @@ const styles = StyleSheet.create({
   reportsTabContent: {
     flex: 1,
   },
+  summaryVisibilityCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  summaryVisibilityLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  summaryVisibilityTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  summaryVisibilityHint: {
+    fontSize: 11,
+    marginTop: 3,
+  },
+  summaryVisibilityButton: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 0,
+  },
   reportsSection: {
     marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 0,
     borderWidth: 1,
-    padding: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     shadowColor: 'transparent',
     shadowOffset: {
       width: 0,
@@ -4352,20 +4474,62 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 0,
   },
+  summaryHiddenCard: {
+    borderWidth: 1,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  summaryHiddenTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  summaryHiddenSub: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  summaryCategorySection: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    borderRadius: 0,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  summaryCategoryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  summaryCategoryDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+  },
+  summaryCategoryTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
   reportTableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 0,
     borderBottomWidth: 1,
-    marginBottom: 8,
+    marginBottom: 2,
     gap: 8,
   },
   reportTableHeaderText: {
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
+    textAlign: 'center',
   },
   reportsList: {
     gap: 6,
@@ -4373,10 +4537,9 @@ const styles = StyleSheet.create({
   reportTableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 0,
+    borderBottomWidth: 1,
     gap: 8,
   },
   reportTableCell: {
@@ -4393,22 +4556,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   reportTableName: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   reportTableCategory: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '500',
-    marginTop: 2,
+    marginTop: 3,
   },
   reportTableTime: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     fontFamily: 'monospace',
     textAlign: 'center',
   },
+  reportTableQualifiedBadge: {
+    minWidth: 42,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 0,
+  },
   reportTableQualified: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
   },

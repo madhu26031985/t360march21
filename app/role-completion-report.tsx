@@ -5,31 +5,31 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Modal,
   Pressable,
   Platform,
   Image,
+  KeyboardAvoidingView,
+  Linking,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useMemo } from 'react';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 import { supabase } from '@/lib/supabase';
 import {
   ArrowLeft,
   ClipboardCheck,
   User,
-  Info,
-  X,
-  FileText,
-  Bell,
   Users,
-  BookOpen,
-  CheckSquare,
-  Clock,
-  Languages,
-  Crown,
+  Calendar,
+  Shield,
+  Home,
+  Settings,
+  Coffee,
+  MessageCircle,
+  Globe,
 } from 'lucide-react-native';
 
 /** Notion-like neutrals + accent (no red/green on completion UI). */
@@ -46,8 +46,9 @@ const N = {
   accentSoft: 'rgba(107, 168, 240, 0.18)',
 };
 
-/** Lucide size + frame — matches Grammarian report footer dock (`FOOTER_NAV_ICON_SIZE`, 30×30 tiles). */
-const ROLE_COMPLETION_SHORTCUT_ICON_SIZE = 15;
+const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
+const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
+const ROLE_COMPLETION_DOCK_ICON_SIZE = 15;
 
 type RoleTabId = 'my_role' | 'all_roles';
 
@@ -80,6 +81,8 @@ interface RoleAssignment {
 
 export default function RoleCompletionReport() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { shouldShowCoffee } = useCoffeePromptEligibility();
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -87,8 +90,30 @@ export default function RoleCompletionReport() {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [roleAssignments, setRoleAssignments] = useState<RoleAssignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showInfoModal, setShowInfoModal] = useState(false);
   const [activeRoleTab, setActiveRoleTab] = useState<RoleTabId>('my_role');
+  const isExComm =
+    user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+
+  const openWhatsAppSupport = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
+      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
+      else Alert.alert('Error', 'Cannot open WhatsApp');
+    } catch {
+      Alert.alert('Error', 'Failed to open WhatsApp');
+    }
+  }, []);
+
+  const openWebLogin = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
+      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
+      else Alert.alert('Error', 'Cannot open web login');
+    } catch {
+      Alert.alert('Error', 'Failed to open web login');
+    }
+  }, []);
 
   useEffect(() => {
     if (meetingId) {
@@ -261,12 +286,12 @@ export default function RoleCompletionReport() {
             style={[
               styles.statusPill,
               {
-                backgroundColor: role.is_completed ? N.accentSoft : 'rgba(55, 53, 47, 0.06)',
+                backgroundColor: role.is_completed ? 'rgba(37, 99, 235, 0.20)' : 'rgba(55, 53, 47, 0.10)',
               },
             ]}
           >
             <Text
-              style={[styles.statusPillText, { color: role.is_completed ? N.accent : N.muted }]}
+              style={[styles.statusPillText, { color: role.is_completed ? '#1d4ed8' : '#525252' }]}
               maxFontSizeMultiplier={1.15}
             >
               {role.is_completed ? 'Done' : 'Pending'}
@@ -281,13 +306,13 @@ export default function RoleCompletionReport() {
               style={({ pressed }) => [
                 styles.actionPill,
                 {
-                  borderColor: N.hairline,
-                  backgroundColor: role.is_completed ? N.inset : N.shell,
+                  borderColor: role.is_completed ? 'rgba(55, 53, 47, 0.14)' : 'rgba(55, 53, 47, 0.24)',
+                  backgroundColor: role.is_completed ? 'rgba(55, 53, 47, 0.09)' : 'rgba(55, 53, 47, 0.13)',
                   opacity: pressed ? 0.88 : role.is_completed ? 0.45 : 1,
                 },
               ]}
             >
-              <Text style={[styles.actionPillText, { color: N.muted }]} maxFontSizeMultiplier={1.15}>
+              <Text style={[styles.actionPillText, { color: '#4b5563' }]} maxFontSizeMultiplier={1.15}>
                 Mark complete
               </Text>
             </Pressable>
@@ -297,14 +322,14 @@ export default function RoleCompletionReport() {
               style={({ pressed }) => [
                 styles.actionPill,
                 {
-                  borderColor: role.is_completed ? N.accent : N.hairline,
-                  backgroundColor: role.is_completed ? N.accentSoft : N.shell,
+                  borderColor: role.is_completed ? '#2563eb' : 'rgba(55, 53, 47, 0.24)',
+                  backgroundColor: role.is_completed ? 'rgba(37, 99, 235, 0.20)' : 'rgba(55, 53, 47, 0.13)',
                   opacity: pressed ? 0.88 : !role.is_completed ? 0.45 : 1,
                 },
               ]}
             >
               <Text
-                style={[styles.actionPillText, { color: role.is_completed ? N.accent : N.muted }]}
+                style={[styles.actionPillText, { color: role.is_completed ? '#2563eb' : '#4b5563' }]}
                 maxFontSizeMultiplier={1.15}
               >
                 Mark pending
@@ -337,30 +362,26 @@ export default function RoleCompletionReport() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: N.canvas }]}>
-      <View style={styles.notionTopBar}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <View style={styles.bookRoleMain}>
+      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={12}>
-          <ArrowLeft size={22} color={N.ink} />
+          <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.notionTopTitle, { color: N.ink }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>
           Role completion
         </Text>
-        <TouchableOpacity
-          style={[styles.notionIconBtn, { borderColor: N.hairline }]}
-          onPress={() => setShowInfoModal(true)}
-          hitSlop={12}
-        >
-          <Info size={18} color={N.muted} />
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView
-        style={styles.notionScroll}
-        contentContainerStyle={styles.notionScrollContent}
+        style={styles.bookRoleScroll}
+        contentContainerStyle={styles.scrollContentContainer}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={[styles.notionShell, { backgroundColor: N.shell, borderColor: N.faint }]}>
+        <View style={[styles.notionShell, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={styles.meetingMetaRow}>
             <View style={[styles.dateChip, { backgroundColor: N.inset }]}>
               <Text style={[styles.dateChipDay, { color: N.ink }]} maxFontSizeMultiplier={1.2}>
@@ -403,61 +424,73 @@ export default function RoleCompletionReport() {
             </View>
           </View>
 
-          <View style={[styles.notionSegment, { backgroundColor: N.segment }]}>
-            <View style={styles.notionSegmentRow}>
-              <Pressable
-                onPress={() => setActiveRoleTab('my_role')}
-                style={({ pressed }) => [
-                  styles.notionSegPill,
-                  activeRoleTab === 'my_role' && styles.notionSegPillActive,
-                  { opacity: pressed ? 0.92 : 1 },
+          <View style={styles.notionTabsRow}>
+            <TouchableOpacity
+              style={[
+                styles.notionTab,
+                {
+                  backgroundColor: activeRoleTab === 'my_role' ? theme.colors.primary : 'transparent',
+                  borderColor: activeRoleTab === 'my_role' ? theme.colors.primary : theme.colors.border,
+                },
+              ]}
+              onPress={() => setActiveRoleTab('my_role')}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.notionTabText,
+                  { color: activeRoleTab === 'my_role' ? '#ffffff' : theme.colors.text },
                 ]}
+                maxFontSizeMultiplier={1.12}
               >
-                <Text
-                  style={[styles.notionSegPillText, { color: activeRoleTab === 'my_role' ? N.ink : N.muted }]}
-                  maxFontSizeMultiplier={1.12}
-                >
-                  My role
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setActiveRoleTab('all_roles')}
-                style={({ pressed }) => [
-                  styles.notionSegPill,
-                  activeRoleTab === 'all_roles' && styles.notionSegPillActive,
-                  { opacity: pressed ? 0.92 : 1 },
+                My role
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.notionTab,
+                {
+                  backgroundColor: activeRoleTab === 'all_roles' ? theme.colors.primary : 'transparent',
+                  borderColor: activeRoleTab === 'all_roles' ? theme.colors.primary : theme.colors.border,
+                },
+              ]}
+              onPress={() => setActiveRoleTab('all_roles')}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.notionTabText,
+                  { color: activeRoleTab === 'all_roles' ? '#ffffff' : theme.colors.text },
                 ]}
+                maxFontSizeMultiplier={1.12}
               >
-                <Text
-                  style={[styles.notionSegPillText, { color: activeRoleTab === 'all_roles' ? N.ink : N.muted }]}
-                  maxFontSizeMultiplier={1.12}
-                >
-                  All roles
-                </Text>
-              </Pressable>
-            </View>
+                All roles
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
+          <View style={[styles.notionDivider, { backgroundColor: theme.colors.border }]} />
 
+          {activeRoleTab === 'all_roles' ? (
           <View style={styles.progressBlock}>
             <View style={styles.progressHeader}>
-              <Text style={[styles.progressTitle, { color: N.ink }]} maxFontSizeMultiplier={1.15}>
-                {activeRoleTab === 'my_role' ? 'Your progress' : 'Meeting progress'}
+              <Text style={[styles.progressTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
+                Meeting progress
               </Text>
-              <Text style={[styles.progressPercentage, { color: N.accent }]} maxFontSizeMultiplier={1.15}>
+              <Text style={[styles.progressPercentage, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.15}>
                 {completionPercentage}%
               </Text>
             </View>
-            <View style={[styles.progressBar, { backgroundColor: N.hairline }]}>
-              <View style={[styles.progressFill, { backgroundColor: N.accent, width: `${completionPercentage}%` }]} />
+            <View style={[styles.progressBar, { backgroundColor: theme.colors.border }]}>
+              <View style={[styles.progressFill, { backgroundColor: theme.colors.primary, width: `${completionPercentage}%` }]} />
             </View>
-            <Text style={[styles.progressText, { color: N.muted }]} maxFontSizeMultiplier={1.15}>
+            <Text style={[styles.progressText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
               {completedRoles} of {totalRoles} roles complete
             </Text>
           </View>
+          ) : null}
 
-          <View style={[styles.notionDivider, { backgroundColor: N.hairline }]} />
+          <View style={[styles.notionDivider, { backgroundColor: theme.colors.border }]} />
 
           <Text style={[styles.listCaption, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
             {activeRoleTab === 'my_role' ? 'Your bookings' : 'Everyone booked'}
@@ -479,111 +512,99 @@ export default function RoleCompletionReport() {
             displayedRoles.map((role) => <RoleRow key={role.id} role={role} />)
           )}
 
-          <View style={[styles.notionDivider, { backgroundColor: N.hairline, marginTop: 8 }]} />
-
-          <Text style={[styles.listCaption, { color: N.muted, marginBottom: 10 }]} maxFontSizeMultiplier={1.1}>
-            Shortcuts
-          </Text>
-          <View style={styles.quickActionsInner}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.quickActionsContent}
-            >
-              {(
-                [
-                  { pathname: '/meeting-agenda-view' as const, label: 'Agenda', Icon: FileText },
-                  { pathname: '/attendance-report' as const, label: 'Attendance', Icon: Users },
-                  { pathname: '/live-voting' as const, label: 'Voting', Icon: CheckSquare },
-                  { pathname: '/ah-counter-corner' as const, label: 'Ah counter', Icon: Bell },
-                  { pathname: '/grammarian' as const, label: 'Grammarian', Icon: Languages },
-                  { pathname: '/timer-report-details' as const, label: 'Timer', Icon: Clock },
-                  { pathname: '/educational-corner' as const, label: 'Educational', Icon: BookOpen },
-                  { pathname: '/toastmaster-corner' as const, label: 'Toastmaster', Icon: Crown },
-                ] as const
-              ).map(({ pathname, label, Icon }) => (
-                <TouchableOpacity
-                  key={pathname}
-                  style={styles.quickActionItem}
-                  onPress={() => router.push({ pathname, params: { meetingId: meeting?.id } })}
-                >
-                  <View style={[styles.quickActionIcon, { backgroundColor: N.inset, borderColor: N.hairline }]}>
-                    <Icon size={ROLE_COMPLETION_SHORTCUT_ICON_SIZE} color={N.accent} />
-                  </View>
-                  <Text style={[styles.quickActionLabel, { color: N.ink }]} maxFontSizeMultiplier={1.2}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
           <View style={styles.bottomPadding} />
         </View>
         {/* /notionShell */}
       </ScrollView>
-
-      {/* Information Modal */}
-      <Modal
-        visible={showInfoModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowInfoModal(false)}
+      <View
+        style={[
+          styles.geBottomDock,
+          {
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            paddingBottom: Math.max(insets.bottom, 10),
+          },
+        ]}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.infoModal, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.infoModalHeader}>
-              <View style={[styles.infoModalIcon, { backgroundColor: N.accentSoft }]}>
-                <Info size={19} color={N.accent} />
-              </View>
-              <Text style={[styles.infoModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Role Completion Report
-              </Text>
-              <TouchableOpacity
-                style={styles.closeInfoButton}
-                onPress={() => setShowInfoModal(false)}
-              >
-                <X size={19} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.footerNavigationContent}
+        >
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Home size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#0a66c2" />
             </View>
-            
-            <View style={styles.infoModalContent}>
-              <Text style={[styles.infoModalDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                The Role Completion Report helps track and visualize your Toastmasters journey and progress.
-              </Text>
-              
-              <View style={styles.infoModalPoints}>
-                <View style={styles.infoModalPoint}>
-                  <View style={[styles.infoModalBullet, { backgroundColor: N.accent }]} />
-                  <Text style={[styles.infoModalPointText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    The report is tied to a specific meeting.
-                  </Text>
-                </View>
-                
-                <View style={styles.infoModalPoint}>
-                  <View style={[styles.infoModalBullet, { backgroundColor: N.accent }]} />
-                  <Text style={[styles.infoModalPointText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    ExComm members can mark role completion for all users.
-                  </Text>
-                </View>
-                
-                <View style={styles.infoModalPoint}>
-                  <View style={[styles.infoModalBullet, { backgroundColor: N.accent }]} />
-                  <Text style={[styles.infoModalPointText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Individual members can update completion status only for their own assigned roles.
-                  </Text>
-                </View>
-                <View style={styles.infoModalPoint}>
-                  <View style={[styles.infoModalBullet, { backgroundColor: N.accent }]} />
-                  <Text style={[styles.infoModalPointText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Use My role to see only your bookings; All roles shows everyone for this meeting.
-                  </Text>
-                </View>
-              </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Home
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Users size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#d97706" />
             </View>
-          </View>
-        </View>
-      </Modal>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Club
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/meetings')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Calendar size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#0ea5e9" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Meeting
+            </Text>
+          </TouchableOpacity>
+          {isExComm ? (
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/admin')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Shield size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#7c3aed" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Admin
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Settings size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#6b7280" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Settings
+            </Text>
+          </TouchableOpacity>
+          {shouldShowCoffee ? (
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/buy-us-a-coffee')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Coffee size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#92400e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Coffee
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <MessageCircle size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#22c55e" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Support
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Globe size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#334155" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Web
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+      </View>
+      </KeyboardAvoidingView>
+
     </SafeAreaView>
   );
 }
@@ -601,47 +622,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  notionTopBar: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: N.canvas,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    padding: 8,
   },
-  notionTopTitle: {
+  headerTitle: {
     flex: 1,
-    fontSize: 17,
-    fontWeight: '600',
-    letterSpacing: -0.3,
+    fontSize: 18,
+    fontWeight: '700',
     textAlign: 'center',
-    marginHorizontal: 8,
+    marginHorizontal: 16,
   },
-  notionIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    backgroundColor: N.shell,
+  headerSpacer: {
+    width: 40,
   },
-  notionScroll: {
+  bookRoleMain: {
+    flex: 1,
+    minHeight: 0,
+  },
+  bookRoleScroll: {
     flex: 1,
   },
-  notionScrollContent: {
+  scrollContentContainer: {
     paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 24,
+    paddingTop: 16,
+    paddingBottom: 16,
   },
   notionShell: {
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 16,
@@ -653,11 +669,6 @@ const styles = StyleSheet.create({
       },
       default: {},
     }),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
   },
   meetingMetaRow: {
     flexDirection: 'row',
@@ -668,7 +679,7 @@ const styles = StyleSheet.create({
   dateChip: {
     width: 48,
     height: 48,
-    borderRadius: 8,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -696,32 +707,23 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 2,
   },
-  notionSegment: {
-    borderRadius: 9,
-    padding: 3,
-    alignSelf: 'stretch',
-    marginBottom: 4,
+  notionTabsRow: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    gap: 8,
   },
-  notionSegmentRow: {
+  notionTab: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 6,
   },
-  notionSegPill: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  notionSegPillActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  notionSegPillText: {
+  notionTabText: {
     fontSize: 13,
     fontWeight: '600',
   },
@@ -748,13 +750,13 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: 6,
-    borderRadius: 3,
+    borderRadius: 0,
     marginBottom: 8,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 0,
   },
   progressText: {
     fontSize: 12,
@@ -817,7 +819,7 @@ const styles = StyleSheet.create({
   statusPill: {
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 8,
+    borderRadius: 0,
   },
   statusPillText: {
     fontSize: 11,
@@ -833,8 +835,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 9,
     paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -859,107 +861,37 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 19,
   },
-  quickActionsInner: {
-    marginHorizontal: -4,
-  },
   bottomPadding: {
     height: 8,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 8,
   },
-  infoModal: {
-    borderRadius: 16,
-    width: '100%',
-    maxWidth: 400,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 12,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    elevation: 24,
-    padding: 19,
-  },
-  infoModalHeader: {
+  footerNavigationContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    gap: 10,
+    paddingHorizontal: 4,
   },
-  infoModalIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  footerNavItem: {
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+    minWidth: 62,
+    paddingVertical: 2,
   },
-  infoModalTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    flex: 1,
-    letterSpacing: -0.3,
-  },
-  closeInfoButton: {
-    padding: 4,
-  },
-  infoModalContent: {
-    flex: 1,
-  },
-  infoModalDescription: {
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 16,
-  },
-  infoModalPoints: {
-    gap: 13,
-  },
-  infoModalPoint: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  infoModalBullet: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    marginTop: 6,
-    marginRight: 10,
-  },
-  infoModalPointText: {
-    fontSize: 12,
-    lineHeight: 17,
-    flex: 1,
-  },
-  quickActionsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    paddingHorizontal: 6,
-    paddingBottom: 2,
-  },
-  quickActionItem: {
-    alignItems: 'center',
-    minWidth: 45,
-  },
-  quickActionIcon: {
+  footerNavIcon: {
     width: 30,
     height: 30,
-    borderRadius: 8,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 3,
-    borderWidth: 1,
+    marginBottom: 4,
   },
-  quickActionLabel: {
-    fontSize: 8,
-    fontWeight: '600',
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
     textAlign: 'center',
-    maxWidth: 56,
   },
 });
 

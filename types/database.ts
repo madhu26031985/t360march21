@@ -304,7 +304,6 @@ export interface Database {
           booking_status: string | null;
           booked_at: string | null;
           withdrawn_at: string | null;
-          timer_report_assigned_by: string | null;
           role_status: string | null;
           role_classification: string | null;
           club_id: string;
@@ -329,7 +328,6 @@ export interface Database {
           booking_status?: string | null;
           booked_at?: string | null;
           withdrawn_at?: string | null;
-          timer_report_assigned_by?: string | null;
           role_status?: string | null;
           role_classification?: string | null;
           club_id: string;
@@ -354,7 +352,6 @@ export interface Database {
           booking_status?: string | null;
           booked_at?: string | null;
           withdrawn_at?: string | null;
-          timer_report_assigned_by?: string | null;
           role_status?: string | null;
           role_classification?: string | null;
           club_id?: string;
@@ -1193,6 +1190,7 @@ export interface Database {
           notes: string | null;
           recorded_by: string;
           recorded_at: string;
+          summary_visible_to_members: boolean;
           created_at: string | null;
           updated_at: string | null;
         };
@@ -1211,6 +1209,7 @@ export interface Database {
           notes?: string | null;
           recorded_by: string;
           recorded_at?: string;
+          summary_visible_to_members?: boolean;
           created_at?: string | null;
           updated_at?: string | null;
         };
@@ -1229,6 +1228,7 @@ export interface Database {
           notes?: string | null;
           recorded_by?: string;
           recorded_at?: string;
+          summary_visible_to_members?: boolean;
           created_at?: string | null;
           updated_at?: string | null;
         };

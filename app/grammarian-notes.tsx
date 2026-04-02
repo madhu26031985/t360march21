@@ -189,6 +189,9 @@ export function GrammarianNotesScreen({
   const [isVPEClub, setIsVPEClub] = useState(false);
 
   const autoSaveTimeout = useRef<NodeJS.Timeout | null>(null);
+  const inlineCoreLoadInFlightRef = useRef<Promise<void> | null>(null);
+  const inlineStatsLoadInFlightRef = useRef<Promise<void> | null>(null);
+  const lastInlineCoreLoadAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (!meetingId) {
@@ -202,7 +205,7 @@ export function GrammarianNotesScreen({
     if (variant === 'live-inline') {
       // Inline mode: load only what we need for the default tab quickly.
       // (Good Usage / Opportunity require live observations; Stats requires extra word usage data.)
-      loadLiveInlineCoreData();
+      void loadLiveInlineCoreData();
       return;
     }
 
@@ -214,11 +217,11 @@ export function GrammarianNotesScreen({
     if (liveMeetingSubTab !== 'stats') return;
     if (statsInlineLoaded) return;
     if (!meetingId || !user?.currentClubId) return;
+    if (inlineStatsLoadInFlightRef.current) return;
 
     let cancelled = false;
-    setIsLoading(true);
 
-    (async () => {
+    const run = (async () => {
       try {
         // Inline Stats UI only shows Word usage, but we still load idiom/quote
         // so "Publish All" validation and publishing is accurate.
@@ -233,12 +236,13 @@ export function GrammarianNotesScreen({
       } catch (e) {
         console.error('Error loading inline stats:', e);
       } finally {
+        inlineStatsLoadInFlightRef.current = null;
         if (!cancelled) {
           setStatsInlineLoaded(true);
-          setIsLoading(false);
         }
       }
     })();
+    inlineStatsLoadInFlightRef.current = run;
 
     return () => {
       cancelled = true;
@@ -288,19 +292,27 @@ export function GrammarianNotesScreen({
       setIsLoading(false);
       return;
     }
+    if (inlineCoreLoadInFlightRef.current) return inlineCoreLoadInFlightRef.current;
+    if (Date.now() - lastInlineCoreLoadAtRef.current < 1200) return;
 
-    try {
-      await Promise.all([
-        loadMeeting(),
-        loadGrammarianOfDay(),
-        loadIsVPEClub(),
-        loadLiveObservations(),
-      ]);
-    } catch (error) {
-      console.error('Error loading inline live meeting core:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    const run = (async () => {
+      try {
+        await Promise.all([
+          loadMeeting(),
+          loadGrammarianOfDay(),
+          loadIsVPEClub(),
+          loadLiveObservations(),
+        ]);
+      } catch (error) {
+        console.error('Error loading inline live meeting core:', error);
+      } finally {
+        lastInlineCoreLoadAtRef.current = Date.now();
+        inlineCoreLoadInFlightRef.current = null;
+        setIsLoading(false);
+      }
+    })();
+    inlineCoreLoadInFlightRef.current = run;
+    return run;
   };
 
   const loadMeeting = async () => {
@@ -1597,15 +1609,7 @@ export function GrammarianNotesScreen({
     }
   };
 
-  if (isLoading) {
-    if (variant === 'live-inline') {
-      return (
-        <View style={styles.inlineLiveSection}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-        </View>
-      );
-    }
-
+  if (isLoading && variant !== 'live-inline') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
@@ -1726,11 +1730,11 @@ export function GrammarianNotesScreen({
           <View style={[styles.liveMeetingContainer, { backgroundColor: theme.colors.background }]}>
             {variant !== 'live-inline' && (
               <View style={styles.liveMeetingTabsContainer}>
-                <View style={[styles.segmentControl, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}>
+                <View style={[styles.segmentControl, { backgroundColor: '#F8FAFC', borderColor: '#BFDBFE' }]}>
                   <TouchableOpacity
                     style={[
                       styles.segmentTab,
-                      liveMeetingSubTab === 'good-usage' && [styles.segmentTabActive, { backgroundColor: '#2563EB' }],
+                      liveMeetingSubTab === 'good-usage' && [styles.segmentTabActive, { backgroundColor: '#2563EB', borderColor: '#1D4ED8' }],
                     ]}
                     onPress={() => setLiveMeetingSubTab('good-usage')}
                   >
@@ -1744,12 +1748,12 @@ export function GrammarianNotesScreen({
                     </Text>
                   </TouchableOpacity>
 
-                  <View style={[styles.segmentDivider, { backgroundColor: '#CBD5E1' }]} />
+                  <View style={[styles.segmentDivider, { backgroundColor: '#BFDBFE' }]} />
 
                   <TouchableOpacity
                     style={[
                       styles.segmentTab,
-                      liveMeetingSubTab === 'improvements' && [styles.segmentTabActive, { backgroundColor: '#F59E0B' }],
+                      liveMeetingSubTab === 'improvements' && [styles.segmentTabActive, { backgroundColor: '#2563EB', borderColor: '#1D4ED8' }],
                     ]}
                     onPress={() => setLiveMeetingSubTab('improvements')}
                   >
@@ -1763,12 +1767,12 @@ export function GrammarianNotesScreen({
                     </Text>
                   </TouchableOpacity>
 
-                  <View style={[styles.segmentDivider, { backgroundColor: '#CBD5E1' }]} />
+                  <View style={[styles.segmentDivider, { backgroundColor: '#BFDBFE' }]} />
 
                   <TouchableOpacity
                     style={[
                       styles.segmentTab,
-                      liveMeetingSubTab === 'stats' && [styles.segmentTabActive, { backgroundColor: '#6B7280' }],
+                      liveMeetingSubTab === 'stats' && [styles.segmentTabActive, { backgroundColor: '#2563EB', borderColor: '#1D4ED8' }],
                     ]}
                     onPress={() => setLiveMeetingSubTab('stats')}
                   >
@@ -2404,43 +2408,12 @@ export function GrammarianNotesScreen({
                           </TouchableOpacity>
                         )}
 
-                        {isGrammarianOfDay() &&
-                          (hasGoodUsageCaptured || hasImprovementsCaptured || hasStatsCaptured) && (
-                            <View style={styles.sectionPublishButtonContainer}>
-                              <TouchableOpacity
-                                style={[
-                                  styles.sectionPublishButton,
-                                  {
-                                    backgroundColor: isAllPublishedToSummary ? '#EF4444' : '#4169E1',
-                                    borderRadius: 14,
-                                    opacity: isPublishingAll ? 0.7 : 1,
-                                  },
-                                ]}
-                                onPress={() => {
-                                  if (isAllPublishedToSummary) confirmUnpublishAllToSummary();
-                                  else confirmPublishAllToSummary();
-                                }}
-                                disabled={isPublishingAll}
-                              >
-                                {isPublishingAll ? (
-                                  <ActivityIndicator size="small" color="#ffffff" />
-                                ) : (
-                                  <Eye size={18} color="#ffffff" />
-                                )}
-                                <Text style={styles.sectionPublishButtonText} maxFontSizeMultiplier={1.3}>
-                                  {isAllPublishedToSummary
-                                    ? 'Unpublish from Grammarian Summary'
-                                    : 'Publish All to Grammarian Summary'}
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-                          )}
                       </View>
                     ) : (
                       <View style={styles.inlineEmptyState}>
                         <TrendingUp size={28} color={theme.colors.textSecondary} />
                         <Text style={[styles.inlineEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                          No usage recorded yet.
+                          {!wordOfTheDay ? 'Add word of the day.' : 'No usage recorded yet.'}
                         </Text>
                       </View>
                     )}
@@ -2762,10 +2735,10 @@ export function GrammarianNotesScreen({
                   <View style={styles.emptyState}>
                     <TrendingUp size={36} color={theme.colors.textSecondary} />
                     <Text style={[styles.emptyStateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      No usage recorded yet.
+                      Add word of the day.
                     </Text>
                     <Text style={[styles.emptyStateSubText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Start tracking usage during the meeting.
+                      Add Word of the Day first, then track stats.
                     </Text>
                   </View>
                 )}
@@ -3070,39 +3043,33 @@ const styles = StyleSheet.create({
   segmentControl: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 50,
+    borderRadius: 0,
     borderWidth: 1,
-    padding: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
+    padding: 0,
+    overflow: 'hidden',
   },
   segmentTab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 10,
-    borderRadius: 50,
+    borderRadius: 0,
     gap: 5,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   segmentTabActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: 1,
   },
   segmentDivider: {
     width: 1,
-    height: 18,
-    opacity: 0.5,
+    alignSelf: 'stretch',
+    opacity: 1,
   },
   segmentTabText: {
-    fontSize: 11,
+    fontSize: 12,
   },
   liveMeetingTab: {
     flex: 1,
@@ -3160,7 +3127,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   inlineEmptyState: {
-    borderRadius: 14,
+    borderRadius: 0,
     paddingVertical: 22,
     alignItems: 'center',
     justifyContent: 'center',
@@ -3214,12 +3181,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   inlineImprovementInputContainer: {
-    gap: 12,
+    gap: 10,
   },
   inlineImprovementFieldCard: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 12,
+    borderWidth: 0,
+    borderRadius: 0,
+    padding: 0,
   },
   inlineImprovementFieldHeader: {
     flexDirection: 'row',
@@ -3240,15 +3207,15 @@ const styles = StyleSheet.create({
   },
   inlineImprovementFieldInput: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 10,
     minHeight: 56,
     color: '#111827',
   },
   inlineImprovementSubmitButton: {
-    backgroundColor: '#000000',
-    borderRadius: 14,
+    backgroundColor: '#2563EB',
+    borderRadius: 0,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',

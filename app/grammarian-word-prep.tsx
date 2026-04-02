@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +34,12 @@ interface WordOfTheDayData {
   updated_at: string;
 }
 
+type WordPrepSnapshot = {
+  assigned_grammarian_user_id: string | null;
+  is_vpe_for_club: boolean;
+  word_of_the_day: WordOfTheDayData | null;
+};
+
 export default function GrammarianWordPrepScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -51,6 +57,8 @@ export default function GrammarianWordPrepScreen() {
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [isVPEClub, setIsVPEClub] = useState(false);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
+  const lastLoadAtRef = useRef<number>(0);
 
   const isAssignedGrammarian = () => grammarianOfDay?.assigned_user_id === user?.id;
   const canEditWordPrep = () => isAssignedGrammarian() || isVPEClub;
@@ -102,7 +110,7 @@ export default function GrammarianWordPrepScreen() {
     if (!meetingId || !grammarianUserId) return;
     const { data, error } = await supabase
       .from('grammarian_word_of_the_day')
-      .select('*')
+      .select('id, word, part_of_speech, meaning, usage, is_published, updated_at')
       .eq('meeting_id', meetingId)
       .eq('grammarian_user_id', grammarianUserId)
       .maybeSingle();
@@ -132,11 +140,54 @@ export default function GrammarianWordPrepScreen() {
       setIsLoading(false);
       return;
     }
-    setIsLoading(true);
-    const assignedGrammarianUserId = await loadGrammarianRole();
-    await loadIsVPEClub();
-    await loadWord(assignedGrammarianUserId || user?.id || null);
-    setIsLoading(false);
+    if (loadInFlightRef.current) return loadInFlightRef.current;
+    if (Date.now() - lastLoadAtRef.current < 1000) return;
+
+    const run = (async () => {
+      setIsLoading(true);
+      try {
+        const { data, error } = await (supabase as any).rpc('get_grammarian_word_prep_snapshot', {
+          p_meeting_id: meetingId,
+        });
+
+        if (!error && data && typeof data === 'object' && !Array.isArray(data)) {
+          const snap = data as WordPrepSnapshot;
+          setGrammarianOfDay(
+            snap.assigned_grammarian_user_id
+              ? { id: 'snapshot', assigned_user_id: snap.assigned_grammarian_user_id }
+              : null
+          );
+          setIsVPEClub(Boolean(snap.is_vpe_for_club));
+
+          if (snap.word_of_the_day) {
+            const w = snap.word_of_the_day;
+            setWordOfTheDay(w);
+            setWord((w.word || '').slice(0, 50));
+            setPartOfSpeech((w.part_of_speech || '').slice(0, 50));
+            setMeaning((w.meaning || '').slice(0, 150));
+            setUsage((w.usage || '').slice(0, 150));
+          } else {
+            setWordOfTheDay(null);
+            setWord('');
+            setPartOfSpeech('');
+            setMeaning('');
+            setUsage('');
+          }
+        } else {
+          const [assignedGrammarianUserId] = await Promise.all([
+            loadGrammarianRole(),
+            loadIsVPEClub(),
+          ]);
+          await loadWord(assignedGrammarianUserId || user?.id || null);
+        }
+      } finally {
+        lastLoadAtRef.current = Date.now();
+        setIsLoading(false);
+        loadInFlightRef.current = null;
+      }
+    })();
+    loadInFlightRef.current = run;
+    return run;
   }, [meetingId, user?.currentClubId, user?.id, loadWord]);
 
   useFocusEffect(

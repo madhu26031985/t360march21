@@ -1,15 +1,18 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Alert, Modal } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Alert, Modal, Linking } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useRef } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Mail, Phone, CheckCircle2, UserX, Copy, UsersRound, Info, X, Home, Calendar, Users, Settings } from 'lucide-react-native';
+import { ArrowLeft, Phone, CheckCircle2, Copy, UsersRound, Info, X, Home, Calendar, Users, Settings, Shield, Coffee, MessageCircle, Globe } from 'lucide-react-native';
 import { useCallback } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { fetchMyMentorSnapshot, getCachedMyMentorSnapshot, type MyMentorSnapshot } from '@/lib/myMentorSnapshot';
+import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 
 const FOOTER_NAV_ICON_SIZE = 15;
+const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
+const T360_WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
 
 interface ContactPerson {
   id: string;
@@ -28,6 +31,8 @@ interface VpeContactInfo {
 export default function MyGrowthGuidance() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { shouldShowCoffee } = useCoffeePromptEligibility();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [mentor, setMentor] = useState<ContactPerson | null>(null);
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -133,6 +138,28 @@ export default function MyGrowthGuidance() {
     'Confidence building',
     'Personal growth planning',
   ];
+
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+
+  const openWhatsAppSupport = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WHATSAPP_SUPPORT_URL);
+      if (supported) await Linking.openURL(T360_WHATSAPP_SUPPORT_URL);
+      else Alert.alert('Error', 'Cannot open WhatsApp');
+    } catch {
+      Alert.alert('Error', 'Failed to open WhatsApp');
+    }
+  }, []);
+
+  const openWebLogin = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(T360_WEB_LOGIN_URL);
+      if (supported) await Linking.openURL(T360_WEB_LOGIN_URL);
+      else Alert.alert('Error', 'Cannot open web login');
+    } catch {
+      Alert.alert('Error', 'Failed to open web login');
+    }
+  }, []);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -251,66 +278,105 @@ export default function MyGrowthGuidance() {
             </View>
           )}
 
-          <View style={styles.navSpacer} />
-
-          {/* Navigation Icons */}
-          <View style={[styles.navigationSection, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.navigationBar}>
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/club')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/meetings')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/settings')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
-              </TouchableOpacity>
-
-              {user?.clubRole === 'excomm' && (
-                <TouchableOpacity
-                  style={styles.navItem}
-                  onPress={() => router.push('/(tabs)/admin')}
-                >
-                  <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                    <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                  </View>
-                  <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
+          {/* Spacer so content doesn't hide under the footer dock */}
+          <View style={{ minHeight: Math.max(insets.bottom, 10) + 110 }} />
         </ScrollView>
       )}
+
+      {/* Bottom navigation (match Edit Profile footer) */}
+      <View
+        style={[
+          styles.geBottomDock,
+          {
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            paddingBottom: Math.max(insets.bottom, 10),
+          },
+        ]}
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.footerNavigationContent}
+        >
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Home size={FOOTER_NAV_ICON_SIZE} color="#0a66c2" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Home
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Club
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/meetings')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Meeting
+            </Text>
+          </TouchableOpacity>
+
+          {user?.clubRole === 'excomm' ? (
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/admin')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Shield size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Admin
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Settings size={FOOTER_NAV_ICON_SIZE} color="#6b7280" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Settings
+            </Text>
+          </TouchableOpacity>
+
+          {shouldShowCoffee ? (
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/buy-us-a-coffee')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Coffee size={FOOTER_NAV_ICON_SIZE} color="#92400e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Coffee
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <MessageCircle size={FOOTER_NAV_ICON_SIZE} color="#22c55e" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Support
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.footerNavItem} onPress={openWebLogin} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Globe size={FOOTER_NAV_ICON_SIZE} color="#334155" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Web
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
 
       <Modal
         visible={showInfoModal}
@@ -661,5 +727,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 8,
+  },
+  footerNavigationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    minWidth: 62,
+    paddingVertical: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

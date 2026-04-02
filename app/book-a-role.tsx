@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 import { ArrowLeft, Calendar, Users, User, Crown, Shield, Eye, UserCheck, Building2, X, Save, BookOpen, GraduationCap, MessageSquare, Lightbulb, CreditCard as Edit, Clock, MapPin, FileText, CreditCard as Edit2, ChevronDown, Layers, Tag, Mic, Briefcase, Star, MousePointerClick, Filter, Check, Home, Settings, Coffee, MessageCircle, Globe } from 'lucide-react-native';
 
 const T360_WEB_LOGIN_URL = 'https://t360.in/weblogin';
@@ -120,6 +121,7 @@ export default function BookARole() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [showCategoryFilterModal, setShowCategoryFilterModal] = useState(false);
   const insets = useSafeAreaInsets();
+  const { shouldShowCoffee } = useCoffeePromptEligibility();
 
   const openWhatsAppSupport = useCallback(async () => {
     try {
@@ -257,7 +259,6 @@ export default function BookARole() {
           )
         `)
         .eq('meeting_id', selectedMeeting.id)
-        .eq('role_status', 'Available')
         .order('order_index');
 
       if (error) {
@@ -266,7 +267,9 @@ export default function BookARole() {
         return;
       }
 
-      const roles = data || [];
+      // Some environments have `role_status` NULL for normal roles.
+      // Treat NULL as "Available" and only exclude explicit "Deleted".
+      const roles = (data || []).filter((r: any) => (r?.role_status ?? 'Available') !== 'Deleted');
       
       // Separate roles into categories
       const available = roles.filter(role => !role.assigned_user_id && !isHiddenIceBreakerBookRole(role));
@@ -1548,18 +1551,20 @@ export default function BookARole() {
               Settings
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.footerNavItem}
-            onPress={() => router.push('/buy-us-a-coffee')}
-            activeOpacity={0.75}
-          >
-            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-              <Coffee size={BOOK_ROLE_DOCK_ICON_SIZE} color="#92400e" />
-            </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Coffee
-            </Text>
-          </TouchableOpacity>
+          {shouldShowCoffee ? (
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/buy-us-a-coffee')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Coffee size={BOOK_ROLE_DOCK_ICON_SIZE} color="#92400e" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Coffee
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={styles.footerNavItem} onPress={openWhatsAppSupport} activeOpacity={0.75}>
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <MessageCircle size={BOOK_ROLE_DOCK_ICON_SIZE} color="#22c55e" />

@@ -33,8 +33,6 @@ export type TimerReportSnapshotCategoryRole = {
   booking_status: string | null;
   assigned_user_id: string | null;
   completion_notes: string | null;
-  /** Non-null when this slot was filled from Timer Report (not self-book). */
-  timer_report_assigned_by?: string | null;
   app_user_profiles?: {
     id: string;
     full_name: string;

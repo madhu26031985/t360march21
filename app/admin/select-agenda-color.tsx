@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,14 +6,28 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, Check } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 
 type ColorType = 'club_info' | 'datetime' | 'footer1' | 'footer2';
+
+const PRIMARY_COLORS = [
+  { color: '#A9B2B1', name: 'Cool Gray' },
+  { color: '#004165', name: 'Loyal Blue' },
+  { color: '#772432', name: 'True Maroon' },
+  { color: '#F2DF74', name: 'Happy Yellow' },
+] as const;
+
+const BASIC_COLORS = [
+  { color: '#000000', name: 'Black' },
+  { color: '#FFFFFF', name: 'White' },
+  { color: '#016094', name: 'Digital Loyal Blue' },
+] as const;
 
 export default function SelectAgendaColorScreen() {
   const { theme } = useTheme();
@@ -69,13 +83,69 @@ export default function SelectAgendaColorScreen() {
     }
   };
 
+  const renderColorRow = (hex: string, name: string, opts: { isLast: boolean }) => {
+    const selected = currentColor === hex;
+
+    return (
+      <TouchableOpacity
+        key={hex}
+        style={[
+          styles.colorListRow,
+          !opts.isLast && {
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderBottomColor: theme.colors.border,
+          },
+        ]}
+        onPress={() => handleColorSelect(hex)}
+        disabled={saving}
+        activeOpacity={0.65}
+      >
+        <View
+          style={[
+            styles.colorListSwatch,
+            { backgroundColor: hex },
+            hex === '#FFFFFF' && {
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        />
+        <Text style={[styles.colorListName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          {name}
+        </Text>
+        <View style={styles.colorListTrailing}>
+          {selected ? (
+            <View
+              style={[
+                styles.colorListCheck,
+                {
+                  borderColor: theme.colors.primary,
+                  backgroundColor: theme.colors.surface,
+                },
+              ]}
+            >
+              <Check size={16} color={theme.colors.primary} />
+            </View>
+          ) : null}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border },
+        ]}
+      >
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ChevronLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Color</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          Select Color
+        </Text>
         <View style={styles.backButton} />
       </View>
 
@@ -84,94 +154,65 @@ export default function SelectAgendaColorScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.infoBox, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.infoTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{getTitle()}</Text>
-          <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Select a color for the banner
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Primary Colors
-          </Text>
-          <View style={styles.colorGrid}>
-            {[
-              { color: '#A9B2B1', name: 'Cool Gray' },
-              { color: '#004165', name: 'Loyal Blue' },
-              { color: '#772432', name: 'True Maroon' },
-              { color: '#F2DF74', name: 'Happy Yellow' },
-            ].map(({ color, name }) => (
-              <TouchableOpacity
-                key={color}
-                style={[styles.colorSwatch, { backgroundColor: color }]}
-                onPress={() => handleColorSelect(color)}
-                disabled={saving}
-              >
-                {currentColor === color && (
-                  <View style={styles.selectedIndicator}>
-                    <Text style={styles.checkmark} maxFontSizeMultiplier={1.3}>✓</Text>
-                  </View>
-                )}
-                <View style={styles.colorNameContainer}>
-                  <Text style={[
-                      styles.colorName,
-                      (color === '#F2DF74' || color === '#A9B2B1') && { color: '#000' },
-                    ]} maxFontSizeMultiplier={1.3}>
-                    {name}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+        <View
+          style={[
+            styles.notionSheet,
+            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+          <View
+            style={[
+              styles.notionContextBlock,
+              { borderBottomColor: theme.colors.border },
+            ]}
+          >
+            <Text style={[styles.contextTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {getTitle()}
+            </Text>
+            <Text style={[styles.contextSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.25}>
+              Select a color for the banner
+            </Text>
           </View>
-        </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Basic Colors
-          </Text>
-          <View style={styles.colorGrid}>
-            {[
-              { color: '#000000', name: 'Black' },
-              { color: '#FFFFFF', name: 'White' },
-              { color: '#016094', name: 'Digital Loyal Blue' },
-            ].map(({ color, name }) => (
-              <TouchableOpacity
-                key={color}
-                style={[
-                  styles.colorSwatch,
-                  { backgroundColor: color },
-                  color === '#FFFFFF' && { borderWidth: 2, borderColor: '#e5e7eb' },
-                ]}
-                onPress={() => handleColorSelect(color)}
-                disabled={saving}
-              >
-                {currentColor === color && (
-                  <View style={styles.selectedIndicator}>
-                    <Text style={[styles.checkmark, color === '#FFFFFF' && { color: '#000' }]} maxFontSizeMultiplier={1.3}>✓</Text>
-                  </View>
-                )}
-                <View style={styles.colorNameContainer}>
-                  <Text style={[
-                      styles.colorName,
-                      color === '#FFFFFF' && { color: '#000' },
-                    ]} maxFontSizeMultiplier={1.3}>
-                    {name}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+          <View
+            style={[
+              styles.notionSectionLabelRow,
+              { borderBottomColor: theme.colors.border },
+            ]}
+          >
+            <Text style={[styles.notionSectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              Primary Colors
+            </Text>
           </View>
-        </View>
+          {PRIMARY_COLORS.map((item) => renderColorRow(item.color, item.name, { isLast: false }))}
 
-        {saving && (
-          <View style={styles.savingOverlay}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={[styles.savingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Saving...</Text>
+          <View
+            style={[
+              styles.notionSectionLabelRow,
+              { borderBottomColor: theme.colors.border },
+            ]}
+          >
+            <Text style={[styles.notionSectionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              Basic Colors
+            </Text>
           </View>
-        )}
+          {BASIC_COLORS.map((item, index) =>
+            renderColorRow(item.color, item.name, {
+              isLast: index === BASIC_COLORS.length - 1,
+            })
+          )}
+        </View>
       </ScrollView>
-    </View>
+
+      {saving ? (
+        <View style={[StyleSheet.absoluteFillObject, styles.savingOverlay]}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.savingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Saving...
+          </Text>
+        </View>
+      ) : null}
+    </SafeAreaView>
   );
 }
 
@@ -183,10 +224,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
-    paddingBottom: 16,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backButton: {
     width: 40,
@@ -199,79 +239,77 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
     paddingBottom: 40,
   },
-  infoBox: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-    borderLeftWidth: 4,
-    borderLeftColor: '#3b82f6',
+  notionSheet: {
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
-  infoTitle: {
+  notionContextBlock: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  contextTitle: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 4,
   },
-  infoText: {
-    fontSize: 14,
+  contextSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
   },
-  section: {
-    marginBottom: 32,
+  notionSectionLabelRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sectionTitle: {
-    fontSize: 16,
+  notionSectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  colorListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minHeight: 56,
+  },
+  colorListSwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: 0,
+  },
+  colorListName: {
+    flex: 1,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 16,
   },
-  colorGrid: {
-    gap: 12,
-  },
-  colorSwatch: {
-    height: 120,
-    borderRadius: 16,
-    position: 'relative',
-    overflow: 'hidden',
-    marginBottom: 12,
-  },
-  selectedIndicator: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
+  colorListTrailing: {
     width: 32,
     height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkmark: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-  },
-  colorNameContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 16,
-  },
-  colorName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+  colorListCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   savingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 20,
   },
   savingText: {
     marginTop: 12,

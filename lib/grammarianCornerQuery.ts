@@ -1,5 +1,12 @@
 import { supabase } from '@/lib/supabase';
 
+// Temporary production hotfix:
+// Force legacy query path until `get_grammarian_corner_snapshot` is fully stabilized.
+const FORCE_DISABLE_GRAMMARIAN_SNAPSHOT_RPC = true;
+let grammarianSnapshotRpcDisabledUntil = 0;
+const FALLBACK_CACHE_TTL_MS = 30_000;
+const fallbackSnapshotCache = new Map<string, { at: number; value: GrammarianCornerSnapshot | null }>();
+
 export type GrammarianCornerMeeting = {
   id: string;
   meeting_title: string;
@@ -26,6 +33,43 @@ export type GrammarianCornerSnapshot = {
   club_name: string | null;
   assigned_grammarian: GrammarianAssignedProfile | null;
   is_vpe_for_club: boolean;
+  daily_elements?: {
+    word_of_the_day?: string | null;
+    idiom_of_the_day?: string | null;
+    phrase_of_the_day?: string | null;
+    quote_of_the_day?: string | null;
+  } | null;
+  word_of_the_day?: {
+    id?: string;
+    word?: string | null;
+    part_of_speech?: string | null;
+    meaning?: string | null;
+    usage?: string | null;
+    is_published?: boolean | null;
+    created_at?: string | null;
+    published_at?: string | null;
+  } | null;
+  idiom_of_the_day?: {
+    id?: string;
+    idiom?: string | null;
+    meaning?: string | null;
+    usage?: string | null;
+    is_published?: boolean | null;
+    created_at?: string | null;
+    published_at?: string | null;
+    grammarian_user_id?: string | null;
+  } | null;
+  quote_of_the_day?: {
+    id?: string;
+    quote?: string | null;
+    meaning?: string | null;
+    usage?: string | null;
+    is_published?: boolean | null;
+    created_at?: string | null;
+    published_at?: string | null;
+    grammarian_user_id?: string | null;
+  } | null;
+  has_published_live_observations?: boolean;
 };
 
 export async function fetchGrammarianClubMembersDirectory(clubId: string): Promise<
@@ -55,9 +99,18 @@ export async function fetchGrammarianCornerSnapshot(
   userId: string,
   clubId: string
 ): Promise<GrammarianCornerSnapshot | null> {
-  const { data, error } = await supabase.rpc('get_grammarian_corner_snapshot', {
-    p_meeting_id: meetingId,
-  });
+  const cacheKey = `${meetingId}:${userId}:${clubId}`;
+  const cached = fallbackSnapshotCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < FALLBACK_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  const canTryRpc = !FORCE_DISABLE_GRAMMARIAN_SNAPSHOT_RPC && Date.now() >= grammarianSnapshotRpcDisabledUntil;
+  const { data, error } = canTryRpc
+    ? await supabase.rpc('get_grammarian_corner_snapshot', {
+        p_meeting_id: meetingId,
+      })
+    : ({ data: null, error: { message: 'snapshot rpc temporarily disabled' } as any } as any);
 
   if (!error && data === null) {
     return null;
@@ -69,15 +122,21 @@ export async function fetchGrammarianCornerSnapshot(
 
   if (error) {
     console.warn('get_grammarian_corner_snapshot failed, using legacy queries:', error.message);
+    // Avoid repeated 400 RPC retries on every screen open/focus.
+    grammarianSnapshotRpcDisabledUntil = Date.now() + 5 * 60 * 1000;
   }
 
   const [{ data: meetingData, error: meetingErr }, clubRes, vpeRes, roleRowRes] = await Promise.all([
-    supabase.from('app_club_meeting').select('*').eq('id', meetingId).single(),
+    supabase
+      .from('app_club_meeting')
+      .select('id, meeting_title, meeting_date, meeting_number, meeting_start_time, meeting_end_time, meeting_mode, meeting_status')
+      .eq('id', meetingId)
+      .single(),
     supabase.from('clubs').select('name').eq('id', clubId).single(),
     supabase.from('club_profiles').select('vpe_id').eq('club_id', clubId).maybeSingle(),
     supabase
       .from('app_meeting_roles_management')
-      .select('assigned_user_id')
+      .select('assigned_user_id, app_user_profiles(id, full_name, email, avatar_url)')
       .eq('meeting_id', meetingId)
       .ilike('role_name', '%grammarian%')
       .eq('booking_status', 'booked')
@@ -86,28 +145,22 @@ export async function fetchGrammarianCornerSnapshot(
   ]);
 
   if (meetingErr || !meetingData) {
+    fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: null });
     return null;
   }
 
   let assigned: GrammarianAssignedProfile | null = null;
-  const assigneeId = (roleRowRes.data as { assigned_user_id?: string } | null)?.assigned_user_id;
-  if (assigneeId) {
-    const { data: prof } = await supabase
-      .from('app_user_profiles')
-      .select('id, full_name, email, avatar_url')
-      .eq('id', assigneeId)
-      .maybeSingle();
-    if (prof) {
-      assigned = {
-        id: prof.id,
-        full_name: prof.full_name,
-        email: prof.email,
-        avatar_url: prof.avatar_url,
-      };
-    }
+  const embeddedProfile = (roleRowRes.data as any)?.app_user_profiles;
+  if (embeddedProfile?.id) {
+    assigned = {
+      id: embeddedProfile.id,
+      full_name: embeddedProfile.full_name,
+      email: embeddedProfile.email,
+      avatar_url: embeddedProfile.avatar_url,
+    };
   }
 
-  return {
+  const snapshot: GrammarianCornerSnapshot = {
     meeting_id: meetingId,
     club_id: clubId,
     meeting: meetingData as GrammarianCornerMeeting,
@@ -115,4 +168,6 @@ export async function fetchGrammarianCornerSnapshot(
     assigned_grammarian: assigned,
     is_vpe_for_club: vpeRes.data?.vpe_id === userId,
   };
+  fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: snapshot });
+  return snapshot;
 }
