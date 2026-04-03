@@ -27,14 +27,66 @@ export type MeetingAgendaSnapshot = {
   evaluations: MeetingAgendaSnapshotEvaluationRow[];
 };
 
-export async function fetchMeetingAgendaSnapshot(meetingId: string): Promise<MeetingAgendaSnapshot | null> {
-  const { data, error } = await (supabase as any).rpc('get_meeting_agenda_snapshot', {
-    p_meeting_id: meetingId,
-  });
-  if (error || data == null || typeof data !== 'object') {
-    return null;
+/** Coalesce concurrent RPCs and short-TTL cache so prefetch + screen share one download. */
+const inflight = new Map<string, Promise<MeetingAgendaSnapshot | null>>();
+const recent = new Map<string, { value: MeetingAgendaSnapshot | null; at: number }>();
+const RECENT_MS = 15_000;
+
+/** Drop memoized snapshot (in-flight RPC continues; next fetch may still await it). */
+export function invalidateMeetingAgendaSnapshot(meetingId: string | null | undefined): void {
+  if (!meetingId) return;
+  recent.delete(meetingId);
+}
+
+export async function fetchMeetingAgendaSnapshot(
+  meetingId: string,
+  options?: { bypassCache?: boolean }
+): Promise<MeetingAgendaSnapshot | null> {
+  if (options?.bypassCache) {
+    recent.delete(meetingId);
+    const stalled = inflight.get(meetingId);
+    if (stalled) {
+      try {
+        await stalled;
+      } catch {
+        /* ignore */
+      }
+      if (inflight.get(meetingId) === stalled) {
+        inflight.delete(meetingId);
+      }
+      recent.delete(meetingId);
+    }
   }
-  return data as MeetingAgendaSnapshot;
+
+  const now = Date.now();
+  const hit = recent.get(meetingId);
+  if (hit && now - hit.at < RECENT_MS) {
+    return hit.value;
+  }
+
+  let pending = inflight.get(meetingId);
+  if (!pending) {
+    const p = (async (): Promise<MeetingAgendaSnapshot | null> => {
+      try {
+        const { data, error } = await (supabase as any).rpc('get_meeting_agenda_snapshot', {
+          p_meeting_id: meetingId,
+        });
+        if (error || data == null || typeof data !== 'object') {
+          return null;
+        }
+        const parsed = data as MeetingAgendaSnapshot;
+        recent.set(meetingId, { value: parsed, at: Date.now() });
+        return parsed;
+      } finally {
+        if (inflight.get(meetingId) === p) {
+          inflight.delete(meetingId);
+        }
+      }
+    })();
+    pending = p;
+    inflight.set(meetingId, p);
+  }
+  return pending;
 }
 
 export function evaluationsArrayToRecord(

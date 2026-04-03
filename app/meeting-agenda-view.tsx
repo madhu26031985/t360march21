@@ -24,7 +24,10 @@ import { supabase } from '@/lib/supabase';
 import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users } from 'lucide-react-native';
 import { exportAgendaToPDF, generatePDFFilename } from '@/lib/pdfExportUtils';
 import { parseMemberPreparedAgenda } from '@/lib/preparedSpeechesAgendaParse';
-import { fetchMeetingAgendaSnapshot, evaluationsArrayToRecord } from '@/lib/meetingAgendaSnapshot';
+import {
+  fetchMeetingAgendaSnapshot,
+  evaluationsArrayToRecord,
+} from '@/lib/meetingAgendaSnapshot';
 
 /** Icons + level/project markers on prepared speech / ice breaker cards (evaluation button stays theme primary). */
 const SPEECH_DETAIL_ORANGE = '#E09355';
@@ -614,8 +617,7 @@ export function MeetingAgendaViewContent({
         return;
       }
       if (meetingId) {
-        // Use the same loadData flow as refresh to ensure proper sequencing
-        loadData();
+        void loadData(true);
       }
     }, [meetingId])
   );
@@ -640,11 +642,13 @@ export function MeetingAgendaViewContent({
     }
   };
 
-  const loadData = async () => {
+  const loadData = async (forceRefresh = false) => {
     if (!meetingId) return;
     try {
       setLoading(true);
-      const snap = await fetchMeetingAgendaSnapshot(meetingId);
+      const snap = await fetchMeetingAgendaSnapshot(meetingId, {
+        bypassCache: forceRefresh,
+      });
       if (snap?.meeting && typeof snap.meeting === 'object') {
         setMeeting(snap.meeting as unknown as Meeting);
         const themeOfTheDay = ((snap.meeting as Record<string, unknown>).theme as string | null) ?? null;
@@ -878,7 +882,7 @@ export function MeetingAgendaViewContent({
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   };
 
