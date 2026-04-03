@@ -8,15 +8,19 @@
  *
  * Shorter URLs without /weblogin still work: Netlify redirects them to this path.
  *
- * Default host is https://t360.in — or set EXPO_PUBLIC_AGENDA_WEB_HOST (e.g. https://app.t360.in).
+ * Default host is https://app.t360.in (same as Netlify web builds via EXPO_PUBLIC_AGENDA_WEB_HOST).
+ * Override with EXPO_PUBLIC_AGENDA_WEB_HOST if needed (e.g. https://t360.in once apex serves the app).
  */
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 
 export const AGENDA_WEB_PATH_PREFIX = '/weblogin';
+/** Must match production web so share links from iOS/Android open the same URL as the browser. */
+const DEFAULT_AGENDA_WEB_HOST = 'https://app.t360.in';
+
 function agendaWebHost(): string {
   const h = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.trim();
   if (h) return h.replace(/\/$/, '');
-  return 'https://t360.in';
+  return DEFAULT_AGENDA_WEB_HOST;
 }
 
 export function getAgendaWebHost(): string {

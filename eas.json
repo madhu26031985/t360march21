@@ -16,6 +16,9 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_AGENDA_WEB_HOST": "https://app.t360.in"
+      },
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease"
@@ -27,6 +30,9 @@
       }
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_AGENDA_WEB_HOST": "https://app.t360.in"
+      },
       "android": {
         "buildType": "app-bundle"
       },
