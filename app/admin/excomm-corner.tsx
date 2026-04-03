@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { ArrowLeft, Crown, User, Shield, Eye, UserCheck, Award, TrendingUp, Megaphone, DollarSign, UserCog, FileText } from 'lucide-react-native';
 
 interface RoleCardProps {
@@ -51,7 +52,7 @@ export default function ExCommCorner() {
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
+      case 'excomm': return EXCOMM_UI.solidBg;
       case 'visiting_tm': return '#10b981';
       case 'club_leader': return '#f59e0b';
       case 'guest': return '#6b7280';
@@ -85,8 +86,8 @@ export default function ExCommCorner() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Welcome Card */}
         <View style={[styles.welcomeCard, { backgroundColor: theme.colors.surface }]}>
-          <View style={[styles.welcomeIcon, { backgroundColor: '#8b5cf6' + '20' }]}>
-            <Crown size={32} color="#8b5cf6" />
+          <View style={[styles.welcomeIcon, { backgroundColor: EXCOMM_UI.pillBg }]}>
+            <Crown size={32} color={EXCOMM_UI.solidBg} />
           </View>
           <Text style={[styles.welcomeTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
             ExComm Corner

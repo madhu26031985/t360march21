@@ -1,11 +1,14 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Save, Calendar, Clock, MapPin, ChevronDown, Building2, Crown, User, Shield, Eye, UserCheck, Repeat, Info, Video, Monitor } from 'lucide-react-native';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
+import { clubInfoManagementQueryKeys, type ClubInfoManagementMeetingSchedule } from '@/lib/clubInfoManagementQuery';
+import { ArrowLeft, Save, Calendar, ChevronDown, Crown, User, Shield, Eye, UserCheck, Info } from 'lucide-react-native';
 import SmartTimeInput from '@/components/SmartTimeinput';
 
 interface ClubMeetingDetails {
@@ -23,21 +26,36 @@ interface ClubInfo {
   club_number: string | null;
 }
 
-export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boolean }) {
+const emptyMeetingDetails = (): ClubMeetingDetails => ({
+  meeting_day: null,
+  meeting_frequency: null,
+  meeting_start_time: null,
+  meeting_end_time: null,
+  meeting_type: null,
+  online_meeting_link: null,
+});
+
+export function ClubMeetingDetailsContent({
+  embedded = false,
+  prefetchedMeetingDetails,
+}: {
+  embedded?: boolean;
+  /** When set (e.g. from Club Info bundle), embedded tab skips the extra loading fetch. */
+  prefetchedMeetingDetails?: ClubInfoManagementMeetingSchedule | null;
+}) {
   const { theme } = useTheme();
   const { user } = useAuth();
-  
+  const queryClient = useQueryClient();
+
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
-  const [meetingDetails, setMeetingDetails] = useState<ClubMeetingDetails>({
-    meeting_day: null,
-    meeting_frequency: null,
-    meeting_start_time: null,
-    meeting_end_time: null,
-    meeting_type: null,
-    online_meeting_link: null,
+  const [meetingDetails, setMeetingDetails] = useState<ClubMeetingDetails>(() =>
+    prefetchedMeetingDetails != null ? { ...prefetchedMeetingDetails } : emptyMeetingDetails()
+  );
+
+  const [isLoading, setIsLoading] = useState(() => {
+    if (!embedded) return true;
+    return prefetchedMeetingDetails == null;
   });
-  
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showDayModal, setShowDayModal] = useState(false);
   const [showFrequencyModal, setShowFrequencyModal] = useState(false);
@@ -72,9 +90,22 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
   ];
 
   useEffect(() => {
-    loadClubMeetingDetails();
-    loadClubInfo();
-  }, []);
+    if (!user?.currentClubId) {
+      setIsLoading(false);
+      return;
+    }
+    if (!embedded) {
+      void loadClubInfo();
+      void loadClubMeetingDetails();
+      return;
+    }
+    if (prefetchedMeetingDetails != null) {
+      setMeetingDetails({ ...prefetchedMeetingDetails });
+      setIsLoading(false);
+      return;
+    }
+    void loadClubMeetingDetails();
+  }, [user?.currentClubId, embedded, prefetchedMeetingDetails]);
 
   const loadClubMeetingDetails = async () => {
     if (!user?.currentClubId) {
@@ -235,6 +266,7 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
           Alert.alert('Error', 'Failed to save meeting details');
           return;
         }
+        void queryClient.invalidateQueries({ queryKey: clubInfoManagementQueryKeys.detail(user.currentClubId) });
       } else if (checkError) {
         console.error('Error checking club profile:', checkError);
         Alert.alert('Error', 'Database error occurred');
@@ -251,6 +283,7 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
           Alert.alert('Error', 'Failed to save meeting details');
           return;
         }
+        void queryClient.invalidateQueries({ queryKey: clubInfoManagementQueryKeys.detail(user.currentClubId) });
       }
 
       Alert.alert('Success', 'Club meeting details saved successfully!');
@@ -275,7 +308,7 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
+      case 'excomm': return EXCOMM_UI.solidBg;
       case 'visiting_tm': return '#10b981';
       case 'club_leader': return '#f59e0b';
       case 'guest': return '#6b7280';
@@ -296,6 +329,26 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
   };
 
   if (isLoading) {
+    if (embedded) {
+      return (
+        <View
+          style={[
+            styles.meetingDetailsPanel,
+            {
+              borderColor: theme.colors.border,
+              marginHorizontal: 0,
+              marginTop: 0,
+              backgroundColor: 'transparent',
+              minHeight: 120,
+              justifyContent: 'center',
+              alignItems: 'center',
+            },
+          ]}
+        >
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+        </View>
+      );
+    }
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
@@ -330,7 +383,7 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {!embedded && clubInfo && (
-          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.clubCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={styles.clubHeader}>
               <View style={styles.clubInfo}>
                 <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -371,112 +424,144 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
           </View>
         )}
 
-        {/* Meeting Schedule Section */}
-        <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.sectionHeader}>
-            <View style={[styles.sectionIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-              <Calendar size={20} color={theme.colors.primary} />
+        {/* Single flat panel: schedule grid + meeting type */}
+        <View
+          style={[
+            styles.meetingDetailsPanel,
+            {
+              backgroundColor: embedded ? 'transparent' : theme.colors.surface,
+              borderColor: theme.colors.border,
+              marginHorizontal: embedded ? 0 : 16,
+              marginTop: embedded ? 0 : 16,
+            },
+          ]}
+        >
+          <View style={[styles.meetingDetailsPanelHeader, { borderBottomColor: theme.colors.border }]}>
+            <View style={[styles.meetingDetailsPanelIcon, { backgroundColor: theme.colors.primary + '14' }]}>
+              <Calendar size={20} color={theme.colors.primary} strokeWidth={2} />
             </View>
             <View style={styles.sectionHeaderText}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Schedule</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Meeting details
+              </Text>
               <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Your schedule helps members know your regular meeting time.
+                Regular schedule, times, and how members attend.
               </Text>
             </View>
           </View>
 
-          <View style={styles.meetingScheduleGrid}>
-            <View style={styles.meetingScheduleGridRow}>
+          <View>
+            <View style={styles.meetingGridRow}>
               <TouchableOpacity
-                style={[styles.meetingScheduleCell, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                style={[
+                  styles.meetingGridCell,
+                  {
+                    borderColor: theme.colors.border,
+                    borderRightWidth: StyleSheet.hairlineWidth,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
                 onPress={() => {
                   setTempSelectedDay(meetingDetails.meeting_day);
                   setShowDayModal(true);
                 }}
+                activeOpacity={0.7}
               >
-                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>Day</Text>
+                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Day
+                </Text>
                 <View style={styles.meetingScheduleValueWrap}>
-                  <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>{getDayLabel()}</Text>
-                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                  <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                    {getDayLabel()}
+                  </Text>
+                  <ChevronDown size={14} color={theme.colors.primary} />
                 </View>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.meetingScheduleCell, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                style={[
+                  styles.meetingGridCell,
+                  {
+                    borderColor: theme.colors.border,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
                 onPress={() => {
                   setTempSelectedFrequency(meetingDetails.meeting_frequency);
                   setShowFrequencyModal(true);
                 }}
+                activeOpacity={0.7}
               >
-                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>Frequency</Text>
+                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Frequency
+                </Text>
                 <View style={styles.meetingScheduleValueWrap}>
-                  <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>{getFrequencyLabel()}</Text>
-                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                  <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                    {getFrequencyLabel()}
+                  </Text>
+                  <ChevronDown size={14} color={theme.colors.primary} />
                 </View>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.meetingScheduleGridRow}>
+            <View style={styles.meetingGridRow}>
               <TouchableOpacity
-                style={[styles.meetingScheduleCell, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+                style={[
+                  styles.meetingGridCell,
+                  {
+                    borderColor: theme.colors.border,
+                    borderRightWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
                 onPress={() => setShowStartTimeModal(true)}
+                activeOpacity={0.7}
               >
-                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>Start Time</Text>
+                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Start Time
+                </Text>
                 <View style={styles.meetingScheduleValueWrap}>
                   <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
                     {formatTime(meetingDetails.meeting_start_time)}
                   </Text>
-                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                  <ChevronDown size={14} color={theme.colors.primary} />
                 </View>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.meetingScheduleCell, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                onPress={() => setShowEndTimeModal(true)}
-              >
-                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>End Time</Text>
+              <TouchableOpacity style={styles.meetingGridCell} onPress={() => setShowEndTimeModal(true)} activeOpacity={0.7}>
+                <Text style={[styles.meetingScheduleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  End Time
+                </Text>
                 <View style={styles.meetingScheduleValueWrap}>
                   <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
                     {formatTime(meetingDetails.meeting_end_time)}
                   </Text>
-                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                  <ChevronDown size={14} color={theme.colors.primary} />
                 </View>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
 
-        {/* Meeting Format Section */}
-        <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.sectionHeader}>
-            <View style={[styles.sectionIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-              <MapPin size={20} color={theme.colors.primary} />
-            </View>
-            <View style={styles.sectionHeaderText}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meeting Format</Text>
-              <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Choose how your members attend each meeting.
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.settingsList, { borderColor: theme.colors.border }]}>
-            <TouchableOpacity
-              style={styles.settingRow}
-              onPress={() => {
-                setTempSelectedType(meetingDetails.meeting_type);
-                setShowTypeModal(true);
-              }}
+          <TouchableOpacity
+            style={[styles.meetingTypeRow, { borderTopColor: theme.colors.border }]}
+            onPress={() => {
+              setTempSelectedType(meetingDetails.meeting_type);
+              setShowTypeModal(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[styles.meetingScheduleLabel, { color: theme.colors.textSecondary, marginBottom: 0, alignSelf: 'center' }]}
+              maxFontSizeMultiplier={1.2}
             >
-              <Text style={[styles.settingLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Type</Text>
-              <View style={styles.settingValueWrap}>
-                <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  {getTypeLabel()}
-                </Text>
-                <ChevronDown size={16} color={theme.colors.textSecondary} />
-              </View>
-            </TouchableOpacity>
-          </View>
+              Type
+            </Text>
+            <View style={styles.settingValueWrap}>
+              <Text style={[styles.meetingScheduleValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                {getTypeLabel()}
+              </Text>
+              <ChevronDown size={16} color={theme.colors.primary} />
+            </View>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -499,7 +584,12 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
           }}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View style={[styles.typeDropdownModal, { backgroundColor: theme.colors.surface }]}>
+            <View
+              style={[
+                styles.typeDropdownModal,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              ]}
+            >
               <Text style={[styles.typeModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
                 Select Meeting Day
               </Text>
@@ -585,7 +675,12 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
           }}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View style={[styles.typeDropdownModal, { backgroundColor: theme.colors.surface }]}>
+            <View
+              style={[
+                styles.typeDropdownModal,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              ]}
+            >
               <Text style={[styles.typeModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
                 Select Meeting Frequency
               </Text>
@@ -678,7 +773,12 @@ export function ClubMeetingDetailsContent({ embedded = false }: { embedded?: boo
           }}
         >
           <TouchableOpacity activeOpacity={1}>
-            <View style={[styles.typeDropdownModal, { backgroundColor: theme.colors.surface }]}>
+            <View
+              style={[
+                styles.typeDropdownModal,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              ]}
+            >
               <Text style={[styles.typeModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Select Meeting Type
               </Text>
@@ -814,7 +914,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 0,
   },
   saveButtonText: {
     fontSize: 14,
@@ -828,16 +928,9 @@ const styles = StyleSheet.create({
   clubCard: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 8,
+    borderRadius: 0,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   clubHeader: {
     flexDirection: 'row',
@@ -846,7 +939,7 @@ const styles = StyleSheet.create({
   clubIconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -872,7 +965,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 12,
+    borderRadius: 0,
   },
   roleText: {
     fontSize: 10,
@@ -884,7 +977,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 16,
     backgroundColor: '#EFF6FF',
-    borderRadius: 12,
+    borderRadius: 0,
     padding: 16,
     borderLeftWidth: 4,
     borderLeftColor: '#3B82F6',
@@ -897,7 +990,7 @@ const styles = StyleSheet.create({
   infoIconContainer: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 0,
     backgroundColor: '#DBEAFE',
     alignItems: 'center',
     justifyContent: 'center',
@@ -918,35 +1011,48 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2563EB',
   },
-  section: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  meetingDetailsPanel: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
+    marginBottom: 16,
+    overflow: 'hidden',
   },
-  sectionHeader: {
+  meetingDetailsPanelHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  meetingDetailsPanelIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   sectionHeaderText: {
     flex: 1,
   },
-  sectionIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
+  meetingGridRow: {
+    flexDirection: 'row',
+  },
+  meetingGridCell: {
+    flex: 1,
+    minHeight: 54,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
     justifyContent: 'center',
-    marginRight: 12,
+  },
+  meetingTypeRow: {
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   sectionTitle: {
     fontSize: 16,
@@ -957,31 +1063,11 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: 4,
   },
-  settingsList: {
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  meetingScheduleGrid: {
-    gap: 10,
-  },
-  meetingScheduleGridRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  meetingScheduleCell: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    minHeight: 54,
-    justifyContent: 'center',
-  },
   meetingScheduleLabel: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '500',
-    marginBottom: 6,
+    marginBottom: 8,
+    letterSpacing: 0.1,
   },
   meetingScheduleValueWrap: {
     flexDirection: 'row',
@@ -990,17 +1076,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   meetingScheduleValue: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 20,
     flexShrink: 1,
-  },
-  settingRow: {
-    minHeight: 52,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   settingLabel: {
     fontSize: 14,
@@ -1014,7 +1093,7 @@ const styles = StyleSheet.create({
   settingValueChip: {
     minWidth: 110,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 0,
     paddingHorizontal: 10,
     paddingVertical: 6,
     alignItems: 'flex-end',
@@ -1047,7 +1126,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 12,
     gap: 8,
@@ -1060,7 +1139,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 12,
     gap: 8,
@@ -1075,37 +1154,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  dropdownModal: {
-    borderRadius: 16,
-    paddingTop: 24,
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    marginHorizontal: 16,
-    maxHeight: '75%',
-    width: '92%',
-    maxWidth: 500,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
-  },
   typeDropdownModal: {
-    borderRadius: 14,
+    borderRadius: 0,
     paddingTop: 18,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingBottom: 14,
-    marginHorizontal: 16,
-    width: '92%',
-    maxWidth: 420,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
+    marginHorizontal: 8,
+    width: '98%',
+    maxWidth: 483,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   modalTitle: {
     fontSize: 18,
@@ -1120,8 +1177,8 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   typeOptionsListBox: {
-    borderWidth: 1,
-    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     overflow: 'hidden',
   },
   optionsList: {
@@ -1131,7 +1188,7 @@ const styles = StyleSheet.create({
   option: {
     paddingVertical: 16,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 0,
     marginBottom: 8,
   },
   optionText: {
@@ -1158,7 +1215,7 @@ const styles = StyleSheet.create({
   },
   typeOption: {
     minHeight: 52,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingVertical: 10,
     justifyContent: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -1178,7 +1235,7 @@ const styles = StyleSheet.create({
   modalButton: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
@@ -1186,16 +1243,7 @@ const styles = StyleSheet.create({
   cancelButton: {
     backgroundColor: '#E2E8F0',
   },
-  confirmButton: {
-    shadowColor: '#3B82F6',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
+  confirmButton: {},
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '700',

@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import {
   clubInfoManagementQueryKeys,
   fetchClubInfoManagementBundle,
@@ -43,6 +44,14 @@ function defaultTimezoneForCountryIsoCode(isoCode: string | null | undefined): s
     return null;
   }
 }
+
+/** Tab icons: Notion-style accents (visible for active + inactive). */
+const CLUB_INFO_TAB_ICON_COLORS = {
+  info: '#2383E2',
+  location: '#EA580C',
+  meetingDetails: '#7C3AED',
+  moreInfo: '#0D9488',
+} as const;
 
 function timezoneLabelFromValue(timezoneValue: string | null | undefined): string {
   if (!timezoneValue) return '';
@@ -129,7 +138,6 @@ export default function ClubInfoManagement() {
   const [showClubTypeModal, setShowClubTypeModal] = useState(false);
   const [showClubStatusModal, setShowClubStatusModal] = useState(false);
   const [showBannerColorModal, setShowBannerColorModal] = useState(false);
-  const [focusedField, setFocusedField] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'info' | 'location' | 'meetingDetails' | 'moreInfo'>(computedInitialTab);
   const tabTransition = useRef(new Animated.Value(1)).current;
   const tabOrder: Array<'info' | 'location' | 'meetingDetails' | 'moreInfo'> = [
@@ -396,7 +404,7 @@ export default function ClubInfoManagement() {
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
+      case 'excomm': return EXCOMM_UI.solidBg;
       case 'visiting_tm': return '#10b981';
       case 'club_leader': return '#f59e0b';
       case 'guest': return '#6b7280';
@@ -491,9 +499,19 @@ export default function ClubInfoManagement() {
               <View style={[styles.skeletonLine, styles.skeletonTitle, { backgroundColor: theme.colors.border }]} />
               <View style={[styles.skeletonLine, styles.skeletonMeta, { backgroundColor: theme.colors.border }]} />
             </View>
-            <View style={[styles.skeletonTabRow, { borderBottomColor: theme.colors.border }]}>
-              {[1, 2, 3].map((k) => (
-                <View key={k} style={[styles.skeletonTab, { backgroundColor: theme.colors.border }]} />
+            <View style={[styles.skeletonTabGrid, { borderTopColor: theme.colors.border, borderLeftColor: theme.colors.border }]}>
+              {[1, 2, 3, 4].map((k) => (
+                <View
+                  key={k}
+                  style={[
+                    styles.skeletonTabCell,
+                    {
+                      borderRightColor: theme.colors.border,
+                      borderBottomColor: theme.colors.border,
+                      backgroundColor: theme.colors.surface,
+                    },
+                  ]}
+                />
               ))}
             </View>
             <View style={styles.notionPanelBody}>
@@ -566,83 +584,92 @@ export default function ClubInfoManagement() {
             </View>
 
             <View style={[styles.notionTabStrip, { borderBottomColor: theme.colors.border }]}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tabBar}
-            >
-              <TouchableOpacity
-                style={[
-                  styles.tab,
-                  activeTab === 'info' && styles.activeTab,
-                  activeTab === 'info' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
-                ]}
-                onPress={() => switchTab('info')}
-              >
-                <Building2 size={16} color={activeTab === 'info' ? theme.colors.primary : '#9CA3AF'} />
-                <Text style={[
-                  styles.tabText,
-                  { color: activeTab === 'info' ? '#111827' : '#6B7280' },
-                  activeTab === 'info' && styles.activeTabText
-                ]} maxFontSizeMultiplier={1.3}>
-                  Club Info
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.tab,
-                  activeTab === 'location' && styles.activeTab,
-                  activeTab === 'location' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
-                ]}
-                onPress={() => switchTab('location')}
-              >
-                <MapPin size={16} color={activeTab === 'location' ? theme.colors.primary : '#9CA3AF'} />
-                <Text style={[
-                  styles.tabText,
-                  { color: activeTab === 'location' ? '#111827' : '#6B7280' },
-                  activeTab === 'location' && styles.activeTabText
-                ]} maxFontSizeMultiplier={1.3}>
-                  Club Location
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.tab,
-                  activeTab === 'meetingDetails' && styles.activeTab,
-                  activeTab === 'meetingDetails' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
-                ]}
-                onPress={() => switchTab('meetingDetails')}
-              >
-                <Calendar size={16} color={activeTab === 'meetingDetails' ? theme.colors.primary : '#9CA3AF'} />
-                <Text style={[
-                  styles.tabText,
-                  { color: activeTab === 'meetingDetails' ? '#111827' : '#6B7280' },
-                  activeTab === 'meetingDetails' && styles.activeTabText
-                ]} maxFontSizeMultiplier={1.3}>
-                  Club Meeting Details
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.tab,
-                  activeTab === 'moreInfo' && styles.activeTab,
-                  activeTab === 'moreInfo' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
-                ]}
-                onPress={() => switchTab('moreInfo')}
-              >
-                <Info size={16} color={activeTab === 'moreInfo' ? theme.colors.primary : '#9CA3AF'} />
-                <Text style={[
-                  styles.tabText,
-                  { color: activeTab === 'moreInfo' ? '#111827' : '#6B7280' },
-                  activeTab === 'moreInfo' && styles.activeTabText
-                ]} maxFontSizeMultiplier={1.3}>
-                  Club More Details
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
+              <View style={[styles.tabGrid, { borderTopColor: theme.colors.border, borderLeftColor: theme.colors.border }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.tabCell,
+                    {
+                      borderRightColor: theme.colors.border,
+                      borderBottomColor: theme.colors.border,
+                      backgroundColor: activeTab === 'info' ? theme.colors.primary + '14' : theme.colors.surface,
+                    },
+                  ]}
+                  onPress={() => switchTab('info')}
+                  activeOpacity={0.75}
+                >
+                  <Building2 size={20} color={CLUB_INFO_TAB_ICON_COLORS.info} strokeWidth={2} />
+                  <Text
+                    style={[styles.tabCellText, { color: theme.colors.text }, activeTab === 'info' && styles.tabCellTextActive]}
+                    maxFontSizeMultiplier={1.25}
+                    numberOfLines={2}
+                  >
+                    Club Info
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.tabCell,
+                    {
+                      borderRightColor: theme.colors.border,
+                      borderBottomColor: theme.colors.border,
+                      backgroundColor: activeTab === 'location' ? theme.colors.primary + '14' : theme.colors.surface,
+                    },
+                  ]}
+                  onPress={() => switchTab('location')}
+                  activeOpacity={0.75}
+                >
+                  <MapPin size={20} color={CLUB_INFO_TAB_ICON_COLORS.location} strokeWidth={2} />
+                  <Text
+                    style={[styles.tabCellText, { color: theme.colors.text }, activeTab === 'location' && styles.tabCellTextActive]}
+                    maxFontSizeMultiplier={1.25}
+                    numberOfLines={2}
+                  >
+                    Club Location
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.tabCell,
+                    {
+                      borderRightColor: theme.colors.border,
+                      borderBottomColor: theme.colors.border,
+                      backgroundColor: activeTab === 'meetingDetails' ? theme.colors.primary + '14' : theme.colors.surface,
+                    },
+                  ]}
+                  onPress={() => switchTab('meetingDetails')}
+                  activeOpacity={0.75}
+                >
+                  <Calendar size={20} color={CLUB_INFO_TAB_ICON_COLORS.meetingDetails} strokeWidth={2} />
+                  <Text
+                    style={[styles.tabCellText, { color: theme.colors.text }, activeTab === 'meetingDetails' && styles.tabCellTextActive]}
+                    maxFontSizeMultiplier={1.25}
+                    numberOfLines={2}
+                  >
+                    Club Meeting Details
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.tabCell,
+                    {
+                      borderRightColor: theme.colors.border,
+                      borderBottomColor: theme.colors.border,
+                      backgroundColor: activeTab === 'moreInfo' ? theme.colors.primary + '14' : theme.colors.surface,
+                    },
+                  ]}
+                  onPress={() => switchTab('moreInfo')}
+                  activeOpacity={0.75}
+                >
+                  <Info size={20} color={CLUB_INFO_TAB_ICON_COLORS.moreInfo} strokeWidth={2} />
+                  <Text
+                    style={[styles.tabCellText, { color: theme.colors.text }, activeTab === 'moreInfo' && styles.tabCellTextActive]}
+                    maxFontSizeMultiplier={1.25}
+                    numberOfLines={2}
+                  >
+                    Club More Details
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
           <Animated.View
@@ -753,7 +780,7 @@ export default function ClubInfoManagement() {
                   >
                     {getClubStatusLabel()}
                   </Text>
-                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                  <ChevronDown size={14} color="#2383E2" />
                 </TouchableOpacity>
               </View>
 
@@ -770,7 +797,7 @@ export default function ClubInfoManagement() {
                   >
                     {getClubTypeLabel()}
                   </Text>
-                  <ChevronDown size={14} color={theme.colors.textSecondary} />
+                  <ChevronDown size={14} color="#2383E2" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -791,7 +818,7 @@ export default function ClubInfoManagement() {
                     {getBannerColorLabel()}
                   </Text>
                 </View>
-                <ChevronDown size={16} color={theme.colors.textSecondary} />
+                <ChevronDown size={16} color="#2383E2" />
               </TouchableOpacity>
             </View>
               </View>
@@ -800,126 +827,95 @@ export default function ClubInfoManagement() {
             {/* Location Information Tab */}
             {activeTab === 'location' && (
               <View style={styles.locationTabWrap}>
-                  {/* Tab label already shows “Club Location”; avoid duplicate heading here */}
-
-                  <View style={[styles.formField, styles.sectionBlock]}>
-                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Country</Text>
+                <View style={[styles.locationNotionPanel, { borderColor: theme.colors.border }]}>
+                  <View style={[styles.locationNotionRow, { borderBottomColor: theme.colors.border }]}>
+                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      Country
+                    </Text>
                     <CountryPicker
+                      flat
                       value={clubData.country}
                       onChange={handleLocationCountryChange}
                       placeholder="Select country"
                       textColor={theme.colors.text}
                       placeholderColor={theme.colors.textSecondary}
-                      borderColor="#E5E7EB"
+                      borderColor={theme.colors.border}
                       focusColor={theme.colors.primary}
                       backgroundColor={theme.colors.surface}
                     />
                   </View>
 
-                  <View style={[styles.formField, styles.sectionBlock]}>
-                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Time zone</Text>
+                  <View style={[styles.locationNotionRow, { borderBottomColor: theme.colors.border }]}>
+                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      Time zone
+                    </Text>
                     {clubData.country ? (
-                      <View
-                        style={[
-                          styles.locationInput,
-                          {
-                            backgroundColor: theme.colors.background,
-                            borderColor: '#E5E7EB',
-                            justifyContent: 'center',
-                          },
-                        ]}
-                      >
-                        <Text style={{ color: theme.colors.text }} maxFontSizeMultiplier={1.2}>
-                          {clubData.time_zone
-                            ? timezoneLabelFromValue(clubData.time_zone)
-                            : 'Time zone not available for this country'}
-                        </Text>
-                      </View>
+                      <Text style={[styles.locationNotionValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                        {clubData.time_zone
+                          ? timezoneLabelFromValue(clubData.time_zone)
+                          : 'Time zone not available for this country'}
+                      </Text>
                     ) : (
-                      <View style={[styles.locationTimezonePlaceholder, { backgroundColor: theme.colors.background, borderColor: '#E5E7EB' }]}>
-                        <Text style={[styles.locationTimezonePlaceholderText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                          Select a country to set the time zone.
-                        </Text>
-                      </View>
+                      <Text style={[styles.locationNotionValue, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                        Select a country to set the time zone.
+                      </Text>
                     )}
                   </View>
 
-                  <View style={[styles.formField, styles.sectionBlock]}>
+                  <View style={[styles.locationNotionRow, { borderBottomColor: theme.colors.border }]}>
                     <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Club Address
                     </Text>
                     <TextInput
-                      style={[
-                        styles.locationInput,
-                        {
-                          backgroundColor: theme.colors.surface,
-                          borderColor: focusedField === 'address' ? theme.colors.primary : '#E5E7EB',
-                          color: theme.colors.text,
-                        },
-                      ]}
+                      style={[styles.locationNotionInput, { color: theme.colors.text }]}
                       placeholder="Type full address (e.g., No 19, 7B, 1st Main Rd...)"
                       placeholderTextColor={theme.colors.textSecondary}
                       value={clubData.address || ''}
                       onChangeText={(text) => updateField('address', text)}
-                      onFocus={() => setFocusedField('address')}
-                      onBlur={() => setFocusedField(null)}
                     />
                   </View>
 
-                  <View style={[styles.formField, styles.sectionBlock]}>
-                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>City</Text>
+                  <View style={[styles.locationNotionRow, { borderBottomColor: theme.colors.border }]}>
+                    <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      City
+                    </Text>
                     <TextInput
-                      style={[
-                        styles.locationInput,
-                        { backgroundColor: theme.colors.surface, borderColor: focusedField === 'city' ? theme.colors.primary : '#E5E7EB', color: theme.colors.text }
-                      ]}
+                      style={[styles.locationNotionInput, { color: theme.colors.text }]}
                       placeholder="Type city (e.g., Chennai)"
                       placeholderTextColor={theme.colors.textSecondary}
                       value={clubData.city || ''}
                       onChangeText={(text) => updateField('city', text)}
-                      onFocus={() => setFocusedField('city')}
-                      onBlur={() => setFocusedField(null)}
                     />
                   </View>
 
-                  <View style={[styles.formField, styles.sectionBlock]}>
+                  <View style={styles.locationNotionRowLast}>
                     <Text style={[styles.locationLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       Location Map Link
                     </Text>
                     <TextInput
-                      style={[
-                        styles.locationInput,
-                        {
-                          backgroundColor: theme.colors.surface,
-                          borderColor: focusedField === 'maps' ? theme.colors.primary : '#E5E7EB',
-                          color: theme.colors.text,
-                        },
-                      ]}
+                      style={[styles.locationNotionInput, { color: theme.colors.text }]}
                       placeholder="https://maps.google.com/..."
                       placeholderTextColor={theme.colors.textSecondary}
                       value={clubData.google_location_link || ''}
                       onChangeText={(text) => updateField('google_location_link', text)}
-                      onFocus={() => setFocusedField('maps')}
-                      onBlur={() => setFocusedField(null)}
                       keyboardType="url"
                       autoCapitalize="none"
                     />
                   </View>
+                </View>
 
-                  <View style={styles.sectionBlock}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
-                      <TouchableOpacity
-                        style={[styles.directionsBtn, { backgroundColor: theme.colors.primary }]}
-                        onPress={handleOpenDirections}
-                        activeOpacity={0.85}
-                      >
-                        <Navigation size={14} color="#ffffff" />
-                        <Text style={styles.directionsBtnText} maxFontSizeMultiplier={1.15}>
-                          Get Directions
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                <View style={styles.locationActions}>
+                  <TouchableOpacity
+                    style={[styles.directionsBtn, { backgroundColor: theme.colors.primary }]}
+                    onPress={handleOpenDirections}
+                    activeOpacity={0.85}
+                  >
+                    <Navigation size={14} color="#ffffff" />
+                    <Text style={styles.directionsBtnText} maxFontSizeMultiplier={1.15}>
+                      Get Directions
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
@@ -988,7 +984,7 @@ export default function ClubInfoManagement() {
             {/* Club Meeting Details Tab */}
             {activeTab === 'meetingDetails' && (
               <View style={{ marginBottom: 24 }}>
-                <ClubMeetingDetailsContent embedded />
+                <ClubMeetingDetailsContent embedded prefetchedMeetingDetails={bundle?.meetingSchedule ?? null} />
               </View>
             )}
           </Animated.View>
@@ -1011,7 +1007,7 @@ export default function ClubInfoManagement() {
           style={styles.modalOverlay}
           onPress={() => setShowClubStatusModal(false)}
         >
-          <View style={[styles.dropdownModal, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.dropdownModal, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Club Status</Text>
             <ScrollView style={styles.optionsList} showsVerticalScrollIndicator={false}>
               {clubStatusOptions.map((option) => (
@@ -1050,7 +1046,7 @@ export default function ClubInfoManagement() {
           style={styles.modalOverlay}
           onPress={() => setShowClubTypeModal(false)}
         >
-          <View style={[styles.dropdownModal, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.dropdownModal, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Club Type</Text>
             <ScrollView style={styles.optionsList} showsVerticalScrollIndicator={false}>
               {clubTypeOptions.map((option) => (
@@ -1089,7 +1085,7 @@ export default function ClubInfoManagement() {
           style={styles.modalOverlay}
           onPress={() => setShowBannerColorModal(false)}
         >
-          <View style={[styles.colorModal, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.colorModal, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Select Banner Color</Text>
             <Text style={[styles.modalSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Choose a banner color for your club
@@ -1181,7 +1177,7 @@ const styles = StyleSheet.create({
   retryButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 0,
   },
   retryButtonText: {
     color: '#ffffff',
@@ -1198,7 +1194,7 @@ const styles = StyleSheet.create({
   },
   skeletonLine: {
     height: 12,
-    borderRadius: 6,
+    borderRadius: 0,
     opacity: 0.35,
   },
   skeletonTitle: {
@@ -1208,22 +1204,22 @@ const styles = StyleSheet.create({
   skeletonMeta: {
     width: '40%',
   },
-  skeletonTabRow: {
+  skeletonTabGrid: {
     flexDirection: 'row',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    gap: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexWrap: 'wrap',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
   },
-  skeletonTab: {
-    flex: 1,
-    height: 32,
-    borderRadius: 8,
+  skeletonTabCell: {
+    width: '50%',
+    height: 72,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     opacity: 0.35,
   },
   skeletonBox: {
     height: 48,
-    borderRadius: 10,
+    borderRadius: 0,
     opacity: 0.35,
     marginTop: 8,
   },
@@ -1239,7 +1235,7 @@ const styles = StyleSheet.create({
   skeletonHalf: {
     flex: 1,
     height: 48,
-    borderRadius: 10,
+    borderRadius: 0,
     opacity: 0.35,
   },
   content: {
@@ -1247,10 +1243,10 @@ const styles = StyleSheet.create({
   },
   /** Single Notion-style surface: club summary + tabs + tab content */
   notionPanel: {
-    marginHorizontal: 16,
+    marginHorizontal: 10,
     marginTop: 16,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   notionPanelHeader: {
@@ -1299,7 +1295,7 @@ const styles = StyleSheet.create({
   clubIconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1324,8 +1320,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 0,
   },
   roleText: {
     fontSize: 9,
@@ -1333,33 +1329,31 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     marginLeft: 4,
   },
-  tabBar: {
+  tabGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
+    flexWrap: 'wrap',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
   },
-  tab: {
-    flexDirection: 'row',
+  tabCell: {
+    width: '50%',
+    minHeight: 78,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
     gap: 6,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    borderRadius: 999,
-    minHeight: 36,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
   },
-  activeTab: {
-    borderWidth: 1,
-  },
-  tabText: {
-    fontSize: 13,
+  tabCellText: {
+    fontSize: 12,
     fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 16,
   },
-  activeTabText: {
+  tabCellTextActive: {
     fontWeight: '700',
   },
   unifiedCard: {
@@ -1370,7 +1364,45 @@ const styles = StyleSheet.create({
   },
   locationTabWrap: {
     padding: 0,
-    gap: 12,
+    gap: 0,
+  },
+  locationNotionPanel: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  locationNotionRow: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  locationNotionRowLast: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderBottomWidth: 0,
+  },
+  locationNotionInput: {
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 6,
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '400',
+    minHeight: 40,
+  },
+  locationNotionValue: {
+    fontSize: 13,
+    fontWeight: '400',
+    paddingVertical: 6,
+    marginTop: 2,
+    lineHeight: 20,
+  },
+  locationActions: {
+    paddingTop: 16,
+    alignItems: 'center',
   },
   locationSectionTitle: {
     fontSize: 15,
@@ -1385,8 +1417,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   locationTimezonePlaceholder: {
-    borderWidth: 1,
-    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     borderStyle: 'dashed',
     paddingVertical: 14,
     paddingHorizontal: 12,
@@ -1399,8 +1431,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   locationInput: {
-    borderWidth: 1,
-    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 13,
@@ -1408,8 +1440,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   locationTextArea: {
-    borderWidth: 1,
-    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 13,
@@ -1434,8 +1466,8 @@ const styles = StyleSheet.create({
   mapBox: {
     flex: 1,
     minWidth: 0,
-    borderWidth: 1,
-    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     overflow: 'hidden',
   },
   mapPreview: {
@@ -1456,8 +1488,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   mapLinkInput: {
-    borderWidth: 1,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 10,
     paddingVertical: 10,
     fontSize: 11,
@@ -1493,7 +1525,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: 0,
     flexShrink: 0,
   },
   directionsBtnText: {
@@ -1517,7 +1549,7 @@ const styles = StyleSheet.create({
   sectionIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1594,51 +1626,27 @@ const styles = StyleSheet.create({
     fontSize: 9.9,
   },
   textInput: {
-    borderWidth: 1,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 16,
     fontSize: 13,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
     minHeight: 54,
   },
   textAreaInput: {
-    borderWidth: 1,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 16,
     paddingVertical: 16,
     fontSize: 14,
     minHeight: 100,
     lineHeight: 24,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   readOnlyField: {
-    borderWidth: 1,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
     minHeight: 54,
   },
   clubInfoCompactReadOnly: {
@@ -1659,18 +1667,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
     minHeight: 54,
   },
   clubInfoCompactDropdown: {
@@ -1690,19 +1690,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dropdownModal: {
-    borderRadius: 12,
+    borderRadius: 0,
     padding: 16,
     margin: 20,
     maxHeight: '60%',
     minWidth: 250,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   modalTitle: {
     fontSize: 14,
@@ -1716,7 +1709,7 @@ const styles = StyleSheet.create({
   option: {
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 0,
     marginBottom: 4,
   },
   optionText: {
@@ -1728,18 +1721,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 16,
     paddingVertical: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   clubInfoCompactTextArea: {
     minHeight: 90,
@@ -1753,9 +1738,9 @@ const styles = StyleSheet.create({
   colorPreview: {
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: 0,
     marginRight: 12,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   colorSelectorText: {
@@ -1770,19 +1755,12 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   colorModal: {
-    borderRadius: 16,
+    borderRadius: 0,
     padding: 24,
     margin: 20,
     maxHeight: '78%',
     minWidth: 320,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   modalSubtitle: {
     fontSize: 12,
@@ -1796,7 +1774,7 @@ const styles = StyleSheet.create({
   colorOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 0,
     padding: 14,
     position: 'relative',
     marginBottom: 12,
@@ -1804,16 +1782,10 @@ const styles = StyleSheet.create({
   colorSwatch: {
     width: 52,
     height: 52,
-    borderRadius: 26,
+    borderRadius: 0,
     marginRight: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.08)',
   },
   colorDetails: {
     flex: 1,
@@ -1834,17 +1806,9 @@ const styles = StyleSheet.create({
     right: 16,
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
   },
   checkmark: {
     fontSize: 14,

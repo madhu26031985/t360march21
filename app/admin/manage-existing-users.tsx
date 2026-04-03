@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import {
   ArrowLeft,
   CreditCard as Edit3,
@@ -37,8 +38,6 @@ const N = {
   successSoft: 'rgba(15, 123, 108, 0.12)',
   danger: '#E03E3E',
   dangerSoft: 'rgba(224, 62, 62, 0.1)',
-  pillExCommBg: '#F4F0FA',
-  pillExCommText: '#6940A5',
   pillBg: '#F0EFED',
 };
 
@@ -308,7 +307,7 @@ export default function ManageExistingUsers() {
   const notionRolePill = (role: string): { bg: string; fg: string } => {
     switch (role.toLowerCase()) {
       case 'excomm':
-        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+        return { bg: EXCOMM_UI.pillBg, fg: EXCOMM_UI.pillFg };
       case 'visiting_tm':
         return { bg: 'rgba(16, 185, 129, 0.12)', fg: '#047857' };
       case 'club_leader':
@@ -353,10 +352,10 @@ export default function ManageExistingUsers() {
         return { bg: N.pillBg, fg: N.text, countBg: 'rgba(55, 53, 47, 0.08)', countFg: N.text };
       case 'excomm':
         return {
-          bg: N.pillExCommBg,
-          fg: N.pillExCommText,
-          countBg: 'rgba(105, 64, 165, 0.15)',
-          countFg: N.pillExCommText,
+          bg: EXCOMM_UI.pillBg,
+          fg: EXCOMM_UI.pillFg,
+          countBg: 'rgba(4, 120, 87, 0.18)',
+          countFg: EXCOMM_UI.pillFg,
         };
       case 'member':
         return {

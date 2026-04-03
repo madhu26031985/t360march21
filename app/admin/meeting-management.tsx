@@ -5,6 +5,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import {
   ArrowLeft,
   Plus,
@@ -319,7 +320,7 @@ export default function MeetingManagement() {
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
+      case 'excomm': return EXCOMM_UI.solidBg;
       case 'visiting_tm': return '#10b981';
       case 'club_leader': return '#f59e0b';
       case 'guest': return '#6b7280';
@@ -794,7 +795,7 @@ export default function MeetingManagement() {
                 activeOpacity={0.75}
               >
                 <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                  <Shield size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
+                  <Shield size={FOOTER_NAV_ICON_SIZE} color={EXCOMM_UI.adminTabIcon} />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   Admin

@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -171,6 +171,9 @@ export default function AhCounterCorner() {
   const [assignAhCounterSearch, setAssignAhCounterSearch] = useState('');
   const [assigningAhCounterRole, setAssigningAhCounterRole] = useState(false);
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
+  /** Snapshot RPC may omit or strip avatar_url; filled via profile fetch like Timer report. */
+  const [fetchedAhCounterAvatarUrl, setFetchedAhCounterAvatarUrl] = useState<string | null>(null);
+  const [ahCounterAvatarLoadFailed, setAhCounterAvatarLoadFailed] = useState(false);
 
   useEffect(() => {
     if (meetingId && user?.currentClubId) {
@@ -288,6 +291,69 @@ export default function AhCounterCorner() {
       console.error('Error loading club members:', error);
     }
   };
+
+  const resolvedAhCounterAvatarUrl = useMemo(() => {
+    if (!assignedAhCounter) return null;
+    const fromRole = assignedAhCounter.avatar_url?.trim();
+    if (fromRole) return fromRole;
+    const aid = String(assignedAhCounter.id);
+    if (user?.id != null && String(user.id) === aid) {
+      const fromUser = user.avatarUrl?.trim();
+      if (fromUser) return fromUser;
+    }
+    const fromDir = clubMembers.find((m) => String(m.id) === aid)?.avatar_url?.trim();
+    return fromDir || null;
+  }, [assignedAhCounter, user?.id, user?.avatarUrl, clubMembers]);
+
+  const ahCounterHeaderAvatarUrl = resolvedAhCounterAvatarUrl || fetchedAhCounterAvatarUrl;
+
+  useEffect(() => {
+    setAhCounterAvatarLoadFailed(false);
+  }, [ahCounterHeaderAvatarUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const aid = assignedAhCounter?.id;
+    if (!aid) {
+      setFetchedAhCounterAvatarUrl(null);
+      return;
+    }
+    const idStr = String(aid);
+    const quick =
+      assignedAhCounter.avatar_url?.trim() ||
+      (user?.id != null && String(user.id) === idStr && user.avatarUrl?.trim()) ||
+      clubMembers.find((m) => String(m.id) === idStr)?.avatar_url?.trim();
+    if (quick) {
+      setFetchedAhCounterAvatarUrl(null);
+      return;
+    }
+    (async () => {
+      const { data, error } = await supabase
+        .from('app_user_profiles')
+        .select('avatar_url')
+        .eq('id', aid)
+        .maybeSingle();
+      if (cancelled || error) return;
+      const u = (data as { avatar_url?: string | null } | null)?.avatar_url?.trim();
+      setFetchedAhCounterAvatarUrl(u || null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    assignedAhCounter?.id,
+    assignedAhCounter?.avatar_url,
+    user?.id,
+    user?.avatarUrl,
+    clubMembers,
+  ]);
+
+  useEffect(() => {
+    if (!meetingId || !user?.currentClubId || !assignedAhCounter) return;
+    if (assignedAhCounter.avatar_url?.trim()) return;
+    if (user?.id != null && String(user.id) === String(assignedAhCounter.id) && user.avatarUrl?.trim()) return;
+    void loadClubMembers();
+  }, [meetingId, user?.currentClubId, user?.id, user?.avatarUrl, assignedAhCounter?.id, assignedAhCounter?.avatar_url]);
 
   useEffect(() => {
     if (!showAssignAhCounterModal || !user?.currentClubId) return;
@@ -1279,8 +1345,12 @@ export default function AhCounterCorner() {
                   },
                 ]}
               >
-                {assignedAhCounter.avatar_url ? (
-                  <Image source={{ uri: assignedAhCounter.avatar_url }} style={styles.consolidatedAvatarImage} />
+                {ahCounterHeaderAvatarUrl && !ahCounterAvatarLoadFailed ? (
+                  <Image
+                    source={{ uri: ahCounterHeaderAvatarUrl }}
+                    style={styles.consolidatedAvatarImage}
+                    onError={() => setAhCounterAvatarLoadFailed(true)}
+                  />
                 ) : (
                   <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
                 )}
@@ -1658,7 +1728,7 @@ export default function AhCounterCorner() {
                 ]}
               >
                 <Text style={[styles.viewOnlyBannerText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                  The Ah Counter summary is not visible to members for this meeting.
+                  Ah Counter will publish the report shortly.
                 </Text>
               </View>
             ) : (
@@ -2179,7 +2249,7 @@ const styles = StyleSheet.create({
   viewOnlyBannerText: {
     fontSize: 13,
     textAlign: 'center',
-    fontStyle: 'italic',
+    lineHeight: 19,
   },
   comingSoonContainer: {
     flex: 1,

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { ChevronDown, Crown, User, Shield, Eye, UserCheck, Building2 } from 'lucide-react-native';
 
 /** Notion-like neutrals (no saturated purple on role pills) */
@@ -22,7 +23,7 @@ const N = {
 function notionRolePill(role: string): { bg: string; fg: string } {
   switch (role.toLowerCase()) {
     case 'excomm':
-      return { bg: N.pillBg, fg: N.text };
+      return { bg: EXCOMM_UI.pillBg, fg: EXCOMM_UI.pillFg };
     case 'visiting_tm':
       return { bg: 'rgba(13, 148, 136, 0.12)', fg: '#0F766E' };
     case 'club_leader':
@@ -101,7 +102,7 @@ export default function ClubSwitcher({
     }
     switch (role.toLowerCase()) {
       case 'excomm':
-        return <Crown size={12} color="#8b5cf6" />;
+        return <Crown size={12} color={EXCOMM_UI.solidBg} />;
       case 'visiting_tm':
         return <UserCheck size={12} color="#10b981" />;
       case 'club_leader':
@@ -121,7 +122,7 @@ export default function ClubSwitcher({
     }
     switch (role.toLowerCase()) {
       case 'excomm':
-        return '#8b5cf6';
+        return EXCOMM_UI.solidBg;
       case 'visiting_tm':
         return '#10b981';
       case 'club_leader':

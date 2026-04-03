@@ -16,6 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import {
   ArrowLeft,
   ClipboardCheck,
@@ -531,7 +532,7 @@ export default function RoleCompletionReport() {
           {isExComm ? (
             <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/admin')} activeOpacity={0.75}>
               <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                <Shield size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#7c3aed" />
+                <Shield size={ROLE_COMPLETION_DOCK_ICON_SIZE} color={EXCOMM_UI.adminTabIcon} />
               </View>
               <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Admin

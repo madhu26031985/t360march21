@@ -23,6 +23,7 @@ import {
   Shield,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCoffeePromptEligibility } from '@/lib/coffeePromptEligibility';
 
@@ -220,7 +221,7 @@ export default function BuyUsACoffeeScreen() {
                 activeOpacity={0.75}
               >
                 <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                  <Shield size={FOOTER_NAV_ICON_SIZE} color="#7c3aed" />
+                  <Shield size={FOOTER_NAV_ICON_SIZE} color={EXCOMM_UI.adminTabIcon} />
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   Admin

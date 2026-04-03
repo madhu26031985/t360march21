@@ -19,9 +19,10 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { ArrowLeft, Plus, Vote, Calendar, Users, X, Save, Trash2, ChartBar as BarChart3, Building2, Crown, User, Shield, Eye, UserCheck, Search, Sparkles } from 'lucide-react-native';
 
-/** Notion-like palette: flat surfaces, hairline borders, muted text, single accent blue */
+/** Notion-like palette: flat surfaces, hairline borders, muted text, accent blue (aligned with Book a Role primary chips). */
 const N = {
   page: '#FBFBFA',
   surface: '#FFFFFF',
@@ -33,13 +34,36 @@ const N = {
   accent: '#2383E2',
   accentSoft: 'rgba(35, 131, 226, 0.1)',
   accentSoftBorder: 'rgba(35, 131, 226, 0.28)',
+  /** Icon tiles (Book a Role–style soft blue behind glyphs) */
+  iconTile: 'rgba(35, 131, 226, 0.14)',
   segmentTrack: '#E8E7E5',
   rowSelected: 'rgba(35, 131, 226, 0.07)',
   pillBg: '#F0EFED',
-  pillExCommBg: '#F4F0FA',
-  pillExCommText: '#6940A5',
   iconMuted: 'rgba(55, 53, 47, 0.45)',
+  /** Primary CTA (never near-black — use Notion blue like Book a Role) */
+  primaryButtonBg: '#2383E2',
+  primaryButtonBorder: '#2383E2',
+  onPrimary: '#FFFFFF',
+  tabActiveCreateBg: 'rgba(35, 131, 226, 0.12)',
+  tabActiveCreateBorder: 'rgba(35, 131, 226, 0.32)',
+  tabActivePublishedBg: 'rgba(4, 120, 87, 0.1)',
+  tabActivePublishedBorder: 'rgba(4, 120, 87, 0.28)',
+  tabActivePublishedFg: '#047857',
+  tabActiveResultsBg: 'rgba(105, 64, 165, 0.1)',
+  tabActiveResultsBorder: 'rgba(105, 64, 165, 0.28)',
+  tabActiveResultsFg: '#6940A5',
+  countPublishedBg: 'rgba(4, 120, 87, 0.14)',
+  countPublishedFg: '#047857',
+  countResultsBg: 'rgba(105, 64, 165, 0.14)',
+  countResultsFg: '#6940A5',
 };
+
+/** Colored left stripe per question row (Notion sidebar–style accents). */
+const NOTION_QUESTION_STRIPE = ['#2383E2', '#EA580C', '#7C3AED', '#0D9488', '#DB2777'] as const;
+
+function notionQuestionStripe(index: number): string {
+  return NOTION_QUESTION_STRIPE[index % NOTION_QUESTION_STRIPE.length];
+}
 
 interface Poll {
   id: string;
@@ -724,7 +748,7 @@ export default function VotingOperations() {
   const notionRolePill = (role: string): { bg: string; fg: string } => {
     switch (role.toLowerCase()) {
       case 'excomm':
-        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+        return { bg: EXCOMM_UI.pillBg, fg: EXCOMM_UI.pillFg };
       case 'visiting_tm':
         return { bg: 'rgba(16, 185, 129, 0.12)', fg: '#047857' };
       case 'club_leader':
@@ -839,8 +863,8 @@ export default function VotingOperations() {
         {clubInfo && (
           <View style={[styles.clubCard, { backgroundColor: N.surface, borderColor: N.border }]}>
             <View style={styles.clubHeader}>
-              <View style={[styles.clubIcon, { backgroundColor: 'rgba(55, 53, 47, 0.06)' }]}>
-                <Building2 size={18} color={N.iconMuted} strokeWidth={1.75} />
+              <View style={[styles.clubIcon, { backgroundColor: N.accentSoft }]}>
+                <Building2 size={18} color={N.accent} strokeWidth={1.75} />
               </View>
               <View style={styles.clubInfo}>
                 <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
@@ -873,20 +897,28 @@ export default function VotingOperations() {
             <TouchableOpacity
               style={[
                 styles.tabSegment,
-                selectedTab === 'create' && styles.tabSegmentActive,
-                { backgroundColor: selectedTab === 'create' ? N.surface : 'transparent' },
+                selectedTab === 'create'
+                  ? {
+                      backgroundColor: N.tabActiveCreateBg,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: N.tabActiveCreateBorder,
+                    }
+                  : { backgroundColor: 'transparent' },
               ]}
               onPress={() => setSelectedTab('create')}
               activeOpacity={0.85}
             >
               <Text
-                style={[styles.tabSegmentText, { color: selectedTab === 'create' ? N.text : N.textSecondary }]}
+                style={[
+                  styles.tabSegmentText,
+                  { color: selectedTab === 'create' ? N.accent : N.textSecondary },
+                ]}
                 maxFontSizeMultiplier={1.3}
                 numberOfLines={1}
               >
                 Create poll
               </Text>
-              <Plus size={14} color={selectedTab === 'create' ? N.text : N.textSecondary} strokeWidth={2} />
+              <Plus size={14} color={selectedTab === 'create' ? N.accent : N.textSecondary} strokeWidth={2} />
             </TouchableOpacity>
           )}
 
@@ -894,20 +926,28 @@ export default function VotingOperations() {
             style={[
               styles.tabSegment,
               hasActivePoll && styles.tabSegmentWide,
-              selectedTab === 'published' && styles.tabSegmentActive,
-              { backgroundColor: selectedTab === 'published' ? N.surface : 'transparent' },
+              selectedTab === 'published'
+                ? {
+                    backgroundColor: N.tabActivePublishedBg,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: N.tabActivePublishedBorder,
+                  }
+                : { backgroundColor: 'transparent' },
             ]}
             onPress={() => setSelectedTab('published')}
             activeOpacity={0.85}
           >
             <Text
-              style={[styles.tabSegmentText, { color: selectedTab === 'published' ? N.text : N.textSecondary }]}
+              style={[
+                styles.tabSegmentText,
+                { color: selectedTab === 'published' ? N.tabActivePublishedFg : N.textSecondary },
+              ]}
               maxFontSizeMultiplier={1.3}
             >
               Active
             </Text>
-            <View style={[styles.tabCountNotion, { backgroundColor: N.pillBg }]}>
-              <Text style={[styles.tabCountNotionText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            <View style={[styles.tabCountNotion, { backgroundColor: N.countPublishedBg }]}>
+              <Text style={[styles.tabCountNotionText, { color: N.countPublishedFg }]} maxFontSizeMultiplier={1.3}>
                 {publishedCount}
               </Text>
             </View>
@@ -917,20 +957,28 @@ export default function VotingOperations() {
             style={[
               styles.tabSegment,
               hasActivePoll && styles.tabSegmentWide,
-              selectedTab === 'completed' && styles.tabSegmentActive,
-              { backgroundColor: selectedTab === 'completed' ? N.surface : 'transparent' },
+              selectedTab === 'completed'
+                ? {
+                    backgroundColor: N.tabActiveResultsBg,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: N.tabActiveResultsBorder,
+                  }
+                : { backgroundColor: 'transparent' },
             ]}
             onPress={() => setSelectedTab('completed')}
             activeOpacity={0.85}
           >
             <Text
-              style={[styles.tabSegmentText, { color: selectedTab === 'completed' ? N.text : N.textSecondary }]}
+              style={[
+                styles.tabSegmentText,
+                { color: selectedTab === 'completed' ? N.tabActiveResultsFg : N.textSecondary },
+              ]}
               maxFontSizeMultiplier={1.3}
             >
               Results
             </Text>
-            <View style={[styles.tabCountNotion, { backgroundColor: N.pillBg }]}>
-              <Text style={[styles.tabCountNotionText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            <View style={[styles.tabCountNotion, { backgroundColor: N.countResultsBg }]}>
+              <Text style={[styles.tabCountNotionText, { color: N.countResultsFg }]} maxFontSizeMultiplier={1.3}>
                 {completedCount}
               </Text>
             </View>
@@ -1000,11 +1048,21 @@ export default function VotingOperations() {
               ) : null}
 
               {!isPollQuestionsLoading &&
-                pollQuestions.map((question) => {
+                pollQuestions.map((question, qIndex) => {
                 const isSelected = pollForm.selectedQuestions.includes(question.id);
-                
+
                 return (
-                  <View key={question.id} style={[styles.questionCard, { borderColor: N.border }]}>
+                  <View
+                    key={question.id}
+                    style={[
+                      styles.questionCard,
+                      {
+                        borderColor: N.border,
+                        borderLeftWidth: 3,
+                        borderLeftColor: notionQuestionStripe(qIndex),
+                      },
+                    ]}
+                  >
                     <TouchableOpacity
                       style={[
                         styles.questionSelector,
@@ -1105,19 +1163,27 @@ export default function VotingOperations() {
                 style={[
                   styles.createPollButton,
                   {
-                    backgroundColor: isSaving ? N.pillBg : N.text,
-                    borderColor: isSaving ? N.border : N.text,
+                    backgroundColor:
+                      isSaving || isPollQuestionsLoading ? N.pillBg : N.primaryButtonBg,
+                    borderColor:
+                      isSaving || isPollQuestionsLoading ? N.border : N.primaryButtonBorder,
                   },
                 ]}
                 onPress={handleSavePoll}
                 disabled={isSaving || isPollQuestionsLoading}
                 activeOpacity={0.85}
               >
-                <Save size={16} color={isSaving || isPollQuestionsLoading ? N.textSecondary : N.surface} strokeWidth={2} />
+                <Save
+                  size={16}
+                  color={isSaving || isPollQuestionsLoading ? N.textSecondary : N.onPrimary}
+                  strokeWidth={2}
+                />
                 <Text
                   style={[
                     styles.createPollButtonText,
-                    { color: isSaving || isPollQuestionsLoading ? N.textSecondary : N.surface },
+                    {
+                      color: isSaving || isPollQuestionsLoading ? N.textSecondary : N.onPrimary,
+                    },
                   ]}
                   maxFontSizeMultiplier={1.3}
                 >
@@ -1141,11 +1207,16 @@ export default function VotingOperations() {
               Close the current poll before creating another.
             </Text>
             <TouchableOpacity
-              style={[styles.viewActivePollButton, { backgroundColor: N.text }]}
+              style={[
+                styles.viewActivePollButton,
+                { backgroundColor: N.primaryButtonBg, borderWidth: StyleSheet.hairlineWidth, borderColor: N.primaryButtonBorder },
+              ]}
               onPress={() => setSelectedTab('published')}
               activeOpacity={0.85}
             >
-              <Text style={[styles.viewActivePollButtonText, { color: N.surface }]} maxFontSizeMultiplier={1.3}>View active poll</Text>
+              <Text style={[styles.viewActivePollButtonText, { color: N.onPrimary }]} maxFontSizeMultiplier={1.3}>
+                View active poll
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1486,13 +1557,6 @@ const styles = StyleSheet.create({
   },
   tabSegmentWide: {
     flex: 1,
-  },
-  tabSegmentActive: {
-    shadowColor: 'rgba(55, 53, 47, 0.12)',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 1,
   },
   tabSegmentText: {
     fontSize: 13,

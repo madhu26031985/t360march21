@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { ArrowLeft, Users, User, Search, Home, Calendar, Settings } from 'lucide-react-native';
 import { Image } from 'react-native';
 
@@ -353,8 +354,8 @@ export default function ClubMembers() {
                 style={styles.navItem}
                 onPress={() => router.push('/(tabs)/admin')}
               >
-                <View style={[styles.navIcon, { backgroundColor: '#FFE5E5' }]}>
-                  <Settings size={16} color="#dc2626" />
+                <View style={[styles.navIcon, { backgroundColor: EXCOMM_UI.pillBg }]}>
+                  <Settings size={16} color={EXCOMM_UI.pillFg} />
                 </View>
                 <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
               </TouchableOpacity>

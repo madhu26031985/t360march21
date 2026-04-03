@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Appearance, ColorSchemeName } from 'react-native';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 
 type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -589,7 +590,7 @@ const useShadows = () => {
 // Role-specific color utilities for Toastmasters roles
 const getRoleColor = (role: string): string => {
   switch (role.toLowerCase()) {
-    case 'excomm': return '#8b5cf6';
+    case 'excomm': return EXCOMM_UI.solidBg;
     case 'visiting_tm': return '#10b981';
     case 'club_leader': return '#f59e0b';
     case 'guest': return '#6b7280';

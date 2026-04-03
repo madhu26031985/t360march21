@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import {
   ArrowLeft,
   UserPlus,
@@ -28,11 +29,15 @@ const N = {
   accent: '#2383E2',
   accentSoft: 'rgba(35, 131, 226, 0.1)',
   iconMuted: 'rgba(55, 53, 47, 0.45)',
-  iconTile: 'rgba(55, 53, 47, 0.06)',
-  pillExCommBg: '#F4F0FA',
-  pillExCommText: '#6940A5',
   pillBg: '#F0EFED',
 };
+
+/** Colored icon tiles (Notion / Book-a-Role style — soft fill + saturated glyph). */
+const ICON_TILE = {
+  club: { bg: 'rgba(35, 131, 226, 0.14)', fg: '#2383E2' },
+  invite: { bg: 'rgba(4, 120, 87, 0.12)', fg: '#047857' },
+  manage: { bg: 'rgba(234, 88, 12, 0.12)', fg: '#EA580C' },
+} as const;
 
 interface ClubInfo {
   id: string;
@@ -44,12 +49,14 @@ function NotionActionRow({
   title,
   description,
   icon,
+  iconBackground,
   onPress,
   isLast,
 }: {
   title: string;
   description?: string;
   icon: ReactNode;
+  iconBackground: string;
   onPress: () => void;
   isLast?: boolean;
 }) {
@@ -59,7 +66,7 @@ function NotionActionRow({
       onPress={onPress}
       activeOpacity={0.65}
     >
-      <View style={[styles.notionRowIconWrap, { backgroundColor: N.iconTile }]}>{icon}</View>
+      <View style={[styles.notionRowIconWrap, { backgroundColor: iconBackground }]}>{icon}</View>
       <View style={styles.notionRowTextCol}>
         <Text style={[styles.notionRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.25} numberOfLines={2}>
           {title}
@@ -131,7 +138,7 @@ export default function ManageClubUsers() {
   const notionRolePill = (role: string): { bg: string; fg: string } => {
     switch (role.toLowerCase()) {
       case 'excomm':
-        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+        return { bg: EXCOMM_UI.pillBg, fg: EXCOMM_UI.pillFg };
       case 'visiting_tm':
         return { bg: 'rgba(16, 185, 129, 0.12)', fg: '#047857' };
       case 'club_leader':
@@ -196,8 +203,8 @@ export default function ManageClubUsers() {
             <>
               <View style={styles.clubBlock}>
                 <View style={styles.clubHeader}>
-                  <View style={[styles.clubIcon, { backgroundColor: N.iconTile }]}>
-                    <Building2 size={18} color={N.iconMuted} strokeWidth={1.75} />
+                  <View style={[styles.clubIcon, { backgroundColor: ICON_TILE.club.bg }]}>
+                    <Building2 size={18} color={ICON_TILE.club.fg} strokeWidth={1.75} />
                   </View>
                   <View style={styles.clubInfo}>
                     <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
@@ -237,13 +244,15 @@ export default function ManageClubUsers() {
             <NotionActionRow
               title="Invite new club members"
               description="Send invites and grow your club community."
-              icon={<UserPlus size={18} color={N.iconMuted} strokeWidth={1.75} />}
+              icon={<UserPlus size={18} color={ICON_TILE.invite.fg} strokeWidth={1.75} />}
+              iconBackground={ICON_TILE.invite.bg}
               onPress={() => router.push('/admin/invite-new-user')}
             />
             <NotionActionRow
               title="Manage club members"
               description="Organize members, roles, and access in one place."
-              icon={<Users size={18} color={N.iconMuted} strokeWidth={1.75} />}
+              icon={<Users size={18} color={ICON_TILE.manage.fg} strokeWidth={1.75} />}
+              iconBackground={ICON_TILE.manage.bg}
               onPress={() => router.push('/admin/manage-existing-users')}
               isLast
             />

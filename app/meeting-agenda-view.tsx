@@ -1,14 +1,42 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Image, Linking, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+  Alert,
+  Image,
+  Linking,
+  Platform,
+  type ImageStyle,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users, Timer, PenLine, BookOpen } from 'lucide-react-native';
+import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users } from 'lucide-react-native';
 import { exportAgendaToPDF, generatePDFFilename } from '@/lib/pdfExportUtils';
 import { parseMemberPreparedAgenda } from '@/lib/preparedSpeechesAgendaParse';
 import { fetchMeetingAgendaSnapshot, evaluationsArrayToRecord } from '@/lib/meetingAgendaSnapshot';
+
+/** Icons + level/project markers on prepared speech / ice breaker cards (evaluation button stays theme primary). */
+const SPEECH_DETAIL_ORANGE = '#E09355';
+const SPEECH_CARD_MUTED_RULE = '#E5E7EB';
+
+/** Hero tiles: Theme of the Day, educational & keynote titles, speech-evaluation speech titles (not the eval form CTA). */
+const AGENDA_HERO_TILE = {
+  bgLight: '#ccfbf1',
+  textLight: '#0f766e',
+  bgDark: 'rgba(45, 212, 191, 0.2)',
+  textDark: '#5eead4',
+} as const;
 
 interface Meeting {
   id: string;
@@ -72,15 +100,53 @@ interface PreparedSpeaker {
   role_name?: string;
 }
 
+function AgendaRoleAvatar({
+  uri,
+  name,
+  imageStyle,
+  placeholderStyle,
+  textStyle,
+}: {
+  uri: string | null | undefined;
+  name: string;
+  imageStyle: StyleProp<ImageStyle>;
+  placeholderStyle: StyleProp<ViewStyle>;
+  textStyle: StyleProp<TextStyle>;
+}) {
+  const [loadFailed, setLoadFailed] = useState(false);
+  const initial = (name || '?').charAt(0).toUpperCase();
+  const trimmed = uri?.trim();
+  if (!trimmed || loadFailed) {
+    return (
+      <View style={placeholderStyle}>
+        <Text style={textStyle} maxFontSizeMultiplier={1.3}>
+          {initial}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <Image source={{ uri: trimmed }} style={imageStyle} onError={() => setLoadFailed(true)} />
+  );
+}
+
+type PreparedSpeakersDisplayOpts = {
+  viewerId?: string | null;
+  viewerAvatarUrl?: string | null;
+};
+
 function slotFromRoleName(roleName: string): number | null {
   const m = roleName?.match(/(?:Prepared Speaker|prepared speaker)\s*(\d+)/i);
   return m ? parseInt(m[1], 10) : null;
 }
 
-function preparedSpeakersListForDisplay(item: {
-  prepared_speeches_agenda?: unknown;
-  prepared_speakers?: PreparedSpeaker[];
-}): PreparedSpeaker[] {
+function preparedSpeakersListForDisplay(
+  item: {
+    prepared_speeches_agenda?: unknown;
+    prepared_speakers?: PreparedSpeaker[];
+  },
+  opts?: PreparedSpeakersDisplayOpts
+): PreparedSpeaker[] {
   const parsed = parseMemberPreparedAgenda(item.prepared_speeches_agenda);
   const fallback = item.prepared_speakers || [];
 
@@ -119,11 +185,37 @@ function preparedSpeakersListForDisplay(item: {
 
     if (fromAgenda) {
       const pn = fromAgenda.project_number ? parseInt(fromAgenda.project_number, 10) : NaN;
+      const speakerMatchesFallback =
+        !!fromFallback &&
+        !!fromAgenda.speaker_user_id &&
+        !!fromFallback.speaker_id &&
+        String(fromAgenda.speaker_user_id) === String(fromFallback.speaker_id);
+      const evaluatorMatchesFallback =
+        !!fromFallback &&
+        !!fromAgenda.evaluator_user_id &&
+        !!fromFallback.evaluator_id &&
+        String(fromAgenda.evaluator_user_id) === String(fromFallback.evaluator_id);
+
+      let speakerAvatar: string | null =
+        speakerMatchesFallback && fromFallback ? fromFallback.speaker_avatar : null;
+      if (!speakerAvatar?.trim() && opts?.viewerId && fromAgenda.speaker_user_id &&
+          String(fromAgenda.speaker_user_id) === String(opts.viewerId)) {
+        speakerAvatar = opts.viewerAvatarUrl?.trim() || null;
+      }
+
+      let evaluatorAvatar: string | null =
+        evaluatorMatchesFallback && fromFallback ? fromFallback.evaluator_avatar : null;
+      if (!evaluatorAvatar?.trim() && opts?.viewerId && fromAgenda.evaluator_user_id &&
+          String(fromAgenda.evaluator_user_id) === String(opts.viewerId)) {
+        evaluatorAvatar = opts.viewerAvatarUrl?.trim() || null;
+      }
+
       result.push({
-        id: `agenda-ps-${slot}`,
+        id:
+          speakerMatchesFallback && fromFallback?.id ? fromFallback.id : `agenda-ps-${slot}`,
         speaker_name: fromAgenda.speaker_name || 'TBA',
         speaker_id: fromAgenda.speaker_user_id,
-        speaker_avatar: null,
+        speaker_avatar: speakerAvatar?.trim() ? speakerAvatar.trim() : null,
         speech_title: fromAgenda.speech_title,
         pathway_name: fromAgenda.pathway_name,
         pathway_level: fromAgenda.level,
@@ -131,10 +223,13 @@ function preparedSpeakersListForDisplay(item: {
         project_number: !isNaN(pn) ? pn : null,
         evaluator_name: fromAgenda.evaluator_name,
         evaluator_id: fromAgenda.evaluator_user_id,
-        evaluator_avatar: null,
-        evaluation_id: null,
-        evaluation_pdf_url: null,
+        evaluator_avatar: evaluatorAvatar?.trim() ? evaluatorAvatar.trim() : null,
+        evaluation_id:
+          speakerMatchesFallback && fromFallback ? fromFallback.evaluation_id : null,
+        evaluation_pdf_url:
+          speakerMatchesFallback && fromFallback ? fromFallback.evaluation_pdf_url : null,
         evaluation_form: fromAgenda.evaluation_form,
+        role_name: speakerMatchesFallback && fromFallback ? fromFallback.role_name : undefined,
       });
     } else if (fromFallback) {
       result.push(fromFallback);
@@ -483,6 +578,10 @@ export function MeetingAgendaViewContent({
 }) {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const preparedSpeakersViewerOpts: PreparedSpeakersDisplayOpts = {
+    viewerId: user?.id ?? null,
+    viewerAvatarUrl: user?.avatarUrl ?? null,
+  };
   const meetingId = meetingIdProp;
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
@@ -821,18 +920,19 @@ export function MeetingAgendaViewContent({
     }
   };
 
+  /** Always HH:MM (24-hour), zero-padded — matches meeting banner. */
   const formatTime = (timeString: string | null) => {
     if (!timeString) return '';
-    const [hours, minutes] = timeString.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
+    const parts = timeString.trim().split(':');
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1] ?? '0', 10);
+    if (Number.isNaN(h) || Number.isNaN(m)) return timeString.trim();
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   };
 
   const formatTimeRange = (start: string | null, end: string | null) => {
     if (!start || !end) return '';
-    return `${formatTime(start)} -\n${formatTime(end)}`;
+    return `${formatTime(start)} –\n${formatTime(end)}`;
   };
 
   const formatDateShort = (dateString: string) => {
@@ -844,11 +944,7 @@ export function MeetingAgendaViewContent({
     });
   };
 
-  const formatTimeShort = (timeString: string | null) => {
-    if (!timeString) return '';
-    const [hours, minutes] = timeString.split(':');
-    return `${hours}:${minutes}`;
-  };
+  const formatTimeShort = (timeString: string | null) => formatTime(timeString);
 
   const formatRoleClassification = (classification: string) => {
     return classification
@@ -1207,10 +1303,10 @@ export function MeetingAgendaViewContent({
                       </Text>
                     </View>
                     <View style={[styles.themeBox, {
-                      backgroundColor: theme.dark ? 'rgba(147, 197, 253, 0.15)' : 'rgba(224, 242, 254, 1)'
+                      backgroundColor: theme.dark ? AGENDA_HERO_TILE.bgDark : AGENDA_HERO_TILE.bgLight
                     }]}>
                       <Text style={[styles.themeText, {
-                        color: theme.dark ? '#93c5fd' : '#1e40af'
+                        color: theme.dark ? AGENDA_HERO_TILE.textDark : AGENDA_HERO_TILE.textLight
                       }]} maxFontSizeMultiplier={1.3}>
                         {item.theme_of_the_day || 'TBA'}
                       </Text>
@@ -1230,10 +1326,10 @@ export function MeetingAgendaViewContent({
                       </Text>
                     </View>
                     <View style={[styles.themeBox, {
-                      backgroundColor: theme.dark ? 'rgba(147, 197, 253, 0.15)' : 'rgba(224, 242, 254, 1)'
+                      backgroundColor: theme.dark ? AGENDA_HERO_TILE.bgDark : AGENDA_HERO_TILE.bgLight
                     }]}>
                       <Text style={[styles.themeText, {
-                        color: theme.dark ? '#93c5fd' : '#1e40af'
+                        color: theme.dark ? AGENDA_HERO_TILE.textDark : AGENDA_HERO_TILE.textLight
                       }]} maxFontSizeMultiplier={1.3}>
                         {item.educational_topic || 'TBA'}
                       </Text>
@@ -1287,10 +1383,10 @@ export function MeetingAgendaViewContent({
                       </Text>
                     </View>
                     <View style={[styles.themeBox, {
-                      backgroundColor: theme.dark ? 'rgba(147, 197, 253, 0.15)' : 'rgba(224, 242, 254, 1)'
+                      backgroundColor: theme.dark ? AGENDA_HERO_TILE.bgDark : AGENDA_HERO_TILE.bgLight
                     }]}>
                       <Text style={[styles.themeText, {
-                        color: theme.dark ? '#93c5fd' : '#1e40af'
+                        color: theme.dark ? AGENDA_HERO_TILE.textDark : AGENDA_HERO_TILE.textLight
                       }]} maxFontSizeMultiplier={1.3}>
                         {(item.role_details?.speech_title || '').toString().trim() || 'TBA'}
                       </Text>
@@ -1331,7 +1427,9 @@ export function MeetingAgendaViewContent({
 
                 {(item.section_name || '').toLowerCase().includes('speech evaluation') && (() => {
                   const preparedItem = agendaItems.find((i: AgendaItem) => (i.section_name || '').toLowerCase().includes('prepared speech'));
-                  const speechEvalSpeakers = preparedItem ? preparedSpeakersListForDisplay(preparedItem) : [];
+                  const speechEvalSpeakers = preparedItem
+                    ? preparedSpeakersListForDisplay(preparedItem, preparedSpeakersViewerOpts)
+                    : [];
                   return speechEvalSpeakers.length > 0 && (
                   <>
                   <View style={[styles.agendaItemDivider, { backgroundColor: theme.colors.border }]} />
@@ -1346,10 +1444,10 @@ export function MeetingAgendaViewContent({
                         </Text>
                       </View>
                       <View style={[styles.themeBox, {
-                        backgroundColor: theme.dark ? 'rgba(147, 197, 253, 0.15)' : 'rgba(224, 242, 254, 1)'
+                        backgroundColor: theme.dark ? AGENDA_HERO_TILE.bgDark : AGENDA_HERO_TILE.bgLight
                       }]}>
                         <Text style={[styles.themeText, {
-                          color: theme.dark ? '#93c5fd' : '#1e40af'
+                          color: theme.dark ? AGENDA_HERO_TILE.textDark : AGENDA_HERO_TILE.textLight
                         }]} maxFontSizeMultiplier={1.3}>
                           {(speaker.speech_title || '').trim() || 'TBA'}
                         </Text>
@@ -1380,9 +1478,10 @@ export function MeetingAgendaViewContent({
                   );
                 })()}
 
-                {(item.section_name || '').toLowerCase().includes('prepared speech') && preparedSpeakersListForDisplay(item).length > 0 ? (
+                {(item.section_name || '').toLowerCase().includes('prepared speech') &&
+                preparedSpeakersListForDisplay(item, preparedSpeakersViewerOpts).length > 0 ? (
                   <View style={styles.preparedSpeakersContainer}>
-                    {preparedSpeakersListForDisplay(item).map((speaker, index) => (
+                    {preparedSpeakersListForDisplay(item, preparedSpeakersViewerOpts).map((speaker, index) => (
                       <View
                         key={speaker.id}
                         style={[styles.newSpeakerCard, {
@@ -1397,15 +1496,13 @@ export function MeetingAgendaViewContent({
                             onPress={() => speaker.speaker_id && router.push(`/member-profile?memberId=${speaker.speaker_id}`)}
                             activeOpacity={0.7}
                           >
-                            {speaker.speaker_avatar ? (
-                              <Image source={{ uri: speaker.speaker_avatar }} style={styles.newSpeakerAvatar} />
-                            ) : (
-                              <View style={[styles.newSpeakerAvatarPlaceholder, { backgroundColor: '#C7D2FE' }]}>
-                                <Text style={[styles.newSpeakerAvatarText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>
-                                  {speaker.speaker_name.charAt(0).toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
+                            <AgendaRoleAvatar
+                              uri={speaker.speaker_avatar}
+                              name={speaker.speaker_name}
+                              imageStyle={styles.newSpeakerAvatar}
+                              placeholderStyle={[styles.newSpeakerAvatarPlaceholder, { backgroundColor: '#C7D2FE' }]}
+                              textStyle={[styles.newSpeakerAvatarText, { color: '#4F46E5' }]}
+                            />
                             <View style={styles.newSpeakerTextContainer}>
                               <Text style={styles.newSpeakerName} maxFontSizeMultiplier={1.3}>{speaker.speaker_name}</Text>
                               <Text style={styles.newSpeakerLabel} maxFontSizeMultiplier={1.3}>Speaker</Text>
@@ -1419,15 +1516,13 @@ export function MeetingAgendaViewContent({
                           >
                             {speaker.evaluator_name ? (
                               <>
-                                {speaker.evaluator_avatar ? (
-                                  <Image source={{ uri: speaker.evaluator_avatar }} style={styles.newEvaluatorAvatar} />
-                                ) : (
-                                  <View style={[styles.newEvaluatorAvatarPlaceholder, { backgroundColor: '#C7D2FE' }]}>
-                                    <Text style={[styles.newEvaluatorAvatarText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>
-                                      {speaker.evaluator_name.charAt(0).toUpperCase()}
-                                    </Text>
-                                  </View>
-                                )}
+                                <AgendaRoleAvatar
+                                  uri={speaker.evaluator_avatar}
+                                  name={speaker.evaluator_name}
+                                  imageStyle={styles.newEvaluatorAvatar}
+                                  placeholderStyle={[styles.newEvaluatorAvatarPlaceholder, { backgroundColor: '#C7D2FE' }]}
+                                  textStyle={[styles.newEvaluatorAvatarText, { color: '#4F46E5' }]}
+                                />
                                 <View style={styles.newEvaluatorTextContainer}>
                                   <Text style={styles.newEvaluatorName} maxFontSizeMultiplier={1.3}>{speaker.evaluator_name}</Text>
                                   <Text style={styles.newEvaluatorLabel} maxFontSizeMultiplier={1.3}>Evaluator</Text>
@@ -1447,7 +1542,7 @@ export function MeetingAgendaViewContent({
                         <View style={styles.newSpeechDetailsSection}>
                           {speaker.speech_title && (
                             <View style={styles.newDetailRow}>
-                              <FileText size={14} color="#6366F1" />
+                              <FileText size={14} color={SPEECH_DETAIL_ORANGE} />
                               <Text style={styles.newDetailText} maxFontSizeMultiplier={1.3}>
                                 <Text style={styles.newSpeechTitleLabel}>Speech title: </Text>
                                 <Text style={styles.newSpeechTitleInline}>{speaker.speech_title}</Text>
@@ -1456,13 +1551,13 @@ export function MeetingAgendaViewContent({
                           )}
                           {speaker.pathway_name && (
                             <View style={styles.newDetailRow}>
-                              <Compass size={14} color="#6366F1" />
+                              <Compass size={14} color={SPEECH_DETAIL_ORANGE} />
                               <Text style={styles.newDetailText} maxFontSizeMultiplier={1.3}>Pathway: {speaker.pathway_name}</Text>
                             </View>
                           )}
                           {speaker.project_title && (
                             <View style={styles.newDetailRow}>
-                              <FileText size={14} color="#6366F1" />
+                              <FileText size={14} color={SPEECH_DETAIL_ORANGE} />
                               <Text style={styles.newDetailText} maxFontSizeMultiplier={1.3}>Project: {speaker.project_title}</Text>
                             </View>
                           )}
@@ -1472,12 +1567,12 @@ export function MeetingAgendaViewContent({
                         {speaker.pathway_level && (
                           <View style={styles.newStatusContainer}>
                             <View style={styles.newStatusItem}>
-                              <CheckCircle2 size={14} color="#6366F1" fill="#6366F1" />
+                              <CheckCircle2 size={14} color={SPEECH_DETAIL_ORANGE} fill={SPEECH_DETAIL_ORANGE} />
                               <Text style={styles.newStatusText} maxFontSizeMultiplier={1.3}>Level {speaker.pathway_level}</Text>
                             </View>
                             {speaker.project_number && (
                               <View style={styles.newStatusItem}>
-                                <CheckCircle2 size={14} color="#6366F1" fill="#6366F1" />
+                                <CheckCircle2 size={14} color={SPEECH_DETAIL_ORANGE} fill={SPEECH_DETAIL_ORANGE} />
                                 <Text style={styles.newStatusText} maxFontSizeMultiplier={1.3}>Project {speaker.project_number}</Text>
                               </View>
                             )}
@@ -1549,15 +1644,13 @@ export function MeetingAgendaViewContent({
                             onPress={() => speaker.speaker_id && router.push(`/member-profile?memberId=${speaker.speaker_id}`)}
                             activeOpacity={0.7}
                           >
-                            {speaker.speaker_avatar ? (
-                              <Image source={{ uri: speaker.speaker_avatar }} style={styles.newSpeakerAvatar} />
-                            ) : (
-                              <View style={[styles.newSpeakerAvatarPlaceholder, { backgroundColor: '#D1FAE5' }]}>
-                                <Text style={[styles.newSpeakerAvatarText, { color: '#059669' }]} maxFontSizeMultiplier={1.3}>
-                                  {speaker.speaker_name.charAt(0).toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
+                            <AgendaRoleAvatar
+                              uri={speaker.speaker_avatar}
+                              name={speaker.speaker_name}
+                              imageStyle={styles.newSpeakerAvatar}
+                              placeholderStyle={[styles.newSpeakerAvatarPlaceholder, { backgroundColor: '#D1FAE5' }]}
+                              textStyle={[styles.newSpeakerAvatarText, { color: '#059669' }]}
+                            />
                             <View style={styles.newSpeakerTextContainer}>
                               <Text style={styles.newSpeakerName} maxFontSizeMultiplier={1.3}>{speaker.speaker_name}</Text>
                               <Text style={styles.newSpeakerLabel} maxFontSizeMultiplier={1.3}>Speaker</Text>
@@ -1571,15 +1664,13 @@ export function MeetingAgendaViewContent({
                           >
                             {speaker.evaluator_name ? (
                               <>
-                                {speaker.evaluator_avatar ? (
-                                  <Image source={{ uri: speaker.evaluator_avatar }} style={styles.newEvaluatorAvatar} />
-                                ) : (
-                                  <View style={[styles.newEvaluatorAvatarPlaceholder, { backgroundColor: '#D1FAE5' }]}>
-                                    <Text style={[styles.newEvaluatorAvatarText, { color: '#059669' }]} maxFontSizeMultiplier={1.3}>
-                                      {speaker.evaluator_name.charAt(0).toUpperCase()}
-                                    </Text>
-                                  </View>
-                                )}
+                                <AgendaRoleAvatar
+                                  uri={speaker.evaluator_avatar}
+                                  name={speaker.evaluator_name}
+                                  imageStyle={styles.newEvaluatorAvatar}
+                                  placeholderStyle={[styles.newEvaluatorAvatarPlaceholder, { backgroundColor: '#D1FAE5' }]}
+                                  textStyle={[styles.newEvaluatorAvatarText, { color: '#059669' }]}
+                                />
                                 <View style={styles.newEvaluatorTextContainer}>
                                   <Text style={styles.newEvaluatorName} maxFontSizeMultiplier={1.3}>{speaker.evaluator_name}</Text>
                                   <Text style={styles.newEvaluatorLabel} maxFontSizeMultiplier={1.3}>Evaluator</Text>
@@ -1598,7 +1689,7 @@ export function MeetingAgendaViewContent({
                         <View style={styles.newSpeechDetailsSection}>
                           {speaker.speech_title && (
                             <View style={styles.newDetailRow}>
-                              <FileText size={14} color="#6366F1" />
+                              <FileText size={14} color={SPEECH_DETAIL_ORANGE} />
                               <Text style={styles.newDetailText} maxFontSizeMultiplier={1.3}>
                                 <Text style={styles.newSpeechTitleLabel}>Speech title: </Text>
                                 <Text style={styles.newSpeechTitleInline}>{speaker.speech_title}</Text>
@@ -1607,13 +1698,13 @@ export function MeetingAgendaViewContent({
                           )}
                           {speaker.pathway_name && (
                             <View style={styles.newDetailRow}>
-                              <Compass size={14} color="#6366F1" />
+                              <Compass size={14} color={SPEECH_DETAIL_ORANGE} />
                               <Text style={styles.newDetailText} maxFontSizeMultiplier={1.3}>Pathway: {speaker.pathway_name}</Text>
                             </View>
                           )}
                           {speaker.project_title && (
                             <View style={styles.newDetailRow}>
-                              <FileText size={14} color="#6366F1" />
+                              <FileText size={14} color={SPEECH_DETAIL_ORANGE} />
                               <Text style={styles.newDetailText} maxFontSizeMultiplier={1.3}>Project: {speaker.project_title}</Text>
                             </View>
                           )}
@@ -1622,12 +1713,12 @@ export function MeetingAgendaViewContent({
                         {speaker.pathway_level && (
                           <View style={styles.newStatusContainer}>
                             <View style={styles.newStatusItem}>
-                              <CheckCircle2 size={14} color="#6366F1" fill="#6366F1" />
+                              <CheckCircle2 size={14} color={SPEECH_DETAIL_ORANGE} fill={SPEECH_DETAIL_ORANGE} />
                               <Text style={styles.newStatusText} maxFontSizeMultiplier={1.3}>Level {speaker.pathway_level}</Text>
                             </View>
                             {speaker.project_number && (
                               <View style={styles.newStatusItem}>
-                                <CheckCircle2 size={14} color="#6366F1" fill="#6366F1" />
+                                <CheckCircle2 size={14} color={SPEECH_DETAIL_ORANGE} fill={SPEECH_DETAIL_ORANGE} />
                                 <Text style={styles.newStatusText} maxFontSizeMultiplier={1.3}>Project {speaker.project_number}</Text>
                               </View>
                             )}
@@ -1672,20 +1763,20 @@ export function MeetingAgendaViewContent({
                   <View style={styles.tagTeamRolesContainer}>
                     <View style={[styles.tagTeamHeaderDivider, { backgroundColor: theme.colors.border }]} />
                     {[
-                      { name: 'Timer', Icon: Timer, color: '#0ea5e9', userName: item.timer_name, userId: item.timer_id, userAvatar: item.timer_avatar, isVisible: item.timer_visible ?? true },
-                      { name: 'Ah Counter', Icon: PenLine, color: '#10b981', userName: item.ah_counter_name, userId: item.ah_counter_id, userAvatar: item.ah_counter_avatar, isVisible: item.ah_counter_visible ?? true },
-                      { name: 'Grammarian', Icon: BookOpen, color: '#8b5cf6', userName: item.grammarian_name, userId: item.grammarian_id, userAvatar: item.grammarian_avatar, isVisible: item.grammarian_visible ?? true }
-                    ].filter(role => role.isVisible).map((role, index, visibleRoles) => (
+                      { name: 'Timer', userName: item.timer_name, userId: item.timer_id, userAvatar: item.timer_avatar, isVisible: item.timer_visible ?? true },
+                      { name: 'Ah Counter', userName: item.ah_counter_name, userId: item.ah_counter_id, userAvatar: item.ah_counter_avatar, isVisible: item.ah_counter_visible ?? true },
+                      { name: 'Grammarian', userName: item.grammarian_name, userId: item.grammarian_id, userAvatar: item.grammarian_avatar, isVisible: item.grammarian_visible ?? true },
+                    ]
+                      .filter((role) => role.isVisible)
+                      .map((role, index, visibleRoles) => (
                       <View key={role.name}>
                         <View style={styles.tagTeamRoleRow}>
-                          <View style={styles.tagTeamRoleLeft}>
-                            <View style={[styles.tagTeamRoleIconWrap, { backgroundColor: role.color + '20' }]}>
-                              <role.Icon size={18} color={role.color} />
-                            </View>
-                            <Text style={[styles.tagTeamRoleName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
-                              {role.name}
-                            </Text>
-                          </View>
+                          <Text
+                            style={[styles.tagTeamRoleName, { color: theme.colors.text }]}
+                            maxFontSizeMultiplier={1.3}
+                          >
+                            {role.name}
+                          </Text>
                           {role.userName ? (
                             <TouchableOpacity
                               style={styles.tagTeamAssignedUser}
@@ -1701,9 +1792,11 @@ export function MeetingAgendaViewContent({
                                   </Text>
                                 </View>
                               )}
-                              <Text style={[styles.tagTeamUserName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
-                                {role.userName}
-                              </Text>
+                              <View style={styles.tagTeamUserNameWrap}>
+                                <Text style={[styles.tagTeamUserName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                  {role.userName}
+                                </Text>
+                              </View>
                             </TouchableOpacity>
                           ) : (
                             <View style={styles.tagTeamAssignedUser}>
@@ -1712,9 +1805,11 @@ export function MeetingAgendaViewContent({
                                   ?
                                 </Text>
                               </View>
-                              <Text style={[styles.tagTeamUserName, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3} numberOfLines={1}>
-                                Yet to be assigned
-                              </Text>
+                              <View style={styles.tagTeamUserNameWrap}>
+                                <Text style={[styles.tagTeamUserName, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                  Yet to be assigned
+                                </Text>
+                              </View>
                             </View>
                           )}
                         </View>
@@ -2255,9 +2350,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   themeText: {
-    fontSize: 15,
-    fontWeight: '500',
-    lineHeight: 20,
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
   },
   speechEvalMetaRow: {
     flexDirection: 'row',
@@ -2656,35 +2751,31 @@ const styles = StyleSheet.create({
   },
   tagTeamRoleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 14,
-  },
-  tagTeamRoleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
-    width: '50%',
-    minWidth: 0,
-  },
-  tagTeamRoleIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   tagTeamRoleName: {
     fontSize: 16,
     fontWeight: '700',
-    flex: 1,
+    width: 118,
+    flexShrink: 0,
+    textAlign: 'left',
+    paddingTop: 4,
   },
   tagTeamAssignedUser: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     flex: 1,
-    flexWrap: 'nowrap',
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
     justifyContent: 'flex-start',
+  },
+  tagTeamUserNameWrap: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    paddingTop: 6,
   },
   tagTeamUserAvatar: {
     width: 32,
@@ -2705,6 +2796,7 @@ const styles = StyleSheet.create({
   tagTeamUserName: {
     fontSize: 14,
     fontWeight: '500',
+    lineHeight: 20,
   },
   tagTeamRowDivider: {
     height: 1,
@@ -2719,7 +2811,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
     borderWidth: 1,
-    borderColor: '#DDD6FE',
+    borderColor: SPEECH_CARD_MUTED_RULE,
   },
   newSpeakerEvaluatorRow: {
     flexDirection: 'row',
@@ -2798,7 +2890,7 @@ const styles = StyleSheet.create({
   },
   newDivider: {
     height: 1,
-    backgroundColor: '#DDD6FE',
+    backgroundColor: SPEECH_CARD_MUTED_RULE,
   },
   newSpeechDetailsSection: {
     gap: 4,
@@ -2837,7 +2929,7 @@ const styles = StyleSheet.create({
   },
   newEvaluatorDivider: {
     height: 1,
-    backgroundColor: '#DDD6FE',
+    backgroundColor: SPEECH_CARD_MUTED_RULE,
     marginBottom: 8,
     marginTop: 4,
   },

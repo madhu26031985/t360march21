@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { useCallback, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -330,7 +331,7 @@ export default function AdminPanel() {
       title === 'Club Info'
         ? { icon: '#334155', bg: '#F1F5F9' }
         : title === 'Club ExComm'
-          ? { icon: '#7C3AED', bg: '#F5F3FF' }
+          ? { icon: EXCOMM_UI.pillFg, bg: EXCOMM_UI.pillBg }
           : title === 'Club Social Media'
             ? { icon: '#0891B2', bg: '#ECFEFF' }
             : { icon: '#475569', bg: '#F8FAFC' };
@@ -364,7 +365,13 @@ export default function AdminPanel() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={[styles.adminPageInset, { backgroundColor: N.surface, borderColor: N.border }]}>
-          <ClubSwitcher showRole={true} embedded />
+          <ClubSwitcher
+            showRole={true}
+            embedded
+            variant="notion"
+            clubIconBackgroundColor="#F1F5F9"
+            clubIconColor="#334155"
+          />
           <View style={[styles.adminMasterDivider, { backgroundColor: N.border }]} />
           {(canSeeAdminFeature('meeting_operations') ||
             canSeeAdminFeature('user_management') ||

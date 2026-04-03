@@ -25,6 +25,7 @@ import {
   LayoutGrid,
 } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface IconTileProps {
@@ -156,7 +157,13 @@ export default function MyClub() {
         {user?.currentClubId ? (
           <View style={[styles.clubMasterBox, { backgroundColor: theme.colors.surface }]}>
             {/* Club selection - integrated into master box */}
-            <ClubSwitcher showRole={true} embedded />
+            <ClubSwitcher
+              showRole={true}
+              embedded
+              variant="notion"
+              clubIconBackgroundColor="#F1F5F9"
+              clubIconColor="#334155"
+            />
             <View style={[styles.clubMasterDivider, { backgroundColor: theme.colors.border }]} />
             <Text style={[styles.clubMasterSectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Club Overview</Text>
           <View style={styles.clubOverviewGrid}>
@@ -214,7 +221,7 @@ export default function MyClub() {
           </View>
           <ReportRow title="Member Report" icon={<UserCircle size={20} color="#14b8a6" />} color="#14b8a6" onPress={() => handleFeaturePress('/admin/excomm-corner/reports/member-report')} theme={theme} />
           <View style={[styles.reportsRowDivider, { backgroundColor: theme.colors.border }]} />
-          <ReportRow title="Roles Report" icon={<Shield size={20} color="#8b5cf6" />} color="#8b5cf6" onPress={() => handleFeaturePress('/admin/excomm-corner/reports/role-report')} theme={theme} />
+          <ReportRow title="Roles Report" icon={<Shield size={20} color={EXCOMM_UI.solidBg} />} color={EXCOMM_UI.solidBg} onPress={() => handleFeaturePress('/admin/excomm-corner/reports/role-report')} theme={theme} />
           <View style={[styles.reportsRowDivider, { backgroundColor: theme.colors.border }]} />
           <ReportRow title="TMOD Report" icon={<Mic size={20} color="#6366f1" />} color="#6366f1" onPress={() => handleFeaturePress('/admin/excomm-corner/reports/tmod-report')} theme={theme} />
           <View style={[styles.reportsRowDivider, { backgroundColor: theme.colors.border }]} />

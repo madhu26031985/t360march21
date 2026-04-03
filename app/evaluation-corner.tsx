@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, Animated, Easing } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Linking } from 'react-native';
@@ -7,11 +7,17 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { fetchEvaluationCornerSnapshot, getCachedEvaluationCornerSnapshot, type EvaluationCornerSnapshot } from '@/lib/evaluationCornerSnapshot';
-import { ArrowLeft, Calendar, User, BookOpen, GraduationCap, Target, MessageSquare, NotebookPen, X, ChevronDown, Plus, Info, FileText, Bell, Users, Star, Mic, CheckSquare, FileBarChart, Clock, CheckCircle, Link as LinkIcon } from 'lucide-react-native';
-import { RefreshCw, RotateCcw } from 'lucide-react-native';
+import { ArrowLeft, Calendar, User, NotebookPen, X, Info, FileText, Users, ClipboardCheck, Vote, UserPlus, CheckCircle, Link as LinkIcon } from 'lucide-react-native';
+import { RotateCcw } from 'lucide-react-native';
 import { Image } from 'react-native';
 
 const FOOTER_NAV_ICON_SIZE = 15;
+
+/** Match general-evaluator-report bottom dock: colored icons, no per-tile pastel boxes. */
+const footerIconTileStyle = {
+  borderWidth: 0,
+  backgroundColor: 'transparent',
+} as const;
 
 interface Meeting {
   id: string;
@@ -82,6 +88,7 @@ interface UserProfile {
 export default function EvaluationCorner() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
   
@@ -118,6 +125,8 @@ export default function EvaluationCorner() {
 
   const currentUserRole = (user?.clubRole || user?.role || '').toLowerCase();
   const isExcomm = currentUserRole === 'excomm';
+  /** Prepared Speeches dock: VPE sees Assign + Reassign (same routes as Book / Withdraw). */
+  const useVpeStyleBookWithdrawLabels = currentUserRole === 'vpe';
   const isMember = currentUserRole === 'member';
 
   const tabs = [
@@ -1583,6 +1592,7 @@ export default function EvaluationCorner() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <View style={styles.mainBody}>
       {/* Header */}
       <View style={[styles.header, {
         backgroundColor: theme.colors.surface,
@@ -1599,7 +1609,12 @@ export default function EvaluationCorner() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView ref={mainScrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={mainScrollRef}
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContentAboveDock}
+      >
         <View style={[styles.unifiedNotionBlock, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={[styles.unifiedMeetingSection, { borderBottomColor: theme.colors.border }]}>
             <View style={styles.meetingCardContent}>
@@ -1672,162 +1687,123 @@ export default function EvaluationCorner() {
             </View>
           ) : null}
         </View>
-
-        {/* Navigation Quick Actions */}
-        <View style={[styles.quickActionsBoxContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5E5' }]}>
-                <Bell size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance Report</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId, initialTab: 'my_bookings' } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
-                <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5D9' }]}>
-                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Corner</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/general-evaluator-notes', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <Star size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>General Evaluator</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/grammarian', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#F3E8FF' }]}>
-                <FileText size={FOOTER_NAV_ICON_SIZE} color="#8b5cf6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                <Mic size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote Speaker</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/live-voting', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
-                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live Voting</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/quick-overview', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <FileText size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Quick Overview</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role Completion</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/prepared-speech-evaluations', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FECACA' }]}>
-                <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speech Evaluation</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#F0E7FE' }]}>
-                <Clock size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/table-topic-corner', params: { meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <MessageSquare size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Table Topics</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
       </ScrollView>
+
+      <View
+        style={[
+          styles.geBottomDock,
+          {
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            paddingBottom: Math.max(insets.bottom, 10),
+          },
+        ]}
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.footerNavigationContent}
+        >
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId } })}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              {useVpeStyleBookWithdrawLabels ? (
+                <UserPlus size={FOOTER_NAV_ICON_SIZE} color="#004165" />
+              ) : (
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
+              )}
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {useVpeStyleBookWithdrawLabels ? 'Assign' : 'Book the role'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() =>
+              router.push({ pathname: '/book-a-role', params: { meetingId, initialTab: 'my_bookings' } })
+            }
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {useVpeStyleBookWithdrawLabels ? 'Reassign' : 'Withdraw role'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId } })}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Attendance
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId } })}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Role completion
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/general-evaluator-notes', params: { meetingId } })}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              prep space
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId } })}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              AGENDA
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push({ pathname: '/live-voting', params: { meetingId } })}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              VOTING
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+      </View>
 
       {/* Info Modal */}
       <Modal
@@ -1968,8 +1944,45 @@ const styles = StyleSheet.create({
   infoButton: {
     padding: 8,
   },
+  mainBody: {
+    flex: 1,
+    minHeight: 0,
+  },
   content: {
     flex: 1,
+  },
+  scrollContentAboveDock: {
+    flexGrow: 1,
+    paddingBottom: 12,
+  },
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 8,
+  },
+  footerNavigationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    minWidth: 62,
+    paddingVertical: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   unifiedNotionBlock: {
     marginHorizontal: 13,
@@ -2818,46 +2831,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
-  },
-  quickActionsBoxContainer: {
-    borderTopWidth: 0,
-    paddingVertical: 9,
-    paddingHorizontal: 6,
-    borderRadius: 16,
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  quickActionsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    paddingHorizontal: 6,
-  },
-  quickActionItem: {
-    alignItems: 'center',
-    minWidth: 45,
-  },
-  quickActionIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 3,
-  },
-  quickActionLabel: {
-    fontSize: 8,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   saveConfirmModalCard: {
     width: '92%',

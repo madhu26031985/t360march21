@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { ArrowLeft, Crown, User, Building2, Calendar, Filter, Shield, Home, Users, Settings } from 'lucide-react-native';
 import { Image } from 'react-native';
 import React from 'react';
@@ -256,7 +257,7 @@ export default function ExecutiveCommittee() {
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
+      case 'excomm': return EXCOMM_UI.solidBg;
       case 'visiting_tm': return '#10b981';
       case 'club_leader': return '#f59e0b';
       case 'guest': return '#6b7280';
@@ -290,8 +291,8 @@ export default function ExecutiveCommittee() {
       <View style={[styles.roleCard, { backgroundColor: theme.colors.surface }]}>
         {/* Role Header with Icon and Title */}
         <View style={styles.roleHeaderSection}>
-          <View style={[styles.roleIconLarge, { backgroundColor: '#ede9fe' }]}>
-            <Crown size={28} color="#8b5cf6" />
+          <View style={[styles.roleIconLarge, { backgroundColor: EXCOMM_UI.pillBg }]}>
+            <Crown size={28} color={EXCOMM_UI.solidBg} />
           </View>
           <View style={styles.roleTitleSection}>
             <Text style={[styles.roleTitleLarge, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>

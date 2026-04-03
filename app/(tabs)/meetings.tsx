@@ -1995,7 +1995,13 @@ export default function ClubMeetings() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {user?.currentClubId ? (
           <View style={[styles.meetingsMasterBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <ClubSwitcher showRole={true} embedded variant="notion" />
+            <ClubSwitcher
+              showRole={true}
+              embedded
+              variant="notion"
+              clubIconBackgroundColor="#F1F5F9"
+              clubIconColor="#334155"
+            />
             <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
             {/* Open Meetings Section */}
             <View style={styles.meetingsSection}>

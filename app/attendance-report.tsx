@@ -16,6 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import {
   ArrowLeft,
   Building2,
@@ -981,7 +982,7 @@ export default function AttendanceReport() {
                   activeOpacity={0.75}
                 >
                   <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                    <Shield size={BOOK_ROLE_DOCK_ICON_SIZE} color="#7c3aed" />
+                    <Shield size={BOOK_ROLE_DOCK_ICON_SIZE} color={EXCOMM_UI.adminTabIcon} />
                   </View>
                   <Text style={[styles.footerNavLabel, { color: tc.text }]} maxFontSizeMultiplier={1.3}>
                     Admin

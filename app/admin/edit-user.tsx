@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import {
   ArrowLeft,
   Save,
@@ -33,12 +34,10 @@ const N = {
   iconTile: 'rgba(55, 53, 47, 0.06)',
   success: '#0F7B6C',
   successSoft: 'rgba(15, 123, 108, 0.12)',
-  pillExCommBg: '#F4F0FA',
-  pillExCommText: '#6940A5',
   pillBg: '#F0EFED',
   /** Saturated circles for role picker (readable at small size) */
   roleMember: '#2383E2',
-  roleExComm: '#6940A5',
+  roleExComm: EXCOMM_UI.solidBg,
   roleVisiting: '#0D9488',
   roleLeader: '#D97706',
   roleGuest: '#787774',
@@ -233,7 +232,7 @@ export default function EditUser() {
   const notionRolePill = (role: string): { bg: string; fg: string } => {
     switch (role.toLowerCase()) {
       case 'excomm':
-        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+        return { bg: EXCOMM_UI.pillBg, fg: EXCOMM_UI.pillFg };
       case 'visiting_tm':
         return { bg: 'rgba(13, 148, 136, 0.12)', fg: '#0F766E' };
       case 'club_leader':

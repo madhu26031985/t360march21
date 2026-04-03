@@ -3449,13 +3449,14 @@ export default function AgendaEditor() {
     recalculateAllTimes(reorderedItems);
   };
 
+  /** Display-only: HH:MM (24-hour), aligned with member agenda view. */
   const formatTime = (timeString: string | null) => {
     if (!timeString) return 'N/A';
-    const [hours, minutes] = timeString.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
+    const parts = timeString.trim().split(':');
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1] ?? '0', 10);
+    if (Number.isNaN(h) || Number.isNaN(m)) return timeString.trim();
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   };
 
   const handleSaveAll = async () => {

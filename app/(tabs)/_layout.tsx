@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 
 const FOOTER_NAV_ICON_SIZE = 15;
 
@@ -24,7 +25,7 @@ const TAB_META: Record<string, { Icon: typeof Home; color: string; label: string
   index: { Icon: Home, color: '#0a66c2', label: 'Home' },
   club: { Icon: Users, color: '#d97706', label: 'Club' },
   meetings: { Icon: Calendar, color: '#0ea5e9', label: 'Meeting' },
-  admin: { Icon: Shield, color: '#7c3aed', label: 'Admin' },
+  admin: { Icon: Shield, color: EXCOMM_UI.adminTabIcon, label: 'Admin' },
   settings: { Icon: Settings, color: '#6b7280', label: 'Settings' },
 };
 

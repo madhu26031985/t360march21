@@ -18,6 +18,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { excommManagementQueryKeys, fetchExcommManagementBundle } from '@/lib/excommManagementQuery';
 import {
   ArrowLeft,
@@ -100,8 +101,27 @@ const ROLE_ICONS: Record<string, LucideIcon> = {
   ipp: History,
 };
 
+/** Notion-style accents for role glyphs (readable on light + dark surfaces). */
+const EXCOMM_ROLE_ICON_COLORS: Record<string, string> = {
+  president: '#CA8A04',
+  vpe: '#2563EB',
+  vpm: '#7C3AED',
+  vppr: '#EA580C',
+  secretary: '#0D9488',
+  treasurer: '#059669',
+  saa: '#DC2626',
+  ipp: '#787774',
+};
+
+const CLUB_PANEL_ICON_COLOR = '#2383E2';
+const TERM_CALENDAR_ICON_COLOR = '#2383E2';
+
 function getRoleIconForKey(key: string): LucideIcon {
   return ROLE_ICONS[key] ?? Building2;
+}
+
+function getExcommRoleIconColor(roleKey: string, fallback: string): string {
+  return EXCOMM_ROLE_ICON_COLORS[roleKey] ?? fallback;
 }
 
 function serializeAssignments(roles: ExCommRole[]) {
@@ -177,7 +197,7 @@ function ExCommRoleCard({
 }: ExCommRoleCardProps) {
   const isAssigned = !!role.member_id;
   const Icon = getRoleIconForKey(role.key);
-  const iconTint = theme.colors.textSecondary;
+  const iconTint = getExcommRoleIconColor(role.key, theme.colors.textSecondary);
 
   return (
     <View
@@ -191,16 +211,8 @@ function ExCommRoleCard({
       }
     >
       <View style={styles.notionRoleCardRow}>
-        <View
-          style={[
-            styles.notionIconBox,
-            {
-              backgroundColor: theme.colors.background,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <Icon size={18} color={iconTint} strokeWidth={2} />
+        <View style={styles.notionIconSlot}>
+          <Icon size={20} color={iconTint} strokeWidth={2} />
         </View>
         <View style={styles.notionRoleMain}>
           <Text style={[styles.roleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -262,7 +274,7 @@ function ExCommRoleCard({
                   Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : null,
                 ]}
               >
-                <Calendar size={16} color={theme.colors.textSecondary} strokeWidth={2} />
+                <Calendar size={16} color={TERM_CALENDAR_ICON_COLOR} strokeWidth={2} />
                 <View style={styles.termFieldTexts}>
                   <Text style={[styles.termFieldLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
                     Term start
@@ -284,7 +296,7 @@ function ExCommRoleCard({
                   Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : null,
                 ]}
               >
-                <Calendar size={16} color={theme.colors.textSecondary} strokeWidth={2} />
+                <Calendar size={16} color={TERM_CALENDAR_ICON_COLOR} strokeWidth={2} />
                 <View style={styles.termFieldTexts}>
                   <Text style={[styles.termFieldLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
                     Term end
@@ -631,7 +643,7 @@ export default function ExCommManagement() {
                     { backgroundColor: theme.colors.background, borderColor: theme.colors.border },
                   ]}
                 >
-                  <Building2 size={20} color={theme.colors.textSecondary} strokeWidth={2} />
+                  <Building2 size={20} color={CLUB_PANEL_ICON_COLOR} strokeWidth={2} />
                 </View>
                 <View style={styles.clubInfo}>
                   <Text style={[styles.clubName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -647,11 +659,27 @@ export default function ExCommManagement() {
                       <View
                         style={[
                           styles.roleTagNeutral,
-                          { backgroundColor: theme.colors.background, borderColor: theme.colors.border },
+                          user.clubRole?.toLowerCase() === 'excomm'
+                            ? { backgroundColor: EXCOMM_UI.pillBg, borderColor: 'rgba(4, 120, 87, 0.22)' }
+                            : { backgroundColor: theme.colors.background, borderColor: theme.colors.border },
                         ]}
                       >
-                        {getRoleIcon(user.clubRole, theme.colors.textSecondary)}
-                        <Text style={[styles.roleTextNeutral, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                        {getRoleIcon(
+                          user.clubRole,
+                          user.clubRole?.toLowerCase() === 'excomm' ? EXCOMM_UI.pillFg : theme.colors.textSecondary
+                        )}
+                        <Text
+                          style={[
+                            styles.roleTextNeutral,
+                            {
+                              color:
+                                user.clubRole?.toLowerCase() === 'excomm'
+                                  ? EXCOMM_UI.pillFg
+                                  : theme.colors.textSecondary,
+                            },
+                          ]}
+                          maxFontSizeMultiplier={1.3}
+                        >
                           {formatRole(user.clubRole)}
                         </Text>
                       </View>
@@ -988,7 +1016,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 14.4, fontWeight: '700' },
   saveHint: { fontSize: 8.8, fontWeight: '500', marginTop: 2 },
   infoModalSheet: {
-    borderRadius: 12,
+    borderRadius: 0,
     width: '100%',
     maxWidth: 400,
     maxHeight: '70%',
@@ -1007,7 +1035,7 @@ const styles = StyleSheet.create({
   notionClubPanel: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 12,
+    borderRadius: 0,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderWidth: StyleSheet.hairlineWidth,
@@ -1016,7 +1044,7 @@ const styles = StyleSheet.create({
   clubIconWell: {
     width: 40,
     height: 40,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1032,7 +1060,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
     gap: 4,
   },
@@ -1048,7 +1076,7 @@ const styles = StyleSheet.create({
   },
   /** One Notion-style surface: all roles separated by hairline dividers */
   rolesNotionPanel: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
@@ -1061,7 +1089,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
   },
   inlineErrorText: { flex: 1, fontSize: 12.8, fontWeight: '500' },
@@ -1070,17 +1098,15 @@ const styles = StyleSheet.create({
   skeletonPanelInner: { paddingVertical: 16, paddingHorizontal: 14, alignItems: 'center', gap: 10 },
   skeletonHint: { fontSize: 12.5, fontWeight: '500', textAlign: 'center', marginBottom: 4 },
   skeletonRow: { width: '100%', paddingVertical: 12, gap: 8 },
-  skeletonBar: { height: 12, borderRadius: 4, width: '55%' },
-  skeletonBarShort: { height: 10, borderRadius: 4, width: '35%' },
+  skeletonBar: { height: 12, borderRadius: 0, width: '55%' },
+  skeletonBarShort: { height: 10, borderRadius: 0, width: '35%' },
   notionRoleCardRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 14, paddingVertical: 14 },
-  notionIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
+  notionIconSlot: {
+    width: 36,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    justifyContent: 'flex-start',
+    paddingTop: 2,
+    marginRight: 10,
   },
   notionRoleMain: { flex: 1, minWidth: 0 },
   assignMemberPill: {
@@ -1088,7 +1114,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 6,
+    borderRadius: 0,
   },
   assignMemberPillLabel: {
     fontSize: 13,
@@ -1112,7 +1138,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
   },
   termFieldTexts: { flex: 1, minWidth: 0 },
@@ -1148,7 +1174,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   centerMemberModal: {
-    borderRadius: 12,
+    borderRadius: 0,
     width: '100%',
     maxWidth: 440,
     maxHeight: '82%',
@@ -1172,7 +1198,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 12,
     marginBottom: 8,
@@ -1183,7 +1209,7 @@ const styles = StyleSheet.create({
   memberOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 0,
     paddingVertical: 12,
     paddingHorizontal: 12,
     marginBottom: 8,

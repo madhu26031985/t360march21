@@ -12,6 +12,16 @@ export interface ClubInfoManagementClubInfo {
   charter_date: string | null;
 }
 
+/** Meeting schedule fields from `club_profiles` (same shape as club-meeting-details). */
+export interface ClubInfoManagementMeetingSchedule {
+  meeting_day: string | null;
+  meeting_frequency: string | null;
+  meeting_start_time: string | null;
+  meeting_end_time: string | null;
+  meeting_type: string | null;
+  online_meeting_link: string | null;
+}
+
 export interface ClubInfoManagementFormData {
   club_name: string;
   club_number: string | null;
@@ -35,6 +45,7 @@ export interface ClubInfoManagementFormData {
 export interface ClubInfoManagementBundle {
   clubInfo: ClubInfoManagementClubInfo;
   clubData: ClubInfoManagementFormData;
+  meetingSchedule: ClubInfoManagementMeetingSchedule;
 }
 
 export async function fetchClubInfoManagementBundle(clubId: string): Promise<ClubInfoManagementBundle> {
@@ -62,7 +73,13 @@ export async function fetchClubInfoManagementBundle(clubId: string): Promise<Clu
             club_name,
             club_number,
             charter_date,
-            banner_color
+            banner_color,
+            meeting_day,
+            meeting_frequency,
+            meeting_start_time,
+            meeting_end_time,
+            meeting_type,
+            online_meeting_link
           )
         `)
     .eq('id', clubId)
@@ -104,6 +121,15 @@ export async function fetchClubInfoManagementBundle(clubId: string): Promise<Clu
     google_location_link: p?.google_location_link ?? null,
   };
 
+  const meetingSchedule: ClubInfoManagementMeetingSchedule = {
+    meeting_day: (p?.meeting_day as string | null) ?? null,
+    meeting_frequency: (p?.meeting_frequency as string | null) ?? null,
+    meeting_start_time: (p?.meeting_start_time as string | null) ?? null,
+    meeting_end_time: (p?.meeting_end_time as string | null) ?? null,
+    meeting_type: (p?.meeting_type as string | null) ?? null,
+    online_meeting_link: (p?.online_meeting_link as string | null) ?? null,
+  };
+
   return {
     clubInfo: {
       id: clubRow.id,
@@ -112,5 +138,6 @@ export async function fetchClubInfoManagementBundle(clubId: string): Promise<Clu
       charter_date: clubRow.charter_date,
     },
     clubData,
+    meetingSchedule,
   };
 }

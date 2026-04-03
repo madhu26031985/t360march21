@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { Lock, Eye, EyeOff, Building2, Crown, User, Shield, UserCheck, Eye as EyeIcon } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import Constants from 'expo-constants';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 
 interface InvitationDetails {
   email: string;
@@ -162,7 +163,7 @@ export default function AcceptInvitation() {
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
+      case 'excomm': return EXCOMM_UI.solidBg;
       case 'visiting_tm': return '#10b981';
       case 'club_leader': return '#f59e0b';
       case 'guest': return '#6b7280';

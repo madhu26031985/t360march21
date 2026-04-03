@@ -5,7 +5,17 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { ArrowLeft, FileText, Youtube, BookOpen, Trash2, CreditCard as Edit3, Calendar, Info, X, Crown, User, Shield, Eye, UserCheck } from 'lucide-react-native';
+
+const RESOURCE_ICON_COLORS: Record<string, string> = {
+  youtube: '#FF0000',
+  magazine: '#EA580C',
+  other_pdf: '#2383E2',
+  evaluation_form: '#0D9488',
+};
+
+const TERM_CALENDAR_COLOR = '#2383E2';
 
 interface Resource {
   id: string;
@@ -38,22 +48,22 @@ export default function MemberResourcesManagement() {
 
   const resourceTypes = [
     {
-      value: 'youtube',
+      value: 'youtube' as const,
       label: 'YouTube Video',
-      icon: <Youtube size={16} color={theme.colors.textSecondary} />,
-      iconLarge: <Youtube size={22} color={theme.colors.textSecondary} />,
+      icon: <Youtube size={16} color={RESOURCE_ICON_COLORS.youtube} />,
+      iconLarge: <Youtube size={22} color={RESOURCE_ICON_COLORS.youtube} />,
     },
     {
-      value: 'magazine',
+      value: 'magazine' as const,
       label: 'Magazine',
-      icon: <BookOpen size={16} color={theme.colors.textSecondary} />,
-      iconLarge: <BookOpen size={22} color={theme.colors.textSecondary} />,
+      icon: <BookOpen size={16} color={RESOURCE_ICON_COLORS.magazine} />,
+      iconLarge: <BookOpen size={22} color={RESOURCE_ICON_COLORS.magazine} />,
     },
     {
-      value: 'other_pdf',
+      value: 'other_pdf' as const,
       label: 'Article PDF',
-      icon: <FileText size={16} color={theme.colors.textSecondary} />,
-      iconLarge: <FileText size={22} color={theme.colors.textSecondary} />,
+      icon: <FileText size={16} color={RESOURCE_ICON_COLORS.other_pdf} />,
+      iconLarge: <FileText size={22} color={RESOURCE_ICON_COLORS.other_pdf} />,
     },
   ];
 
@@ -164,8 +174,18 @@ export default function MemberResourcesManagement() {
   };
 
   const getResourceTypeIcon = (type: string) => {
-    const resourceType = resourceTypes.find(rt => rt.value === type);
-    return resourceType?.icon || <FileText size={16} color="#ffffff" />;
+    const c = RESOURCE_ICON_COLORS[type] ?? theme.colors.textSecondary;
+    switch (type) {
+      case 'youtube':
+        return <Youtube size={16} color={c} />;
+      case 'magazine':
+        return <BookOpen size={16} color={c} />;
+      case 'other_pdf':
+      case 'evaluation_form':
+        return <FileText size={16} color={c} />;
+      default:
+        return <FileText size={16} color={c} />;
+    }
   };
 
   const getResourceTypeLabel = (type: string) => {
@@ -188,7 +208,7 @@ export default function MemberResourcesManagement() {
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
+      case 'excomm': return EXCOMM_UI.solidBg;
       case 'visiting_tm': return '#10b981';
       case 'club_leader': return '#f59e0b';
       case 'guest': return '#6b7280';
@@ -208,14 +228,18 @@ export default function MemberResourcesManagement() {
     }
   };
 
-  const ResourceCard = ({ resource }: { resource: Resource }) => (
-    <View style={[styles.resourceCard, { backgroundColor: theme.colors.surface }]}>
+  const ResourceCard = ({ resource, isLast }: { resource: Resource; isLast: boolean }) => (
+    <View
+      style={[
+        styles.resourceCard,
+        { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border },
+        !isLast && styles.resourceCardDivider,
+      ]}
+    >
       <View style={styles.resourceHeader}>
         <View style={styles.resourceInfo}>
           <View style={styles.resourceTitleRow}>
-            <View style={[styles.resourceTypeIcon, { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border }]}>
-              {getResourceTypeIcon(resource.resource_type)}
-            </View>
+            <View style={styles.resourceTypeIconSlot}>{getResourceTypeIcon(resource.resource_type)}</View>
             <Text style={[styles.resourceTitle, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.3}>
               {resource.title}
             </Text>
@@ -224,13 +248,13 @@ export default function MemberResourcesManagement() {
             {resource.description}
           </Text>
           <View style={styles.resourceMeta}>
-            <View style={[styles.typeTag, { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border }]}>
+            <View style={[styles.typeTag, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
               <Text style={[styles.typeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {getResourceTypeLabel(resource.resource_type)}
               </Text>
             </View>
             <View style={styles.resourceDate}>
-              <Calendar size={12} color={theme.colors.textSecondary} />
+              <Calendar size={12} color={TERM_CALENDAR_COLOR} />
               <Text style={[styles.resourceDateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {new Date(resource.created_at).toLocaleDateString()}
               </Text>
@@ -240,15 +264,15 @@ export default function MemberResourcesManagement() {
         
         <View style={styles.resourceActions}>
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#f0f9ff' }]}
+            style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
             onPress={() => handleEditResource(resource)}
             activeOpacity={0.7}
           >
-            <Edit3 size={14} color="#0ea5e9" />
+            <Edit3 size={14} color="#2383E2" />
           </TouchableOpacity>
-          
+
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#fef2f2' }]}
+            style={[styles.actionButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
             onPress={() => handleDeleteResource(resource)}
             activeOpacity={0.7}
           >
@@ -319,9 +343,7 @@ export default function MemberResourcesManagement() {
                     onPress={() => handleNavigateToAddResource(type.value as any)}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.resourceTypeCardIcon, { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border }]}>
-                      {type.iconLarge}
-                    </View>
+                    <View style={styles.resourceTypeCardIconSlot}>{type.iconLarge}</View>
                     <Text style={[styles.resourceTypeCardLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                       {type.label}
                     </Text>
@@ -338,16 +360,24 @@ export default function MemberResourcesManagement() {
             </View>
 
             {/* Resources List */}
-            <View style={styles.resourcesList}>
-              {resources.map((resource) => (
-                <ResourceCard key={resource.id} resource={resource} />
+            <View
+              style={[
+                styles.resourcesList,
+                resources.length > 0 && [
+                  styles.resourcesListWithDivider,
+                  { borderTopColor: theme.colors.border },
+                ],
+              ]}
+            >
+              {resources.map((resource, idx) => (
+                <ResourceCard key={resource.id} resource={resource} isLast={idx === resources.length - 1} />
               ))}
             </View>
 
             {/* Empty State */}
             {resources.length === 0 && (
               <View style={styles.emptyState}>
-                <BookOpen size={48} color={theme.colors.textSecondary} />
+                <BookOpen size={48} color={RESOURCE_ICON_COLORS.magazine} />
                 <Text style={[styles.emptyStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   No resources added yet
                 </Text>
@@ -368,7 +398,7 @@ export default function MemberResourcesManagement() {
         onRequestClose={handleCancelDelete}
       >
         <View style={styles.deleteModalOverlay}>
-          <View style={[styles.deleteModal, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.deleteModal, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Text style={[styles.deleteModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Delete Resource</Text>
             <Text style={[styles.deleteModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               Are you sure you want to delete "{resourceToDelete?.title}"? This action cannot be undone.
@@ -401,7 +431,7 @@ export default function MemberResourcesManagement() {
         onRequestClose={() => setShowInfoModal(false)}
       >
         <View style={styles.infoModalOverlay}>
-          <View style={[styles.infoModal, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.infoModal, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={styles.infoModalHeader}>
               <Text style={[styles.infoModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 Empower Your Club, One Resource at a Time
@@ -509,10 +539,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   notionPanel: {
-    marginHorizontal: 12,
-    marginTop: 12,
-    borderRadius: 12,
-    borderWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   notionPanelHeader: {
@@ -535,36 +565,24 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   resourceTypeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    gap: 10,
   },
   resourceTypeCard: {
     width: '100%',
-    borderWidth: 1,
-    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     paddingHorizontal: 14,
     paddingVertical: 12,
     alignItems: 'center',
     flexDirection: 'row',
     marginBottom: 0,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
-  resourceTypeCardIcon: {
+  resourceTypeCardIconSlot: {
     width: 36,
-    height: 36,
-    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
-    borderWidth: 1,
+    marginRight: 12,
   },
   resourceTypeCardLabel: {
     fontSize: 15,
@@ -617,8 +635,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 0,
   },
   roleText: {
     fontSize: 10,
@@ -636,21 +654,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   resourcesList: {
-    paddingHorizontal: 4,
-    paddingBottom: 20,
+    paddingHorizontal: 0,
+    paddingBottom: 8,
+  },
+  resourcesListWithDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 4,
   },
   resourceCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 0,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginBottom: 0,
+  },
+  resourceCardDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   resourceHeader: {
     flexDirection: 'row',
@@ -666,14 +684,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  resourceTypeIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
+  resourceTypeIconSlot: {
+    width: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    marginRight: 10,
+    paddingTop: 2,
   },
   resourceTitle: {
     fontSize: 16,
@@ -693,9 +709,9 @@ const styles = StyleSheet.create({
   },
   typeTag: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    borderWidth: 1,
+    paddingVertical: 3,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   typeText: {
     fontSize: 11,
@@ -714,9 +730,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -737,121 +754,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  resourceModal: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-    minHeight: '60%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -4,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 16,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  modalContent: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-  },
-  formField: {
-    marginBottom: 24,
-  },
-  fieldLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 14,
-  },
-  textAreaInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 14,
-    minHeight: 80,
-  },
-  resourceTypeGrid: {
-    gap: 10,
-  },
-  resourceTypeOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderRadius: 8,
-    padding: 12,
-  },
-  resourceTypeIconContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  resourceTypeLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  filePickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
-  },
-  filePickerText: {
-    fontSize: 14,
-    marginLeft: 8,
-  },
-  fileSelectedText: {
-    fontSize: 12,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    paddingVertical: 14,
-    marginBottom: 20,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginLeft: 8,
-  },
   deleteModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -859,18 +761,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deleteModal: {
-    borderRadius: 16,
+    borderRadius: 0,
     padding: 24,
-    marginHorizontal: 40,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
-    minWidth: 300,
+    marginHorizontal: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    minWidth: 280,
+    maxWidth: 400,
   },
   deleteModalTitle: {
     fontSize: 18,
@@ -892,7 +788,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 0,
     alignItems: 'center',
   },
   cancelButton: {
@@ -919,18 +815,11 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   infoModal: {
-    borderRadius: 16,
+    borderRadius: 0,
     width: '100%',
     maxWidth: 500,
     maxHeight: '85%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   infoModalHeader: {
     flexDirection: 'row',
@@ -973,7 +862,7 @@ const styles = StyleSheet.create({
     margin: 24,
     marginTop: 16,
     paddingVertical: 14,
-    borderRadius: 8,
+    borderRadius: 0,
     alignItems: 'center',
   },
   infoModalButtonText: {

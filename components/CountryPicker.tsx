@@ -21,6 +21,8 @@ interface CountryPickerProps {
   borderColor: string;
   focusColor: string;
   backgroundColor: string;
+  /** Sharp borders, no radius — e.g. Club Info location (Notion-style panel). */
+  flat?: boolean;
 }
 
 function codeToFlag(isoCode: string): string {
@@ -46,6 +48,7 @@ export default function CountryPicker({
   borderColor,
   focusColor,
   backgroundColor,
+  flat = false,
 }: CountryPickerProps) {
   const [visible, setVisible] = useState(false);
   const [query, setQuery] = useState('');
@@ -72,13 +75,17 @@ export default function CountryPicker({
   return (
     <>
       <TouchableOpacity
-        style={[styles.trigger, { borderColor, backgroundColor }]}
+        style={[
+          flat ? styles.triggerFlat : styles.trigger,
+          { backgroundColor },
+          !flat && { borderColor },
+        ]}
         onPress={() => setVisible(true)}
         activeOpacity={0.9}>
         <Text style={[styles.triggerText, { color: selectedCountry ? textColor : placeholderColor }]} numberOfLines={1}>
           {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name} (${selectedCountry.code})` : placeholder}
         </Text>
-        <ChevronDown size={16} color={placeholderColor} />
+        <ChevronDown size={16} color={flat ? focusColor : placeholderColor} />
       </TouchableOpacity>
 
       <Modal
@@ -97,14 +104,19 @@ export default function CountryPicker({
               setQuery('');
             }}
           />
-          <View style={[styles.sheet, { backgroundColor }]}>
+          <View
+            style={[
+              flat ? styles.sheetFlat : styles.sheet,
+              { backgroundColor },
+              flat && { borderColor },
+            ]}>
             <Text style={[styles.title, { color: textColor }]}>Select Country</Text>
             <TextInput
               value={query}
               onChangeText={setQuery}
               placeholder="Search country or code"
               placeholderTextColor={placeholderColor}
-              style={[styles.searchInput, { color: textColor, borderColor, backgroundColor }]}
+              style={[flat ? styles.searchInputFlat : styles.searchInput, { color: textColor, borderColor, backgroundColor }]}
               autoCapitalize="none"
             />
             <FlatList
@@ -114,11 +126,20 @@ export default function CountryPicker({
               initialNumToRender={24}
               maxToRenderPerBatch={48}
               windowSize={10}
-              renderItem={({ item }) => {
+              renderItem={({ item, index }) => {
                 const isSelected = selectedCountry?.code === item.code;
                 return (
                   <TouchableOpacity
-                    style={[styles.row, { borderColor }, isSelected && { borderColor: focusColor, backgroundColor: `${focusColor}14` }]}
+                    style={[
+                      flat ? styles.rowFlat : styles.row,
+                      !flat && { borderColor },
+                      flat && {
+                        borderBottomColor: borderColor,
+                        borderBottomWidth: index === filteredCountries.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                        backgroundColor: isSelected ? `${focusColor}14` : 'transparent',
+                      },
+                      !flat && isSelected && { borderColor: focusColor, backgroundColor: `${focusColor}14` },
+                    ]}
                     onPress={() => {
                       onChange(item.name, item.code);
                       setVisible(false);
@@ -152,6 +173,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
+  triggerFlat: {
+    borderWidth: 0,
+    borderRadius: 0,
+    minHeight: 40,
+    paddingHorizontal: 0,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   triggerText: {
     fontSize: 15,
     fontWeight: '400',
@@ -168,6 +200,15 @@ const styles = StyleSheet.create({
     padding: 16,
     maxHeight: '78%',
   },
+  sheetFlat: {
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    maxHeight: '78%',
+    width: '98%',
+    maxWidth: 483,
+    alignSelf: 'center',
+  },
   title: {
     fontSize: 18,
     fontWeight: '600',
@@ -176,6 +217,15 @@ const styles = StyleSheet.create({
   searchInput: {
     borderWidth: 1,
     borderRadius: 12,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    marginBottom: 12,
+  },
+  searchInputFlat: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
     minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -191,6 +241,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
+    gap: 10,
+  },
+  rowFlat: {
+    borderWidth: 0,
+    borderRadius: 0,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
   flag: {

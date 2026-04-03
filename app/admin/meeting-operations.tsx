@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { ArrowLeft, CalendarPlus, Users, UserCheck, ClipboardCheck, Building2, Crown, User, Shield, Eye, UserCheck as UserCheckIcon, FileText, Archive, Home, Calendar, Settings } from 'lucide-react-native';
 
 interface ClubInfo {
@@ -86,7 +87,7 @@ export default function MeetingOperations() {
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
+      case 'excomm': return EXCOMM_UI.solidBg;
       case 'visiting_tm': return '#10b981';
       case 'club_leader': return '#f59e0b';
       case 'guest': return '#6b7280';

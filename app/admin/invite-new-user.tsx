@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, supabaseUrl } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { ArrowLeft, Mail, User, Crown, Shield, Eye, UserCheck, Clock, Send, Trash2, CircleCheck as CheckCircle, Building2 } from 'lucide-react-native';
 
 /** Notion-like neutrals */
@@ -22,8 +23,6 @@ const N = {
   iconTile: 'rgba(55, 53, 47, 0.06)',
   success: '#0F7B6C',
   successSoft: 'rgba(15, 123, 108, 0.12)',
-  pillExCommBg: '#F4F0FA',
-  pillExCommText: '#6940A5',
   pillBg: '#F0EFED',
 };
 
@@ -425,7 +424,7 @@ export default function InviteNewUser() {
   const notionRolePill = (role: string): { bg: string; fg: string } => {
     switch (role.toLowerCase()) {
       case 'excomm':
-        return { bg: N.pillExCommBg, fg: N.pillExCommText };
+        return { bg: EXCOMM_UI.pillBg, fg: EXCOMM_UI.pillFg };
       case 'visiting_tm':
         return { bg: 'rgba(16, 185, 129, 0.12)', fg: '#047857' };
       case 'club_leader':

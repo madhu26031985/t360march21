@@ -8,6 +8,7 @@ import { prefetchExcommManagement } from '@/lib/prefetchExcommManagement';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { Settings, Building2, Crown, ArrowLeft, Share2, FileText, Calendar, User, Shield, Eye, UserCheck, Info, X, Home, Users } from 'lucide-react-native';
 
 interface FeatureCardProps {
@@ -90,7 +91,7 @@ export default function ClubOperations() {
 
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
-      case 'excomm': return '#8b5cf6';
+      case 'excomm': return EXCOMM_UI.solidBg;
       case 'visiting_tm': return '#10b981';
       case 'club_leader': return '#f59e0b';
       case 'guest': return '#6b7280';
