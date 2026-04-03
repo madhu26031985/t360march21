@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.toastmaster360.mobile",
+      "sha256_cert_fingerprints": [
+        "C1:D7:6C:6C:62:3B:14:13:EE:8A:3E:94:85:95:6E:9F:BF:F6:A2:00:FF:6C:02:A8:60:9B:0C:A5"
+      ]
+    }
+  }
+]

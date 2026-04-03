@@ -51,6 +51,25 @@ for (const item of items) {
 }
 console.log('✅ Reorganized output to dist/weblogin/ for /weblogin subpath');
 
+// Android App Links: must live at https://<domain>/.well-known/assetlinks.json (site root),
+// not under /weblogin, so copy after reorganize.
+const assetLinksSrc = path.join(publicDir, '.well-known', 'assetlinks.json');
+const assetLinksDestDir = path.join(distDir, '.well-known');
+const assetLinksDest = path.join(assetLinksDestDir, 'assetlinks.json');
+if (fs.existsSync(assetLinksSrc)) {
+  const raw = fs.readFileSync(assetLinksSrc, 'utf8');
+  if (raw.includes('REPLACE_WITH_PLAY_CONSOLE_APP_SIGNING_CERTIFICATE_SHA256')) {
+    console.warn(
+      '⚠️  public/.well-known/assetlinks.json still has SHA256 placeholder — Google Play domain verification will fail until you paste the App signing certificate SHA-256 from Play Console.'
+    );
+  }
+  fs.mkdirSync(assetLinksDestDir, { recursive: true });
+  fs.copyFileSync(assetLinksSrc, assetLinksDest);
+  console.log('✅ Copied .well-known/assetlinks.json to dist/ (site root for Netlify)');
+} else {
+  console.log('⚠️  No public/.well-known/assetlinks.json — Android App Links verification will fail');
+}
+
 console.log('✨ Post-build tasks completed successfully!');
 console.log('');
 console.log('📦 Deploy the contents of dist/weblogin/ to your server\'s /weblogin path');
