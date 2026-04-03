@@ -1398,11 +1398,6 @@ export default function MyJourney() {
   }, [currentOpenMeetingId]);
 
   useEffect(() => {
-    if (!currentOpenMeetingId) return;
-    prefetchMeetingAgendaView(currentOpenMeetingId);
-  }, [currentOpenMeetingId]);
-
-  useEffect(() => {
     prefetchMyMentorSnapshot(user?.currentClubId);
   }, [user?.currentClubId]);
 
