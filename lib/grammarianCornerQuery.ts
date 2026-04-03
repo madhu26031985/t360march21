@@ -5,13 +5,20 @@ const FORCE_DISABLE_GRAMMARIAN_SNAPSHOT_RPC = false;
 let grammarianSnapshotRpcDisabledUntil = 0;
 const FALLBACK_CACHE_TTL_MS = 30_000;
 const fallbackSnapshotCache = new Map<string, { at: number; value: GrammarianCornerSnapshot | null }>();
+const snapshotInflight = new Map<string, Promise<GrammarianCornerSnapshot | null>>();
+
+function snapshotCacheKey(meetingId: string, userId: string, clubId: string): string {
+  return `${meetingId}:${userId}:${clubId}`;
+}
 
 export function invalidateGrammarianCornerSnapshotCache(
   meetingId: string,
   userId: string,
   clubId: string
 ): void {
-  fallbackSnapshotCache.delete(`${meetingId}:${userId}:${clubId}`);
+  const key = snapshotCacheKey(meetingId, userId, clubId);
+  fallbackSnapshotCache.delete(key);
+  snapshotInflight.delete(key);
 }
 
 export type GrammarianCornerMeeting = {
@@ -106,34 +113,44 @@ export async function fetchGrammarianCornerSnapshot(
   userId: string,
   clubId: string
 ): Promise<GrammarianCornerSnapshot | null> {
-  const cacheKey = `${meetingId}:${userId}:${clubId}`;
+  const cacheKey = snapshotCacheKey(meetingId, userId, clubId);
   const cached = fallbackSnapshotCache.get(cacheKey);
   if (cached && Date.now() - cached.at < FALLBACK_CACHE_TTL_MS) {
     return cached.value;
   }
 
-  const canTryRpc = !FORCE_DISABLE_GRAMMARIAN_SNAPSHOT_RPC && Date.now() >= grammarianSnapshotRpcDisabledUntil;
-  const { data, error } = canTryRpc
-    ? await supabase.rpc('get_grammarian_corner_snapshot', {
-        p_meeting_id: meetingId,
-      })
-    : ({ data: null, error: { message: 'snapshot rpc temporarily disabled' } as any } as any);
-
-  if (!error && data === null) {
-    return null;
+  const pending = snapshotInflight.get(cacheKey);
+  if (pending) {
+    return pending;
   }
 
-  if (!error && data != null && typeof data === 'object' && !Array.isArray(data)) {
-    return data as GrammarianCornerSnapshot;
-  }
+  const run = (async (): Promise<GrammarianCornerSnapshot | null> => {
+    const canTryRpc =
+      !FORCE_DISABLE_GRAMMARIAN_SNAPSHOT_RPC && Date.now() >= grammarianSnapshotRpcDisabledUntil;
+    const { data, error } = canTryRpc
+      ? await supabase.rpc('get_grammarian_corner_snapshot', {
+          p_meeting_id: meetingId,
+        })
+      : ({ data: null, error: { message: 'snapshot rpc temporarily disabled' } as any } as any);
 
-  if (error) {
-    console.warn('get_grammarian_corner_snapshot failed, using legacy queries:', error.message);
-    // Avoid repeated 400 RPC retries on every screen open/focus.
-    grammarianSnapshotRpcDisabledUntil = Date.now() + 5 * 60 * 1000;
-  }
+    if (!error && data === null) {
+      fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: null });
+      return null;
+    }
 
-  const [{ data: meetingData, error: meetingErr }, clubRes, vpeRes, roleRowRes] = await Promise.all([
+    if (!error && data != null && typeof data === 'object' && !Array.isArray(data)) {
+      grammarianSnapshotRpcDisabledUntil = 0;
+      const snap = data as GrammarianCornerSnapshot;
+      fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: snap });
+      return snap;
+    }
+
+    if (error) {
+      console.warn('get_grammarian_corner_snapshot failed, using legacy queries:', error.message);
+      grammarianSnapshotRpcDisabledUntil = Date.now() + 5 * 60 * 1000;
+    }
+
+    const [{ data: meetingData, error: meetingErr }, clubRes, vpeRes, roleRowRes] = await Promise.all([
     supabase
       .from('app_club_meeting')
       .select('id, meeting_title, meeting_date, meeting_number, meeting_start_time, meeting_end_time, meeting_mode, meeting_status')
@@ -151,30 +168,40 @@ export async function fetchGrammarianCornerSnapshot(
       .maybeSingle(),
   ]);
 
-  if (meetingErr || !meetingData) {
-    fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: null });
-    return null;
-  }
+    if (meetingErr || !meetingData) {
+      fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: null });
+      return null;
+    }
 
-  let assigned: GrammarianAssignedProfile | null = null;
-  const embeddedProfile = (roleRowRes.data as any)?.app_user_profiles;
-  if (embeddedProfile?.id) {
-    assigned = {
-      id: embeddedProfile.id,
-      full_name: embeddedProfile.full_name,
-      email: embeddedProfile.email,
-      avatar_url: embeddedProfile.avatar_url,
+    let assigned: GrammarianAssignedProfile | null = null;
+    const embeddedProfile = (roleRowRes.data as any)?.app_user_profiles;
+    if (embeddedProfile?.id) {
+      assigned = {
+        id: embeddedProfile.id,
+        full_name: embeddedProfile.full_name,
+        email: embeddedProfile.email,
+        avatar_url: embeddedProfile.avatar_url,
+      };
+    }
+
+    const snapshot: GrammarianCornerSnapshot = {
+      meeting_id: meetingId,
+      club_id: clubId,
+      meeting: meetingData as GrammarianCornerMeeting,
+      club_name: clubRes.data?.name ?? null,
+      assigned_grammarian: assigned,
+      is_vpe_for_club: vpeRes.data?.vpe_id === userId,
     };
-  }
+    fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: snapshot });
+    return snapshot;
+  })();
 
-  const snapshot: GrammarianCornerSnapshot = {
-    meeting_id: meetingId,
-    club_id: clubId,
-    meeting: meetingData as GrammarianCornerMeeting,
-    club_name: clubRes.data?.name ?? null,
-    assigned_grammarian: assigned,
-    is_vpe_for_club: vpeRes.data?.vpe_id === userId,
-  };
-  fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: snapshot });
-  return snapshot;
+  snapshotInflight.set(cacheKey, run);
+  try {
+    return await run;
+  } finally {
+    if (snapshotInflight.get(cacheKey) === run) {
+      snapshotInflight.delete(cacheKey);
+    }
+  }
 }
