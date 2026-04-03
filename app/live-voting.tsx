@@ -69,12 +69,65 @@ export default function LiveVoting() {
   }, []);
 
   useEffect(() => {
-    if (selectedPoll) {
-      loadPollItems();
-      loadUserVotes();
-      checkIfUserHasVoted();
+    if (!selectedPoll || !user?.id) {
+      setPollItems([]);
+      setUserVotes([]);
+      setHasVoted(false);
+      return;
     }
-  }, [selectedPoll]);
+
+    let cancelled = false;
+
+    const loadBundle = async () => {
+      setPollItems([]);
+      setUserVotes([]);
+      setHasVoted(false);
+
+      try {
+        const { data, error } = await (supabase as any).rpc('get_live_voting_poll_bundle', {
+          p_poll_id: selectedPoll.id,
+        });
+
+        if (cancelled) return;
+
+        if (error) {
+          console.error('Error loading poll bundle:', error);
+          return;
+        }
+
+        if (data == null || typeof data !== 'object') {
+          return;
+        }
+
+        const bundle = data as {
+          poll_items?: PollItem[];
+          user_votes?: UserVote[];
+          has_voted?: boolean;
+        };
+
+        const items = Array.isArray(bundle.poll_items) ? bundle.poll_items : [];
+        const votes = Array.isArray(bundle.user_votes) ? bundle.user_votes : [];
+        const voted = !!bundle.has_voted;
+
+        setPollItems(items);
+        setUserVotes(votes);
+        setHasVoted(voted);
+
+        if (voted) {
+          setVotedPolls((prev) => new Set([...prev, selectedPoll.id]));
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error('Error loading poll bundle:', e);
+        }
+      }
+    };
+
+    void loadBundle();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPoll, user?.id]);
 
   const loadActivePolls = async () => {
     if (!user?.currentClubId) {
@@ -108,92 +161,6 @@ export default function LiveVoting() {
     }
   };
 
-  const loadPollItems = async () => {
-    if (!selectedPoll) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('poll_items')
-        .select('*')
-        .eq('poll_id', selectedPoll.id)
-        .eq('is_active', true)
-        .order('question_order')
-        .order('option_order');
-
-      if (error) {
-        console.error('Error loading poll items:', error);
-        return;
-      }
-
-      // Fetch avatars for each option by matching option_text with full_name
-      const itemsWithAvatars = await Promise.all(
-        (data || []).map(async (item) => {
-          if (item.option_text) {
-            const { data: profileData } = await supabase
-              .from('app_user_profiles')
-              .select('avatar_url')
-              .ilike('full_name', item.option_text)
-              .maybeSingle();
-
-            return { ...item, avatar_url: profileData?.avatar_url || null };
-          }
-          return item;
-        })
-      );
-
-      setPollItems(itemsWithAvatars);
-    } catch (error) {
-      console.error('Error loading poll items:', error);
-    }
-  };
-
-  const loadUserVotes = async () => {
-    if (!selectedPoll || !user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('simple_poll_votes')
-        .select('poll_id, question_id, option_id')
-        .eq('poll_id', selectedPoll.id)
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error loading user votes:', error);
-        return;
-      }
-
-      setUserVotes(data || []);
-    } catch (error) {
-      console.error('Error loading user votes:', error);
-    }
-  };
-
-  const checkIfUserHasVoted = async () => {
-    if (!selectedPoll || !user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('simple_poll_votes')
-        .select('poll_id')
-        .eq('poll_id', selectedPoll.id)
-        .eq('user_id', user.id)
-        .limit(1);
-
-      if (error) {
-        console.error('Error checking if user has voted:', error);
-        return;
-      }
-
-      const hasVotedForThisPoll = data && data.length > 0;
-      setHasVoted(hasVotedForThisPoll);
-      
-      if (hasVotedForThisPoll) {
-        setVotedPolls(prev => new Set([...prev, selectedPoll.id]));
-      }
-    } catch (error) {
-      console.error('Error checking if user has voted:', error);
-    }
-  };
   const handleVote = async (questionId: string, optionId: string) => {
     if (!selectedPoll || !user || hasVoted) return;
 
