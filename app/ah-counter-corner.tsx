@@ -66,6 +66,8 @@ interface ReportEntry {
   avatarUrl: string | null;
   dbRowId?: string;
   dbColumn?: string;
+  /** When count is stored in ah_counter_reports.custom_filler_counts */
+  customSlug?: string;
 }
 
 const FILLER_WORDS = [
@@ -95,6 +97,40 @@ const FILLER_WORD_TO_COLUMN: Record<string, string> = {
 const COLUMN_TO_FILLER_WORD: Record<string, string> = Object.fromEntries(
   Object.entries(FILLER_WORD_TO_COLUMN).map(([word, col]) => [col, word])
 );
+
+const AH_COUNTER_INTEGER_COUNT_COLUMNS = Object.values(FILLER_WORD_TO_COLUMN);
+
+function fillerWordSlug(word: string): string {
+  return word.trim().toLowerCase();
+}
+
+function displayWordForSlug(slug: string, clubCustomWords: string[]): string {
+  const fromClub = clubCustomWords.find((w) => fillerWordSlug(w) === slug);
+  if (fromClub) return fromClub;
+  const fromDefault = FILLER_WORDS.find((w) => fillerWordSlug(w) === slug);
+  if (fromDefault) return fromDefault;
+  return slug.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+}
+
+function rowHasAnyFillerCounts(row: Record<string, unknown>): boolean {
+  for (const col of AH_COUNTER_INTEGER_COUNT_COLUMNS) {
+    const v = row[col];
+    if (typeof v === 'number' && v > 0) return true;
+  }
+  const custom = row.custom_filler_counts;
+  if (custom && typeof custom === 'object' && !Array.isArray(custom)) {
+    for (const n of Object.values(custom as Record<string, unknown>)) {
+      if (typeof n === 'number' && n > 0) return true;
+    }
+  }
+  return false;
+}
+
+function isAhCounterClubFillerTableError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const msg = (error.message || '').toLowerCase();
+  return error.code === '42P01' || msg.includes('ah_counter_club_custom_filler_words');
+}
 
 function formatTimeAhCounterConsolidated(t: string): string {
   const p = t.split(':');
@@ -139,6 +175,8 @@ export default function AhCounterCorner() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('corner');
   const [ahCounterSummaryVisibleToMembers, setAhCounterSummaryVisibleToMembers] = useState(true);
+  /** When false, members should not see report rows until visibility is loaded from DB. */
+  const [ahCounterVisibilityFetched, setAhCounterVisibilityFetched] = useState(false);
   const hasLoadedOnce = useRef<boolean>(false);
   const hasFocusedOnceRef = useRef<boolean>(false);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
@@ -189,14 +227,30 @@ export default function AhCounterCorner() {
     }
   }, [canEditAhCounterCorner, activeTab]);
 
-  // Corner: tracked members + live report rows. Summary: same report rows for read-only view.
+  // Corner: tracked members + live report rows. Summary: report rows only if members are allowed to see them (or user is Ah Counter / VPE).
   useEffect(() => {
     if (!hasLoadedOnce.current || !meetingId || !user?.currentClubId) return;
     if (effectiveTab === 'corner') {
       void loadAuditMembers();
     }
+    const privileged = canEditAhCounterCorner;
+    const mayLoadForMember = ahCounterVisibilityFetched && ahCounterSummaryVisibleToMembers;
+    const shouldLoadReportRows = privileged || mayLoadForMember;
+    if (!shouldLoadReportRows) {
+      if (!privileged) setReportEntries([]);
+      return;
+    }
     void loadReportEntries();
-  }, [effectiveTab, meetingId, user?.currentClubId, assignedAhCounter?.id]);
+  }, [
+    effectiveTab,
+    meetingId,
+    user?.currentClubId,
+    assignedAhCounter?.id,
+    customFillerWords,
+    canEditAhCounterCorner,
+    ahCounterSummaryVisibleToMembers,
+    ahCounterVisibilityFetched,
+  ]);
 
   // Reload report stats and audit members when screen comes into focus
   useFocusEffect(
@@ -210,6 +264,7 @@ export default function AhCounterCorner() {
       }
       if (meetingId && user?.currentClubId) {
         void loadData();
+        void loadAhCounterSummaryVisibility(false);
       }
     }, [meetingId, user?.currentClubId, canEditAhCounterCorner])
   );
@@ -421,6 +476,29 @@ export default function AhCounterCorner() {
     }
   };
 
+  const loadClubCustomFillerWords = async () => {
+    if (!user?.currentClubId) return;
+    try {
+      const { data, error } = await supabase
+        .from('ah_counter_club_custom_filler_words')
+        .select('word, created_at')
+        .eq('club_id', user.currentClubId)
+        .order('created_at', { ascending: true });
+      if (error) {
+        if (isAhCounterClubFillerTableError(error)) {
+          console.warn('ah_counter_club_custom_filler_words: apply migration 20260405120000_ah_counter_club_custom_filler_words.sql');
+          setCustomFillerWords([]);
+          return;
+        }
+        console.error('Error loading club custom filler words:', error);
+        return;
+      }
+      setCustomFillerWords((data ?? []).map((r: { word: string }) => r.word.trim()).filter(Boolean));
+    } catch (e) {
+      console.error('Error loading club custom filler words:', e);
+    }
+  };
+
   const loadData = async () => {
     if (!meetingId || !user?.currentClubId) {
       if (!hasLoadedOnce.current) setIsLoading(false);
@@ -456,6 +534,7 @@ export default function AhCounterCorner() {
         setPublishedCount(snap.published_count);
         setIsPublished(snap.total_reports > 0 && snap.published_count === snap.total_reports);
         void loadClubName();
+        void loadClubCustomFillerWords();
         // Heavy lists are loaded on-demand per tab (to keep initial load < 1s).
       } else {
         await Promise.all([
@@ -466,6 +545,7 @@ export default function AhCounterCorner() {
           loadIsVPEClub(),
           loadPublishStatus(),
           loadClubName(),
+          loadClubCustomFillerWords(),
         ]);
       }
     } catch (error) {
@@ -683,20 +763,40 @@ export default function AhCounterCorner() {
         return;
       }
       const entries: ReportEntry[] = [];
-      for (const row of (data || [])) {
-        const avatarUrl = (row as any).app_user_profiles?.avatar_url ?? null;
+      const clubWords = customFillerWords;
+      for (const row of data || []) {
+        const r = row as Record<string, unknown>;
+        const avatarUrl =
+          (r.app_user_profiles as { avatar_url?: string } | null)?.avatar_url ?? null;
         for (const [col, word] of Object.entries(COLUMN_TO_FILLER_WORD)) {
-          const count = (row as any)[col] || 0;
+          const count = (typeof r[col] === 'number' ? r[col] : 0) as number;
           for (let i = 0; i < count; i++) {
             entries.push({
-              id: `${row.id}_${col}_${i}`,
-              memberId: row.speaker_user_id || `guest_${row.speaker_name}`,
-              memberName: row.speaker_name,
+              id: `${r.id}_${col}_${i}`,
+              memberId: (r.speaker_user_id as string) || `guest_${r.speaker_name}`,
+              memberName: r.speaker_name as string,
               fillerWord: word,
               avatarUrl,
-              dbRowId: row.id,
+              dbRowId: r.id as string,
               dbColumn: col,
             });
+          }
+        }
+        const customCounts = r.custom_filler_counts as Record<string, unknown> | null | undefined;
+        if (customCounts && typeof customCounts === 'object' && !Array.isArray(customCounts)) {
+          for (const [slug, raw] of Object.entries(customCounts)) {
+            const n = typeof raw === 'number' ? raw : 0;
+            for (let i = 0; i < n; i++) {
+              entries.push({
+                id: `${r.id}_custom_${slug}_${i}`,
+                memberId: (r.speaker_user_id as string) || `guest_${r.speaker_name}`,
+                memberName: r.speaker_name as string,
+                fillerWord: displayWordForSlug(slug, clubWords),
+                avatarUrl,
+                dbRowId: r.id as string,
+                customSlug: slug,
+              });
+            }
           }
         }
       }
@@ -733,8 +833,12 @@ export default function AhCounterCorner() {
     }
   };
 
-  const loadAhCounterSummaryVisibility = async () => {
-    if (!meetingId) return;
+  const loadAhCounterSummaryVisibility = async (resetFetched = true) => {
+    if (!meetingId) {
+      setAhCounterVisibilityFetched(true);
+      return;
+    }
+    if (resetFetched) setAhCounterVisibilityFetched(false);
     try {
       const { data, error } = await supabase
         .from('ah_counter_corner_visibility')
@@ -742,13 +846,18 @@ export default function AhCounterCorner() {
         .eq('meeting_id', meetingId)
         .maybeSingle();
       if (error) {
-        if (isAhCounterVisibilityTableError(error)) return;
+        if (isAhCounterVisibilityTableError(error)) {
+          setAhCounterSummaryVisibleToMembers(true);
+          return;
+        }
         console.error('ah_counter_corner_visibility:', error);
         return;
       }
       setAhCounterSummaryVisibleToMembers(data?.summary_visible_to_members !== false);
     } catch (e) {
       console.error('loadAhCounterSummaryVisibility', e);
+    } finally {
+      setAhCounterVisibilityFetched(true);
     }
   };
 
@@ -779,7 +888,7 @@ export default function AhCounterCorner() {
 
   useEffect(() => {
     if (!meetingId) return;
-    void loadAhCounterSummaryVisibility();
+    void loadAhCounterSummaryVisibility(true);
   }, [meetingId]);
 
   const addToReport = async () => {
@@ -791,47 +900,107 @@ export default function AhCounterCorner() {
     try {
       const column = FILLER_WORD_TO_COLUMN[selectedFillerWord];
 
-      const { data: existing } = await supabase
-        .from('ah_counter_reports')
-        .select('id, ' + column)
-        .eq('meeting_id', meetingId)
-        .eq('club_id', user.currentClubId)
-        .eq('speaker_user_id', selectedMemberId)
-        .maybeSingle();
+      if (column) {
+        const { data: existing } = await supabase
+          .from('ah_counter_reports')
+          .select(`id, ${column}`)
+          .eq('meeting_id', meetingId)
+          .eq('club_id', user.currentClubId)
+          .eq('speaker_user_id', selectedMemberId)
+          .maybeSingle();
 
-      if (existing) {
-        const currentCount = (existing as any)[column] || 0;
-        await supabase
-          .from('ah_counter_reports')
-          .update({ [column]: currentCount + 1 })
-          .eq('id', existing.id);
+        let rowId: string;
+        if (existing) {
+          rowId = existing.id;
+          const currentCount = (existing as Record<string, number>)[column] || 0;
+          const { error: upErr } = await supabase
+            .from('ah_counter_reports')
+            .update({ [column]: currentCount + 1 })
+            .eq('id', rowId);
+          if (upErr) throw upErr;
+        } else {
+          const { data: inserted, error: insErr } = await supabase
+            .from('ah_counter_reports')
+            .insert({
+              meeting_id: meetingId,
+              club_id: user.currentClubId,
+              speaker_user_id: selectedMemberId,
+              speaker_name: member.full_name,
+              recorded_by: user.id,
+              [column]: 1,
+            })
+            .select('id')
+            .single();
+          if (insErr) throw insErr;
+          rowId = inserted!.id;
+        }
+
+        const newEntry: ReportEntry = {
+          id: `${rowId}_${column}_${Date.now()}`,
+          memberId: selectedMemberId,
+          memberName: member.full_name,
+          fillerWord: selectedFillerWord,
+          avatarUrl: member.avatar_url,
+          dbRowId: rowId,
+          dbColumn: column,
+        };
+        setReportEntries(prev => [newEntry, ...prev]);
       } else {
-        await supabase
+        const slug = fillerWordSlug(selectedFillerWord);
+        const { data: existing } = await supabase
           .from('ah_counter_reports')
-          .insert({
-            meeting_id: meetingId,
-            club_id: user.currentClubId,
-            speaker_user_id: selectedMemberId,
-            speaker_name: member.full_name,
-            recorded_by: user.id,
-            [column]: 1,
-          });
+          .select('id, custom_filler_counts')
+          .eq('meeting_id', meetingId)
+          .eq('club_id', user.currentClubId)
+          .eq('speaker_user_id', selectedMemberId)
+          .maybeSingle();
+
+        const prevCounts =
+          (existing?.custom_filler_counts as Record<string, number> | null) || {};
+        const nextCounts = { ...prevCounts, [slug]: (prevCounts[slug] || 0) + 1 };
+
+        let rowId: string;
+        if (existing?.id) {
+          rowId = existing.id;
+          const { error: upErr } = await supabase
+            .from('ah_counter_reports')
+            .update({ custom_filler_counts: nextCounts })
+            .eq('id', rowId);
+          if (upErr) throw upErr;
+        } else {
+          const { data: inserted, error: insErr } = await supabase
+            .from('ah_counter_reports')
+            .insert({
+              meeting_id: meetingId,
+              club_id: user.currentClubId,
+              speaker_user_id: selectedMemberId,
+              speaker_name: member.full_name,
+              recorded_by: user.id,
+              custom_filler_counts: { [slug]: 1 },
+            })
+            .select('id')
+            .single();
+          if (insErr) throw insErr;
+          rowId = inserted!.id;
+        }
+
+        const newEntry: ReportEntry = {
+          id: `${rowId}_custom_${slug}_${Date.now()}`,
+          memberId: selectedMemberId,
+          memberName: member.full_name,
+          fillerWord: selectedFillerWord,
+          avatarUrl: member.avatar_url,
+          dbRowId: rowId,
+          customSlug: slug,
+        };
+        setReportEntries(prev => [newEntry, ...prev]);
       }
 
-      const newEntry: ReportEntry = {
-        id: Date.now().toString(),
-        memberId: selectedMemberId,
-        memberName: member.full_name,
-        fillerWord: selectedFillerWord,
-        avatarUrl: member.avatar_url,
-        dbRowId: existing?.id,
-        dbColumn: column,
-      };
-      setReportEntries(prev => [newEntry, ...prev]);
       setSelectedFillerWord(null);
       setSelectedMemberId(null);
     } catch (error) {
       console.error('Error adding entry:', error);
+      Alert.alert('Could not save', 'Check your connection and that the latest database migration is applied.');
     } finally {
       setIsSavingEntry(false);
     }
@@ -841,36 +1010,55 @@ export default function AhCounterCorner() {
     const entry = reportEntries.find(e => e.id === entryId);
     setReportEntries(prev => prev.filter(e => e.id !== entryId));
 
-    if (!entry?.dbRowId || !entry?.dbColumn) return;
-    try {
-      const { data: row } = await supabase
-        .from('ah_counter_reports')
-        .select(`id, ${entry.dbColumn}`)
-        .eq('id', entry.dbRowId)
-        .maybeSingle();
+    if (!entry?.dbRowId) return;
+    const selectCols = `${AH_COUNTER_INTEGER_COUNT_COLUMNS.join(', ')}, custom_filler_counts`;
 
-      if (!row) return;
-      const currentCount = (row as any)[entry.dbColumn] || 0;
-      if (currentCount <= 1) {
-        const remainingCols = Object.values(FILLER_WORD_TO_COLUMN)
-          .filter(c => c !== entry.dbColumn);
-        const { data: otherRow } = await supabase
+    try {
+      if (entry.customSlug) {
+        const { data: row, error: fetchErr } = await supabase
           .from('ah_counter_reports')
-          .select(remainingCols.join(', '))
+          .select(selectCols)
           .eq('id', entry.dbRowId)
           .maybeSingle();
-        const hasOtherCounts = otherRow
-          ? remainingCols.some(c => ((otherRow as any)[c] || 0) > 0)
-          : false;
-        if (hasOtherCounts) {
-          await supabase
-            .from('ah_counter_reports')
-            .update({ [entry.dbColumn]: 0 })
-            .eq('id', entry.dbRowId);
+        if (fetchErr || !row) return;
+
+        const counts = {
+          ...((row as { custom_filler_counts?: Record<string, number> }).custom_filler_counts || {}),
+        };
+        const cur = typeof counts[entry.customSlug] === 'number' ? counts[entry.customSlug] : 0;
+        if (cur <= 1) delete counts[entry.customSlug];
+        else counts[entry.customSlug] = cur - 1;
+
+        const merged = { ...(row as Record<string, unknown>), custom_filler_counts: counts };
+        if (!rowHasAnyFillerCounts(merged)) {
+          await supabase.from('ah_counter_reports').delete().eq('id', entry.dbRowId);
         } else {
           await supabase
             .from('ah_counter_reports')
-            .delete()
+            .update({ custom_filler_counts: counts })
+            .eq('id', entry.dbRowId);
+        }
+        return;
+      }
+
+      if (!entry.dbColumn) return;
+
+      const { data: row, error: fetchErr } = await supabase
+        .from('ah_counter_reports')
+        .select(selectCols)
+        .eq('id', entry.dbRowId)
+        .maybeSingle();
+      if (fetchErr || !row) return;
+
+      const currentCount = (row as Record<string, number>)[entry.dbColumn] || 0;
+      if (currentCount <= 1) {
+        const updated = { ...(row as Record<string, unknown>), [entry.dbColumn]: 0 };
+        if (!rowHasAnyFillerCounts(updated)) {
+          await supabase.from('ah_counter_reports').delete().eq('id', entry.dbRowId);
+        } else {
+          await supabase
+            .from('ah_counter_reports')
+            .update({ [entry.dbColumn]: 0 })
             .eq('id', entry.dbRowId);
         }
       } else {
@@ -884,16 +1072,36 @@ export default function AhCounterCorner() {
     }
   };
 
-  const confirmAddCustomWord = () => {
+  const confirmAddCustomWord = async () => {
     const word = newWordInput.trim();
-    if (!word) return;
+    if (!word || !user?.currentClubId || !user?.id) return;
     const allWords = [...FILLER_WORDS, ...customFillerWords];
     if (allWords.some(w => w.toLowerCase() === word.toLowerCase())) {
       setNewWordInput('');
       setShowAddWordModal(false);
       return;
     }
-    setCustomFillerWords(prev => [...prev, word]);
+
+    const { error } = await supabase.from('ah_counter_club_custom_filler_words').insert({
+      club_id: user.currentClubId,
+      word,
+      created_by: user.id,
+    });
+
+    if (error) {
+      if (error.code === '23505') {
+        Alert.alert('Already added', 'That filler word is already in your club list.');
+        void loadClubCustomFillerWords();
+      } else if (isAhCounterClubFillerTableError(error)) {
+        Alert.alert('Migration required', 'Apply the latest Ah Counter migration, then try again.');
+      } else {
+        console.error('confirmAddCustomWord:', error);
+        Alert.alert('Could not save', error.message || 'Try again.');
+      }
+      return;
+    }
+
+    setCustomFillerWords((prev) => [...prev, word]);
     setSelectedFillerWord(word);
     setNewWordInput('');
     setShowAddWordModal(false);
@@ -1715,7 +1923,17 @@ export default function AhCounterCorner() {
           </View>
         ) : (
           <View style={styles.tabContent}>
-            {!canEditAhCounterCorner && !ahCounterSummaryVisibleToMembers ? (
+            {!ahCounterVisibilityFetched ? (
+              <View style={[styles.viewOnlyBanner, { marginHorizontal: 16, marginTop: 12, paddingVertical: 24 }]}>
+                <ActivityIndicator color={theme.colors.primary} />
+                <Text
+                  style={[styles.viewOnlyBannerText, { color: theme.colors.textSecondary, marginTop: 12 }]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  Checking report visibility…
+                </Text>
+              </View>
+            ) : !ahCounterSummaryVisibleToMembers ? (
               <View
                 style={[
                   styles.viewOnlyBanner,
@@ -1728,7 +1946,9 @@ export default function AhCounterCorner() {
                 ]}
               >
                 <Text style={[styles.viewOnlyBannerText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                  Ah Counter will publish the report shortly.
+                  {canEditAhCounterCorner
+                    ? 'Ah Counter report is not published to members. Turn on "Show ah counter report to Member" in Ah Counter Corner to publish the summary.'
+                    : "This meeting's Ah Counter report is visible only to the Ah Counter and VPE."}
                 </Text>
               </View>
             ) : (

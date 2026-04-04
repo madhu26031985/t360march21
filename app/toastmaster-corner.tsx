@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,6 +41,10 @@ import { Image } from 'expo-image';
 const FOOTER_NAV_ICON_SIZE = 15;
 
 const CORNER_THEME_MAX_LEN = 50;
+
+/** Notion-like flat chrome (light) — subtle edge, no heavy “card” shadow */
+const NOTION_FLAT_BORDER_LIGHT = 'rgba(55, 53, 47, 0.09)';
+const NOTION_FLAT_RADIUS = 4;
 
 interface Meeting {
   id: string;
@@ -123,6 +127,7 @@ function formatConsolidatedMeetingMetaSingleLine(m: Meeting): string {
 
 export default function ToastmasterCorner() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -581,7 +586,7 @@ export default function ToastmasterCorner() {
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -596,7 +601,7 @@ export default function ToastmasterCorner() {
         style={styles.scrollMain}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
+        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 16 }]}
       >
         <View style={styles.contentTop} pointerEvents="box-none">
         {showConsolidatedTmodCard ? (
@@ -604,10 +609,9 @@ export default function ToastmasterCorner() {
             style={[
               styles.consolidatedCornerCard,
               {
-                backgroundColor: theme.colors.background,
-                borderBottomColor: theme.colors.border,
-                marginHorizontal: 16,
-                marginTop: 8,
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.mode === 'light' ? NOTION_FLAT_BORDER_LIGHT : theme.colors.border,
+                marginTop: 12,
               },
             ]}
           >
@@ -668,7 +672,14 @@ export default function ToastmasterCorner() {
               </Text>
             </View>
 
-            <View style={[styles.consolidatedDivider, { backgroundColor: '#EAEAEA' }]} />
+            <View
+              style={[
+                styles.consolidatedDivider,
+                {
+                  backgroundColor: theme.mode === 'light' ? NOTION_FLAT_BORDER_LIGHT : theme.colors.border,
+                },
+              ]}
+            />
 
             {canEditToastmasterTheme() && (!isThemeCompleted() || editingSavedCornerTheme) ? (
               <View style={styles.consolidatedThemeFormStretch}>
@@ -820,7 +831,14 @@ export default function ToastmasterCorner() {
               </View>
             )}
 
-            <View style={[styles.consolidatedBottomDivider, { backgroundColor: '#EAEAEA' }]} />
+            <View
+              style={[
+                styles.consolidatedBottomDivider,
+                {
+                  backgroundColor: theme.mode === 'light' ? NOTION_FLAT_BORDER_LIGHT : theme.colors.border,
+                },
+              ]}
+            />
 
             <View style={styles.consolidatedMeetingMetaBlock}>
               <Text
@@ -937,6 +955,7 @@ export default function ToastmasterCorner() {
           {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
+            paddingBottom: Math.max(insets.bottom + 10, 22),
           },
         ]}
       >
@@ -944,7 +963,10 @@ export default function ToastmasterCorner() {
           horizontal
           showsHorizontalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.footerNavigationContent}
+          contentContainerStyle={[
+            styles.footerNavigationContent,
+            { paddingHorizontal: Math.max(insets.left, insets.right, 4) },
+          ]}
         >
           <TouchableOpacity
             style={styles.footerNavItem}
@@ -1153,6 +1175,8 @@ export default function ToastmasterCorner() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: '100%',
   },
   loadingContainer: {
     flex: 1,
@@ -1190,24 +1214,35 @@ const styles = StyleSheet.create({
   contentContainer: {
     flexGrow: 1,
     flexDirection: 'column',
+    alignItems: 'stretch',
+    width: '100%',
   },
   contentContainerPadded: {
-    paddingHorizontal: 4,
+    paddingHorizontal: 16,
   },
-  contentTop: {},
+  contentTop: {
+    width: '100%',
+    alignItems: 'stretch',
+  },
   mainBody: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'stretch',
   },
   scrollMain: {
     flex: 1,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   /** One unified bottom panel for shortcuts (not a separate floating card in the scroll). */
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 8,
+    paddingTop: 10,
+    paddingHorizontal: 0,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   clubCard: {
     marginHorizontal: 16,
@@ -1739,14 +1774,19 @@ const styles = StyleSheet.create({
   },
   footerNavigationContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 4,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    flexGrow: 1,
+    gap: 8,
+    paddingVertical: 2,
   },
   footerNavItem: {
     alignItems: 'center',
-    minWidth: 62,
-    paddingVertical: 2,
+    justifyContent: 'flex-start',
+    minWidth: 56,
+    maxWidth: 72,
+    paddingHorizontal: 2,
+    paddingBottom: 2,
   },
   footerNavIcon: {
     width: 30,
@@ -1795,9 +1835,9 @@ const styles = StyleSheet.create({
   },
   cornerThemeNameInput: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderRadius: NOTION_FLAT_RADIUS,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
     fontSize: 16,
     marginBottom: 8,
   },
@@ -1827,7 +1867,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingVertical: 16,
     paddingHorizontal: 24,
-    borderRadius: 12,
+    borderRadius: NOTION_FLAT_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1839,7 +1879,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 11,
     paddingHorizontal: 17,
-    borderRadius: 10,
+    borderRadius: NOTION_FLAT_RADIUS,
   },
   cornerThemeSaveBtnTextCompact: {
     fontSize: 14,
@@ -1854,19 +1894,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.3,
   },
-  /** Flat Notion-style header — same surface as page, no card chrome. */
+  /** Flat Notion-style block — light border, 4px radius, no shadow. */
   consolidatedCornerCard: {
     marginBottom: 0,
-    borderRadius: 0,
-    borderWidth: 0,
+    borderRadius: NOTION_FLAT_RADIUS,
+    borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 18,
     alignItems: 'center',
     alignSelf: 'stretch',
     width: '100%',
-    maxWidth: 720,
-    overflow: 'visible',
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
   consolidatedClubBadge: {
     marginTop: 0,
@@ -1994,8 +2032,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 11,
     paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1.5,
+    borderRadius: NOTION_FLAT_RADIUS,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,
@@ -2008,7 +2046,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 11,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: NOTION_FLAT_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,

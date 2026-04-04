@@ -31,29 +31,41 @@ import {
   ArrowLeft,
   MessageSquare,
   Users,
-  Save,
   X,
   Plus,
   Trash2,
   StickyNote,
   FileText,
   NotebookPen,
-  Bell,
-  BookOpen,
-  Star,
-  CheckSquare,
   Calendar,
   ClipboardCheck,
   FileBarChart,
-  Mic,
   Clock,
-  Timer,
-  ListChecks,
   Share2,
-  RotateCcw
+  RotateCcw,
+  User,
+  Vote
 } from 'lucide-react-native';
 
 const FOOTER_NAV_ICON_SIZE = 15;
+
+const CORNER_QUESTION_SLOT_COUNT = 12;
+/** Initial number of question rows shown; user can reveal up to CORNER_QUESTION_SLOT_COUNT via + Add Question. */
+const CORNER_VISIBLE_SLOTS_MIN = 3;
+const TABLE_TOPIC_QUESTION_MAX_CHARS = 100;
+
+/** Notion-style palette (light) — aligned with General Evaluator Report */
+const NOTION_TEXT = '#37352F';
+const NOTION_TEXT_MUTED = '#787774';
+const NOTION_ACCENT = '#2383E2';
+const NOTION_PAGE_BG = '#FBFBFA';
+const NOTION_SURFACE = '#FFFFFF';
+const NOTION_DIVIDER = 'rgba(55, 53, 47, 0.09)';
+
+const NOTION_FONT_FAMILY =
+  Platform.OS === 'web'
+    ? 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
+    : undefined;
 
 // Type definitions
 interface Meeting {
@@ -67,6 +79,33 @@ interface Meeting {
   meeting_location: string | null;
   meeting_link: string | null;
   meeting_status: string;
+}
+
+function formatTimeForDisplay(t: string): string {
+  const p = t.split(':');
+  if (p.length >= 2) return `${p[0]}:${p[1]}`;
+  return t;
+}
+
+function meetingModeLabel(m: Meeting): string {
+  return m.meeting_mode === 'in_person' ? 'In Person' : m.meeting_mode === 'online' ? 'Online' : 'Hybrid';
+}
+
+/** e.g. "April 4 | Sat | 19:30 - 20:30 | In Person" — same as General Evaluator Report */
+function formatConsolidatedMeetingMetaSingleLine(m: Meeting): string {
+  const date = new Date(m.meeting_date);
+  const monthDay = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const weekdayShort = date.toLocaleDateString('en-US', { weekday: 'short' });
+  const parts: string[] = [monthDay, weekdayShort];
+  if (m.meeting_start_time && m.meeting_end_time) {
+    parts.push(
+      `${formatTimeForDisplay(m.meeting_start_time)} - ${formatTimeForDisplay(m.meeting_end_time)}`
+    );
+  } else if (m.meeting_start_time) {
+    parts.push(formatTimeForDisplay(m.meeting_start_time));
+  }
+  parts.push(meetingModeLabel(m));
+  return parts.join(' | ');
 }
 
 interface UserProfile {
@@ -134,6 +173,31 @@ interface ClubMemberLite {
  */
 export default function TableTopicCorner(): JSX.Element {
   const { theme } = useTheme();
+  const notion =
+    theme.mode === 'light'
+      ? {
+          text: NOTION_TEXT,
+          muted: NOTION_TEXT_MUTED,
+          accent: NOTION_ACCENT,
+          divider: NOTION_DIVIDER,
+          surface: NOTION_SURFACE,
+          page: NOTION_PAGE_BG,
+          blockFill: 'rgba(55, 53, 47, 0.04)',
+          blockBorder: NOTION_DIVIDER,
+          placeholder: 'rgba(55, 53, 47, 0.45)',
+        }
+      : {
+          text: theme.colors.text,
+          muted: theme.colors.textSecondary,
+          accent: theme.colors.primary,
+          divider: theme.colors.border,
+          surface: theme.colors.surface,
+          page: theme.colors.background,
+          blockFill: theme.colors.surface,
+          blockBorder: theme.colors.border,
+          placeholder: theme.colors.textSecondary,
+        };
+  const notionType = NOTION_FONT_FAMILY ? ({ fontFamily: NOTION_FONT_FAMILY } as const) : {};
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams();
@@ -151,13 +215,50 @@ export default function TableTopicCorner(): JSX.Element {
   const [participantQuestions, setParticipantQuestions] = useState<ParticipantQuestion>({});
   const [assignedQuestions, setAssignedQuestions] = useState<AssignedQuestion[]>([]);
   const [questions, setQuestions] = useState<TableTopicQuestion[]>([]);
-  
+  const [cornerSlotTexts, setCornerSlotTexts] = useState<string[]>(() =>
+    Array.from({ length: CORNER_QUESTION_SLOT_COUNT }, () => '')
+  );
+  const [cornerSlotIds, setCornerSlotIds] = useState<(string | null)[]>(() =>
+    Array.from({ length: CORNER_QUESTION_SLOT_COUNT }, () => null)
+  );
+  const [cornerVisibleSlotCount, setCornerVisibleSlotCount] = useState<number>(CORNER_VISIBLE_SLOTS_MIN);
+  const [cornerAutoSaving, setCornerAutoSaving] = useState(false);
+  const cornerAutoSaveOpsRef = useRef(0);
+  const cornerSlotInputRefs = useRef<(TextInput | null)[]>([]);
+  const cornerSlotTextsRef = useRef<string[]>(cornerSlotTexts);
+  const cornerSlotIdsRef = useRef<(string | null)[]>(cornerSlotIds);
+  const cornerSaveTimersRef = useRef<Record<number, ReturnType<typeof setTimeout> | undefined>>({});
+  const cornerPersistInFlightRef = useRef<Record<number, boolean>>({});
+  const questionsRef = useRef<TableTopicQuestion[]>(questions);
+
+  const beginCornerAutoSave = () => {
+    cornerAutoSaveOpsRef.current += 1;
+    setCornerAutoSaving(true);
+  };
+  const endCornerAutoSave = () => {
+    cornerAutoSaveOpsRef.current = Math.max(0, cornerAutoSaveOpsRef.current - 1);
+    if (cornerAutoSaveOpsRef.current === 0) {
+      setCornerAutoSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    cornerSlotTextsRef.current = cornerSlotTexts;
+  }, [cornerSlotTexts]);
+  useEffect(() => {
+    cornerSlotIdsRef.current = cornerSlotIds;
+  }, [cornerSlotIds]);
+  useEffect(() => {
+    questionsRef.current = questions;
+  }, [questions]);
+
   const [questionForm, setQuestionForm] = useState<QuestionForm>({
     question: '',
     participantId: '',
     participantName: '',
   });
   const [activeTab, setActiveTab] = useState<'participants' | 'table_topic_corner' | 'table_topic_summary'>('participants');
+  const prevActiveTabRef = useRef<'participants' | 'table_topic_corner' | 'table_topic_summary'>('participants');
   const [publishedQuestions, setPublishedQuestions] = useState<AssignedQuestion[]>([]);
   const [clubInfo, setClubInfo] = useState<{ name: string; club_number: string | null; banner_color: string | null } | null>(null);
   const [isVPEClub, setIsVPEClub] = useState<boolean>(false);
@@ -576,11 +677,260 @@ export default function TableTopicCorner(): JSX.Element {
   };
   const tableTopicQuestionOwnerId = tableTopicMaster?.assigned_user_id || user?.id || '';
 
+  const hydrateCornerSlotsFromQuestions = useCallback((qs: TableTopicQuestion[]) => {
+    const texts = Array.from({ length: CORNER_QUESTION_SLOT_COUNT }, () => '');
+    const ids = Array.from({ length: CORNER_QUESTION_SLOT_COUNT }, () => null as string | null);
+    const sorted = [...qs].sort((a, b) => a.question_order - b.question_order);
+    sorted.slice(0, CORNER_QUESTION_SLOT_COUNT).forEach((q, i) => {
+      texts[i] = q.question_text;
+      ids[i] = q.id;
+    });
+    let maxOccupied = -1;
+    for (let i = 0; i < CORNER_QUESTION_SLOT_COUNT; i++) {
+      if ((texts[i] ?? '').trim().length > 0 || ids[i]) {
+        maxOccupied = i;
+      }
+    }
+    const neededVisible =
+      maxOccupied < 0
+        ? CORNER_VISIBLE_SLOTS_MIN
+        : Math.min(
+            CORNER_QUESTION_SLOT_COUNT,
+            Math.max(CORNER_VISIBLE_SLOTS_MIN, maxOccupied + 1)
+          );
+    setCornerVisibleSlotCount(neededVisible);
+    setCornerSlotTexts(texts);
+    setCornerSlotIds(ids);
+  }, []);
+
+  const handleAddVisibleCornerSlot = useCallback(() => {
+    setCornerVisibleSlotCount((c) => {
+      if (c >= CORNER_QUESTION_SLOT_COUNT) {
+        return c;
+      }
+      const next = c + 1;
+      requestAnimationFrame(() => {
+        cornerSlotInputRefs.current[next - 1]?.focus();
+      });
+      return next;
+    });
+  }, []);
+
+  const persistCornerSlotAtIndex = useCallback(
+    async (index: number) => {
+      if (!canManageTableTopicCorner()) return;
+      if (!meetingId || !user?.currentClubId || !tableTopicQuestionOwnerId) return;
+      if (cornerPersistInFlightRef.current[index]) return;
+
+      const text = (cornerSlotTextsRef.current[index] ?? '').trim();
+      const id = cornerSlotIdsRef.current[index];
+
+      if (text.length > TABLE_TOPIC_QUESTION_MAX_CHARS) {
+        Alert.alert('Error', `Question ${index + 1} cannot exceed ${TABLE_TOPIC_QUESTION_MAX_CHARS} characters.`);
+        return;
+      }
+
+      if (id) {
+        const existing = questionsRef.current.find((q) => q.id === id);
+        if (existing && existing.question_text === text && (existing.question_order ?? 0) === index + 1) {
+          return;
+        }
+      }
+      if (!id && !text) return;
+
+      cornerPersistInFlightRef.current[index] = true;
+      beginCornerAutoSave();
+      try {
+        if (id) {
+          if (!text) {
+            const { error } = await supabase
+              .from('table_topic_master_questions')
+              .delete()
+              .eq('id', id)
+              .eq('meeting_id', meetingId)
+              .eq('table_topic_master_id', tableTopicQuestionOwnerId);
+            if (error) {
+              console.error('Error deleting corner question:', error);
+              const snap = questionsRef.current.find((q) => q.id === id);
+              if (snap) {
+                setCornerSlotTexts((prev) => {
+                  const next = [...prev];
+                  next[index] = snap.question_text;
+                  cornerSlotTextsRef.current = next;
+                  return next;
+                });
+              }
+              Alert.alert(
+                'Could not clear',
+                'The question could not be removed (permission or network). If this continues, ask your club admin to check database access for Table Topic Corner.'
+              );
+              return;
+            }
+            setCornerSlotIds((prev) => {
+              const next = [...prev];
+              next[index] = null;
+              return next;
+            });
+            setQuestions((prev) => prev.filter((q) => q.id !== id));
+          } else {
+            const { error } = await supabase
+              .from('table_topic_master_questions')
+              .update({
+                question_text: text,
+                question_order: index + 1,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', id)
+              .eq('meeting_id', meetingId)
+              .eq('table_topic_master_id', tableTopicQuestionOwnerId);
+            if (error) {
+              console.error('Error updating corner question:', error);
+              const snap = questionsRef.current.find((q) => q.id === id);
+              if (snap) {
+                setCornerSlotTexts((prev) => {
+                  const next = [...prev];
+                  next[index] = snap.question_text;
+                  cornerSlotTextsRef.current = next;
+                  return next;
+                });
+              }
+              Alert.alert('Error', 'Failed to update question');
+              return;
+            }
+            setQuestions((prev) =>
+              prev.map((q) => (q.id === id ? { ...q, question_text: text, question_order: index + 1 } : q))
+            );
+          }
+        } else if (text) {
+          const { data: row, error } = await supabase
+            .from('table_topic_master_questions')
+            .insert({
+              meeting_id: meetingId,
+              club_id: user.currentClubId,
+              table_topic_master_id: tableTopicQuestionOwnerId,
+              question_text: text,
+              question_order: index + 1,
+              is_used: false,
+            })
+            .select('*')
+            .single();
+          if (error) {
+            console.error('Error inserting corner question:', error);
+            Alert.alert('Error', 'Failed to add question');
+            return;
+          }
+          if (row) {
+            const r = row as TableTopicQuestion;
+            setCornerSlotIds((prev) => {
+              const next = [...prev];
+              next[index] = r.id;
+              return next;
+            });
+            setQuestions((prev) =>
+              [...prev.filter((q) => q.id !== r.id), r].sort((a, b) => a.question_order - b.question_order)
+            );
+          }
+        }
+      } finally {
+        cornerPersistInFlightRef.current[index] = false;
+        endCornerAutoSave();
+      }
+    },
+    [meetingId, tableTopicQuestionOwnerId, user?.currentClubId]
+  );
+
+  const scheduleCornerSlotAutoSave = useCallback(
+    (index: number) => {
+      const existing = cornerSaveTimersRef.current[index];
+      if (existing) clearTimeout(existing);
+      cornerSaveTimersRef.current[index] = setTimeout(() => {
+        cornerSaveTimersRef.current[index] = undefined;
+        void persistCornerSlotAtIndex(index);
+      }, 850);
+    },
+    [persistCornerSlotAtIndex]
+  );
+
+  const flushCornerSlotAutoSave = useCallback(
+    (index: number) => {
+      const existing = cornerSaveTimersRef.current[index];
+      if (existing) {
+        clearTimeout(existing);
+        cornerSaveTimersRef.current[index] = undefined;
+      }
+      void persistCornerSlotAtIndex(index);
+    },
+    [persistCornerSlotAtIndex]
+  );
+
+  const focusCornerSlot = useCallback((index: number) => {
+    cornerSlotInputRefs.current[index]?.focus();
+  }, []);
+
+  const clearCornerSlotAtIndex = useCallback(
+    (index: number) => {
+      if (cornerAutoSaving) return;
+      const raw = cornerSlotTextsRef.current[index] ?? '';
+      const id = cornerSlotIdsRef.current[index];
+      if (raw.length === 0 && !id) return;
+
+      const runClear = () => {
+        const t = cornerSaveTimersRef.current[index];
+        if (t) {
+          clearTimeout(t);
+          cornerSaveTimersRef.current[index] = undefined;
+        }
+        setCornerSlotTexts((prev) => {
+          const next = [...prev];
+          next[index] = '';
+          cornerSlotTextsRef.current = next;
+          return next;
+        });
+        void persistCornerSlotAtIndex(index);
+      };
+
+      if (id || raw.trim()) {
+        Alert.alert('Clear question?', 'This removes the question from your question bank.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Clear', style: 'destructive', onPress: runClear },
+        ]);
+      } else {
+        runClear();
+      }
+    },
+    [cornerAutoSaving, persistCornerSlotAtIndex]
+  );
+
   useEffect(() => {
     if (activeTab === 'table_topic_corner' && !canManageTableTopicCorner()) {
       setActiveTab('participants');
     }
   }, [activeTab, isVPEClub, tableTopicMaster?.assigned_user_id, user?.id]);
+
+  useEffect(() => {
+    const prev = prevActiveTabRef.current;
+    prevActiveTabRef.current = activeTab;
+    if (prev === 'table_topic_corner' && activeTab !== 'table_topic_corner') {
+      for (let i = 0; i < CORNER_QUESTION_SLOT_COUNT; i++) {
+        const t = cornerSaveTimersRef.current[i];
+        if (t) {
+          clearTimeout(t);
+          cornerSaveTimersRef.current[i] = undefined;
+          void persistCornerSlotAtIndex(i);
+        }
+      }
+    }
+  }, [activeTab, persistCornerSlotAtIndex]);
+
+  useEffect(() => {
+    return () => {
+      Object.keys(cornerSaveTimersRef.current).forEach((key) => {
+        const t = cornerSaveTimersRef.current[Number(key)];
+        if (t) clearTimeout(t);
+      });
+      cornerSaveTimersRef.current = {};
+    };
+  }, []);
 
   useEffect(() => {
     const loadQuestionBank = async () => {
@@ -595,10 +945,12 @@ export default function TableTopicCorner(): JSX.Element {
         console.error('Error loading table topic question bank:', error);
         return;
       }
-      setQuestions((data || []) as TableTopicQuestion[]);
+      const list = (data || []) as TableTopicQuestion[];
+      setQuestions(list);
+      hydrateCornerSlotsFromQuestions(list);
     };
     void loadQuestionBank();
-  }, [meetingId, tableTopicQuestionOwnerId, isVPEClub, tableTopicMaster?.assigned_user_id]);
+  }, [meetingId, tableTopicQuestionOwnerId, isVPEClub, tableTopicMaster?.assigned_user_id, hydrateCornerSlotsFromQuestions]);
 
   /**
    * Handle adding/editing question for a participant from question bank
@@ -636,7 +988,9 @@ export default function TableTopicCorner(): JSX.Element {
       }
 
       // Set the questions and show the modal
-      setQuestions(questions);
+      const list = questions as TableTopicQuestion[];
+      setQuestions(list);
+      hydrateCornerSlotsFromQuestions(list);
       setSelectedParticipant(participant);
       setSelectedQuestion(null); // Reset selection
       setShowQuestionModal(true);
@@ -801,7 +1155,9 @@ export default function TableTopicCorner(): JSX.Element {
       }
 
       // Set the questions and show the modal
-      setQuestions(questions);
+      const list = questions as TableTopicQuestion[];
+      setQuestions(list);
+      hydrateCornerSlotsFromQuestions(list);
       setSelectedParticipant(participant);
       setSelectedQuestion(null); // Reset selection
       setShowQuestionModal(true);
@@ -820,8 +1176,8 @@ export default function TableTopicCorner(): JSX.Element {
       return;
     }
 
-    if (questionForm.question.length > 200) {
-      Alert.alert('Error', 'Question cannot exceed 200 characters');
+    if (questionForm.question.length > TABLE_TOPIC_QUESTION_MAX_CHARS) {
+      Alert.alert('Error', `Question cannot exceed ${TABLE_TOPIC_QUESTION_MAX_CHARS} characters`);
       return;
     }
 
@@ -964,8 +1320,8 @@ export default function TableTopicCorner(): JSX.Element {
       Alert.alert('Error', 'Please enter a question');
       return;
     }
-    if (text.length > 200) {
-      Alert.alert('Error', 'Question cannot exceed 200 characters');
+    if (text.length > TABLE_TOPIC_QUESTION_MAX_CHARS) {
+      Alert.alert('Error', `Question cannot exceed ${TABLE_TOPIC_QUESTION_MAX_CHARS} characters`);
       return;
     }
     if (!editingQuestionId && questions.length >= 12) {
@@ -1010,7 +1366,9 @@ export default function TableTopicCorner(): JSX.Element {
         .eq('table_topic_master_id', tableTopicQuestionOwnerId)
         .order('question_order');
       if (!refreshError && refreshed) {
-        setQuestions(refreshed);
+        const list = refreshed as TableTopicQuestion[];
+        setQuestions(list);
+        hydrateCornerSlotsFromQuestions(list);
       }
       setNewQuestionText('');
       setEditingQuestionId(null);
@@ -1039,7 +1397,19 @@ export default function TableTopicCorner(): JSX.Element {
       Alert.alert('Error', 'Failed to delete question');
       return;
     }
-    setQuestions((prev) => prev.filter((q) => q.id !== questionIdPendingDelete));
+    const { data: refreshed, error: refreshError } = await supabase
+      .from('table_topic_master_questions')
+      .select('*')
+      .eq('meeting_id', meetingId)
+      .eq('table_topic_master_id', tableTopicQuestionOwnerId)
+      .order('question_order');
+    if (!refreshError && refreshed) {
+      const list = refreshed as TableTopicQuestion[];
+      setQuestions(list);
+      hydrateCornerSlotsFromQuestions(list);
+    } else {
+      setQuestions((prev) => prev.filter((q) => q.id !== questionIdPendingDelete));
+    }
     setQuestionIdPendingDelete(null);
   };
 
@@ -1212,76 +1582,215 @@ export default function TableTopicCorner(): JSX.Element {
     );
   }
 
+  const isTtmBooked = Boolean(tableTopicMaster?.assigned_user_id && tableTopicMaster.app_user_profiles);
+
+  /** Bottom dock icons — same treatment as General Evaluator Report (no per-tile boxes). */
+  const footerIconTileStyle = {
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  } as const;
+
   // Main render
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: notion.page }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <View style={styles.kavInner}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+      <View style={[styles.header, { backgroundColor: notion.surface, borderBottomColor: notion.divider }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={theme.colors.text} />
+          <ArrowLeft size={24} color={notion.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+        <Text style={[styles.headerTitle, notionType, { color: notion.text }]} maxFontSizeMultiplier={1.3}>
           Table Topic Corner
         </Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Meeting Card */}
-        <View style={[styles.meetingCard, {
-          backgroundColor: theme.colors.surface,
-          borderWidth: 1,
-          borderColor: theme.colors.border
-        }]}>
-          <View style={styles.meetingCardContent}>
-            <View style={[styles.dateBox, {
-              backgroundColor: theme.colors.primary + '15'
-            }]}>
-              <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).getDate()}
-              </Text>
-              <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+      <View style={styles.mainBody}>
+      <ScrollView
+        style={styles.scrollMain}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+      >
+        {isTtmBooked && tableTopicMaster?.app_user_profiles ? (
+          <View
+            style={[
+              styles.consolidatedCornerCard,
+              {
+                backgroundColor: notion.page,
+                borderBottomColor: notion.divider,
+                marginHorizontal: 16,
+                marginTop: 8,
+              },
+            ]}
+          >
+            <View style={styles.consolidatedClubBadge}>
+              <Text
+                style={[
+                  styles.consolidatedClubTitle,
+                  notionType,
+                  { color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666' },
+                ]}
+                maxFontSizeMultiplier={1.3}
+              >
+                {clubInfo?.name || 'Club'}
               </Text>
             </View>
-            <View style={styles.meetingDetails}>
-              <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {meeting.meeting_title}
+
+            <View style={styles.consolidatedProfileStack}>
+              <View
+                style={[
+                  styles.consolidatedAvatarWrap,
+                  {
+                    borderColor: theme.mode === 'dark' ? theme.colors.border : '#E8E8E8',
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.background : '#F4F4F5',
+                  },
+                ]}
+              >
+                {tableTopicMaster.app_user_profiles.avatar_url ? (
+                  <Image
+                    source={{ uri: tableTopicMaster.app_user_profiles.avatar_url }}
+                    style={styles.consolidatedAvatarImage}
+                  />
+                ) : (
+                  <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.consolidatedPersonName,
+                  notionType,
+                  { color: theme.mode === 'dark' ? theme.colors.text : '#111111' },
+                ]}
+                maxFontSizeMultiplier={1.25}
+              >
+                {tableTopicMaster.app_user_profiles.full_name}
               </Text>
-              <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Day: {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'long' })}
+              <Text
+                style={[
+                  styles.consolidatedPersonRole,
+                  notionType,
+                  { color: theme.mode === 'dark' ? theme.colors.textSecondary : '#666666' },
+                ]}
+                maxFontSizeMultiplier={1.2}
+              >
+                Table topic master
               </Text>
-              {meeting.meeting_start_time && (
-                <Text style={[styles.meetingCardDateTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Time: {meeting.meeting_start_time}
-                  {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
-                </Text>
-              )}
-              <Text style={[styles.meetingCardMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Mode: {meeting.meeting_mode === 'in_person' ? 'In Person' :
-                       meeting.meeting_mode === 'online' ? 'Online' : 'Hybrid'}
+            </View>
+
+            <View style={[styles.consolidatedBottomDivider, { backgroundColor: notion.divider }]} />
+            <View style={styles.consolidatedMeetingMetaBlock}>
+              <Text
+                style={[
+                  styles.consolidatedMeetingMetaSingle,
+                  notionType,
+                  { color: theme.mode === 'dark' ? '#A3A3A3' : '#999999' },
+                ]}
+                maxFontSizeMultiplier={1.2}
+              >
+                {formatConsolidatedMeetingMetaSingleLine(meeting)}
               </Text>
             </View>
           </View>
-          <View style={styles.meetingCardDecoration} />
-        </View>
+        ) : (
+          <View
+            style={[
+              styles.noAssignmentNotionCard,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <View style={styles.meetingCardContent}>
+              <View style={[styles.dateBox, { backgroundColor: theme.colors.primary + '15' }]}>
+                <Text style={[styles.dateDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {new Date(meeting.meeting_date).getDate()}
+                </Text>
+                <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  {new Date(meeting.meeting_date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.meetingDetails}>
+                <Text style={[styles.meetingCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {meeting.meeting_title}
+                </Text>
+                <Text
+                  style={[styles.meetingCardMetaCompact, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.25}
+                >
+                  {new Date(meeting.meeting_date).toLocaleDateString('en-US', { weekday: 'short' })} •{' '}
+                  {meeting.meeting_start_time || '--:--'}
+                  {meeting.meeting_end_time ? ` - ${meeting.meeting_end_time}` : ''}
+                </Text>
+                <Text
+                  style={[styles.meetingCardMetaCompact, styles.meetingCardMetaModeLine, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.25}
+                >
+                  {meetingModeLabel(meeting)}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.noAssignmentDivider, { backgroundColor: theme.colors.border }]} />
+            <View style={styles.noToastmasterCard}>
+              <View style={[styles.noToastmasterIcon, { backgroundColor: theme.colors.textSecondary + '20' }]}>
+                <MessageSquare size={32} color={theme.colors.textSecondary} />
+              </View>
+              <Text style={[styles.noToastmasterText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Great meetings start with great questions 🤔✨
+              </Text>
+              <Text style={[styles.noToastmasterSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                It's time to become Table Topic Master now.
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.heroBookTtmButton,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: bookingTableTopicMaster ? 0.85 : 1,
+                    zIndex: 2,
+                  },
+                ]}
+                onPress={() => handleBookTableTopicMaster()}
+                disabled={bookingTableTopicMaster}
+                delayPressIn={0}
+                activeOpacity={0.88}
+                hitSlop={{ top: 16, bottom: 16, left: 20, right: 20 }}
+              >
+                {bookingTableTopicMaster ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.heroBookTtmButtonText} maxFontSizeMultiplier={1.3}>
+                    Book Table Topic Master
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            <View style={styles.meetingCardDecoration} pointerEvents="none" />
+          </View>
+        )}
 
-        {/* Tab Switcher */}
-        <View style={[styles.tabContainer, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+        {/* Tab Switcher — General Evaluator Report pattern */}
+        <View style={[styles.tabContainer, { backgroundColor: notion.page, borderBottomColor: notion.divider }]}>
           <TouchableOpacity
             style={[
-              styles.tabButton,
-              activeTab === 'participants' && styles.activeTabButton,
-              { borderBottomColor: activeTab === 'participants' ? theme.colors.primary : 'transparent' }
+              styles.ttTab,
+              activeTab === 'participants' && styles.ttTabActive,
+              { borderBottomColor: activeTab === 'participants' ? notion.accent : 'transparent' },
             ]}
             onPress={() => setActiveTab('participants')}
           >
-            <Users size={16} color={activeTab === 'participants' ? theme.colors.primary : theme.colors.textSecondary} />
-            <Text style={[
-              styles.tabButtonText,
-              { color: activeTab === 'participants' ? theme.colors.primary : theme.colors.textSecondary }
-            ]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[
+                styles.ttTabText,
+                notionType,
+                { color: activeTab === 'participants' ? notion.accent : notion.muted },
+              ]}
+              maxFontSizeMultiplier={1.1}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
               Participants
             </Text>
           </TouchableOpacity>
@@ -1289,17 +1798,23 @@ export default function TableTopicCorner(): JSX.Element {
           {canManageTableTopicCorner() && (
             <TouchableOpacity
               style={[
-                styles.tabButton,
-                activeTab === 'table_topic_corner' && styles.activeTabButton,
-                { borderBottomColor: activeTab === 'table_topic_corner' ? theme.colors.primary : 'transparent' }
+                styles.ttTab,
+                activeTab === 'table_topic_corner' && styles.ttTabActive,
+                { borderBottomColor: activeTab === 'table_topic_corner' ? notion.accent : 'transparent' },
               ]}
               onPress={() => setActiveTab('table_topic_corner')}
             >
-              <ListChecks size={16} color={activeTab === 'table_topic_corner' ? theme.colors.primary : theme.colors.textSecondary} />
-              <Text style={[
-                styles.tabButtonText,
-                { color: activeTab === 'table_topic_corner' ? theme.colors.primary : theme.colors.textSecondary }
-              ]} maxFontSizeMultiplier={1.3}>
+              <Text
+                style={[
+                  styles.ttTabText,
+                  notionType,
+                  { color: activeTab === 'table_topic_corner' ? notion.accent : notion.muted },
+                ]}
+                maxFontSizeMultiplier={1.1}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
                 Table Topic Corner
               </Text>
             </TouchableOpacity>
@@ -1307,86 +1822,40 @@ export default function TableTopicCorner(): JSX.Element {
 
           <TouchableOpacity
             style={[
-              styles.tabButton,
-              activeTab === 'table_topic_summary' && styles.activeTabButton,
-              { borderBottomColor: activeTab === 'table_topic_summary' ? theme.colors.primary : 'transparent' }
+              styles.ttTab,
+              activeTab === 'table_topic_summary' && styles.ttTabActive,
+              { borderBottomColor: activeTab === 'table_topic_summary' ? notion.accent : 'transparent' },
             ]}
             onPress={() => setActiveTab('table_topic_summary')}
           >
-            <FileBarChart size={16} color={activeTab === 'table_topic_summary' ? theme.colors.primary : theme.colors.textSecondary} />
-            <Text style={[
-              styles.tabButtonText,
-              { color: activeTab === 'table_topic_summary' ? theme.colors.primary : theme.colors.textSecondary }
-            ]} maxFontSizeMultiplier={1.3}>
-              Table Topic Summary
-            </Text>
-            {publishedQuestions.length > 0 && (
-              <View style={[styles.tabBadge, { backgroundColor: theme.colors.primary }]}>
-                <Text style={styles.tabBadgeText} maxFontSizeMultiplier={1.3}>{publishedQuestions.length}</Text>
-              </View>
-            )}
+            <View style={styles.ttTabInnerRow}>
+              <Text
+                style={[
+                  styles.ttTabText,
+                  notionType,
+                  { color: activeTab === 'table_topic_summary' ? notion.accent : notion.muted, flexShrink: 1 },
+                ]}
+                maxFontSizeMultiplier={1.1}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                Table Topic Summary
+              </Text>
+              {publishedQuestions.length > 0 ? (
+                <View style={[styles.tabBadge, { backgroundColor: notion.accent }]}>
+                  <Text style={styles.tabBadgeText} maxFontSizeMultiplier={1.3}>
+                    {publishedQuestions.length}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </TouchableOpacity>
         </View>
 
         {/* Participants Tab */}
         {activeTab === 'participants' && (
         <>
-        {/* Table Topic Master Section */}
-        <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-          {tableTopicMaster?.assigned_user_id && tableTopicMaster.app_user_profiles ? (
-            <View style={styles.masterCard}>
-              <View style={styles.masterInfo}>
-                <View style={styles.masterAvatar}>
-                  {tableTopicMaster.app_user_profiles.avatar_url ? (
-                    <Image
-                      source={{ uri: tableTopicMaster.app_user_profiles.avatar_url }}
-                      style={styles.masterAvatarImage}
-                    />
-                  ) : (
-                    <MessageSquare size={24} color="#ffffff" />
-                  )}
-                </View>
-                <View style={styles.masterDetails}>
-                  <Text style={[styles.masterName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    {tableTopicMaster.app_user_profiles.full_name}
-                  </Text>
-                  <Text style={[styles.masterRoleLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Table topic master
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.noMasterCard}>
-              <Text style={[styles.noMasterText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Great meetings start with great questions 🤔✨
-              </Text>
-              <Text style={[styles.noMasterSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.bookRoleButton,
-                  {
-                    backgroundColor: theme.colors.primary,
-                    opacity: bookingTableTopicMaster ? 0.85 : 1,
-                  },
-                ]}
-                onPress={() => handleBookTableTopicMaster()}
-                disabled={bookingTableTopicMaster}
-              >
-                {bookingTableTopicMaster ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                    Book Table Topic Master
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
         {/* Table Topic Participants Section */}
         <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
           <View style={styles.sectionHeader}>
@@ -1418,268 +1887,177 @@ export default function TableTopicCorner(): JSX.Element {
             </View>
           )}
         </View>
-
-        {/* Navigation Quick Actions */}
-        <View style={[styles.quickActionsBoxContainer, { backgroundColor: '#ffffff' }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3E7' }]}>
-                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/ah-counter-corner', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5E5' }]}>
-                <Bell size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FCE7F3' }]}>
-                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Attendance Report</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meetingId, initialTab: 'my_bookings' } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
-                <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
-            </TouchableOpacity>
-
-            {canManageTableTopicCorner() && (
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => {
-                  setActiveTab('table_topic_corner');
-                  setShowAddQuestionModal(true);
-                }}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: '#E8E3D8' }]}>
-                  <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#3B82F6" />
-                </View>
-                <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Prep Space</Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FFE5D9' }]}>
-                <BookOpen size={FOOTER_NAV_ICON_SIZE} color="#f97316" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Educational Corner</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/general-evaluator-notes', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                <Star size={FOOTER_NAV_ICON_SIZE} color="#ef4444" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>General Evaluator</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#F3E8FF' }]}>
-                <FileText size={FOOTER_NAV_ICON_SIZE} color="#8b5cf6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Grammarian</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/keynote-speaker-corner', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                <Mic size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Keynote Speaker</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E9D5FF' }]}>
-                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#9333ea" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Live Voting</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/quick-overview', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <FileText size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Quick Overview</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#DBEAFE' }]}>
-                <CheckSquare size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role Completion</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/prepared-speech-evaluations', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#FECACA' }]}>
-                <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speech Evaluation</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E7F5EF' }]}>
-                <FileBarChart size={FOOTER_NAV_ICON_SIZE} color="#10b981" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Speeches</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#E0F2FE' }]}>
-                <Timer size={FOOTER_NAV_ICON_SIZE} color="#0284c7" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionItem}
-              onPress={() => router.push({ pathname: '/toastmaster-corner', params: { meetingId: meetingId } })}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#F0E7FE' }]}>
-                <Star size={FOOTER_NAV_ICON_SIZE} color="#8b5cf6" />
-              </View>
-              <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Toastmaster</Text>
-            </TouchableOpacity>
-
-          </ScrollView>
-        </View>
         </>
         )}
 
         {/* Table Topic Corner Tab */}
         {activeTab === 'table_topic_corner' && canManageTableTopicCorner() && (
         <View style={styles.summaryContainer}>
-          <View style={[styles.summarySection, { backgroundColor: theme.colors.surface }]}>
-            <View style={[styles.noSummaryCard, styles.cornerPlaceholderCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-              <Text style={[styles.noSummaryText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Table Topic Corner
-              </Text>
-              <Text style={[styles.noSummarySubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                This is the dedicated place for the assigned Table Topic Master or club VPE to prepare up to 12 questions.
-              </Text>
-              {questions.length > 0 && (
-                <View style={[styles.cornerQuestionList, { borderColor: theme.colors.border }]}>
-                  {questions.map((q, index) => (
-                    <View
-                      key={q.id}
-                      style={[
-                        styles.cornerQuestionRow,
-                        { borderBottomColor: theme.colors.border },
-                        index === questions.length - 1 && { borderBottomWidth: 0 },
-                      ]}
-                    >
-                      <View style={[styles.cornerQuestionNumber, { backgroundColor: theme.colors.primary + '18' }]}>
-                        <Text style={[styles.cornerQuestionNumberText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
-                          {index + 1}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.cornerQuestionText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-                          {q.question_text}
-                        </Text>
-                        <View style={styles.cornerQuestionActions}>
-                          <TouchableOpacity
-                            style={[styles.cornerActionBtn, { borderColor: theme.colors.border }]}
-                            onPress={() => {
-                              setEditingQuestionId(q.id);
-                              setNewQuestionText(q.question_text);
-                              setShowAddQuestionModal(true);
-                            }}
-                          >
-                            <Text style={[styles.cornerActionText, { color: theme.colors.text }]}>Edit</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.cornerActionBtn, { borderColor: theme.colors.border }]}
-                            onPress={() => handleDeleteCornerQuestion(q.id)}
-                          >
-                            <Text style={[styles.cornerActionText, { color: '#dc2626' }]}>Delete</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.cornerActionBtn, { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '12' }]}
-                            onPress={() => openAssignModalForQuestion(q)}
-                          >
-                            <Text style={[styles.cornerActionText, { color: theme.colors.primary }]}>Assign</Text>
-                          </TouchableOpacity>
-                        </View>
+          <View style={styles.cornerNotionRoot}>
+            <View style={styles.cornerNotionHeaderBlock}>
+              <View style={styles.sectionHeader}>
+                <View
+                  style={[
+                    styles.sectionIcon,
+                    {
+                      backgroundColor:
+                        theme.mode === 'light' ? NOTION_ACCENT + '18' : theme.colors.primary + '20',
+                    },
+                  ]}
+                >
+                  <MessageSquare
+                    size={20}
+                    color={theme.mode === 'light' ? NOTION_ACCENT : theme.colors.primary}
+                  />
+                </View>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Table Topic Corner
+                </Text>
+              </View>
+              <View style={styles.cornerNotionSaveRow}>
+                {cornerAutoSaving ? (
+                  <ActivityIndicator size="small" color={notion.accent} />
+                ) : null}
+                <Text
+                  style={[styles.cornerNotionSaveHint, notionType, { color: notion.muted }]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  {cornerAutoSaving ? 'Saving…' : 'Changes save automatically'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.cornerNotionSlotsWrap}>
+              {Array.from({ length: cornerVisibleSlotCount }, (_, i) => (
+                <View key={`corner-slot-${i}`} style={styles.cornerNotionSlotColumn}>
+                  <View
+                    style={[
+                      styles.cornerNotionBlock,
+                      { borderColor: notion.blockBorder, backgroundColor: notion.blockFill },
+                    ]}
+                  >
+                    <View style={styles.cornerNotionBlockInner}>
+                      <Text
+                        style={[styles.cornerNotionIndex, notionType, { color: notion.muted }]}
+                        maxFontSizeMultiplier={1.15}
+                      >
+                        {String(i + 1).padStart(2, '0')}
+                      </Text>
+                      <View style={styles.cornerNotionBlockMain}>
+                        <TextInput
+                          ref={(el) => {
+                            cornerSlotInputRefs.current[i] = el;
+                          }}
+                          style={[
+                            styles.cornerNotionInput,
+                            notionType,
+                            {
+                              color: notion.text,
+                              ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}),
+                            },
+                          ]}
+                          value={cornerSlotTexts[i] ?? ''}
+                          onChangeText={(v) => {
+                            setCornerSlotTexts((prev) => {
+                              const next = [...prev];
+                              next[i] = v;
+                              return next;
+                            });
+                            scheduleCornerSlotAutoSave(i);
+                          }}
+                          onBlur={() => flushCornerSlotAutoSave(i)}
+                          placeholder="Click to type your question..."
+                          placeholderTextColor={notion.placeholder}
+                          multiline
+                          maxLength={TABLE_TOPIC_QUESTION_MAX_CHARS}
+                        />
                       </View>
                     </View>
-                  ))}
+                  </View>
+                  <View style={styles.cornerNotionBelowBox}>
+                    <View style={styles.cornerNotionBelowLeft}>
+                      <TouchableOpacity
+                        onPress={() => focusCornerSlot(i)}
+                        disabled={cornerAutoSaving}
+                        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                      >
+                        <Text
+                          style={[styles.cornerNotionActionLink, notionType, { color: notion.accent }]}
+                          maxFontSizeMultiplier={1.1}
+                        >
+                          Edit
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => clearCornerSlotAtIndex(i)}
+                        disabled={
+                          cornerAutoSaving ||
+                          ((cornerSlotTexts[i] ?? '').length === 0 && !cornerSlotIds[i])
+                        }
+                        style={{
+                          opacity:
+                            cornerAutoSaving ||
+                            ((cornerSlotTexts[i] ?? '').length === 0 && !cornerSlotIds[i])
+                              ? 0.4
+                              : 1,
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                      >
+                        <Text
+                          style={[
+                            styles.cornerNotionActionLink,
+                            notionType,
+                            { color: theme.colors.error },
+                          ]}
+                          maxFontSizeMultiplier={1.1}
+                        >
+                          Clear
+                        </Text>
+                      </TouchableOpacity>
+                      {cornerSlotIds[i] ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            const q = questions.find((qq) => qq.id === cornerSlotIds[i]);
+                            if (q) void openAssignModalForQuestion(q);
+                          }}
+                          disabled={cornerAutoSaving}
+                          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                        >
+                          <Text
+                            style={[styles.cornerNotionActionLink, notionType, { color: notion.accent }]}
+                            maxFontSizeMultiplier={1.1}
+                          >
+                            Assign
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    <Text
+                      style={[styles.cornerNotionCharCount, notionType, { color: notion.muted }]}
+                      maxFontSizeMultiplier={1.1}
+                    >
+                      {(cornerSlotTexts[i] ?? '').length}/{TABLE_TOPIC_QUESTION_MAX_CHARS}
+                    </Text>
+                  </View>
                 </View>
-              )}
-              <TouchableOpacity
-                style={[
-                  styles.addQuestionsCta,
-                  { backgroundColor: questions.length >= 12 ? '#9CA3AF' : theme.colors.primary, opacity: questions.length >= 12 ? 0.8 : 1 },
-                ]}
-                onPress={() => {
-                  setEditingQuestionId(null);
-                  setNewQuestionText('');
-                  setShowAddQuestionModal(true);
-                }}
-                disabled={questions.length >= 12}
-                activeOpacity={0.85}
-              >
-                <Plus size={16} color="#ffffff" />
-                <Text style={styles.addQuestionsCtaText} maxFontSizeMultiplier={1.3}>
-                  {questions.length >= 12 ? 'Question Limit Reached (12/12)' : 'Add Questions'}
-                </Text>
-              </TouchableOpacity>
+              ))}
+              {cornerVisibleSlotCount < CORNER_QUESTION_SLOT_COUNT ? (
+                <TouchableOpacity
+                  style={[styles.cornerNotionAddLink, { opacity: cornerAutoSaving ? 0.5 : 1 }]}
+                  onPress={handleAddVisibleCornerSlot}
+                  activeOpacity={0.65}
+                  disabled={cornerAutoSaving}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                >
+                  <Plus size={17} color={notion.accent} strokeWidth={2.25} />
+                  <Text
+                    style={[styles.cornerNotionAddLinkText, notionType, { color: notion.accent }]}
+                    maxFontSizeMultiplier={1.15}
+                  >
+                    Add Question
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
         </View>
@@ -1731,6 +2109,113 @@ export default function TableTopicCorner(): JSX.Element {
         {/* Bottom padding */}
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+        <View
+          style={[
+            styles.geBottomDock,
+            {
+              borderTopColor: notion.divider,
+              backgroundColor: notion.surface,
+            },
+          ]}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.footerNavigationContent}
+          >
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Book the role
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() =>
+                router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id, initialTab: 'my_bookings' } })
+              }
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Withdraw role
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting.id } })}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Attendance
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting.id } })}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Role completion
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() =>
+                router.push({ pathname: '/table-topic-master-notes', params: { meetingId: meeting.id } })
+              }
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                prep space
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting.id } })}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                AGENDA
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting.id } })}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                VOTING
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+      </View>
 
       {/* Question Assignment Modal */}
       <Modal
@@ -1924,11 +2409,11 @@ export default function TableTopicCorner(): JSX.Element {
                 placeholder="Type your table topic question..."
                 placeholderTextColor={theme.colors.textSecondary}
                 multiline
-                maxLength={200}
+                maxLength={TABLE_TOPIC_QUESTION_MAX_CHARS}
                 editable={!savingQuestionBank}
               />
               <Text style={[styles.memberCountText, { marginTop: 8, alignSelf: 'flex-end' }]} maxFontSizeMultiplier={1.2}>
-                {newQuestionText.length}/200 • {questions.length}/12
+                {newQuestionText.length}/{TABLE_TOPIC_QUESTION_MAX_CHARS} • {questions.length}/12
               </Text>
             </View>
             <View style={[styles.questionModalFooter, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
@@ -2080,6 +2565,52 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  kavInner: {
+    flex: 1,
+    minHeight: 0,
+  },
+  mainBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  /** Bottom shortcut dock — matches General Evaluator Report. */
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingHorizontal: 8,
+  },
+  footerNavigationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    minWidth: 62,
+    paddingVertical: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  scrollMain: {
+    flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
+    flexDirection: 'column',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -2135,7 +2666,7 @@ const styles = StyleSheet.create({
   },
   meetingCardContent: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 13,
     zIndex: 1,
   },
@@ -2164,6 +2695,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 3,
   },
+  meetingCardMetaCompact: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
+  meetingCardMetaModeLine: {
+    marginTop: 3,
+  },
   meetingCardDateTime: {
     fontSize: 10,
     fontWeight: '500',
@@ -2181,6 +2720,144 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 100,
     backgroundColor: 'transparent',
+  },
+  consolidatedCornerCard: {
+    marginBottom: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: 720,
+    overflow: 'visible',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  consolidatedClubBadge: {
+    marginTop: 0,
+    marginBottom: 16,
+    alignSelf: 'center',
+    paddingHorizontal: 8,
+  },
+  consolidatedClubTitle: {
+    fontSize: 18,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 23,
+  },
+  consolidatedProfileStack: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  consolidatedAvatarWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  consolidatedAvatarImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+  },
+  consolidatedPersonName: {
+    fontSize: 19,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 12,
+    letterSpacing: -0.3,
+  },
+  consolidatedPersonRole: {
+    fontSize: 14,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  consolidatedBottomDivider: {
+    width: '100%',
+    maxWidth: 280,
+    height: StyleSheet.hairlineWidth,
+    alignSelf: 'center',
+    marginTop: 18,
+    marginBottom: 16,
+  },
+  consolidatedMeetingMetaBlock: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  consolidatedMeetingMetaSingle: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
+    letterSpacing: 0.2,
+  },
+  noAssignmentNotionCard: {
+    marginHorizontal: 13,
+    marginTop: 13,
+    borderRadius: 13,
+    padding: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  noAssignmentDivider: {
+    height: 1,
+    marginTop: 14,
+  },
+  noToastmasterCard: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noToastmasterIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  noToastmasterText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  noToastmasterSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  heroBookTtmButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    minHeight: 48,
+    minWidth: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  heroBookTtmButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    textAlign: 'center',
   },
   section: {
     marginHorizontal: 16,
@@ -2509,9 +3186,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: 16,
     marginTop: 12,
-    borderRadius: 10,
     borderBottomWidth: 1,
-    overflow: 'hidden',
+    borderRadius: 0,
+    overflow: 'visible',
+  },
+  ttTab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 2,
+    marginBottom: -1,
+  },
+  ttTabActive: {},
+  ttTabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    width: '100%',
+  },
+  ttTabInnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingHorizontal: 4,
+    gap: 6,
   },
   tabButton: {
     flex: 1,
@@ -2647,18 +3347,9 @@ const styles = StyleSheet.create({
   publishedQuestionText2: {
     fontWeight: '500',
   },
-  participantName: {
-    fontWeight: '600',
-  },
   noSummaryCard: {
     alignItems: 'center',
     paddingVertical: 32,
-  },
-  cornerPlaceholderCard: {
-    width: '100%',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
   },
   noSummaryIcon: {
     width: 64,
@@ -2678,6 +3369,105 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 24,
     lineHeight: 20,
+  },
+  cornerNotionRoot: {
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 28,
+  },
+  cornerNotionHeaderBlock: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  cornerNotionSaveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  cornerNotionSaveHint: {
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  cornerNotionSlotsWrap: {
+    width: '100%',
+    gap: 10,
+  },
+  cornerNotionSlotColumn: {
+    width: '100%',
+  },
+  cornerNotionBlock: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  cornerNotionBlockInner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 13,
+    paddingTop: 13,
+    paddingBottom: 10,
+    gap: 11,
+  },
+  cornerNotionIndex: {
+    fontSize: 13,
+    fontWeight: '500',
+    fontVariant: ['tabular-nums'],
+    minWidth: 26,
+    paddingTop: 1,
+  },
+  cornerNotionBlockMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  cornerNotionInput: {
+    minHeight: 45,
+    borderWidth: 0,
+    padding: 0,
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlignVertical: 'top',
+  },
+  cornerNotionBelowBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 5,
+    paddingHorizontal: 2,
+    minHeight: 22,
+    gap: 8,
+  },
+  cornerNotionBelowLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 14,
+    minWidth: 0,
+  },
+  cornerNotionActionLink: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  cornerNotionCharCount: {
+    fontSize: 11,
+    fontWeight: '400',
+    fontVariant: ['tabular-nums'],
+  },
+  cornerNotionAddLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+  },
+  cornerNotionAddLinkText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   addQuestionsCta: {
     marginTop: 14,
@@ -2974,45 +3764,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  quickActionsBoxContainer: {
-    borderTopWidth: 0,
-    paddingVertical: 9,
-    paddingHorizontal: 6,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  quickActionsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    paddingHorizontal: 6,
-  },
-  quickActionItem: {
-    alignItems: 'center',
-    minWidth: 45,
-  },
-  quickActionIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 3,
-  },
-  quickActionLabel: {
-    fontSize: 8,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
   summaryContainer: {
     flex: 1,
   },
@@ -3052,7 +3803,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  questionLabel: {
+  reportQuestionLabel: {
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,

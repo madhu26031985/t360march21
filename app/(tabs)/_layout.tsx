@@ -10,7 +10,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -61,12 +60,25 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
             { color: isFocused ? theme.colors.primary : theme.colors.textSecondary },
           ]}
           maxFontSizeMultiplier={1.3}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
         >
           {label}
         </Text>
       </TouchableOpacity>
     );
   };
+
+  const tabItems = (
+    <>
+      {renderTab('index')}
+      {renderTab('club')}
+      {hasClub ? renderTab('meetings') : null}
+      {isExComm ? renderTab('admin') : null}
+      {renderTab('settings')}
+    </>
+  );
 
   return (
     <View
@@ -79,18 +91,8 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
         },
       ]}
     >
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.footerNavigationContent}
-      >
-        {renderTab('index')}
-        {renderTab('club')}
-        {hasClub ? renderTab('meetings') : null}
-        {isExComm ? renderTab('admin') : null}
-        {renderTab('settings')}
-      </ScrollView>
+      {/* Full-width row + flex:1 per tab so 4 or 5 icons share space (no shrink-wrapped ScrollView). */}
+      <View style={styles.tabBarRow}>{tabItems}</View>
     </View>
   );
 }
@@ -107,6 +109,10 @@ export default function TabLayout() {
       tabBar={(props) => <MeetingStyleTabBar {...props} />}
       screenOptions={{
         headerShown: false,
+        tabBarStyle: {
+          width: '100%',
+          alignSelf: 'stretch',
+        },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home', href: '/(tabs)' }} />
@@ -134,18 +140,23 @@ const styles = StyleSheet.create({
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  footerNavigationContent: {
+  tabBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   footerNavItem: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   footerNavIcon: {
     width: 30,

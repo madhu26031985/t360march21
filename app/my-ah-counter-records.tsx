@@ -32,6 +32,7 @@ interface AhCounterRecord {
   meeting_number: string;
   club_id: string;
   recorded_at: string;
+  custom_filler_counts?: Record<string, number> | null;
 }
 
 interface FillerWordStat {
@@ -131,6 +132,10 @@ export default function MyAhCounterRecords() {
         meeting_number: record.meeting_number,
         club_id: record.club_id,
         recorded_at: record.recorded_at,
+        custom_filler_counts:
+          record.custom_filler_counts && typeof record.custom_filler_counts === 'object'
+            ? (record.custom_filler_counts as Record<string, number>)
+            : null,
       }));
 
       setRecords(formattedRecords);
@@ -170,26 +175,26 @@ export default function MyAhCounterRecords() {
   };
 
   const calculateFillerStats = (recordsToAnalyze: AhCounterRecord[]) => {
-    const stats = {
-      'Um': 0,
-      'Uh': 0,
-      'Ah': 0,
-      'Er': 0,
-      'Hmm': 0,
-      'Like': 0,
-      'So': 0,
-      'Well': 0,
-      'Okay': 0,
+    const stats: Record<string, number> = {
+      Um: 0,
+      Uh: 0,
+      Ah: 0,
+      Er: 0,
+      Hmm: 0,
+      Like: 0,
+      So: 0,
+      Well: 0,
+      Okay: 0,
       'You Know': 0,
-      'Right': 0,
-      'Actually': 0,
-      'Basically': 0,
-      'Literally': 0,
+      Right: 0,
+      Actually: 0,
+      Basically: 0,
+      Literally: 0,
       'I Mean': 0,
       'You See': 0,
     };
 
-    recordsToAnalyze.forEach(record => {
+    recordsToAnalyze.forEach((record) => {
       stats['Um'] += record.um_count;
       stats['Uh'] += record.uh_count;
       stats['Ah'] += record.ah_count;
@@ -206,6 +211,16 @@ export default function MyAhCounterRecords() {
       stats['Literally'] += record.literally_count;
       stats['I Mean'] += record.i_mean_count;
       stats['You See'] += record.you_see_count;
+
+      const c = record.custom_filler_counts;
+      if (c && typeof c === 'object') {
+        for (const [slug, v] of Object.entries(c)) {
+          const n = typeof v === 'number' ? v : 0;
+          if (n <= 0) continue;
+          const label = slug.replace(/(^|\s)\S/g, (ch) => ch.toUpperCase());
+          stats[label] = (stats[label] || 0) + n;
+        }
+      }
     });
 
     const fillerArray: FillerWordStat[] = Object.entries(stats)

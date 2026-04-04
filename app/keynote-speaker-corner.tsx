@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -40,6 +40,10 @@ import {
 const FOOTER_NAV_ICON_SIZE = 15;
 
 const CORNER_KEYNOTE_TITLE_MAX_LEN = 50;
+
+/** Match TM Corner — flat Notion chrome */
+const NOTION_FLAT_BORDER_LIGHT = 'rgba(55, 53, 47, 0.09)';
+const NOTION_FLAT_RADIUS = 4;
 
 // Type definitions
 interface Meeting {
@@ -116,6 +120,7 @@ interface ClubMember {
  */
 export default function KeynoteSpeakerCorner(): JSX.Element {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -610,7 +615,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
 
   // Main render
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -627,7 +632,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
         style={styles.scrollMain}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
+        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 16 }]}
       >
         <View style={styles.contentTop} pointerEvents="box-none">
         {showConsolidatedKeynoteCard ? (
@@ -635,10 +640,10 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               style={[
                 styles.consolidatedCornerCard,
                 {
-                  backgroundColor: theme.colors.background,
-                  borderBottomColor: theme.colors.border,
-                  marginHorizontal: 16,
-                  marginTop: 8,
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  marginHorizontal: 13,
+                  marginTop: 13,
                 },
               ]}
             >
@@ -693,7 +698,14 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                 </Text>
               </View>
 
-              <View style={[styles.consolidatedDivider, { backgroundColor: '#EAEAEA' }]} />
+              <View
+                style={[
+                  styles.consolidatedDivider,
+                  {
+                    backgroundColor: theme.mode === 'light' ? NOTION_FLAT_BORDER_LIGHT : theme.colors.border,
+                  },
+                ]}
+              />
 
               {isKeynoteSpeaker() && (!hasKeynoteTitle() || editingSavedCornerKeynote) ? (
                 <View style={styles.consolidatedThemeFormStretch}>
@@ -851,7 +863,14 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                 </View>
               )}
 
-              <View style={[styles.consolidatedBottomDivider, { backgroundColor: '#EAEAEA' }]} />
+              <View
+                style={[
+                  styles.consolidatedBottomDivider,
+                  {
+                    backgroundColor: theme.mode === 'light' ? NOTION_FLAT_BORDER_LIGHT : theme.colors.border,
+                  },
+                ]}
+              />
 
               <View style={styles.consolidatedMeetingMetaBlock}>
                 <Text
@@ -973,6 +992,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
           {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
+            paddingBottom: Math.max(insets.bottom + 10, 22),
           },
         ]}
       >
@@ -980,7 +1000,10 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
           horizontal
           showsHorizontalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.footerNavigationContent}
+          contentContainerStyle={[
+            styles.footerNavigationContent,
+            { paddingHorizontal: Math.max(insets.left, insets.right, 4) },
+          ]}
         >
           <TouchableOpacity
             style={styles.footerNavItem}
@@ -1212,6 +1235,8 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: '100%',
   },
   loadingContainer: {
     flex: 1,
@@ -1249,23 +1274,34 @@ const styles = StyleSheet.create({
   contentContainer: {
     flexGrow: 1,
     flexDirection: 'column',
+    alignItems: 'stretch',
+    width: '100%',
   },
   contentContainerPadded: {
-    paddingHorizontal: 4,
+    paddingHorizontal: 16,
   },
-  contentTop: {},
+  contentTop: {
+    width: '100%',
+    alignItems: 'stretch',
+  },
   mainBody: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'stretch',
   },
   scrollMain: {
     flex: 1,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 8,
+    paddingTop: 10,
+    paddingHorizontal: 0,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   meetingCard: {
     marginHorizontal: 13,
@@ -1832,14 +1868,19 @@ const styles = StyleSheet.create({
   },
   footerNavigationContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 4,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    flexGrow: 1,
+    gap: 8,
+    paddingVertical: 2,
   },
   footerNavItem: {
     alignItems: 'center',
-    minWidth: 62,
-    paddingVertical: 2,
+    justifyContent: 'flex-start',
+    minWidth: 56,
+    maxWidth: 72,
+    paddingHorizontal: 2,
+    paddingBottom: 2,
   },
   footerNavIcon: {
     width: 30,
@@ -1854,19 +1895,17 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
-  /** Flat Notion-style header — same surface as page, no card chrome (matches Toastmaster Corner). */
+  /** Flat Notion-style block — matches TM Corner. */
   consolidatedCornerCard: {
     marginBottom: 0,
-    borderRadius: 0,
-    borderWidth: 0,
+    borderRadius: NOTION_FLAT_RADIUS,
+    borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 18,
     alignItems: 'center',
     alignSelf: 'stretch',
     width: '100%',
-    maxWidth: 720,
-    overflow: 'visible',
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
   consolidatedClubBadge: {
     marginTop: 0,
@@ -1993,8 +2032,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 11,
     paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1.5,
+    borderRadius: NOTION_FLAT_RADIUS,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,
@@ -2007,7 +2046,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 11,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: NOTION_FLAT_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,
@@ -2027,9 +2066,9 @@ const styles = StyleSheet.create({
   },
   cornerThemeNameInput: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderRadius: NOTION_FLAT_RADIUS,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
     fontSize: 16,
     marginBottom: 8,
   },
@@ -2059,7 +2098,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingVertical: 16,
     paddingHorizontal: 24,
-    borderRadius: 12,
+    borderRadius: NOTION_FLAT_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2070,7 +2109,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 11,
     paddingHorizontal: 17,
-    borderRadius: 10,
+    borderRadius: NOTION_FLAT_RADIUS,
   },
   cornerThemeSaveBtnTextCompact: {
     fontSize: 14,

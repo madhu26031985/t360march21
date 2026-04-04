@@ -27,6 +27,19 @@ interface AssignedAhCounter {
   avatar_url: string | null;
 }
 
+function mergeCustomFillerCounts(
+  a: Record<string, number> | undefined,
+  b: Record<string, number> | undefined
+): Record<string, number> | undefined {
+  if (!a && !b) return undefined;
+  const out: Record<string, number> = { ...(a || {}) };
+  for (const [k, v] of Object.entries(b || {})) {
+    const n = typeof v === 'number' ? v : 0;
+    if (n > 0) out[k] = (out[k] || 0) + n;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 interface AhCounterReport {
   id: string;
   speaker_name: string;
@@ -53,6 +66,7 @@ interface AhCounterReport {
   repeated_words: string | null;
   comments: string | null;
   recorded_at: string;
+  custom_filler_counts?: Record<string, number> | null;
 }
 
 interface FillerWordSummary {
@@ -284,6 +298,12 @@ export default function AhCounterConsolidatedReport() {
           existingSpeaker.long_pause_count += report.long_pause_count || 0;
           existingSpeaker.medium_pause_count += report.medium_pause_count || 0;
           existingSpeaker.awkward_pause_count += report.awkward_pause_count || 0;
+          const mergedCustom = mergeCustomFillerCounts(
+            existingSpeaker.custom_filler_counts ?? undefined,
+            report.custom_filler_counts ?? undefined
+          );
+          if (mergedCustom) existingSpeaker.custom_filler_counts = mergedCustom;
+          else delete existingSpeaker.custom_filler_counts;
 
           // Concatenate comments and repeated words
           if (report.comments) {
@@ -317,24 +337,51 @@ export default function AhCounterConsolidatedReport() {
   };
 
   const getFillerWordsSummary = (): FillerWordSummary[] => {
-    return fillerWords.map(word => {
+    const base = fillerWords
+      .map((word) => {
+        const speakers = reports
+          .map((report) => ({
+            name: report.speaker_name,
+            count: (report as any)[word.key] || 0,
+          }))
+          .filter((speaker) => speaker.count > 0)
+          .sort((a, b) => b.count - a.count);
+
+        const total = speakers.reduce((sum, speaker) => sum + speaker.count, 0);
+
+        return {
+          label: word.label,
+          total,
+          color: word.color,
+          speakers,
+        };
+      })
+      .filter((summary) => summary.total > 0);
+
+    const customSlugs = new Set<string>();
+    reports.forEach((r) => {
+      const c = r.custom_filler_counts;
+      if (c && typeof c === 'object') Object.keys(c).forEach((k) => customSlugs.add(k));
+    });
+
+    const customSummaries: FillerWordSummary[] = [...customSlugs].map((slug) => {
       const speakers = reports
-        .map(report => ({
+        .map((report) => ({
           name: report.speaker_name,
-          count: (report as any)[word.key] || 0
+          count: report.custom_filler_counts?.[slug] || 0,
         }))
-        .filter(speaker => speaker.count > 0)
+        .filter((s) => s.count > 0)
         .sort((a, b) => b.count - a.count);
-
-      const total = speakers.reduce((sum, speaker) => sum + speaker.count, 0);
-
+      const total = speakers.reduce((sum, s) => sum + s.count, 0);
       return {
-        label: word.label,
+        label: slug.replace(/(^|\s)\S/g, (ch) => ch.toUpperCase()),
         total,
-        color: word.color,
-        speakers
+        color: '#64748b',
+        speakers,
       };
-    }).filter(summary => summary.total > 0);
+    });
+
+    return [...base, ...customSummaries.filter((s) => s.total > 0)];
   };
 
   const getPausesSummary = (): PauseSummary[] => {
