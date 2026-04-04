@@ -1,24 +1,32 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import { suggestTimerQualification } from '@/lib/timerQualificationSuggestion';
 import { fetchTimerReportSnapshot, fetchTimerReportCategoryBundle, timerReportQueryKeys } from '@/lib/timerReportSnapshot';
+import {
+  type MeetingVisitingGuest,
+  VISITING_GUEST_SLOT_COUNT,
+  parseMeetingVisitingGuests,
+  visitingGuestInputsFromRows,
+} from '@/lib/meetingVisitingGuests';
 import { parseMmSs, TimerDialStopwatch } from '@/components/timer/TimerDialStopwatch';
 import { NOTION_TIMER } from '@/components/timer/TimerMinuteProgressRing';
-import { ArrowLeft, Timer, Calendar, User, ChevronDown, Save, Trash2, X, FileText, Search, Lock, MessageCircle, Snowflake, Mic, MessageSquare, Lightbulb, NotebookPen, Plus, Bell, Users, BookOpen, Star, CheckSquare, ClipboardCheck, FileBarChart, Clock, Info, HelpCircle, Upload, RotateCcw, UserPlus, Vote, Play, Pause, Square, Eye, EyeOff } from 'lucide-react-native';
+import { ArrowLeft, Timer, Calendar, User, ChevronDown, ChevronUp, Save, Trash2, X, FileText, Search, Lock, MessageCircle, Snowflake, Mic, MessageSquare, Lightbulb, NotebookPen, Plus, Bell, Users, BookOpen, Star, CheckSquare, ClipboardCheck, FileBarChart, Clock, Info, HelpCircle, Upload, RotateCcw, UserPlus, Vote, Play, Pause, Square, Eye, EyeOff } from 'lucide-react-native';
 import { Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  formatTimerGuestDisplayName,
+  normalizeTimerGuestSpeakerKey,
+  parseTimerGuestCompletionNotes,
+} from '@/lib/timerGuestDisplayName';
 
 const FOOTER_NAV_ICON_SIZE = 15;
-
-/** Guest display names stored on role rows (app_meeting_roles_management.completion_notes) */
-const TIMER_GUEST_PREFIX = 'timer_guest:';
 
 const CATEGORY_ROLE_SELECT_EMBED = `
           app_user_profiles (
@@ -35,28 +43,9 @@ const CATEGORY_ROLE_SELECT_WITHOUT_TIMER_COLUMN = `
           booking_status,
           assigned_user_id,
           completion_notes,
+          role_status,
           ${CATEGORY_ROLE_SELECT_EMBED}
         `;
-
-function parseTimerGuestName(completionNotes: string | null | undefined): string | null {
-  if (!completionNotes || !completionNotes.startsWith(TIMER_GUEST_PREFIX)) return null;
-  const name = completionNotes.slice(TIMER_GUEST_PREFIX.length).trim();
-  return name.length > 0 ? name : null;
-}
-
-function formatGuestDisplayName(input: string): string {
-  const t = input.trim();
-  if (!t) return '';
-  const titleCaseWord = (w: string) =>
-    w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '';
-  const titleCasePhrase = (s: string) =>
-    s.split(/\s+/).filter(Boolean).map(titleCaseWord).join(' ');
-  if (/^guest\s+/i.test(t)) {
-    const rest = t.replace(/^guest\s+/i, '').trim();
-    return rest ? `Guest ${titleCasePhrase(rest)}` : '';
-  }
-  return `Guest ${titleCasePhrase(t)}`;
-}
 
 /** Sort roles by trailing slot number (1–12) instead of lexicographic order (1, 10, 11, 2…). */
 function slotNumberFromRoleName(roleName: string): number {
@@ -133,11 +122,45 @@ interface TimerReport {
   recorded_at?: string;
   updated_at?: string;
   summary_visible_to_members?: boolean | null;
+  /** Stable row in `app_meeting_visiting_guests` when the speaker is a roster guest */
+  visiting_guest_id?: string | null;
+}
+
+/** Latest save wins: use max(recorded_at, updated_at) so an update beats an older insert. */
+function timerReportLastActivityMs(r: TimerReport): number {
+  const rec = r.recorded_at ? new Date(r.recorded_at).getTime() : 0;
+  const upd = r.updated_at ? new Date(r.updated_at).getTime() : 0;
+  return Math.max(rec, upd);
+}
+
+/** One row per speaker (member or guest) per section — keeps the most recently entered/updated report. */
+function pickLatestTimerReportPerSpeaker(reports: TimerReport[]): TimerReport[] {
+  const map = new Map<string, TimerReport>();
+  for (const r of reports) {
+    const key =
+      r.speaker_user_id != null && String(r.speaker_user_id).length > 0
+        ? `u:${r.speaker_user_id}`
+        : `g:${r.speech_category}:${(r.speaker_name || '').trim().toLowerCase()}`;
+    const prev = map.get(key);
+    if (!prev || timerReportLastActivityMs(r) > timerReportLastActivityMs(prev)) {
+      map.set(key, r);
+    }
+  }
+  return [...map.values()].sort(
+    (a, b) =>
+      timerReportLastActivityMs(b) - timerReportLastActivityMs(a) ||
+      (a.speaker_name || '').localeCompare(b.speaker_name || '')
+  );
 }
 
 function isTimerSummaryVisibleColumnError(error: any): boolean {
   const message = String(error?.message || '').toLowerCase();
   return (error?.code === 'PGRST204' || error?.code === '42703') && message.includes('summary_visible_to_members');
+}
+
+/** Roles marked Deleted in Manage Meeting Roles are hidden on the Timer Report. */
+function isTimerReportRoleSlotAvailable(role: { role_status?: string | null }): boolean {
+  return (role.role_status ?? 'Available') !== 'Deleted';
 }
 
 interface CategoryRole {
@@ -146,6 +169,7 @@ interface CategoryRole {
   booking_status: string | null;
   assigned_user_id: string | null;
   completion_notes: string | null;
+  role_status?: string | null;
   app_user_profiles?: {
     id: string;
     full_name: string;
@@ -155,7 +179,7 @@ interface CategoryRole {
 }
 
 function isTimerCategoryRoleSlotFilled(role: CategoryRole): boolean {
-  const guestName = parseTimerGuestName(role.completion_notes);
+  const guestName = parseTimerGuestCompletionNotes(role.completion_notes);
   if (role.booking_status !== 'booked') return false;
   if (role.assigned_user_id) return true;
   return !!guestName;
@@ -213,15 +237,19 @@ export default function TimerReportDetails() {
   const [selectedTab, setSelectedTab] = useState<'record' | 'reports'>('record');
   const [savedReports, setSavedReports] = useState<TimerReport[]>([]);
   const [timerSummaryVisibleToMembers, setTimerSummaryVisibleToMembers] = useState(true);
+  const [visitingGuestInputs, setVisitingGuestInputs] = useState<string[]>(() =>
+    Array.from({ length: VISITING_GUEST_SLOT_COUNT }, () => '')
+  );
+  const [meetingVisitingGuests, setMeetingVisitingGuests] = useState<MeetingVisitingGuest[]>([]);
+  const [savingVisitingGuests, setSavingVisitingGuests] = useState(false);
+  const [visitingGuestsExpanded, setVisitingGuestsExpanded] = useState(false);
   const [deletingReports, setDeletingReports] = useState<Set<string>>(new Set());
   const [bookedSpeakers, setBookedSpeakers] = useState<ClubMember[]>([]);
   const [bookingTimerRole, setBookingTimerRole] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [categoryRoles, setCategoryRoles] = useState<CategoryRole[]>([]);
   const [selectedCategoryRoleId, setSelectedCategoryRoleId] = useState<string | null>(null);
-  const [roleToAssign, setRoleToAssign] = useState<CategoryRole | null>(null);
   const [assigningTimerRole, setAssigningTimerRole] = useState(false);
-  const [guestAssignNameInput, setGuestAssignNameInput] = useState('');
   const [roleTimingSummary, setRoleTimingSummary] = useState<Record<string, { time: string; qualified: boolean }>>({});
 
   const [stopwatchTime, setStopwatchTime] = useState(0);
@@ -237,6 +265,7 @@ export default function TimerReportDetails() {
   const [clubName, setClubName] = useState('');
   const [fetchedTimerAvatarUrl, setFetchedTimerAvatarUrl] = useState<string | null>(null);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshTimerReportOnFocusRef = useRef<() => void>(() => {});
 
   const isMeetingTimer = !!(assignedTimer && user && assignedTimer.id === user.id);
   const canEditTimerCorner = isMeetingTimer || isVPEClub;
@@ -279,6 +308,37 @@ export default function TimerReportDetails() {
     }
   }, [meetingId, user?.currentClubId, user?.id]);
 
+  useFocusEffect(
+    useCallback(() => {
+      refreshTimerReportOnFocusRef.current();
+    }, [])
+  );
+
+  function loadSpeakerReport() {
+    if (!selectedSpeaker) return;
+    setReportData((prev) => ({
+      meeting_id: meetingId || '',
+      club_id: user?.currentClubId || '',
+      speaker_name: selectedSpeaker.full_name,
+      speaker_user_id: selectedSpeaker.id,
+      speech_category: prev.speech_category,
+      actual_time_seconds: 0,
+      actual_time_display: '00:00',
+      time_qualification: null,
+      target_min_seconds: null,
+      target_max_seconds: null,
+      notes: null,
+      recorded_by: user?.id || '',
+    }));
+    setMinutes(0);
+    setSeconds(0);
+    setStopwatchFinalized(false);
+    setStopwatchTime(0);
+    lastStopwatchTickWallRef.current = Date.now();
+    setStopwatchRunning(false);
+    timerQualUserOverrideRef.current = false;
+  }
+
   useEffect(() => {
     if (selectedSpeaker) {
       loadSpeakerReport();
@@ -288,10 +348,10 @@ export default function TimerReportDetails() {
   useEffect(() => {
     // Update actual_time_seconds and display when minutes/seconds change
     const totalSeconds = minutes * 60 + seconds;
-    setReportData(prev => ({
+    setReportData((prev) => ({
       ...prev,
       actual_time_seconds: totalSeconds,
-      actual_time_display: formatTime(totalSeconds)
+      actual_time_display: formatTime(totalSeconds),
     }));
   }, [minutes, seconds]);
 
@@ -470,14 +530,17 @@ export default function TimerReportDetails() {
   };
 
   const applyCategoryBundleToState = (
-    categoryRoles: CategoryRole[],
+    categoryRolesIn: CategoryRole[],
     booked: { id: string; full_name: string; email: string; avatar_url: string | null }[]
   ) => {
-    const rows = [...categoryRoles];
+    const rows = categoryRolesIn.filter(isTimerReportRoleSlotAvailable);
     rows.sort((a, b) => slotNumberFromRoleName(a.role_name) - slotNumberFromRoleName(b.role_name));
     setCategoryRoles(rows);
 
-    const uniqueSpeakers = [...booked];
+    const bookedUserIds = new Set(
+      rows.filter((r) => r.assigned_user_id && r.booking_status === 'booked').map((r) => r.assigned_user_id as string)
+    );
+    const uniqueSpeakers = booked.filter((s) => bookedUserIds.has(s.id));
     uniqueSpeakers.sort((a, b) => a.full_name.localeCompare(b.full_name));
     setBookedSpeakers(uniqueSpeakers);
     setSelectedSpeaker((prev) => {
@@ -547,6 +610,8 @@ export default function TimerReportDetails() {
           } else {
             await loadTimerSummaryVisibility();
           }
+          setMeetingVisitingGuests(snap.visiting_guests);
+          setVisitingGuestInputs(visitingGuestInputsFromRows(snap.visiting_guests));
           applyCategoryBundleToState(snap.category_roles as CategoryRole[], snap.booked_speakers);
         } else {
           await Promise.all([
@@ -559,6 +624,7 @@ export default function TimerReportDetails() {
             loadTimerSummaryVisibility(),
             loadBookedSpeakersForCategory(reportData.speech_category),
             loadCategoryRolesForCategory(reportData.speech_category),
+            loadVisitingGuestDraftFromDb(),
           ]);
         }
       } catch (error) {
@@ -574,6 +640,7 @@ export default function TimerReportDetails() {
             loadTimerSummaryVisibility(),
             loadBookedSpeakersForCategory(reportData.speech_category),
             loadCategoryRolesForCategory(reportData.speech_category),
+            loadVisitingGuestDraftFromDb(),
           ]);
         } catch (fallbackError) {
           console.error('Error loading data:', fallbackError);
@@ -762,6 +829,7 @@ export default function TimerReportDetails() {
         .from('app_meeting_roles_management')
         .select(`
           role_name,
+          role_status,
           assigned_user_id,
           app_user_profiles (
             id,
@@ -781,6 +849,7 @@ export default function TimerReportDetails() {
       }
 
       const speakers = (data || [])
+        .filter((item) => isTimerReportRoleSlotAvailable({ role_status: (item as any).role_status }))
         .filter(item => (item as any).app_user_profiles)
         .map(item => ({
           id: (item as any).app_user_profiles.id,
@@ -828,7 +897,7 @@ export default function TimerReportDetails() {
         return;
       }
 
-      const rows = (data || []) as CategoryRole[];
+      const rows = ((data || []) as CategoryRole[]).filter(isTimerReportRoleSlotAvailable);
       rows.sort(
         (a, b) => slotNumberFromRoleName(a.role_name) - slotNumberFromRoleName(b.role_name)
       );
@@ -848,38 +917,6 @@ export default function TimerReportDetails() {
         loadCategoryRolesForCategory(category),
         loadBookedSpeakersForCategory(category),
       ]);
-    }
-  };
-
-  const handleAssignCategoryRole = async (member: ClubMember) => {
-    if (!canEditTimerCorner || !roleToAssign) return;
-    try {
-      const { error } = await supabase
-        .from('app_meeting_roles_management')
-        .update({
-          assigned_user_id: member.id,
-          booking_status: 'booked',
-          completion_notes: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', roleToAssign.id);
-
-      if (error) {
-        console.error('Error assigning category role:', error);
-        Alert.alert('Error', 'Failed to assign speaker to role');
-        return;
-      }
-
-      setSelectedCategoryRoleId(roleToAssign.id);
-      setSelectedSpeaker(member);
-      setShowSpeakerModal(false);
-      setSpeakerSearchQuery('');
-      setRoleToAssign(null);
-      setGuestAssignNameInput('');
-      await refreshCategoryBundleForCategory(reportData.speech_category);
-    } catch (error) {
-      console.error('Error assigning category role:', error);
-      Alert.alert('Error', 'Failed to assign speaker to role');
     }
   };
 
@@ -906,6 +943,22 @@ export default function TimerReportDetails() {
       ]
     );
   };
+
+  const openTimerCategoryRoleAssign = useCallback(
+    (role: CategoryRole) => {
+      if (!canEditTimerCorner || !meetingId) return;
+      if (!canTimerCornerManageAssignment(role, canEditTimerCorner)) return;
+      router.push({
+        pathname: '/timer-role-assign',
+        params: {
+          meetingId,
+          roleId: role.id,
+          speechCategory: reportData.speech_category,
+        },
+      });
+    },
+    [canEditTimerCorner, meetingId, reportData.speech_category]
+  );
 
   const handleUnassignCategoryRole = async (role: CategoryRole) => {
     if (!canEditTimerCorner || !meetingId) return;
@@ -963,67 +1016,11 @@ export default function TimerReportDetails() {
       await refreshCategoryBundleForCategory(reportData.speech_category);
       setShowSpeakerModal(false);
       setSpeakerSearchQuery('');
-      setRoleToAssign(null);
-      setGuestAssignNameInput('');
       setAssigningTimerRole(false);
       Alert.alert('Unassigned', `${role.role_name} is open again.`);
     } catch (e) {
       console.error('Error unassigning category role:', e);
       Alert.alert('Error', 'Could not unassign this role.');
-    }
-  };
-
-  const openReassignCategoryRole = (role: CategoryRole) => {
-    if (!canEditTimerCorner) return;
-    if (!canTimerCornerManageAssignment(role, canEditTimerCorner)) {
-      Alert.alert(
-        'Booked elsewhere',
-        'This role was booked outside Timer Report. Use Book a Role to change the assignment.'
-      );
-      return;
-    }
-    setAssigningTimerRole(false);
-    setRoleToAssign(role);
-    setGuestAssignNameInput('');
-    setShowSpeakerModal(true);
-  };
-
-  const handleAssignGuestCategoryRole = async () => {
-    if (!canEditTimerCorner || !roleToAssign) return;
-    const displayName = formatGuestDisplayName(guestAssignNameInput);
-    if (!displayName) {
-      Alert.alert('Name required', 'Enter a guest name or use the member list above.');
-      return;
-    }
-    try {
-      const { error } = await supabase
-        .from('app_meeting_roles_management')
-        .update({
-          assigned_user_id: null,
-          booking_status: 'booked',
-          completion_notes: `${TIMER_GUEST_PREFIX}${displayName}`,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', roleToAssign.id);
-
-      if (error) {
-        console.error('Error assigning guest to role:', error);
-        Alert.alert('Error', 'Failed to assign guest to role');
-        return;
-      }
-
-      setSelectedCategoryRoleId(roleToAssign.id);
-      setSelectedSpeaker(null);
-      setManualNameEntry(true);
-      setManualNameText(displayName);
-      setGuestAssignNameInput('');
-      setShowSpeakerModal(false);
-      setSpeakerSearchQuery('');
-      setRoleToAssign(null);
-      await refreshCategoryBundleForCategory(reportData.speech_category);
-    } catch (error) {
-      console.error('Error assigning guest to role:', error);
-      Alert.alert('Error', 'Failed to assign guest to role');
     }
   };
 
@@ -1080,31 +1077,6 @@ export default function TimerReportDetails() {
     }
   };
 
-  const loadSpeakerReport = async () => {
-    // Remove the automatic loading of existing report since we now allow multiple entries
-    // Just reset the form when speaker changes
-    setReportData(prev => ({
-      meeting_id: meetingId || '',
-      club_id: user?.currentClubId || '',
-      speaker_name: selectedSpeaker?.full_name || '',
-      speaker_user_id: selectedSpeaker?.id || null,
-      speech_category: prev.speech_category, // Keep the selected category
-      actual_time_seconds: 0,
-      actual_time_display: '00:00',
-      time_qualification: null,
-      target_min_seconds: null,
-      target_max_seconds: null,
-      notes: null,
-      recorded_by: user?.id || '',
-    }));
-    setMinutes(0);
-    setSeconds(0);
-    setStopwatchFinalized(false);
-    setStopwatchTime(0);
-    lastStopwatchTickWallRef.current = Date.now();
-    timerQualUserOverrideRef.current = false;
-  };
-
   const resetForm = () => {
     // Reset form to default state
     setReportData({
@@ -1157,6 +1129,29 @@ export default function TimerReportDetails() {
     }
   };
 
+  const loadVisitingGuestDraftFromDb = async () => {
+    if (!meetingId) return;
+    try {
+      const { data, error } = await supabase
+        .from('app_meeting_visiting_guests')
+        .select('id, meeting_id, club_id, slot_number, display_name, created_at, updated_at')
+        .eq('meeting_id', meetingId)
+        .order('slot_number', { ascending: true });
+      if (error) return;
+      const rows = parseMeetingVisitingGuests(data ?? []);
+      setMeetingVisitingGuests(rows);
+      setVisitingGuestInputs(visitingGuestInputsFromRows(rows));
+    } catch {
+      /* table may not exist until migration */
+    }
+  };
+
+  refreshTimerReportOnFocusRef.current = () => {
+    if (!meetingId || !user?.currentClubId) return;
+    void refreshCategoryBundleForCategory(reportData.speech_category);
+    void loadVisitingGuestDraftFromDb();
+  };
+
   const loadTimerSummaryVisibility = async () => {
     if (!meetingId) return;
     try {
@@ -1189,25 +1184,25 @@ export default function TimerReportDetails() {
       return;
     }
     const cat = reportData.speech_category;
-    const myReports = savedReports.filter(
-      (r) => r.speech_category === cat && r.recorded_by === user.id
-    );
+    // Show all timer rows for this category (assigned Timer + VPE share one meeting report).
+    // Summary tab already lists everyone; Corner must match so each editor sees the other's entries.
+    const categoryReports = savedReports.filter((r) => r.speech_category === cat);
     const next: Record<string, { time: string; qualified: boolean }> = {};
     for (const role of categoryRoles) {
-      const guestName = parseTimerGuestName(role.completion_notes);
+      const guestName = parseTimerGuestCompletionNotes(role.completion_notes);
       let candidates: TimerReport[] = [];
       if (role.assigned_user_id) {
-        candidates = myReports.filter((r) => r.speaker_user_id === role.assigned_user_id);
+        candidates = categoryReports.filter((r) => r.speaker_user_id === role.assigned_user_id);
       } else if (guestName) {
-        candidates = myReports.filter(
-          (r) => !r.speaker_user_id && r.speaker_name.trim() === guestName.trim()
+        const guestKey = normalizeTimerGuestSpeakerKey(guestName);
+        candidates = categoryReports.filter(
+          (r) =>
+            !r.speaker_user_id && normalizeTimerGuestSpeakerKey(r.speaker_name) === guestKey
         );
       }
       if (candidates.length) {
         const best = [...candidates].sort(
-          (a, b) =>
-            new Date(b.recorded_at || b.updated_at || 0).getTime() -
-            new Date(a.recorded_at || a.updated_at || 0).getTime()
+          (a, b) => timerReportLastActivityMs(b) - timerReportLastActivityMs(a)
         )[0];
         next[role.id] = {
           time: best.actual_time_display,
@@ -1217,6 +1212,16 @@ export default function TimerReportDetails() {
     }
     setRoleTimingSummary(next);
   }, [savedReports, categoryRoles, reportData.speech_category, user?.id]);
+
+  useEffect(() => {
+    if (!selectedCategoryRoleId) return;
+    if (!categoryRoles.some((r) => r.id === selectedCategoryRoleId)) {
+      setSelectedCategoryRoleId(null);
+      setSelectedSpeaker(null);
+      setManualNameEntry(false);
+      setManualNameText('');
+    }
+  }, [categoryRoles, selectedCategoryRoleId]);
 
   const handleDeleteReport = (reportId: string, speakerName: string) => {
     setDeleteConfirm({ id: reportId, speakerName });
@@ -1271,6 +1276,52 @@ export default function TimerReportDetails() {
     } catch (error) {
       console.error('Error updating timer summary visibility:', error);
       Alert.alert('Error', 'Failed to update timer summary visibility');
+    }
+  };
+
+  const handleSaveVisitingGuests = async () => {
+    if (!canEditTimerCorner || !meetingId || !user?.currentClubId) return;
+    setSavingVisitingGuests(true);
+    try {
+      for (let i = 0; i < VISITING_GUEST_SLOT_COUNT; i++) {
+        const slot = i + 1;
+        const name = (visitingGuestInputs[i] ?? '').trim();
+        if (!name) {
+          const { error } = await supabase
+            .from('app_meeting_visiting_guests')
+            .delete()
+            .eq('meeting_id', meetingId)
+            .eq('slot_number', slot);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('app_meeting_visiting_guests').upsert(
+            {
+              meeting_id: meetingId,
+              club_id: user.currentClubId,
+              slot_number: slot,
+              display_name: name,
+            },
+            { onConflict: 'meeting_id,slot_number' }
+          );
+          if (error) throw error;
+        }
+      }
+      await queryClient.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'timer-report-snapshot' &&
+          q.queryKey[1] === meetingId,
+      });
+      await loadData();
+      Alert.alert('Saved', 'Visiting Guest roster is stored for this meeting.');
+    } catch (e: unknown) {
+      console.error('handleSaveVisitingGuests', e);
+      Alert.alert(
+        'Error',
+        'Could not save Visiting Guest roster. Apply the latest database migration (app_meeting_visiting_guests), then try again.'
+      );
+    } finally {
+      setSavingVisitingGuests(false);
     }
   };
 
@@ -1363,11 +1414,15 @@ export default function TimerReportDetails() {
 
   const ReportCard = ({ report }: { report: TimerReport }) => {
     const isQualified = !!report.time_qualification;
+    const displaySpeakerName =
+      report.speaker_user_id != null && String(report.speaker_user_id).length > 0
+        ? report.speaker_name
+        : formatTimerGuestDisplayName(report.speaker_name);
     return (
       <View style={[styles.reportTableRow, { borderBottomColor: theme.colors.border }]}>
         <View style={styles.reportTableNameCell}>
           <Text style={[styles.reportTableName, { color: theme.colors.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-            {report.speaker_name}
+            {displaySpeakerName}
           </Text>
           <Text style={[styles.reportTableCategory, { color: theme.colors.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
             {getCategoryDisplayName(report.speech_category)}
@@ -1395,7 +1450,7 @@ export default function TimerReportDetails() {
           {canEditTimerCorner && (
             <TouchableOpacity
               style={styles.reportTableActionButton}
-              onPress={() => handleDeleteReport(report.id!, report.speaker_name)}
+              onPress={() => handleDeleteReport(report.id!, displaySpeakerName)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Trash2 size={16} color={theme.colors.textSecondary} />
@@ -1458,7 +1513,9 @@ export default function TimerReportDetails() {
           .eq('meeting_id', meetingId)
           .eq('speaker_user_id', effectiveUserId)
           .eq('speech_category', reportData.speech_category)
-          .eq('recorded_by', user.id)
+          .order('updated_at', { ascending: false })
+          .order('recorded_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
 
         if (checkError && checkError.code !== 'PGRST116') {
@@ -1469,12 +1526,22 @@ export default function TimerReportDetails() {
         existingReport = existingData;
       }
 
+      const visitingGuestIdForSave =
+        effectiveUserId == null
+          ? meetingVisitingGuests.find(
+              (g) =>
+                normalizeTimerGuestSpeakerKey(g.display_name) ===
+                normalizeTimerGuestSpeakerKey(effectiveName)
+            )?.id ?? null
+          : null;
+
       const saveData = {
         ...reportData,
         meeting_id: meetingId,
         club_id: user.currentClubId,
         speaker_name: effectiveName,
         speaker_user_id: effectiveUserId,
+        visiting_guest_id: visitingGuestIdForSave,
         recorded_by: user.id,
         recorded_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -1558,8 +1625,6 @@ export default function TimerReportDetails() {
       return;
     }
     setAssigningTimerRole(true);
-    setRoleToAssign(null);
-    setGuestAssignNameInput('');
     setSpeakerSearchQuery('');
     setShowSpeakerModal(true);
     void loadClubMembers();
@@ -1691,8 +1756,6 @@ export default function TimerReportDetails() {
         setShowSpeakerModal(false);
         setSpeakerSearchQuery('');
         setAssigningTimerRole(false);
-        setRoleToAssign(null);
-        setGuestAssignNameInput('');
       }}
     >
       <TouchableOpacity
@@ -1701,8 +1764,6 @@ export default function TimerReportDetails() {
         onPress={() => {
           setShowSpeakerModal(false);
           setSpeakerSearchQuery('');
-          setRoleToAssign(null);
-          setGuestAssignNameInput('');
           setAssigningTimerRole(false);
         }}
       >
@@ -1713,49 +1774,19 @@ export default function TimerReportDetails() {
         >
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              {assigningTimerRole ? 'Assign Timer' : roleToAssign ? `Assign ${roleToAssign.role_name}` : 'Select Speaker'}
+              {assigningTimerRole ? 'Assign Timer' : 'Select Speaker'}
             </Text>
             <TouchableOpacity
               style={styles.closeButton}
               onPress={() => {
                 setShowSpeakerModal(false);
                 setSpeakerSearchQuery('');
-                setRoleToAssign(null);
                 setAssigningTimerRole(false);
-                setGuestAssignNameInput('');
               }}
             >
               <X size={20} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
-
-          {roleToAssign && !assigningTimerRole && (
-            <View style={[styles.guestAssignBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-              <Text style={[styles.guestAssignLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Guest (not in list)
-              </Text>
-              <TextInput
-                style={[styles.guestAssignInput, { color: theme.colors.text, borderColor: theme.colors.border }]}
-                placeholder="e.g. Ram → saved as Guest Ram"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={guestAssignNameInput}
-                onChangeText={setGuestAssignNameInput}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-              <TouchableOpacity
-                style={[styles.guestAssignButton, { backgroundColor: '#2563eb' }]}
-                onPress={handleAssignGuestCategoryRole}
-                disabled={!canEditTimerCorner}
-              >
-                <Text style={styles.guestAssignButtonText} maxFontSizeMultiplier={1.2}>Assign guest</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {roleToAssign && !assigningTimerRole && (
-            <View style={[styles.modalDivider, { backgroundColor: theme.colors.border }]} />
-          )}
 
           <Text style={[styles.modalMembersHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
             Club members
@@ -1795,7 +1826,17 @@ export default function TimerReportDetails() {
                       styles.speakerOption,
                       selectedSpeaker?.id === member.id && { backgroundColor: theme.colors.primary + '20' },
                     ]}
-                    onPress={() => (assigningTimerRole ? handleAssignTimerToMember(member) : handleAssignCategoryRole(member))}
+                    onPress={() => {
+                      if (assigningTimerRole) {
+                        void handleAssignTimerToMember(member);
+                        return;
+                      }
+                      setSelectedSpeaker(member);
+                      setManualNameEntry(false);
+                      setManualNameText('');
+                      setShowSpeakerModal(false);
+                      setSpeakerSearchQuery('');
+                    }}
                   >
                     <View style={styles.speakerOptionAvatar}>
                       {member.avatar_url ? (
@@ -2095,7 +2136,6 @@ export default function TimerReportDetails() {
   const selectedCategoryMeta = speechCategories.find((c) => c.value === reportData.speech_category);
   const isRoleSlotFilled = (role: CategoryRole) => isTimerCategoryRoleSlotFilled(role);
   const categoryOpenRolesCount = categoryRoles.filter((role) => !isRoleSlotFilled(role)).length;
-  const canShowTimeLogger = categoryRoles.length === 0 || !!selectedCategoryRoleId;
   const hasTimerSpeaker =
     !!selectedSpeaker || (!!manualNameEntry && !!manualNameText.trim());
 
@@ -2636,6 +2676,88 @@ export default function TimerReportDetails() {
               </View>
             )}
 
+            {canEditTimerCorner && (
+              <View style={[styles.visitingGuestsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={styles.visitingGuestsHeaderRow}>
+                  <View style={styles.summaryVisibilityLeft}>
+                    <Users size={18} color={theme.colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.summaryVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                        Visiting Guest Management
+                      </Text>
+                      {!visitingGuestsExpanded ? (
+                        <Text
+                          style={[styles.summaryVisibilityHint, { color: theme.colors.textSecondary, lineHeight: 15 }]}
+                          maxFontSizeMultiplier={1.1}
+                        >
+                          Tap the arrow to add or edit Visiting Guests (up to 5). Visiting guests are not registered in the app.
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.summaryVisibilityButton,
+                      {
+                        backgroundColor: visitingGuestsExpanded ? '#2563eb' : theme.colors.background,
+                        borderColor: visitingGuestsExpanded ? '#2563eb' : theme.colors.border,
+                      },
+                    ]}
+                    onPress={() => setVisitingGuestsExpanded((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      visitingGuestsExpanded ? 'Close Visiting Guest Management' : 'Open Visiting Guest Management'
+                    }
+                  >
+                    {visitingGuestsExpanded ? (
+                      <ChevronUp size={16} color="#ffffff" />
+                    ) : (
+                      <ChevronDown size={16} color={theme.colors.textSecondary} />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                {visitingGuestsExpanded ? (
+                  <>
+                    {Array.from({ length: VISITING_GUEST_SLOT_COUNT }, (_, i) => (
+                      <View key={i} style={[styles.visitingGuestRow, i === 0 && styles.visitingGuestRowFirst]}>
+                        <Text style={[styles.visitingGuestLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                          {`Visiting Guest ${i + 1}`}
+                        </Text>
+                        <TextInput
+                          style={[styles.visitingGuestInput, { borderColor: theme.colors.border, color: theme.colors.text }]}
+                          placeholder={`Name (e.g. Subha)`}
+                          placeholderTextColor={theme.colors.textSecondary}
+                          value={visitingGuestInputs[i] ?? ''}
+                          onChangeText={(t) =>
+                            setVisitingGuestInputs((prev) => {
+                              const next = [...prev];
+                              next[i] = t;
+                              return next;
+                            })
+                          }
+                          editable={!savingVisitingGuests}
+                          maxFontSizeMultiplier={1.2}
+                        />
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      style={[styles.visitingGuestsSaveBtn, { backgroundColor: '#2563eb', opacity: savingVisitingGuests ? 0.6 : 1 }]}
+                      onPress={() => void handleSaveVisitingGuests()}
+                      disabled={savingVisitingGuests}
+                    >
+                      {savingVisitingGuests ? (
+                        <ActivityIndicator color="#ffffff" />
+                      ) : (
+                        <Text style={styles.visitingGuestsSaveBtnText} maxFontSizeMultiplier={1.2}>
+                          Save Visiting Guest roster
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                ) : null}
+              </View>
+            )}
+
             {/* Category grid 2×2 (Notion-style tiles) */}
             <View style={styles.categoryRowContainer}>
               <View style={styles.categoryRowContent}>
@@ -2678,11 +2800,12 @@ export default function TimerReportDetails() {
                 <View style={styles.preparedRolesList}>
                   {categoryRoles.map((role) => {
                     const assignedProfile = role.app_user_profiles;
-                    const guestDisplayName = parseTimerGuestName(role.completion_notes);
+                    const guestRawName = parseTimerGuestCompletionNotes(role.completion_notes);
+                    const guestDisplayName = guestRawName ? formatTimerGuestDisplayName(guestRawName) : null;
                     const hasMember =
                       !!role.assigned_user_id && role.booking_status === 'booked' && !!assignedProfile;
                     const hasGuest =
-                      role.booking_status === 'booked' && !!guestDisplayName && !role.assigned_user_id;
+                      role.booking_status === 'booked' && !!guestRawName && !role.assigned_user_id;
                     const isSlotFilled = hasMember || hasGuest;
                     const isExpanded = selectedCategoryRoleId === role.id;
                     const roleSummary = roleTimingSummary[role.id];
@@ -2736,8 +2859,42 @@ export default function TimerReportDetails() {
 
                         {isSlotFilled ? (
                           <View style={styles.preparedRoleRightActions}>
+                            {canEditTimerCorner &&
+                              canTimerCornerManageAssignment(role, canEditTimerCorner) && (
+                                <TouchableOpacity
+                                  style={[
+                                    styles.preparedRoleOpenCloseBtn,
+                                    {
+                                      borderColor: theme.colors.primary,
+                                      backgroundColor: theme.colors.surface,
+                                      minWidth: 0,
+                                      paddingHorizontal: 10,
+                                    },
+                                  ]}
+                                  onPress={() => openTimerCategoryRoleAssign(role)}
+                                  activeOpacity={0.85}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Reassign speaker for this role"
+                                >
+                                  <Text
+                                    style={[
+                                      styles.preparedRoleOpenCloseBtnText,
+                                      { color: theme.colors.primary },
+                                    ]}
+                                    maxFontSizeMultiplier={1.2}
+                                  >
+                                    Reassign
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
                             <TouchableOpacity
-                              style={[styles.preparedRoleArrowBtn, { borderColor: theme.colors.border }]}
+                              style={[
+                                styles.preparedRoleOpenCloseBtn,
+                                {
+                                  borderColor: isExpanded ? theme.colors.border : theme.colors.primary,
+                                  backgroundColor: theme.colors.surface,
+                                },
+                              ]}
                               onPress={() => {
                                 if (isExpanded) {
                                   setSelectedCategoryRoleId(null);
@@ -2783,23 +2940,33 @@ export default function TimerReportDetails() {
                                   setStopwatchFinalized(false);
                                 }
                               }}
+                              accessibilityRole="button"
+                              accessibilityLabel={isExpanded ? 'Close timer logger' : 'Open timer logger'}
                             >
-                              <ChevronDown
-                                size={16}
-                                color={theme.colors.textSecondary}
-                                style={{ transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }}
-                              />
+                              <Text
+                                style={[
+                                  styles.preparedRoleOpenCloseBtnText,
+                                  { color: isExpanded ? theme.colors.textSecondary : theme.colors.primary },
+                                ]}
+                                maxFontSizeMultiplier={1.2}
+                              >
+                                {isExpanded ? 'Close' : 'Open'}
+                              </Text>
                             </TouchableOpacity>
                           </View>
                         ) : (
                           <TouchableOpacity
                             style={[styles.preparedRoleAssignBtn, { backgroundColor: '#2563eb' }]}
                             onPress={() => {
-                              if (!canEditTimerCorner) return;
-                              setAssigningTimerRole(false);
-                              setRoleToAssign(role);
-                              setGuestAssignNameInput('');
-                              setShowSpeakerModal(true);
+                              if (!canEditTimerCorner || !meetingId) return;
+                              router.push({
+                                pathname: '/timer-role-assign',
+                                params: {
+                                  meetingId,
+                                  roleId: role.id,
+                                  speechCategory: reportData.speech_category,
+                                },
+                              });
                             }}
                             disabled={!canEditTimerCorner}
                           >
@@ -2819,7 +2986,24 @@ export default function TimerReportDetails() {
               </View>
             )}
 
-            {categoryRoles.length === 0 && canShowTimeLogger && renderTimeLoggerCard()}
+            {categoryRoles.length === 0 && (
+              <View
+                style={[
+                  styles.timerNoRolesCard,
+                  { borderColor: theme.colors.border, backgroundColor: theme.colors.background },
+                ]}
+              >
+                <Info size={22} color={theme.colors.textSecondary} />
+                <Text style={[styles.timerNoRolesTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  {reportData.speech_category === 'educational_session'
+                    ? 'No educational speaker'
+                    : `No ${selectedCategoryMeta?.label ?? 'category'} roles available`}
+                </Text>
+                <Text style={[styles.timerNoRolesSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                  Only roles marked available in Manage Meeting Roles appear here. ExComm can restore or add roles there.
+                </Text>
+              </View>
+            )}
 
           </>
         ) : (
@@ -2846,7 +3030,9 @@ export default function TimerReportDetails() {
               ) : (
                 <>
                   {summaryCategorySections.map((section) => {
-                    const sectionReports = savedReports.filter((r) => r.speech_category === section.key);
+                    const sectionReports = pickLatestTimerReportPerSpeaker(
+                      savedReports.filter((r) => r.speech_category === section.key)
+                    );
                     if (sectionReports.length === 0) return null;
                     return (
                       <View
@@ -4458,6 +4644,50 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 0,
   },
+  visitingGuestsCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  visitingGuestsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  visitingGuestRow: {
+    marginBottom: 8,
+  },
+  visitingGuestRowFirst: {
+    marginTop: 4,
+  },
+  visitingGuestLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  visitingGuestInput: {
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
+  visitingGuestsSaveBtn: {
+    marginTop: 6,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 0,
+  },
+  visitingGuestsSaveBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   reportsSection: {
     marginHorizontal: 16,
     marginTop: 16,
@@ -4488,6 +4718,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   summaryHiddenSub: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  timerNoRolesCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  timerNoRolesTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  timerNoRolesSub: {
     fontSize: 12,
     textAlign: 'center',
   },
@@ -5129,13 +5379,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  preparedRoleArrowBtn: {
-    width: 32,
-    height: 32,
+  preparedRoleOpenCloseBtn: {
+    minWidth: 72,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 0,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  preparedRoleOpenCloseBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   preparedRoleRightActions: {
     flexDirection: 'row',
@@ -5469,33 +5724,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  guestAssignBox: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    gap: 8,
+  visitingGuestPickHint: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginBottom: 10,
+    marginTop: -4,
   },
-  guestAssignLabel: {
+  visitingGuestPickList: {
+    maxHeight: 220,
+    marginBottom: 4,
+  },
+  visitingGuestPickRowDisabled: {
+    opacity: 0.5,
+  },
+  visitingGuestPickSub: {
     fontSize: 12,
-    fontWeight: '600',
-  },
-  guestAssignInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  guestAssignButton: {
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  guestAssignButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
+    marginTop: 2,
+    fontWeight: '500',
   },
   modalMembersHeading: {
     fontSize: 13,

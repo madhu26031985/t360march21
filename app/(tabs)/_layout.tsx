@@ -11,6 +11,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -30,6 +31,7 @@ const TAB_META: Record<string, { Icon: typeof Home; color: string; label: string
 
 function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { theme } = useTheme();
   const { user } = useAuth();
 
@@ -88,6 +90,7 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
           borderTopColor: theme.colors.border,
           backgroundColor: theme.colors.surface,
           paddingBottom: Math.max(insets.bottom, 10),
+          width: windowWidth,
         },
       ]}
     >
@@ -152,6 +155,7 @@ const styles = StyleSheet.create({
   },
   footerNavItem: {
     flex: 1,
+    flexBasis: 0,
     minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',

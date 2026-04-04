@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { type MeetingVisitingGuest, parseMeetingVisitingGuests } from '@/lib/meetingVisitingGuests';
 
 export const ahCounterQueryKeys = {
   snapshot: (meetingId: string, clubId: string, userId: string) =>
@@ -31,6 +32,8 @@ export type AhCounterSnapshot = {
   }[];
   published_count: number;
   total_reports: number;
+  /** Up to 5 visiting guest names for this meeting (Timer / Ah Counter / Grammarian). */
+  visiting_guests: MeetingVisitingGuest[];
 };
 
 export async function fetchAhCounterSnapshot(
@@ -70,5 +73,6 @@ export async function fetchAhCounterSnapshot(
       : [],
     published_count: Number(raw.published_count || 0),
     total_reports: Number(raw.total_reports || 0),
+    visiting_guests: parseMeetingVisitingGuests(raw.visiting_guests),
   };
 }

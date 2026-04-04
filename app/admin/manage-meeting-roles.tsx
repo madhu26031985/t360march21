@@ -7,6 +7,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import {
+  findPairedRoleRow,
+  pairedSpeechSlotReconciliationTargets,
+} from '@/lib/preparedEvaluatorRolePairs';
+import {
   ArrowLeft,
   Users,
   User,
@@ -299,7 +303,46 @@ export default function ManageMeetingRoles() {
         return;
       }
 
-      setMeetingRoles(data || []);
+      let rows = (data || []) as MeetingRoleAssignment[];
+      const fixes = pairedSpeechSlotReconciliationTargets(rows);
+      if (fixes.length > 0) {
+        for (const fix of fixes) {
+          const patch: Record<string, unknown> = {
+            role_status: fix.targetStatus,
+            updated_at: new Date().toISOString(),
+          };
+          if (fix.targetStatus === 'Deleted') {
+            patch.assigned_user_id = null;
+            patch.booking_status = 'open';
+            patch.booked_at = null;
+            patch.withdrawn_at = new Date().toISOString();
+          }
+          const { error: fixErr } = await supabase
+            .from('app_meeting_roles_management')
+            .update(patch)
+            .eq('meeting_id', meetingId)
+            .in('role_name', fix.roleNames);
+          if (fixErr) {
+            console.error('Error reconciling prepared speaker / evaluator pair:', fixErr);
+          }
+        }
+        const { data: data2, error: err2 } = await supabase
+          .from('app_meeting_roles_management')
+          .select(`
+          *,
+          app_user_profiles (
+            full_name,
+            email
+          )
+        `)
+          .eq('meeting_id', meetingId)
+          .order('order_index');
+        if (!err2 && data2) {
+          rows = data2 as MeetingRoleAssignment[];
+        }
+      }
+
+      setMeetingRoles(rows);
     } catch (error) {
       console.error('Error loading meeting roles:', error);
       Alert.alert('Error', 'An unexpected error occurred while loading roles');
@@ -533,41 +576,60 @@ export default function ManageMeetingRoles() {
     updateRoleStatus(roleName, 'Available');
   };
 
-  const updateRoleStatus = useCallback(async (roleName: string, newStatus: 'Available' | 'Deleted') => {
-    try {
-      const updateData: any = {
-        role_status: newStatus,
-        updated_at: new Date().toISOString()
-      };
+  const updateRoleStatus = useCallback(
+    async (roleName: string, newStatus: 'Available' | 'Deleted') => {
+      try {
+        let roleNames = [roleName];
+        if (meetingId) {
+          const { data: nameRows, error: nameErr } = await supabase
+            .from('app_meeting_roles_management')
+            .select('role_name')
+            .eq('meeting_id', meetingId);
+          if (!nameErr && nameRows?.length) {
+            const partner = findPairedRoleRow(roleName, nameRows as { role_name: string }[]);
+            if (partner) roleNames = Array.from(new Set([roleName, partner.role_name]));
+          }
+        }
 
-      if (newStatus === 'Deleted') {
-        updateData.assigned_user_id = null;
-        updateData.booking_status = 'open';
-        updateData.booked_at = null;
-        updateData.withdrawn_at = new Date().toISOString();
-      }
+        const updateData: Record<string, unknown> = {
+          role_status: newStatus,
+          updated_at: new Date().toISOString(),
+        };
 
-      const { error } = await supabase
-        .from('app_meeting_roles_management')
-        .update(updateData)
-        .eq('meeting_id', meetingId)
-        .eq('role_name', roleName);
+        if (newStatus === 'Deleted') {
+          updateData.assigned_user_id = null;
+          updateData.booking_status = 'open';
+          updateData.booked_at = null;
+          updateData.withdrawn_at = new Date().toISOString();
+        }
 
-      if (error) {
+        const { error } = await supabase
+          .from('app_meeting_roles_management')
+          .update(updateData)
+          .eq('meeting_id', meetingId)
+          .in('role_name', roleNames);
+
+        if (error) {
+          console.error('Error updating role status:', error);
+          Alert.alert('Error', 'Failed to update role status');
+          return;
+        }
+
+        await loadMeetingRoles();
+
+        const action = newStatus === 'Deleted' ? 'deleted and moved to deleted roles' : 'restored to available roles';
+        const summary =
+          roleNames.length > 1
+            ? `${roleNames.join(' and ')} were ${action} (paired prepared speaker / speech evaluator slots).`
+            : `${roleName} ${action}`;
+        Alert.alert('Success', summary);
+      } catch (error) {
         console.error('Error updating role status:', error);
-        Alert.alert('Error', 'Failed to update role status');
-        return;
+        Alert.alert('Error', 'An unexpected error occurred');
       }
-
-      await loadMeetingRoles();
-
-      const action = newStatus === 'Deleted' ? 'deleted and moved to deleted roles' : 'restored to available roles';
-      Alert.alert('Success', `${roleName} ${action}`);
-    } catch (error) {
-      console.error('Error updating role status:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-    }
-  }, [meetingId, loadMeetingRoles]);
+    },
+    [meetingId, loadMeetingRoles]
+  );
 
   const getRoleIcon = (role: string) => {
     switch (role.toLowerCase()) {
@@ -1330,6 +1392,14 @@ export default function ManageMeetingRoles() {
               </Text>
               <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
                 These roles are not available for booking but can be restored anytime.
+              </Text>
+
+              <Text style={[styles.infoSectionHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                Prepared speakers and speech evaluators (slots 1–5)
+              </Text>
+              <Text style={[styles.infoText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Prepared Speaker 1–5 and Evaluator 1–5 stay in sync: deleting or restoring one slot updates the matching
+                slot on the other side so the same number of speech and evaluator roles stay available together.
               </Text>
 
               <Text style={[styles.infoSectionHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>

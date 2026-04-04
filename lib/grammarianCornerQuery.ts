@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { type MeetingVisitingGuest, parseMeetingVisitingGuests } from '@/lib/meetingVisitingGuests';
 
 // Use snapshot RPC when deployed (see migrations/*grammarian_corner_snapshot*). Legacy REST is fallback only.
 const FORCE_DISABLE_GRAMMARIAN_SNAPSHOT_RPC = false;
@@ -140,7 +141,11 @@ export async function fetchGrammarianCornerSnapshot(
 
     if (!error && data != null && typeof data === 'object' && !Array.isArray(data)) {
       grammarianSnapshotRpcDisabledUntil = 0;
-      const snap = data as GrammarianCornerSnapshot;
+      const raw = data as Record<string, unknown>;
+      const snap = {
+        ...(data as GrammarianCornerSnapshot),
+        visiting_guests: parseMeetingVisitingGuests(raw.visiting_guests),
+      };
       fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: snap });
       return snap;
     }
@@ -191,6 +196,7 @@ export async function fetchGrammarianCornerSnapshot(
       club_name: clubRes.data?.name ?? null,
       assigned_grammarian: assigned,
       is_vpe_for_club: vpeRes.data?.vpe_id === userId,
+      visiting_guests: [],
     };
     fallbackSnapshotCache.set(cacheKey, { at: Date.now(), value: snapshot });
     return snapshot;

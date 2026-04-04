@@ -2693,7 +2693,8 @@ const styles = StyleSheet.create({
   meetingActionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    rowGap: 10,
     marginBottom: 12,
   },
   liveVotingHeroCard: {

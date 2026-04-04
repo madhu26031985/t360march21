@@ -43,7 +43,7 @@ interface RoleBooking {
     full_name: string;
     email: string;
     avatar_url: string | null;
-  };
+  } | null;
 }
 
 interface ExistingEvaluationPathway {
@@ -396,7 +396,10 @@ export default function EvaluationCorner() {
     hasMeetingInSnapshot: boolean;
   } => {
     const pathwaysArr = Array.isArray(snap.pathways) ? snap.pathways : [];
-    const rolesArr = Array.isArray(snap.roles) ? snap.roles : [];
+    const rolesArr = (Array.isArray(snap.roles) ? snap.roles : []).filter((raw: { role_status?: string | null }) => {
+      const s = raw?.role_status ?? 'Available';
+      return s !== 'Deleted';
+    });
 
     const hasMeetingInSnapshot = !!(
       snap.meeting &&
@@ -433,11 +436,11 @@ export default function EvaluationCorner() {
         role_metric: row.role_metric,
         booking_status: row.booking_status,
         role_classification: row.role_classification,
-        app_user_profiles: row.app_user_profiles as RoleBooking['app_user_profiles'],
+        app_user_profiles: (row.app_user_profiles as RoleBooking['app_user_profiles']) ?? null,
       };
-      if (row.booking_status === 'booked' && row.assigned_user_id) {
+      if (row.booking_status === 'booked') {
         booked.push(roleData);
-      } else if (row.booking_status === 'open') {
+      } else {
         available.push(roleData);
       }
     }
@@ -574,7 +577,7 @@ export default function EvaluationCorner() {
           )
         `)
         .eq('meeting_id', meetingId)
-        .eq('role_status', 'Available')
+        .or('role_status.is.null,role_status.eq.Available')
         .or('role_classification.eq.Prepared Speaker,role_name.ilike.%prepared%speaker%,role_name.ilike.%evaluator%');
 
       if (error) {
@@ -594,12 +597,13 @@ export default function EvaluationCorner() {
           role_metric: role.role_metric,
           booking_status: role.booking_status,
           role_classification: role.role_classification,
-          app_user_profiles: (role as any).app_user_profiles
+          app_user_profiles: (role as any).app_user_profiles ?? null,
         };
 
-        if (role.booking_status === 'booked' && role.assigned_user_id) {
+        // Any "booked" row must appear (Manage Roles can show Booked without a member name if data is inconsistent).
+        if (role.booking_status === 'booked') {
           booked.push(roleData);
-        } else if (role.booking_status === 'open') {
+        } else {
           available.push(roleData);
         }
       });
@@ -1171,7 +1175,7 @@ export default function EvaluationCorner() {
         <View style={[styles.profileHeader, { backgroundColor: theme.colors.background }]}>
           <View style={styles.profileContent}>
             <View style={[styles.profileAvatar, { backgroundColor: theme.colors.border }]}>
-              {booking.app_user_profiles.avatar_url ? (
+              {booking.app_user_profiles?.avatar_url ? (
                 <Image
                   source={{ uri: booking.app_user_profiles.avatar_url }}
                   style={styles.profileAvatarImage}
@@ -1182,7 +1186,7 @@ export default function EvaluationCorner() {
             </View>
             <View style={styles.profileInfo}>
               <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {booking.app_user_profiles.full_name}
+                {booking.app_user_profiles?.full_name?.trim() || 'Booked'}
               </Text>
               <Text style={[styles.profileRole, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 {booking.role_name}

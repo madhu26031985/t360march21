@@ -243,6 +243,7 @@ export default function PreparedSpeechEvaluations() {
         .eq('meeting_id', meetingId)
         .eq('role_classification', 'Speech evaluvator')
         .in('role_name', ['Evaluator 1', 'Evaluator 2', 'Evaluator 3', 'Evaluator 4', 'Evaluator 5'])
+        .or('role_status.is.null,role_status.eq.Available')
         .is('assigned_user_id', null)
         .order('role_name', { ascending: true });
 
@@ -276,6 +277,7 @@ export default function PreparedSpeechEvaluations() {
         .eq('meeting_id', meetingId)
         .eq('role_classification', 'Speech evaluvator')
         .in('role_name', ['Evaluator 1', 'Evaluator 2', 'Evaluator 3', 'Evaluator 4', 'Evaluator 5'])
+        .or('role_status.is.null,role_status.eq.Available')
         .not('assigned_user_id', 'is', null)
         .order('role_name', { ascending: true });
 
@@ -307,8 +309,8 @@ export default function PreparedSpeechEvaluations() {
         .from('app_meeting_roles_management')
         .select('id, role_name, role_classification')
         .eq('meeting_id', meetingId)
-        .in('role_classification', ['Prepared speaker', 'Ice Breaker'])
-        .eq('role_status', 'Available')
+        .in('role_classification', ['Prepared Speaker', 'Prepared speaker', 'Ice Breaker'])
+        .or('role_status.is.null,role_status.eq.Available')
         .is('assigned_user_id', null)
         .order('role_name', { ascending: true });
 
@@ -345,7 +347,8 @@ export default function PreparedSpeechEvaluations() {
           )
         `)
         .eq('meeting_id', meetingId)
-        .in('role_classification', ['Prepared speaker', 'Ice Breaker'])
+        .in('role_classification', ['Prepared Speaker', 'Prepared speaker', 'Ice Breaker'])
+        .or('role_status.is.null,role_status.eq.Available')
         .not('assigned_user_id', 'is', null)
         .order('role_name', { ascending: true });
 

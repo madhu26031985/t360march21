@@ -47,6 +47,7 @@ function AppContent() {
         <Stack.Screen name="toastmaster-notes" options={{ headerShown: false }} />
         <Stack.Screen name="feedback-form" options={{ headerShown: false }} />
         <Stack.Screen name="meeting-agenda-view" options={{ headerShown: false }} />
+        <Stack.Screen name="timer-role-assign" options={{ headerShown: false }} />
         <Stack.Screen name="[clubId]/agenda/[meetingNo]/[meetingId]" options={{ headerShown: false }} />
         <Stack.Screen name="[clubId]/a/[meetingId]" options={{ headerShown: false }} />
         <Stack.Screen name="a/[meetingId]" options={{ headerShown: false }} />

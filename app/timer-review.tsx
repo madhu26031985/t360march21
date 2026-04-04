@@ -35,6 +35,7 @@ import {
 } from 'lucide-react-native';
 import { Image, Alert } from 'react-native';
 import { exportAgendaToPDF } from '@/lib/pdfExportUtils';
+import { formatTimerGuestDisplayName } from '@/lib/timerGuestDisplayName';
 
 interface Meeting {
   id: string;
@@ -67,6 +68,7 @@ interface ClubInfo {
 interface TimerRecord {
   id: string;
   speaker_name: string;
+  speaker_user_id: string | null;
   speech_category: string;
   actual_time_display: string;
   actual_time_seconds: number;
@@ -162,7 +164,11 @@ function TimerSectionCard({ section }: { section: SectionSummary }) {
               style={[styles.tableRow, !isLast && styles.tableRowBorder, !record.time_qualification && styles.tableRowDisqualified]}
             >
               <View style={[{ flex: 3 }]}>
-                <Text style={styles.speakerName} numberOfLines={1}>{record.speaker_name}</Text>
+                <Text style={styles.speakerName} numberOfLines={1}>
+                  {record.speaker_user_id != null && String(record.speaker_user_id).length > 0
+                    ? record.speaker_name
+                    : formatTimerGuestDisplayName(record.speaker_name)}
+                </Text>
               </View>
               <Text style={[styles.timeText, { flex: 1, color: '#2563eb' }]}>
                 {record.actual_time_display}
@@ -311,7 +317,9 @@ export default function TimerReview() {
     if (!meetingId) return;
     const { data } = await supabase
       .from('timer_reports')
-      .select('id, speaker_name, speech_category, actual_time_display, actual_time_seconds, time_qualification, recorded_at')
+      .select(
+        'id, speaker_name, speaker_user_id, speech_category, actual_time_display, actual_time_seconds, time_qualification, recorded_at'
+      )
       .eq('meeting_id', meetingId)
       .order('recorded_at', { ascending: true });
     if (data) setTimerRecords(data);

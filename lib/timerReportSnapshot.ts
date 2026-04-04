@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { type MeetingVisitingGuest, parseMeetingVisitingGuests } from '@/lib/meetingVisitingGuests';
 
 export const timerReportQueryKeys = {
   snapshot: (meetingId: string, speechCategory: string, userId: string) =>
@@ -33,6 +34,8 @@ export type TimerReportSnapshotCategoryRole = {
   booking_status: string | null;
   assigned_user_id: string | null;
   completion_notes: string | null;
+  /** Omitted on older RPC payloads; treated as Available when missing. */
+  role_status?: string | null;
   app_user_profiles?: {
     id: string;
     full_name: string;
@@ -49,6 +52,7 @@ export type TimerReportSnapshot = {
   assigned_timer: TimerReportSnapshotAssignedTimer;
   is_vpe: boolean;
   timer_reports: Record<string, unknown>[];
+  visiting_guests: MeetingVisitingGuest[];
   category_roles: TimerReportSnapshotCategoryRole[];
   booked_speakers: TimerReportSnapshotBookedSpeaker[];
 };
@@ -78,6 +82,7 @@ export async function fetchTimerReportSnapshot(
     assigned_timer: (raw.assigned_timer as TimerReportSnapshotAssignedTimer) ?? null,
     is_vpe: Boolean(raw.is_vpe),
     timer_reports: Array.isArray(raw.timer_reports) ? (raw.timer_reports as Record<string, unknown>[]) : [],
+    visiting_guests: parseMeetingVisitingGuests(raw.visiting_guests),
     category_roles: Array.isArray(raw.category_roles) ? (raw.category_roles as TimerReportSnapshotCategoryRole[]) : [],
     booked_speakers: Array.isArray(raw.booked_speakers) ? (raw.booked_speakers as TimerReportSnapshotBookedSpeaker[]) : [],
   };
