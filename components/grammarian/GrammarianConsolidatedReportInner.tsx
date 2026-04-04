@@ -227,36 +227,33 @@ export function GrammarianConsolidatedReportInner({
       };
 
       const loadPublishedObservationsLocal = async () => {
+        // Narrative rows default to is_published=false on insert; "Publish" in Grammarian Notes only flips that flag.
+        // "Show report to member" gates the whole summary — if we reach here, visibility is on, so show all live rows
+        // for this meeting (same data the Grammarian sees in Live meeting), not only explicitly published rows.
         const [goodUsageResult, improvementsResult] = await Promise.all([
           supabase
             .from('grammarian_live_good_usage')
             .select('id, observation, sequence_order, created_at')
             .eq('meeting_id', meetingId)
-            .eq('is_published', true)
             .order('sequence_order', { ascending: true }),
           supabase
             .from('grammarian_live_improvements')
             .select('id, incorrect_usage, correct_usage, sequence_order, created_at')
             .eq('meeting_id', meetingId)
-            .eq('is_published', true)
             .order('sequence_order', { ascending: true }),
         ]);
 
-        if (goodUsageResult.data) {
-          setLiveGoodUsage(goodUsageResult.data);
-          if (goodUsageResult.data.length > 0) {
-            const latest = goodUsageResult.data.reduce((a, b) =>
-              new Date(a.created_at) > new Date(b.created_at) ? a : b
-            );
-            setPublishedAt(latest.created_at);
-          }
+        const good = goodUsageResult.data ?? [];
+        const impr = improvementsResult.data ?? [];
+        setLiveGoodUsage(good);
+        setLiveImprovements(impr);
+
+        const allObs = [...good, ...impr];
+        if (allObs.length > 0) {
+          const latestMs = Math.max(...allObs.map((r) => new Date(r.created_at).getTime()));
+          setPublishedAt(new Date(latestMs).toISOString());
         } else {
-          setLiveGoodUsage([]);
-        }
-        if (improvementsResult.data) {
-          setLiveImprovements(improvementsResult.data);
-        } else {
-          setLiveImprovements([]);
+          setPublishedAt(null);
         }
       };
 
@@ -666,7 +663,8 @@ export function GrammarianConsolidatedReportInner({
               No published report sections yet
             </Text>
             <Text style={[styles.emptyEmbedSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-              Good usage, opportunity notes, or usage stats appear here once published from Grammarian Corner.
+              Good usage, opportunity notes, or word/idiom/quote usage stats appear here once published from Grammarian
+              Corner.
             </Text>
           </View>
         )}
