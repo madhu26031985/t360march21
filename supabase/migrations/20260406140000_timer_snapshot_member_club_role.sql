@@ -1,6 +1,9 @@
 -- Expose app_club_user_relationship.role as club_role for timer summary subtitles
 -- (Member / Visiting Toastmaster / ExComm / Guest / etc.).
 
+-- Return type adds `club_role`; REPLACE is not allowed — must drop first.
+DROP FUNCTION IF EXISTS public.get_club_member_directory(uuid);
+
 CREATE OR REPLACE FUNCTION public.get_club_member_directory(target_club_id uuid)
 RETURNS TABLE (
   user_id uuid,
