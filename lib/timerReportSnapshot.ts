@@ -11,6 +11,8 @@ export type TimerReportSnapshotMember = {
   full_name: string;
   email: string;
   avatar_url: string | null;
+  /** `app_club_user_relationship.role` (member, visiting_tm, excomm, …) */
+  club_role?: string | null;
 };
 
 export type TimerReportSnapshotAssignedTimer = {
@@ -75,7 +77,18 @@ export async function fetchTimerReportSnapshot(
   return {
     meeting: (raw.meeting as Record<string, unknown>) || {},
     club_id: String(raw.club_id || ''),
-    member_directory: Array.isArray(raw.member_directory) ? (raw.member_directory as TimerReportSnapshotMember[]) : [],
+    member_directory: Array.isArray(raw.member_directory)
+      ? (raw.member_directory as Record<string, unknown>[]).map((row) => ({
+          user_id: String(row.user_id || ''),
+          full_name: String(row.full_name || ''),
+          email: String(row.email || ''),
+          avatar_url: (row.avatar_url as string | null) ?? null,
+          club_role:
+            row.club_role == null || row.club_role === ''
+              ? null
+              : String(row.club_role),
+        }))
+      : [],
     selected_member_ids: Array.isArray(raw.selected_member_ids)
       ? (raw.selected_member_ids as string[]).filter(Boolean)
       : [],

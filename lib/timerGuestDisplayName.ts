@@ -34,3 +34,21 @@ export function formatTimerGuestDisplayName(input: string): string {
     .trim();
   return stripped ? `Visiting Guest ${titleCasePhrase(stripped)}` : '';
 }
+
+/**
+ * Primary-line name for Timer Summary (no "Visiting Guest" prefix; subtitle shows role).
+ * e.g. "Visiting Guest meera" / stored "meera" → "Meera"
+ */
+export function formatTimerGuestSummaryPrimaryName(input: string): string {
+  const t = input.trim();
+  if (!t) return '';
+  const titleCaseWord = (w: string) =>
+    w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '';
+  const titleCasePhrase = (s: string) =>
+    s.split(/\s+/).filter(Boolean).map(titleCaseWord).join(' ');
+  const stripped = t
+    .replace(/^visiting\s+guest\s+/i, '')
+    .replace(/^guest\s+/i, '')
+    .trim();
+  return stripped ? titleCasePhrase(stripped) : '';
+}

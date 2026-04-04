@@ -17,11 +17,12 @@ import {
 } from '@/lib/meetingVisitingGuests';
 import { parseMmSs, TimerDialStopwatch } from '@/components/timer/TimerDialStopwatch';
 import { NOTION_TIMER } from '@/components/timer/TimerMinuteProgressRing';
-import { ArrowLeft, Timer, Calendar, User, ChevronDown, ChevronUp, Save, Trash2, X, FileText, Search, Lock, MessageCircle, Snowflake, Mic, MessageSquare, Lightbulb, NotebookPen, Plus, Bell, Users, BookOpen, Star, CheckSquare, ClipboardCheck, FileBarChart, Clock, Info, HelpCircle, Upload, RotateCcw, UserPlus, Vote, Play, Pause, Square, Eye, EyeOff } from 'lucide-react-native';
+import { ArrowLeft, Timer, Calendar, User, ChevronDown, ChevronUp, Save, Trash2, X, FileText, Search, Lock, MessageCircle, Snowflake, Mic, MessageSquare, Lightbulb, NotebookPen, Plus, Bell, Users, BookOpen, Star, CheckSquare, ClipboardCheck, Clock, Info, RotateCcw, UserPlus, Vote, Play, Pause, Square, Eye, EyeOff } from 'lucide-react-native';
 import { Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   formatTimerGuestDisplayName,
+  formatTimerGuestSummaryPrimaryName,
   normalizeTimerGuestSpeakerKey,
   parseTimerGuestCompletionNotes,
 } from '@/lib/timerGuestDisplayName';
@@ -103,6 +104,8 @@ interface ClubMember {
   full_name: string;
   email: string;
   avatar_url: string | null;
+  /** Lowercase `app_club_user_relationship.role` when known */
+  club_role?: string | null;
 }
 
 interface TimerReport {
@@ -185,6 +188,36 @@ function isTimerCategoryRoleSlotFilled(role: CategoryRole): boolean {
   return !!guestName;
 }
 
+const EXCOMM_RELATIONSHIP_ROLES = new Set([
+  'excomm',
+  'president',
+  'vpe',
+  'vpm',
+  'vppr',
+  'secretary',
+  'treasurer',
+  'saa',
+  'ipp',
+]);
+
+/** Subtitle under the speaker name on Timer Summary (club roster role, not speech category). */
+function formatClubRelationshipRoleForTimerSummary(roleKey: string | null | undefined): string {
+  const r = String(roleKey || '')
+    .trim()
+    .toLowerCase();
+  if (!r) return 'Member';
+  if (r === 'visiting_tm') return 'Visiting Toastmaster';
+  if (EXCOMM_RELATIONSHIP_ROLES.has(r)) return 'ExComm';
+  if (r === 'club_leader') return 'Club Leader';
+  if (r === 'guest') return 'Guest';
+  if (r === 'member') return 'Member';
+  return r
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 /** Reverted: without timer_report_assigned_by, allow manage when editor can edit. */
 function canTimerCornerManageAssignment(role: CategoryRole, canEditTimerCorner: boolean): boolean {
   return canEditTimerCorner && isTimerCategoryRoleSlotFilled(role);
@@ -199,6 +232,7 @@ export default function TimerReportDetails() {
   
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
+  const [memberClubRoleByUserId, setMemberClubRoleByUserId] = useState<Record<string, string>>({});
   const [assignedTimer, setAssignedTimer] = useState<AssignedTimer | null>(null);
   const [selectedSpeaker, setSelectedSpeaker] = useState<ClubMember | null>(null);
   const [showSpeakerModal, setShowSpeakerModal] = useState(false);
@@ -231,7 +265,6 @@ export default function TimerReportDetails() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; speakerName: string } | null>(null);
   const [showNameRequiredModal, setShowNameRequiredModal] = useState(false);
-  const [showHowToModal, setShowHowToModal] = useState(false);
   const [minutes, setMinutes] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [selectedTab, setSelectedTab] = useState<'record' | 'reports'>('record');
@@ -576,12 +609,22 @@ export default function TimerReportDetails() {
           setMeeting(snap.meeting as unknown as Meeting);
           void loadClubName();
 
-          const allMembers: ClubMember[] = snap.member_directory.map((m) => ({
-            id: m.user_id,
-            full_name: m.full_name || '',
-            email: m.email || '',
-            avatar_url: m.avatar_url ?? null,
-          }));
+          const roleByUser: Record<string, string> = {};
+          const allMembers: ClubMember[] = snap.member_directory.map((m) => {
+            const id = m.user_id;
+            const rawRole = m.club_role?.trim();
+            if (id && rawRole) {
+              roleByUser[id] = rawRole.toLowerCase();
+            }
+            return {
+              id,
+              full_name: m.full_name || '',
+              email: m.email || '',
+              avatar_url: m.avatar_url ?? null,
+              club_role: rawRole ? rawRole.toLowerCase() : null,
+            };
+          });
+          setMemberClubRoleByUserId(roleByUser);
           let membersToShow = allMembers;
           if (snap.selected_member_ids.length > 0) {
             const selectedSet = new Set(snap.selected_member_ids);
@@ -689,14 +732,31 @@ export default function TimerReportDetails() {
       let allMembers: ClubMember[] = [];
 
       if (!rpcError && rpcData && Array.isArray(rpcData)) {
-        allMembers = (rpcData as { user_id: string; full_name: string; email: string; avatar_url: string | null }[])
-          .map((row) => ({
-            id: row.user_id,
-            full_name: row.full_name || '',
-            email: row.email || '',
-            avatar_url: row.avatar_url ?? null,
-          }))
+        const roleByUser: Record<string, string> = {};
+        allMembers = (
+          rpcData as {
+            user_id: string;
+            full_name: string;
+            email: string;
+            avatar_url: string | null;
+            club_role?: string | null;
+          }[]
+        )
+          .map((row) => {
+            const raw = row.club_role?.trim();
+            if (row.user_id && raw) {
+              roleByUser[row.user_id] = raw.toLowerCase();
+            }
+            return {
+              id: row.user_id,
+              full_name: row.full_name || '',
+              email: row.email || '',
+              avatar_url: row.avatar_url ?? null,
+              club_role: raw ? raw.toLowerCase() : null,
+            };
+          })
           .filter((m) => m.id);
+        setMemberClubRoleByUserId(roleByUser);
       } else {
         if (rpcError) {
           console.warn('get_club_member_directory failed, falling back to embed query:', rpcError);
@@ -704,6 +764,7 @@ export default function TimerReportDetails() {
         const { data, error } = await supabase
           .from('app_club_user_relationship')
           .select(`
+            role,
             app_user_profiles (
               id,
               full_name,
@@ -719,12 +780,23 @@ export default function TimerReportDetails() {
           return;
         }
 
-        allMembers = (data || []).map((item) => ({
-          id: (item as any).app_user_profiles.id,
-          full_name: (item as any).app_user_profiles.full_name,
-          email: (item as any).app_user_profiles.email,
-          avatar_url: (item as any).app_user_profiles.avatar_url,
-        }));
+        const roleByUser: Record<string, string> = {};
+        allMembers = (data || []).map((item) => {
+          const row = item as { role?: string | null; app_user_profiles: ClubMember };
+          const prof = row.app_user_profiles;
+          const raw = row.role?.trim();
+          if (prof?.id && raw) {
+            roleByUser[prof.id] = raw.toLowerCase();
+          }
+          return {
+            id: prof.id,
+            full_name: prof.full_name,
+            email: prof.email,
+            avatar_url: prof.avatar_url,
+            club_role: raw ? raw.toLowerCase() : null,
+          };
+        });
+        setMemberClubRoleByUserId(roleByUser);
       }
 
       // Then, load the timer's selected members for this meeting
@@ -1412,12 +1484,25 @@ export default function TimerReportDetails() {
     }
   };
 
+  const getTimerSummarySpeakerSubtitle = (report: TimerReport): string => {
+    if (report.visiting_guest_id) {
+      return 'Visiting guest';
+    }
+    const uid = report.speaker_user_id;
+    if (uid == null || String(uid).length === 0) {
+      return 'Visiting guest';
+    }
+    const raw = memberClubRoleByUserId[uid];
+    return formatClubRelationshipRoleForTimerSummary(raw);
+  };
+
   const ReportCard = ({ report }: { report: TimerReport }) => {
     const isQualified = !!report.time_qualification;
     const displaySpeakerName =
       report.speaker_user_id != null && String(report.speaker_user_id).length > 0
         ? report.speaker_name
-        : formatTimerGuestDisplayName(report.speaker_name);
+        : formatTimerGuestSummaryPrimaryName(report.speaker_name) ||
+          formatTimerGuestDisplayName(report.speaker_name);
     return (
       <View style={[styles.reportTableRow, { borderBottomColor: theme.colors.border }]}>
         <View style={styles.reportTableNameCell}>
@@ -1425,7 +1510,7 @@ export default function TimerReportDetails() {
             {displaySpeakerName}
           </Text>
           <Text style={[styles.reportTableCategory, { color: theme.colors.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-            {getCategoryDisplayName(report.speech_category)}
+            {getTimerSummarySpeakerSubtitle(report)}
           </Text>
         </View>
 
@@ -2041,94 +2126,6 @@ export default function TimerReportDetails() {
             </View>
           </View>
         </KeyboardAvoidingView>
-
-        {/* How To Modal (non-assigned view) */}
-        <Modal visible={showHowToModal} transparent animationType="fade">
-          <TouchableOpacity
-            style={styles.howToOverlay}
-            activeOpacity={1}
-            onPress={() => setShowHowToModal(false)}
-          >
-            <TouchableOpacity activeOpacity={1} style={[styles.howToContainer, { backgroundColor: theme.colors.surface }]}>
-              <View style={styles.howToHeader}>
-                <Text style={[styles.howToTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer – How to Log Timing</Text>
-                <TouchableOpacity
-                  onPress={() => setShowHowToModal(false)}
-                  style={styles.howToClose}
-                >
-                  <X size={22} color={theme.colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={styles.howToScroll} showsVerticalScrollIndicator={false}>
-                <View style={[styles.howToSectionBadge, { backgroundColor: '#EEF2FF' }]}>
-                  <FileText size={14} color='#4F46E5' />
-                  <Text style={[styles.howToSectionBadgeText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>Timer Corner Tab</Text>
-                </View>
-                {[
-                  { num: 1, color: '#F59E0B', title: 'Select Category', desc: 'Choose the category. Speech / Table Topics / Evaluation.' },
-                  { num: 2, color: '#06B6D4', title: 'Select the Speaker', desc: "Choose the speaker's name from the dropdown." },
-                  { num: 3, color: '#10B981', title: 'Use the Stopwatch', desc: <Text maxFontSizeMultiplier={1.3}>Tap <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Start</Text> when the speech begins and <Text style={{ fontWeight: '700' }}>Stop</Text> when it ends.</Text> },
-                  { num: 4, color: '#6366F1', title: 'Enter the Final Time', desc: <Text maxFontSizeMultiplier={1.3}>The time can be entered or adjusted in <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Add Time</Text>.</Text> },
-                  { num: 5, color: '#8B5CF6', title: 'Mark Qualification', desc: <Text maxFontSizeMultiplier={1.3}>Select <Text style={{ color: '#10B981', fontWeight: '700' }}>Yes</Text> if the speech met the required time range.{'\n'}Select <Text style={{ fontWeight: '700' }}>No</Text> if the speech was under or over time.</Text> },
-                  { num: 6, color: '#EC4899', title: 'Save the Record', desc: <Text maxFontSizeMultiplier={1.3}>Tap <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Save</Text> to store the timing entry.</Text> },
-                ].map(({ num, color, title, desc }) => (
-                  <View key={num} style={styles.howToStep}>
-                    <View style={[styles.howToStepNum, { backgroundColor: color }]}>
-                      <Text style={styles.howToStepNumText} maxFontSizeMultiplier={1.2}>{num}</Text>
-                    </View>
-                    <View style={styles.howToStepContent}>
-                      <Text style={[styles.howToStepTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{title}</Text>
-                      {typeof desc === 'string'
-                        ? <Text style={[styles.howToStepDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>{desc}</Text>
-                        : <Text style={[styles.howToStepDesc, { color: theme.colors.textSecondary }]}>{desc}</Text>
-                      }
-                    </View>
-                  </View>
-                ))}
-                <View style={[styles.howToSectionBadge, { backgroundColor: '#EEF2FF', marginTop: 8 }]}>
-                  <FileBarChart size={14} color='#4F46E5' />
-                  <Text style={[styles.howToSectionBadgeText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>Summary Tab</Text>
-                </View>
-                <Text style={[styles.howToBodyText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  In the <Text style={{ fontWeight: '700' }}>Summary</Text> tab you can:
-                </Text>
-                <View style={styles.howToBulletList}>
-                  <Text style={[styles.howToBullet, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>{'\u2022'} Review all recorded speech timings</Text>
-                  <Text style={[styles.howToBullet, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>{'\u2022'} View the <Text style={{ fontWeight: '700', color: theme.colors.text }}>Timer Review</Text> report</Text>
-                </View>
-                <View style={[styles.howToSectionBadge, { backgroundColor: '#FFF7ED', marginTop: 8 }]}>
-                  <Upload size={14} color='#EA580C' />
-                  <Text style={[styles.howToSectionBadgeText, { color: '#EA580C' }]} maxFontSizeMultiplier={1.3}>Exporting the Report</Text>
-                </View>
-                <Text style={[styles.howToBodyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Timing reports can be exported as PDF from the web portal. Steps:
-                </Text>
-                <View style={styles.howToNumberedList}>
-                  {[
-                    <Text maxFontSizeMultiplier={1.3}>Go to <Text style={{ fontWeight: '700', color: theme.colors.text }}>Settings {'→'} Web Login</Text></Text>,
-                    <Text maxFontSizeMultiplier={1.3}>Open the web portal</Text>,
-                    <Text maxFontSizeMultiplier={1.3}>Navigate to <Text style={{ fontWeight: '700', color: theme.colors.text }}>Meeting {'→'} Timer</Text></Text>,
-                    <Text maxFontSizeMultiplier={1.3}>Click <Text style={{ fontWeight: '700', color: theme.colors.text }}>Download PDF</Text></Text>,
-                  ].map((item, i) => (
-                    <Text key={i} style={[styles.howToNumberedItem, { color: theme.colors.textSecondary }]}>
-                      {i + 1}. {item}
-                    </Text>
-                  ))}
-                </View>
-                <View style={[styles.howToTipBox, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                  <Lightbulb size={16} color={theme.colors.textSecondary} />
-                  <Text style={[styles.howToTipText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    <Text style={{ fontWeight: '700' }}>Tips:</Text> Help Tap the{' '}
-                    <HelpCircle size={12} color={theme.colors.textSecondary} />{' '}
-                    icon anytime to view these instructions.
-                  </Text>
-                </View>
-              </ScrollView>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
-
-        {renderSpeakerAssignmentModal()}
       </SafeAreaView>
     );
   }
@@ -2484,17 +2481,7 @@ export default function TimerReportDetails() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer Report</Text>
-        {canEditTimerCorner ? (
-          <TouchableOpacity
-            style={styles.headerInfoButton}
-            onPress={() => setShowHowToModal(true)}
-            activeOpacity={0.8}
-          >
-            <Info size={20} color={theme.colors.primary} />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerSpacer} />
-        )}
+        <View style={styles.headerSpacer} />
       </View>
 
       <View style={styles.mainBody}>
@@ -3487,101 +3474,6 @@ export default function TimerReportDetails() {
 
       {renderSpeakerAssignmentModal()}
 
-      {/* How To Modal */}
-      <Modal visible={showHowToModal} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.howToOverlay}
-          activeOpacity={1}
-          onPress={() => setShowHowToModal(false)}
-        >
-          <TouchableOpacity activeOpacity={1} style={[styles.howToContainer, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.howToHeader}>
-              <Text style={[styles.howToTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Timer – How to Log Timing</Text>
-              <TouchableOpacity
-                onPress={() => setShowHowToModal(false)}
-                style={styles.howToClose}
-              >
-                <X size={22} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.howToScroll} showsVerticalScrollIndicator={false}>
-              {/* Timer Corner Tab Section */}
-              <View style={[styles.howToSectionBadge, { backgroundColor: '#EEF2FF' }]}>
-                <FileText size={14} color='#4F46E5' />
-                <Text style={[styles.howToSectionBadgeText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>Timer Corner Tab</Text>
-              </View>
-
-              {[
-                { num: 1, color: '#F59E0B', title: 'Select Category', desc: 'Choose the category. Speech / Table Topics / Evaluation.' },
-                { num: 2, color: '#06B6D4', title: 'Select the Speaker', desc: "Choose the speaker's name from the dropdown." },
-                { num: 3, color: '#10B981', title: 'Use the Stopwatch', desc: <Text maxFontSizeMultiplier={1.3}>Tap <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Start</Text> when the speech begins and <Text style={{ fontWeight: '700' }}>Stop</Text> when it ends.</Text> },
-                { num: 4, color: '#6366F1', title: 'Enter the Final Time', desc: <Text maxFontSizeMultiplier={1.3}>The time can be entered or adjusted in <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Add Time</Text>.</Text> },
-                { num: 5, color: '#8B5CF6', title: 'Mark Qualification', desc: <Text maxFontSizeMultiplier={1.3}>Select <Text style={{ color: '#10B981', fontWeight: '700' }}>Yes</Text> if the speech met the required time range.{'\n'}Select <Text style={{ fontWeight: '700' }}>No</Text> if the speech was under or over time.</Text> },
-                { num: 6, color: '#EC4899', title: 'Save the Record', desc: <Text maxFontSizeMultiplier={1.3}>Tap <Text style={{ color: '#3B82F6', fontWeight: '700' }}>Save</Text> to store the timing entry.</Text> },
-              ].map(({ num, color, title, desc }) => (
-                <View key={num} style={styles.howToStep}>
-                  <View style={[styles.howToStepNum, { backgroundColor: color }]}>
-                    <Text style={styles.howToStepNumText} maxFontSizeMultiplier={1.2}>{num}</Text>
-                  </View>
-                  <View style={styles.howToStepContent}>
-                    <Text style={[styles.howToStepTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{title}</Text>
-                    {typeof desc === 'string'
-                      ? <Text style={[styles.howToStepDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>{desc}</Text>
-                      : <Text style={[styles.howToStepDesc, { color: theme.colors.textSecondary }]}>{desc}</Text>
-                    }
-                  </View>
-                </View>
-              ))}
-
-              {/* Summary Tab Section */}
-              <View style={[styles.howToSectionBadge, { backgroundColor: '#EEF2FF', marginTop: 8 }]}>
-                <FileBarChart size={14} color='#4F46E5' />
-                <Text style={[styles.howToSectionBadgeText, { color: '#4F46E5' }]} maxFontSizeMultiplier={1.3}>Summary Tab</Text>
-              </View>
-              <Text style={[styles.howToBodyText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                In the <Text style={{ fontWeight: '700' }}>Summary</Text> tab you can:
-              </Text>
-              <View style={styles.howToBulletList}>
-                <Text style={[styles.howToBullet, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>{'\u2022'} Review all recorded speech timings</Text>
-                <Text style={[styles.howToBullet, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>{'\u2022'} View the <Text style={{ fontWeight: '700', color: theme.colors.text }}>Timer Review</Text> report</Text>
-              </View>
-
-              {/* Exporting Section */}
-              <View style={[styles.howToSectionBadge, { backgroundColor: '#FFF7ED', marginTop: 8 }]}>
-                <Upload size={14} color='#EA580C' />
-                <Text style={[styles.howToSectionBadgeText, { color: '#EA580C' }]} maxFontSizeMultiplier={1.3}>Exporting the Report</Text>
-              </View>
-              <Text style={[styles.howToBodyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Timing reports can be exported as PDF from the web portal. Steps:
-              </Text>
-              <View style={styles.howToNumberedList}>
-                {[
-                  <Text maxFontSizeMultiplier={1.3}>Go to <Text style={{ fontWeight: '700', color: theme.colors.text }}>Settings {'→'} Web Login</Text></Text>,
-                  <Text maxFontSizeMultiplier={1.3}>Open the web portal</Text>,
-                  <Text maxFontSizeMultiplier={1.3}>Navigate to <Text style={{ fontWeight: '700', color: theme.colors.text }}>Meeting {'→'} Timer</Text></Text>,
-                  <Text maxFontSizeMultiplier={1.3}>Click <Text style={{ fontWeight: '700', color: theme.colors.text }}>Download PDF</Text></Text>,
-                ].map((item, i) => (
-                  <Text key={i} style={[styles.howToNumberedItem, { color: theme.colors.textSecondary }]}>
-                    {i + 1}. {item}
-                  </Text>
-                ))}
-              </View>
-
-              {/* Tip Footer */}
-              <View style={[styles.howToTipBox, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
-                <Lightbulb size={16} color={theme.colors.textSecondary} />
-                <Text style={[styles.howToTipText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  <Text style={{ fontWeight: '700' }}>Tips:</Text> Help Tap the{' '}
-                  <HelpCircle size={12} color={theme.colors.textSecondary} />{' '}
-                  icon anytime to view these instructions.
-                </Text>
-              </View>
-            </ScrollView>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
       </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -4445,13 +4337,6 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 40,
-  },
-  headerInfoButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   mainBody: {
     flex: 1,
@@ -5814,132 +5699,5 @@ const styles = StyleSheet.create({
   timerReviewSub: {
     fontSize: 12,
     marginTop: 1,
-  },
-  howToOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-  howToContainer: {
-    width: '100%',
-    maxHeight: '90%',
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  howToHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#E5E7EB',
-  },
-  howToTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    flex: 1,
-    textAlign: 'center',
-    marginRight: 8,
-  },
-  howToClose: {
-    padding: 4,
-  },
-  howToScroll: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-  },
-  howToSectionBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-    marginBottom: 14,
-  },
-  howToSectionBadgeText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  howToStep: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-    gap: 12,
-  },
-  howToStepNum: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
-    marginTop: 1,
-  },
-  howToStepNumText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  howToStepContent: {
-    flex: 1,
-  },
-  howToStepTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 3,
-  },
-  howToStepDesc: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  howToBodyText: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  howToBulletList: {
-    gap: 4,
-    marginBottom: 8,
-    paddingLeft: 4,
-  },
-  howToBullet: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  howToNumberedList: {
-    gap: 6,
-    marginBottom: 8,
-    paddingLeft: 4,
-  },
-  howToNumberedItem: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  howToTipBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  howToTipText: {
-    fontSize: 13,
-    lineHeight: 19,
-    flex: 1,
   },
 });
