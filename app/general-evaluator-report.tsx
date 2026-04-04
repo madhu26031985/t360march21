@@ -336,7 +336,7 @@ export default function GeneralEvaluatorReport() {
         return;
       }
       const uid = user?.id ?? 'anon';
-      /** Drop cached snapshot so back navigation from Book a Role shows current GE assignment. */
+      /** Drop cached snapshot so Book a Role / visibility changes show current data. */
       queryClient.removeQueries({
         queryKey: generalEvaluatorReportQueryKeys.snapshot(meetingId, user.currentClubId, uid),
       });
@@ -589,6 +589,16 @@ export default function GeneralEvaluatorReport() {
     }
   };
 
+  /** Reload GE report from the snapshot after persist (correct for VPE: row is under assigned GE user id). */
+  const refreshGeReportAfterSave = async () => {
+    if (!meetingId || !user?.currentClubId) return;
+    await queryClient.invalidateQueries({
+      queryKey: generalEvaluatorReportQueryKeys.snapshot(meetingId, user.currentClubId, user?.id ?? 'anon'),
+    });
+    loadInFlightRef.current = null;
+    await loadGeneralEvaluatorData();
+  };
+
   // Access control helpers
   const isGeneralEvaluator = () => {
     return generalEvaluator?.assigned_user_id === user?.id && generalEvaluator?.booking_status === 'booked';
@@ -596,6 +606,41 @@ export default function GeneralEvaluatorReport() {
   const canAccessGeneralEvaluatorCorner = isGeneralEvaluator() || isVPEClub;
   const canEditGeneralEvaluatorCorner = canAccessGeneralEvaluatorCorner;
   const isGeRoleBooked = generalEvaluator?.booking_status === 'booked';
+
+  /** Members (not assigned GE / not VPE) poll visibility so the Summary tab reacts when the eye is turned off. */
+  useEffect(() => {
+    if (!meetingId || !generalEvaluator?.assigned_user_id) return;
+    const isAssignedGe =
+      !!user?.id &&
+      generalEvaluator.assigned_user_id === user.id &&
+      generalEvaluator.booking_status === 'booked';
+    if (isAssignedGe || isVPEClub) return;
+
+    const evalUid = generalEvaluator.assigned_user_id;
+    let cancelled = false;
+
+    const pollVisibility = async () => {
+      const { data, error } = await supabase
+        .from('app_meeting_ge')
+        .select('summary_visible_to_members')
+        .eq('meeting_id', meetingId)
+        .eq('evaluator_user_id', evalUid)
+        .maybeSingle();
+      if (cancelled || error) return;
+      const row = data as { summary_visible_to_members?: boolean } | null;
+      if (row && typeof row.summary_visible_to_members === 'boolean') {
+        setSummaryVisibleToMembers(row.summary_visible_to_members !== false);
+      }
+    };
+
+    void pollVisibility();
+    const interval = setInterval(pollVisibility, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [meetingId, generalEvaluator?.assigned_user_id, generalEvaluator?.booking_status, isVPEClub, user?.id]);
+
   const isMissingSummaryVisibilityColumnError = (error: any): boolean => {
     const message = String(error?.message ?? '').toLowerCase();
     return (error?.code === 'PGRST204' || error?.code === '42703') && message.includes('summary_visible_to_members');
@@ -682,20 +727,15 @@ export default function GeneralEvaluatorReport() {
       return;
     }
 
-    // Verify GE is still booked
     if (!generalEvaluator || generalEvaluator.booking_status !== 'booked') {
-      Alert.alert('Access Denied', 'You are no longer the assigned General Evaluator for this meeting.');
+      Alert.alert(
+        'General Evaluator not booked',
+        'Assign or book the General Evaluator role before saving this report.'
+      );
       return;
     }
 
     const { answeredQuestions, hasFeedback } = getCompletionStats();
-
-    // Diagnostic log: Check the values right before the save attempt
-    console.log('--- Save Attempt Diagnostics ---');
-    console.log('feedbackForm state:', feedbackForm);
-    console.log('answeredQuestions:', answeredQuestions);
-    console.log('hasFeedback (calculated):', hasFeedback);
-    console.log('--------------------------------');
 
     if (answeredQuestions === 0 && !hasFeedback) {
       Alert.alert('No Content', 'Please answer at least one question or provide feedback before saving.');
@@ -726,9 +766,6 @@ export default function GeneralEvaluatorReport() {
         saveData.summary_visible_to_members = summaryVisibleToMembers;
       }
 
-      // Diagnostic log: Check the final saveData object
-      console.log('Final saveData object:', saveData);
-
       if (existingEvaluation) {
         // Update existing evaluation
         const { error } = await supabase
@@ -753,7 +790,7 @@ export default function GeneralEvaluatorReport() {
               .eq('id', existingEvaluation.id);
             if (!fallbackError) {
               Alert.alert('Success', 'General Evaluator Report updated successfully!');
-              await loadExistingEvaluation(user.id);
+              await refreshGeReportAfterSave();
               return;
             }
           }
@@ -785,7 +822,7 @@ export default function GeneralEvaluatorReport() {
               } as any);
             if (!fallbackError) {
               Alert.alert('Success', 'General Evaluator Report saved successfully!');
-              await loadExistingEvaluation(user.id);
+              await refreshGeReportAfterSave();
               return;
             }
           }
@@ -797,8 +834,7 @@ export default function GeneralEvaluatorReport() {
         Alert.alert('Success', 'General Evaluator Report saved successfully!');
       }
 
-      // Reload the evaluation to get the updated data
-      await loadExistingEvaluation(user.id);
+      await refreshGeReportAfterSave();
     } catch (error) {
       console.error('Error saving evaluation:', error);
       Alert.alert('Error', 'An unexpected error occurred while saving');
@@ -878,7 +914,7 @@ export default function GeneralEvaluatorReport() {
             } as any);
         }
 
-        await loadExistingEvaluation(user.id);
+        await refreshGeReportAfterSave();
       }
     } catch (error) {
       console.error('Error auto-saving evaluation:', error);
