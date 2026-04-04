@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
 import { suggestTimerQualification } from '@/lib/timerQualificationSuggestion';
 import { fetchTimerReportSnapshot, fetchTimerReportCategoryBundle, timerReportQueryKeys } from '@/lib/timerReportSnapshot';
+import { propagateMeetingVisitingGuestDisplayRename } from '@/lib/syncVisitingGuestRosterNames';
 import {
   type MeetingVisitingGuest,
   VISITING_GUEST_SLOT_COUNT,
@@ -1355,6 +1356,18 @@ export default function TimerReportDetails() {
     if (!canEditTimerCorner || !meetingId || !user?.currentClubId) return;
     setSavingVisitingGuests(true);
     try {
+      const { data: dbBefore, error: beforeErr } = await supabase
+        .from('app_meeting_visiting_guests')
+        .select('id, slot_number, display_name')
+        .eq('meeting_id', meetingId)
+        .order('slot_number', { ascending: true });
+      if (beforeErr) console.warn('visiting guests before save', beforeErr);
+      const beforeBySlot = new Map<number, { id: string; display_name: string }>();
+      for (const r of dbBefore || []) {
+        const row = r as { id: string; slot_number: number; display_name: string | null };
+        beforeBySlot.set(row.slot_number, { id: row.id, display_name: (row.display_name || '').trim() });
+      }
+
       for (let i = 0; i < VISITING_GUEST_SLOT_COUNT; i++) {
         const slot = i + 1;
         const name = (visitingGuestInputs[i] ?? '').trim();
@@ -1378,10 +1391,46 @@ export default function TimerReportDetails() {
           if (error) throw error;
         }
       }
+
+      const { data: dbAfter, error: afterErr } = await supabase
+        .from('app_meeting_visiting_guests')
+        .select('id, slot_number, display_name')
+        .eq('meeting_id', meetingId)
+        .order('slot_number', { ascending: true });
+      if (afterErr) console.warn('visiting guests after save', afterErr);
+      const afterBySlot = new Map<number, { id: string; display_name: string }>();
+      for (const r of dbAfter || []) {
+        const row = r as { id: string; slot_number: number; display_name: string | null };
+        afterBySlot.set(row.slot_number, { id: row.id, display_name: (row.display_name || '').trim() });
+      }
+
+      for (let i = 0; i < VISITING_GUEST_SLOT_COUNT; i++) {
+        const slot = i + 1;
+        const newRaw = (visitingGuestInputs[i] ?? '').trim();
+        const prev = beforeBySlot.get(slot);
+        const oldRaw = prev?.display_name?.trim() ?? '';
+        if (oldRaw === newRaw || !oldRaw || !newRaw) continue;
+        const after = afterBySlot.get(slot);
+        const guestId = after?.id ?? prev?.id;
+        if (!guestId) continue;
+        await propagateMeetingVisitingGuestDisplayRename({
+          meetingId,
+          oldRawName: oldRaw,
+          newRawName: newRaw,
+          visitingGuestId: guestId,
+        });
+      }
+
       await queryClient.invalidateQueries({
         predicate: (q) =>
           Array.isArray(q.queryKey) &&
           q.queryKey[0] === 'timer-report-snapshot' &&
+          q.queryKey[1] === meetingId,
+      });
+      await queryClient.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'ah-counter-snapshot' &&
           q.queryKey[1] === meetingId,
       });
       await loadData();

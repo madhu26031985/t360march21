@@ -12,6 +12,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -82,6 +83,14 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
     </>
   );
 
+  // Mobile web: `insets.bottom` is often huge on Android Chrome (double-counting with
+  // the browser/system UI), leaving a thick empty strip inside the tab bar. Cap it;
+  // native apps use the real safe area.
+  const tabBarBottomPadding =
+    Platform.OS === 'web'
+      ? Math.min(Math.max(insets.bottom, 8), 14)
+      : Math.max(insets.bottom, 10);
+
   return (
     <View
       style={[
@@ -89,7 +98,7 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
         {
           borderTopColor: theme.colors.border,
           backgroundColor: theme.colors.surface,
-          paddingBottom: Math.max(insets.bottom, 10),
+          paddingBottom: tabBarBottomPadding,
           width: windowWidth,
         },
       ]}

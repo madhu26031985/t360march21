@@ -8,6 +8,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ahCounterQueryKeys, fetchAhCounterSnapshot } from '@/lib/ahCounterSnapshot';
 import {
+  type MeetingVisitingGuest,
+  VISITING_GUEST_SLOT_COUNT,
+  parseMeetingVisitingGuests,
+  visitingGuestInputsFromRows,
+} from '@/lib/meetingVisitingGuests';
+import { propagateMeetingVisitingGuestDisplayRename } from '@/lib/syncVisitingGuestRosterNames';
+import {
   bookOpenMeetingRole,
   fetchOpenMeetingRoleId,
   fetchBookedMeetingRoleId,
@@ -15,7 +22,7 @@ import {
   reassignBookedMeetingRole,
   type BookMeetingRoleResult,
 } from '@/lib/bookMeetingRoleInline';
-import { ArrowLeft, Calendar, Clock, MapPin, Building2, User, FileText, ChartBar, Play, ClipboardList, Users, BookOpen, Star, Mic, CheckSquare, FileBarChart, MessageSquare, Crown, Settings, UserCog, LayoutDashboard, Vote, X, UserCheck, NotebookPen, ClipboardCheck, Trash2, Plus, Search, RotateCcw, UserPlus, Eye, EyeOff, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, MapPin, Building2, User, FileText, ChartBar, Play, ClipboardList, Users, BookOpen, Star, Mic, CheckSquare, FileBarChart, MessageSquare, Crown, Settings, UserCog, LayoutDashboard, Vote, X, UserCheck, NotebookPen, ClipboardCheck, Trash2, Plus, Search, RotateCcw, UserPlus, Eye, EyeOff, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { Image } from 'react-native';
 
 interface Meeting {
@@ -112,6 +119,13 @@ function displayWordForSlug(slug: string, clubCustomWords: string[]): string {
   return slug.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 }
 
+/** Summary breakdown line: "you know - 3 times" / "i mean - 1" */
+function formatAhCounterSummaryMemberBreakdownLine(displayLabel: string, count: number): string {
+  const phrase = displayLabel.trim().toLowerCase();
+  if (count === 1) return `${phrase} - 1`;
+  return `${phrase} - ${count} times`;
+}
+
 function rowHasAnyFillerCounts(row: Record<string, unknown>): boolean {
   for (const col of AH_COUNTER_INTEGER_COUNT_COLUMNS) {
     const v = row[col];
@@ -162,6 +176,20 @@ function formatAhCounterConsolidatedMeetingMeta(m: Meeting): string {
 /** Bottom dock icon size — matches `grammarian.tsx` Grammarian Report footer. */
 const FOOTER_NAV_ICON_SIZE = 15;
 
+const VISITING_GUEST_CHIP_PREFIX = 'visg:';
+
+function normalizeGuestNameKey(s: string): string {
+  return s.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+type AhCounterMemberChip = {
+  user_id: string;
+  full_name: string;
+  avatar_url: string | null;
+  /** From `app_meeting_visiting_guests` — same roster as Timer Corner */
+  isVisitingRoster?: boolean;
+};
+
 export default function AhCounterCorner() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -202,6 +230,12 @@ export default function AhCounterCorner() {
   const [showAddWordModal, setShowAddWordModal] = useState(false);
   const [newWordInput, setNewWordInput] = useState('');
   const [guestMembers, setGuestMembers] = useState<{ user_id: string; full_name: string }[]>([]);
+  const [visitingGuestInputs, setVisitingGuestInputs] = useState<string[]>(() =>
+    Array.from({ length: VISITING_GUEST_SLOT_COUNT }, () => '')
+  );
+  const [meetingVisitingGuests, setMeetingVisitingGuests] = useState<MeetingVisitingGuest[]>([]);
+  const [savingVisitingGuests, setSavingVisitingGuests] = useState(false);
+  const [visitingGuestsExpanded, setVisitingGuestsExpanded] = useState(false);
   const [showAddGuestModal, setShowAddGuestModal] = useState(false);
   const [newGuestInput, setNewGuestInput] = useState('');
   const [bookingAhCounterRole, setBookingAhCounterRole] = useState(false);
@@ -213,6 +247,94 @@ export default function AhCounterCorner() {
   const [fetchedAhCounterAvatarUrl, setFetchedAhCounterAvatarUrl] = useState<string | null>(null);
   const [ahCounterAvatarLoadFailed, setAhCounterAvatarLoadFailed] = useState(false);
 
+  const memberChipsForCorner = useMemo((): AhCounterMemberChip[] => {
+    const roster: AhCounterMemberChip[] = meetingVisitingGuests.map((g) => ({
+      user_id: `${VISITING_GUEST_CHIP_PREFIX}${g.id}`,
+      full_name: g.display_name,
+      avatar_url: null,
+      isVisitingRoster: true,
+    }));
+    const rosterNameKeys = new Set(roster.map((r) => normalizeGuestNameKey(r.full_name)));
+    const manual: AhCounterMemberChip[] = guestMembers
+      .filter((g) => !rosterNameKeys.has(normalizeGuestNameKey(g.full_name)))
+      .map((g) => ({
+        user_id: g.user_id,
+        full_name: g.full_name,
+        avatar_url: null,
+        isVisitingRoster: false,
+      }));
+    const audit: AhCounterMemberChip[] = auditMembers.map((a) => ({
+      user_id: a.user_id,
+      full_name: a.full_name,
+      avatar_url: a.avatar_url,
+      isVisitingRoster: false,
+    }));
+    return [...audit, ...roster, ...manual];
+  }, [auditMembers, meetingVisitingGuests, guestMembers]);
+
+  const ahCounterSummaryFillerAggregates = useMemo(() => {
+    const map = new Map<string, { label: string; count: number }>();
+    for (const e of reportEntries) {
+      const slug = fillerWordSlug(e.fillerWord);
+      const label = displayWordForSlug(slug, customFillerWords);
+      const cur = map.get(slug);
+      if (cur) cur.count += 1;
+      else map.set(slug, { label, count: 1 });
+    }
+    return [...map.entries()]
+      .map(([slug, v]) => ({ slug, label: v.label, count: v.count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [reportEntries, customFillerWords]);
+
+  const ahCounterSummaryTotalInstances = reportEntries.length;
+  const ahCounterSummaryDistinctFillers = ahCounterSummaryFillerAggregates.length;
+
+  const ahCounterSummaryMemberRows = useMemo(() => {
+    type Agg = { name: string; fillers: Map<string, { label: string; count: number }> };
+    const byMember = new Map<string, Agg>();
+    for (const e of reportEntries) {
+      const key = e.memberId;
+      let agg = byMember.get(key);
+      if (!agg) {
+        agg = { name: e.memberName, fillers: new Map() };
+        byMember.set(key, agg);
+      }
+      const slug = fillerWordSlug(e.fillerWord);
+      const label = displayWordForSlug(slug, customFillerWords);
+      const cur = agg.fillers.get(slug);
+      if (cur) cur.count += 1;
+      else agg.fillers.set(slug, { label, count: 1 });
+    }
+    return [...byMember.entries()]
+      .map(([memberKey, agg]) => {
+        const byFiller = [...agg.fillers.entries()]
+          .map(([slug, v]) => ({ slug, label: v.label, count: v.count }))
+          .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+        const total = byFiller.reduce((s, x) => s + x.count, 0);
+        return { memberKey, memberName: agg.name, total, byFiller };
+      })
+      .sort((a, b) => b.total - a.total || a.memberName.localeCompare(b.memberName));
+  }, [reportEntries, customFillerWords]);
+
+  const [expandedSummaryMemberKey, setExpandedSummaryMemberKey] = useState<string | null>(null);
+
+  const loadVisitingGuestDraftFromDb = useCallback(async () => {
+    if (!meetingId) return;
+    try {
+      const { data, error } = await supabase
+        .from('app_meeting_visiting_guests')
+        .select('id, meeting_id, club_id, slot_number, display_name, created_at, updated_at')
+        .eq('meeting_id', meetingId)
+        .order('slot_number', { ascending: true });
+      if (error) return;
+      const rows = parseMeetingVisitingGuests(data ?? []);
+      setMeetingVisitingGuests(rows);
+      setVisitingGuestInputs(visitingGuestInputsFromRows(rows));
+    } catch {
+      /* table may not exist until migration */
+    }
+  }, [meetingId]);
+
   useEffect(() => {
     if (meetingId && user?.currentClubId) {
       void loadData();
@@ -220,6 +342,10 @@ export default function AhCounterCorner() {
       setIsLoading(false);
     }
   }, [meetingId, user?.currentClubId]);
+
+  useEffect(() => {
+    setExpandedSummaryMemberKey(null);
+  }, [meetingId]);
 
   useEffect(() => {
     if (!canEditAhCounterCorner && activeTab === 'corner') {
@@ -257,6 +383,7 @@ export default function AhCounterCorner() {
     useCallback(() => {
       if (meetingId && user?.currentClubId && canEditAhCounterCorner) {
         void loadAuditMembers();
+        void loadVisitingGuestDraftFromDb();
       }
       if (!hasFocusedOnceRef.current) {
         hasFocusedOnceRef.current = true;
@@ -266,7 +393,7 @@ export default function AhCounterCorner() {
         void loadData();
         void loadAhCounterSummaryVisibility(false);
       }
-    }, [meetingId, user?.currentClubId, canEditAhCounterCorner])
+    }, [meetingId, user?.currentClubId, canEditAhCounterCorner, loadVisitingGuestDraftFromDb])
   );
 
   const bustAhCounterSnapshotCache = () => {
@@ -533,6 +660,8 @@ export default function AhCounterCorner() {
         });
         setPublishedCount(snap.published_count);
         setIsPublished(snap.total_reports > 0 && snap.published_count === snap.total_reports);
+        setMeetingVisitingGuests(snap.visiting_guests);
+        setVisitingGuestInputs(visitingGuestInputsFromRows(snap.visiting_guests));
         void loadClubName();
         void loadClubCustomFillerWords();
         // Heavy lists are loaded on-demand per tab (to keep initial load < 1s).
@@ -546,6 +675,7 @@ export default function AhCounterCorner() {
           loadPublishStatus(),
           loadClubName(),
           loadClubCustomFillerWords(),
+          loadVisitingGuestDraftFromDb(),
         ]);
       }
     } catch (error) {
@@ -768,12 +898,19 @@ export default function AhCounterCorner() {
         const r = row as Record<string, unknown>;
         const avatarUrl =
           (r.app_user_profiles as { avatar_url?: string } | null)?.avatar_url ?? null;
+        const vgId = r.visiting_guest_id as string | null | undefined;
+        const suid = r.speaker_user_id as string | null | undefined;
+        const stableMemberId = vgId
+          ? `${VISITING_GUEST_CHIP_PREFIX}${vgId}`
+          : suid
+            ? suid
+            : `guest_${r.speaker_name}`;
         for (const [col, word] of Object.entries(COLUMN_TO_FILLER_WORD)) {
           const count = (typeof r[col] === 'number' ? r[col] : 0) as number;
           for (let i = 0; i < count; i++) {
             entries.push({
               id: `${r.id}_${col}_${i}`,
-              memberId: (r.speaker_user_id as string) || `guest_${r.speaker_name}`,
+              memberId: stableMemberId,
               memberName: r.speaker_name as string,
               fillerWord: word,
               avatarUrl,
@@ -789,7 +926,7 @@ export default function AhCounterCorner() {
             for (let i = 0; i < n; i++) {
               entries.push({
                 id: `${r.id}_custom_${slug}_${i}`,
-                memberId: (r.speaker_user_id as string) || `guest_${r.speaker_name}`,
+                memberId: stableMemberId,
                 memberName: r.speaker_name as string,
                 fillerWord: displayWordForSlug(slug, clubWords),
                 avatarUrl,
@@ -886,6 +1023,102 @@ export default function AhCounterCorner() {
     }
   };
 
+  const handleSaveVisitingGuests = async () => {
+    if (!canEditAhCounterCorner || !meetingId || !user?.currentClubId) return;
+    setSavingVisitingGuests(true);
+    try {
+      const { data: dbBefore, error: beforeErr } = await supabase
+        .from('app_meeting_visiting_guests')
+        .select('id, slot_number, display_name')
+        .eq('meeting_id', meetingId)
+        .order('slot_number', { ascending: true });
+      if (beforeErr) console.warn('visiting guests before save', beforeErr);
+      const beforeBySlot = new Map<number, { id: string; display_name: string }>();
+      for (const r of dbBefore || []) {
+        const row = r as { id: string; slot_number: number; display_name: string | null };
+        beforeBySlot.set(row.slot_number, { id: row.id, display_name: (row.display_name || '').trim() });
+      }
+
+      for (let i = 0; i < VISITING_GUEST_SLOT_COUNT; i++) {
+        const slot = i + 1;
+        const name = (visitingGuestInputs[i] ?? '').trim();
+        if (!name) {
+          const { error } = await supabase
+            .from('app_meeting_visiting_guests')
+            .delete()
+            .eq('meeting_id', meetingId)
+            .eq('slot_number', slot);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('app_meeting_visiting_guests').upsert(
+            {
+              meeting_id: meetingId,
+              club_id: user.currentClubId,
+              slot_number: slot,
+              display_name: name,
+            },
+            { onConflict: 'meeting_id,slot_number' }
+          );
+          if (error) throw error;
+        }
+      }
+
+      const { data: dbAfter, error: afterErr } = await supabase
+        .from('app_meeting_visiting_guests')
+        .select('id, slot_number, display_name')
+        .eq('meeting_id', meetingId)
+        .order('slot_number', { ascending: true });
+      if (afterErr) console.warn('visiting guests after save', afterErr);
+      const afterBySlot = new Map<number, { id: string; display_name: string }>();
+      for (const r of dbAfter || []) {
+        const row = r as { id: string; slot_number: number; display_name: string | null };
+        afterBySlot.set(row.slot_number, { id: row.id, display_name: (row.display_name || '').trim() });
+      }
+
+      for (let i = 0; i < VISITING_GUEST_SLOT_COUNT; i++) {
+        const slot = i + 1;
+        const newRaw = (visitingGuestInputs[i] ?? '').trim();
+        const prev = beforeBySlot.get(slot);
+        const oldRaw = prev?.display_name?.trim() ?? '';
+        if (oldRaw === newRaw || !oldRaw || !newRaw) continue;
+        const after = afterBySlot.get(slot);
+        const guestId = after?.id ?? prev?.id;
+        if (!guestId) continue;
+        await propagateMeetingVisitingGuestDisplayRename({
+          meetingId,
+          oldRawName: oldRaw,
+          newRawName: newRaw,
+          visitingGuestId: guestId,
+        });
+      }
+
+      await queryClient.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'timer-report-snapshot' &&
+          q.queryKey[1] === meetingId,
+      });
+      await queryClient.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'ah-counter-snapshot' &&
+          q.queryKey[1] === meetingId,
+      });
+      bustAhCounterSnapshotCache();
+      await loadData();
+      await loadVisitingGuestDraftFromDb();
+      Alert.alert('Saved', 'Visiting Guest roster is stored for this meeting (same list as Timer Corner).');
+    } catch (e: unknown) {
+      console.error('handleSaveVisitingGuests', e);
+      Alert.alert(
+        'Error',
+        'Could not save Visiting Guest roster. Apply the latest database migration (app_meeting_visiting_guests), then try again.'
+      );
+    } finally {
+      setSavingVisitingGuests(false);
+    }
+  };
+
   useEffect(() => {
     if (!meetingId) return;
     void loadAhCounterSummaryVisibility(true);
@@ -893,21 +1126,45 @@ export default function AhCounterCorner() {
 
   const addToReport = async () => {
     if (!selectedFillerWord || !selectedMemberId || !meetingId || !user?.currentClubId || !user?.id) return;
-    const member = [...auditMembers, ...guestMembers].find(m => m.user_id === selectedMemberId);
+    const member = memberChipsForCorner.find((m) => m.user_id === selectedMemberId);
     if (!member) return;
+    const visitingGuestId = selectedMemberId.startsWith(VISITING_GUEST_CHIP_PREFIX)
+      ? selectedMemberId.slice(VISITING_GUEST_CHIP_PREFIX.length)
+      : null;
 
     setIsSavingEntry(true);
     try {
       const column = FILLER_WORD_TO_COLUMN[selectedFillerWord];
+      const isManualGuestChip = selectedMemberId.startsWith('guest_');
+
+      /** PostgREST requires `.select()` before `.eq()` filters — do not chain `.eq()` off `.from()` alone. */
+      const existingRowSelect = (columns: string) => {
+        let q = supabase
+          .from('ah_counter_reports')
+          .select(columns)
+          .eq('meeting_id', meetingId)
+          .eq('club_id', user.currentClubId);
+        if (visitingGuestId) {
+          return q.eq('visiting_guest_id', visitingGuestId);
+        }
+        if (isManualGuestChip) {
+          return q.is('speaker_user_id', null).eq('speaker_name', member.full_name);
+        }
+        return q.eq('speaker_user_id', selectedMemberId);
+      };
+
+      const speakerInsertFields = () => {
+        if (visitingGuestId) {
+          return { speaker_user_id: null as string | null, visiting_guest_id: visitingGuestId };
+        }
+        if (isManualGuestChip) {
+          return { speaker_user_id: null as string | null, visiting_guest_id: null as null };
+        }
+        return { speaker_user_id: selectedMemberId, visiting_guest_id: null as null };
+      };
 
       if (column) {
-        const { data: existing } = await supabase
-          .from('ah_counter_reports')
-          .select(`id, ${column}`)
-          .eq('meeting_id', meetingId)
-          .eq('club_id', user.currentClubId)
-          .eq('speaker_user_id', selectedMemberId)
-          .maybeSingle();
+        const { data: existing } = await existingRowSelect(`id, ${column}`).maybeSingle();
 
         let rowId: string;
         if (existing) {
@@ -924,9 +1181,9 @@ export default function AhCounterCorner() {
             .insert({
               meeting_id: meetingId,
               club_id: user.currentClubId,
-              speaker_user_id: selectedMemberId,
               speaker_name: member.full_name,
               recorded_by: user.id,
+              ...speakerInsertFields(),
               [column]: 1,
             })
             .select('id')
@@ -947,13 +1204,7 @@ export default function AhCounterCorner() {
         setReportEntries(prev => [newEntry, ...prev]);
       } else {
         const slug = fillerWordSlug(selectedFillerWord);
-        const { data: existing } = await supabase
-          .from('ah_counter_reports')
-          .select('id, custom_filler_counts')
-          .eq('meeting_id', meetingId)
-          .eq('club_id', user.currentClubId)
-          .eq('speaker_user_id', selectedMemberId)
-          .maybeSingle();
+        const { data: existing } = await existingRowSelect('id, custom_filler_counts').maybeSingle();
 
         const prevCounts =
           (existing?.custom_filler_counts as Record<string, number> | null) || {};
@@ -973,9 +1224,9 @@ export default function AhCounterCorner() {
             .insert({
               meeting_id: meetingId,
               club_id: user.currentClubId,
-              speaker_user_id: selectedMemberId,
               speaker_name: member.full_name,
               recorded_by: user.id,
+              ...speakerInsertFields(),
               custom_filler_counts: { [slug]: 1 },
             })
             .select('id')
@@ -1741,6 +1992,96 @@ export default function AhCounterCorner() {
                 </TouchableOpacity>
               )}
 
+              {canEditAhCounterCorner && meeting && (
+                <View
+                  style={[
+                    styles.ahCounterPanelSection,
+                    {
+                      borderBottomColor: theme.colors.border,
+                      paddingVertical: 10,
+                    },
+                  ]}
+                >
+                  <View style={styles.visitingGuestsHeaderRow}>
+                    <View style={styles.summaryVisibilityLeft}>
+                      <Users size={18} color={theme.colors.primary} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.summaryVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                          Visiting Guest Management
+                        </Text>
+                        {!visitingGuestsExpanded ? (
+                          <Text
+                            style={[styles.summaryVisibilityHint, { color: theme.colors.textSecondary, lineHeight: 15 }]}
+                            maxFontSizeMultiplier={1.1}
+                          >
+                            Same roster as Timer Corner (up to 5). Edits here or on the Timer Report stay in sync for this meeting.
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.summaryVisibilityButton,
+                        {
+                          backgroundColor: visitingGuestsExpanded ? '#2563eb' : theme.colors.background,
+                          borderColor: visitingGuestsExpanded ? '#2563eb' : theme.colors.border,
+                        },
+                      ]}
+                      onPress={() => setVisitingGuestsExpanded((v) => !v)}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        visitingGuestsExpanded ? 'Close Visiting Guest Management' : 'Open Visiting Guest Management'
+                      }
+                    >
+                      {visitingGuestsExpanded ? (
+                        <ChevronUp size={16} color="#ffffff" />
+                      ) : (
+                        <ChevronDown size={16} color={theme.colors.textSecondary} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  {visitingGuestsExpanded ? (
+                    <>
+                      {Array.from({ length: VISITING_GUEST_SLOT_COUNT }, (_, i) => (
+                        <View key={i} style={[styles.visitingGuestRow, i === 0 && styles.visitingGuestRowFirst]}>
+                          <Text style={[styles.visitingGuestLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                            {`Visiting Guest ${i + 1}`}
+                          </Text>
+                          <TextInput
+                            style={[styles.visitingGuestInput, { borderColor: theme.colors.border, color: theme.colors.text }]}
+                            placeholder="Name (e.g. Subha)"
+                            placeholderTextColor={theme.colors.textSecondary}
+                            value={visitingGuestInputs[i] ?? ''}
+                            onChangeText={(t) =>
+                              setVisitingGuestInputs((prev) => {
+                                const next = [...prev];
+                                next[i] = t;
+                                return next;
+                              })
+                            }
+                            editable={!savingVisitingGuests}
+                            maxFontSizeMultiplier={1.2}
+                          />
+                        </View>
+                      ))}
+                      <TouchableOpacity
+                        style={[styles.visitingGuestsSaveBtn, { backgroundColor: '#2563eb', opacity: savingVisitingGuests ? 0.6 : 1 }]}
+                        onPress={() => void handleSaveVisitingGuests()}
+                        disabled={savingVisitingGuests}
+                      >
+                        {savingVisitingGuests ? (
+                          <ActivityIndicator color="#ffffff" />
+                        ) : (
+                          <Text style={styles.visitingGuestsSaveBtnText} maxFontSizeMultiplier={1.2}>
+                            Save Visiting Guest roster
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </>
+                  ) : null}
+                </View>
+              )}
+
               <View style={[styles.ahCounterPanelSection, { borderBottomColor: theme.colors.border }]}>
                 <Text style={[styles.auditBoxTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                   Filler Words
@@ -1781,25 +2122,31 @@ export default function AhCounterCorner() {
                 </View>
               </View>
 
-              {(auditMembers.length > 0 || guestMembers.length > 0) && (
+              {(auditMembers.length > 0 ||
+                meetingVisitingGuests.length > 0 ||
+                guestMembers.length > 0) && (
                 <View style={[styles.ahCounterPanelSection, { borderBottomColor: theme.colors.border }]}>
                   <Text style={[styles.auditBoxTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Members
+                    Meeting Attendees
                   </Text>
                   {auditMembersLoading ? (
                     <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginVertical: 12 }} />
                   ) : (
                     <View style={styles.fillerWordsGrid}>
-                      {[...auditMembers, ...guestMembers]
+                      {[...memberChipsForCorner]
                         .sort((a, b) => a.full_name.localeCompare(b.full_name))
-                        .map(member => (
+                        .map((member) => {
+                          const isDashedGuest =
+                            member.user_id.startsWith('guest_') ||
+                            member.user_id.startsWith(VISITING_GUEST_CHIP_PREFIX);
+                          return (
                           <TouchableOpacity
                             key={member.user_id}
                             style={[
                               styles.fillerWordChip,
                               selectedMemberId === member.user_id
                                 ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
-                                : member.user_id.startsWith('guest_')
+                                : isDashedGuest
                                   ? { backgroundColor: theme.colors.background, borderColor: '#f59e0b', borderStyle: 'dashed' }
                                   : { backgroundColor: theme.colors.background, borderColor: theme.colors.border },
                               !canEditAhCounterCorner && { opacity: 0.5 },
@@ -1820,7 +2167,8 @@ export default function AhCounterCorner() {
                               {member.full_name}
                             </Text>
                           </TouchableOpacity>
-                        ))}
+                          );
+                        })}
                       {canEditAhCounterCorner && (
                         <TouchableOpacity
                           style={[styles.fillerWordChip, styles.addWordChip, { borderColor: theme.colors.primary }]}
@@ -1856,7 +2204,7 @@ export default function AhCounterCorner() {
                         <Plus size={18} color="#ffffff" />
                         <Text style={styles.addToReportBtnText} maxFontSizeMultiplier={1.3}>
                           {selectedFillerWord && selectedMemberId
-                            ? `Add to Report: ${[...auditMembers, ...guestMembers].find(m => m.user_id === selectedMemberId)?.full_name} – ${selectedFillerWord}`
+                            ? `Add to Report: ${memberChipsForCorner.find((m) => m.user_id === selectedMemberId)?.full_name} – ${selectedFillerWord}`
                             : 'Select a filler word and member'}
                         </Text>
                       </>
@@ -1965,46 +2313,137 @@ export default function AhCounterCorner() {
                   ]}
                 >
                   <Text style={[styles.auditBoxTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Summary {reportEntries.length > 0 ? `(${reportEntries.length})` : ''}
+                    Filler word counts
+                    {ahCounterSummaryTotalInstances > 0 ? ` (${ahCounterSummaryTotalInstances})` : ''}
                   </Text>
                   {reportEntries.length === 0 ? (
                     <Text style={[styles.auditEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                       No Ah Counter entries recorded yet for this meeting.
                     </Text>
                   ) : (
-                    reportEntries.map((entry, index) => (
+                    <>
+                      {ahCounterSummaryFillerAggregates.map((row, index) => (
+                        <View
+                          key={row.slug}
+                          style={[
+                            styles.summaryAggregateRow,
+                            { borderBottomColor: theme.colors.border },
+                            index === ahCounterSummaryFillerAggregates.length - 1 && { borderBottomWidth: 0 },
+                          ]}
+                        >
+                          <Text
+                            style={[styles.summaryAggregateLabel, { color: theme.colors.text }]}
+                            maxFontSizeMultiplier={1.3}
+                          >
+                            {row.label}
+                          </Text>
+                          <Text
+                            style={[styles.summaryAggregateCount, { color: theme.colors.textSecondary }]}
+                            maxFontSizeMultiplier={1.3}
+                          >
+                            {row.count === 1 ? '1 time' : `${row.count} times`}
+                          </Text>
+                        </View>
+                      ))}
+                      <Text
+                        style={[styles.auditBoxTitle, styles.summaryOverallTitle, { color: theme.colors.text }]}
+                        maxFontSizeMultiplier={1.3}
+                      >
+                        Overall usage
+                      </Text>
                       <View
-                        key={`sum-${entry.id}`}
                         style={[
-                          styles.reportEntryRow,
-                          { borderBottomColor: theme.colors.border },
-                          index === reportEntries.length - 1 && { borderBottomWidth: 0 },
+                          styles.summaryOverallBox,
+                          { backgroundColor: theme.colors.background, borderColor: theme.colors.border },
                         ]}
                       >
-                        <View style={styles.reportEntryLeft}>
-                          <View style={[styles.reportEntryAvatar, { backgroundColor: theme.colors.primary + '20' }]}>
-                            {entry.avatarUrl ? (
-                              <Image source={{ uri: entry.avatarUrl }} style={styles.reportEntryAvatarImg} />
-                            ) : (
-                              <Text
-                                style={[styles.reportEntryAvatarInitial, { color: theme.colors.primary }]}
-                                maxFontSizeMultiplier={1.3}
-                              >
-                                {entry.memberName.charAt(0).toUpperCase()}
-                              </Text>
-                            )}
-                          </View>
-                          <View style={styles.reportEntryInfo}>
-                            <Text style={[styles.reportEntryName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                              {entry.memberName}
-                            </Text>
-                            <Text style={[styles.reportEntryFiller, { color: '#ef4444' }]} maxFontSizeMultiplier={1.3}>
-                              {entry.fillerWord}
-                            </Text>
-                          </View>
-                        </View>
+                        <Text style={[styles.summaryOverallLine, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                          {ahCounterSummaryTotalInstances === 1
+                            ? '1 filler instance recorded for this meeting.'
+                            : `${ahCounterSummaryTotalInstances} filler instances recorded for this meeting.`}
+                        </Text>
+                        <Text
+                          style={[styles.summaryOverallSubline, { color: theme.colors.textSecondary }]}
+                          maxFontSizeMultiplier={1.2}
+                        >
+                          {ahCounterSummaryDistinctFillers === 0
+                            ? ''
+                            : ahCounterSummaryDistinctFillers === 1
+                              ? 'Across 1 distinct filler word or phrase.'
+                              : `Across ${ahCounterSummaryDistinctFillers} distinct filler words or phrases.`}
+                        </Text>
                       </View>
-                    ))
+                      <Text
+                        style={[styles.auditBoxTitle, styles.summaryMemberSectionTitle, { color: theme.colors.text }]}
+                        maxFontSizeMultiplier={1.3}
+                      >
+                        Member filler count
+                      </Text>
+                      {ahCounterSummaryMemberRows.map((row, rowIndex) => {
+                        const expanded = expandedSummaryMemberKey === row.memberKey;
+                        return (
+                          <View
+                            key={row.memberKey}
+                            style={[
+                              styles.summaryMemberBlock,
+                              rowIndex < ahCounterSummaryMemberRows.length - 1 && {
+                                borderBottomWidth: 1,
+                                borderBottomColor: theme.colors.border,
+                              },
+                            ]}
+                          >
+                            <TouchableOpacity
+                              style={styles.summaryMemberRowHit}
+                              onPress={() =>
+                                setExpandedSummaryMemberKey((k) => (k === row.memberKey ? null : row.memberKey))
+                              }
+                              activeOpacity={0.7}
+                              accessibilityRole="button"
+                              accessibilityState={{ expanded }}
+                            >
+                              <View style={styles.summaryMemberRowInner}>
+                                <Text
+                                  style={[styles.summaryMemberName, { color: theme.colors.text }]}
+                                  maxFontSizeMultiplier={1.3}
+                                  numberOfLines={2}
+                                >
+                                  {row.memberName}
+                                </Text>
+                                <Text
+                                  style={[styles.summaryMemberTotal, { color: theme.colors.textSecondary }]}
+                                  maxFontSizeMultiplier={1.3}
+                                >
+                                  {row.total} count
+                                </Text>
+                                {expanded ? (
+                                  <ChevronUp size={18} color={theme.colors.textSecondary} />
+                                ) : (
+                                  <ChevronDown size={18} color={theme.colors.textSecondary} />
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                            {expanded ? (
+                              <View
+                                style={[
+                                  styles.summaryMemberBreakdown,
+                                  { borderLeftColor: theme.colors.primary + '55' },
+                                ]}
+                              >
+                                {row.byFiller.map((f) => (
+                                  <Text
+                                    key={f.slug}
+                                    style={[styles.summaryMemberBreakdownLine, { color: theme.colors.textSecondary }]}
+                                    maxFontSizeMultiplier={1.25}
+                                  >
+                                    {formatAhCounterSummaryMemberBreakdownLine(f.label, f.count)}
+                                  </Text>
+                                ))}
+                              </View>
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                    </>
                   )}
                 </View>
               </View>
@@ -2869,6 +3308,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 3,
   },
+  visitingGuestsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  visitingGuestRow: {
+    marginBottom: 8,
+  },
+  visitingGuestRowFirst: {
+    marginTop: 4,
+  },
+  visitingGuestLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  visitingGuestInput: {
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
+  visitingGuestsSaveBtn: {
+    marginTop: 6,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 0,
+  },
+  visitingGuestsSaveBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   footerNavigationInline: {
     marginHorizontal: 16,
     borderRadius: 16,
@@ -3228,6 +3703,78 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     paddingVertical: 8,
+  },
+  summaryAggregateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  summaryAggregateLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    flex: 1,
+  },
+  summaryAggregateCount: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  summaryOverallTitle: {
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  summaryOverallBox: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+    gap: 6,
+  },
+  summaryOverallLine: {
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  summaryOverallSubline: {
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  summaryMemberSectionTitle: {
+    marginTop: 22,
+    marginBottom: 10,
+  },
+  summaryMemberBlock: {
+    marginBottom: 0,
+  },
+  summaryMemberRowHit: {
+    paddingVertical: 4,
+  },
+  summaryMemberRowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+  },
+  summaryMemberName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  summaryMemberTotal: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  summaryMemberBreakdown: {
+    marginLeft: 4,
+    marginBottom: 10,
+    paddingLeft: 12,
+    gap: 6,
+    borderLeftWidth: 3,
+  },
+  summaryMemberBreakdownLine: {
+    fontSize: 13,
+    lineHeight: 20,
   },
   reportEntryRow: {
     flexDirection: 'row',

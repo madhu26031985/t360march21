@@ -22,7 +22,7 @@ import {
 } from '@/lib/grammarianCornerQuery';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
 import { GrammarianNotesScreen } from './grammarian-notes';
-import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus, UserCog, ClipboardCheck, Vote } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, EyeOff, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus, UserCog, ClipboardCheck, Vote } from 'lucide-react-native';
 
 /** Match Toastmaster / corner bottom dock icon size */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -50,6 +50,16 @@ function grammarianMeetingModeLabel(m: Meeting): string {
 }
 
 /** Matches General Evaluator / Toastmaster Corner meta line */
+function isGrammarianSummaryVisibilityTableError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const msg = (error.message || '').toLowerCase();
+  return (
+    error.code === '42P01' ||
+    msg.includes('grammarian_meeting_summary_visibility') ||
+    msg.includes('does not exist')
+  );
+}
+
 function formatGrammarianConsolidatedMeetingMeta(m: Meeting): string {
   const date = new Date(m.meeting_date);
   const monthDay = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
@@ -169,6 +179,8 @@ export default function GrammarianReport() {
   });
   const [grammarianReportId, setGrammarianReportId] = useState<string | null>(null);
   const [hasPublishedLiveObservations, setHasPublishedLiveObservations] = useState(false);
+  /** Any Good usage / Opportunity row for this meeting (published or not) — drives Summary → Reports. */
+  const [hasAnyLiveMeetingNotes, setHasAnyLiveMeetingNotes] = useState(false);
   
   const [dailyElements, setDailyElements] = useState<DailyElements>({
     word_of_the_day: '',
@@ -202,6 +214,8 @@ export default function GrammarianReport() {
   const [cornerLiveSubTab, setCornerLiveSubTab] = useState<'good-usage' | 'improvements' | 'stats'>('good-usage');
   /** Sub-tabs under Grammarian Corner: prep shortcuts vs live meeting tools */
   const [cornerPhaseTab, setCornerPhaseTab] = useState<'pre-meeting' | 'live-meeting'>('pre-meeting');
+  const [grammarianSummaryVisibleToMembers, setGrammarianSummaryVisibleToMembers] = useState(true);
+  const [grammarianSummaryVisibilityFetched, setGrammarianSummaryVisibilityFetched] = useState(false);
   const [showGrammarianInfoModal, setShowGrammarianInfoModal] = useState(false);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
   const lastLoadAtRef = useRef<number>(0);
@@ -259,6 +273,7 @@ export default function GrammarianReport() {
         loadWordOfTheDay();
         loadIdiomOfTheDay();
         loadQuoteOfTheDay();
+        void loadLiveObservationPresence();
       }
     }, [meetingId])
   );
@@ -382,6 +397,7 @@ export default function GrammarianReport() {
         console.error('Error loading data:', error);
         Alert.alert('Error', 'Failed to load Grammarian data');
       } finally {
+        void loadLiveObservationPresence();
         lastLoadAtRef.current = Date.now();
         setIsLoading(false);
         loadInFlightRef.current = null;
@@ -392,13 +408,45 @@ export default function GrammarianReport() {
     return loadInFlightRef.current;
   };
 
+  const loadGrammarianSummaryVisibility = useCallback(async () => {
+    if (!meetingId) return;
+    setGrammarianSummaryVisibilityFetched(false);
+    try {
+      const { data, error } = await supabase
+        .from('grammarian_meeting_summary_visibility')
+        .select('summary_visible_to_members')
+        .eq('meeting_id', meetingId)
+        .maybeSingle();
+      if (error) {
+        if (isGrammarianSummaryVisibilityTableError(error)) {
+          setGrammarianSummaryVisibleToMembers(true);
+          return;
+        }
+        console.error('grammarian_meeting_summary_visibility:', error);
+        setGrammarianSummaryVisibleToMembers(true);
+        return;
+      }
+      setGrammarianSummaryVisibleToMembers(data?.summary_visible_to_members !== false);
+    } catch (e) {
+      console.error('loadGrammarianSummaryVisibility', e);
+      setGrammarianSummaryVisibleToMembers(true);
+    } finally {
+      setGrammarianSummaryVisibilityFetched(true);
+    }
+  }, [meetingId]);
+
+  useEffect(() => {
+    if (!meetingId) return;
+    void loadGrammarianSummaryVisibility();
+  }, [meetingId, loadGrammarianSummaryVisibility]);
+
   useEffect(() => {
     if (cornerPhaseTab !== 'live-meeting') return;
     if (!meetingId) return;
     if (liveDataLoadedRef.current) return;
 
     liveDataLoadedRef.current = true;
-    void Promise.all([loadPublishedLiveObservations(), loadGrammarianReport()]);
+    void Promise.all([loadLiveObservationPresence(), loadGrammarianReport()]);
   }, [cornerPhaseTab, meetingId]);
 
   const handleBookGrammarianInline = async () => {
@@ -768,11 +816,11 @@ export default function GrammarianReport() {
     }
   };
 
-  const loadPublishedLiveObservations = async () => {
+  const loadLiveObservationPresence = async () => {
     if (!meetingId) return;
 
     try {
-      const [goodUsageResult, improvementsResult] = await Promise.all([
+      const [pubGood, pubImp, anyGood, anyImp] = await Promise.all([
         supabase
           .from('grammarian_live_good_usage')
           .select('id')
@@ -785,15 +833,19 @@ export default function GrammarianReport() {
           .eq('meeting_id', meetingId)
           .eq('is_published', true)
           .limit(1),
+        supabase.from('grammarian_live_good_usage').select('id').eq('meeting_id', meetingId).limit(1),
+        supabase.from('grammarian_live_improvements').select('id').eq('meeting_id', meetingId).limit(1),
       ]);
 
       const hasPublished =
-        (goodUsageResult.data && goodUsageResult.data.length > 0) ||
-        (improvementsResult.data && improvementsResult.data.length > 0);
-
+        (pubGood.data && pubGood.data.length > 0) || (pubImp.data && pubImp.data.length > 0);
       setHasPublishedLiveObservations(!!hasPublished);
+
+      const hasAny =
+        (anyGood.data && anyGood.data.length > 0) || (anyImp.data && anyImp.data.length > 0);
+      setHasAnyLiveMeetingNotes(!!hasAny);
     } catch (error) {
-      console.error('Error loading published live observations:', error);
+      console.error('Error loading live observation presence:', error);
     }
   };
 
@@ -1171,6 +1223,15 @@ export default function GrammarianReport() {
            (quoteOfTheDay !== null && quoteOfTheDay.quote && quoteOfTheDay.quote.trim().length > 0 && quoteOfTheDay.is_published);
   };
 
+  /** Members: show Corner placeholder only when there is nothing to read (lexicon draft/published, live notes, or published live). */
+  const hasAnyGrammarianShareableContent = () =>
+    hasAnyPublishedDailyContent() ||
+    wordOfTheDay.word.trim().length > 0 ||
+    !!(idiomOfTheDay?.idiom?.trim()) ||
+    !!(quoteOfTheDay?.quote?.trim()) ||
+    hasAnyLiveMeetingNotes ||
+    hasPublishedLiveObservations;
+
   const formatMeetingMode = (mode: string) => {
     switch (mode) {
       case 'in_person': return 'In Person';
@@ -1185,6 +1246,38 @@ export default function GrammarianReport() {
   };
   const canEditGrammarianCorner = () => {
     return isAssignedGrammarian() || isVPEClub;
+  };
+
+  const handleGrammarianSummaryVisibilityChange = async (visible: boolean) => {
+    if (!canEditGrammarianCorner() || !meetingId) return;
+    setGrammarianSummaryVisibleToMembers(visible);
+    try {
+      const { error } = await supabase.from('grammarian_meeting_summary_visibility').upsert(
+        {
+          meeting_id: meetingId,
+          summary_visible_to_members: visible,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'meeting_id' }
+      );
+      if (error) {
+        if (isGrammarianSummaryVisibilityTableError(error)) {
+          Alert.alert('Migration required', 'Apply the latest Grammarian database migration, then try again.');
+          void loadGrammarianSummaryVisibility();
+          return;
+        }
+        console.error('grammarian_meeting_summary_visibility upsert:', error);
+        Alert.alert('Error', 'Could not update Grammarian summary visibility.');
+        void loadGrammarianSummaryVisibility();
+        return;
+      }
+      if (user?.id && user?.currentClubId) {
+        invalidateGrammarianCornerSnapshotCache(meetingId, user.id, user.currentClubId);
+      }
+      void loadData({ force: true });
+    } catch (e) {
+      console.error('handleGrammarianSummaryVisibilityChange', e);
+    }
   };
 
   const hasAnyDailyElements = () => {
@@ -2018,109 +2111,192 @@ export default function GrammarianReport() {
               </View>
             ) : (
               <>
-                <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface, paddingTop: 14 }]}>
-                  <View style={[styles.liveSegmentControl, { backgroundColor: '#F8FAFC', borderColor: '#DBEAFE' }]}>
-                    <TouchableOpacity
-                      style={[
-                        styles.liveSegmentTab,
-                        cornerLiveSubTab === 'good-usage' && [styles.liveSegmentTabActive, { backgroundColor: '#EFF6FF' }],
-                      ]}
-                      onPress={() => {
-                        setCornerLiveSubTab('good-usage');
-                      }}
-                    >
-                      <CheckCircle2
-                        size={14}
-                        color={cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary}
-                      />
-                      <Text
+                {canEditGrammarianCorner() && (
+                  <View
+                    style={[
+                      styles.liveMeetingVisibilityCard,
+                      {
+                        marginHorizontal: 16,
+                        marginTop: 10,
+                        backgroundColor: theme.colors.surface,
+                        borderColor: theme.colors.border,
+                      },
+                    ]}
+                  >
+                    <View style={styles.summaryVisibilityRow}>
+                      <View style={styles.summaryVisibilityLeft}>
+                        {grammarianSummaryVisibleToMembers ? (
+                          <Eye size={18} color={theme.colors.primary} />
+                        ) : (
+                          <EyeOff size={18} color={theme.colors.textSecondary} />
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.summaryVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                            Show report to member
+                          </Text>
+                          <Text style={[styles.summaryVisibilityHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                            {grammarianSummaryVisibleToMembers
+                              ? 'Members can see Grammarian Summary on screen.'
+                              : 'Hidden until you turn this on. No one (including you) can view live report or summary while off.'}
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
                         style={[
-                          styles.liveSegmentTabText,
+                          styles.summaryVisibilityButton,
                           {
-                            color: cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary,
-                            fontWeight: cornerLiveSubTab === 'good-usage' ? '700' : '600',
+                            backgroundColor: grammarianSummaryVisibleToMembers ? '#2563eb' : theme.colors.background,
+                            borderColor: grammarianSummaryVisibleToMembers ? '#2563eb' : theme.colors.border,
                           },
                         ]}
-                        maxFontSizeMultiplier={1.3}
+                        onPress={() => handleGrammarianSummaryVisibilityChange(!grammarianSummaryVisibleToMembers)}
                       >
-                        Good Usage
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={[styles.liveSegmentDivider, { backgroundColor: '#DBEAFE' }]} />
-
-                    <TouchableOpacity
-                      style={[
-                        styles.liveSegmentTab,
-                        cornerLiveSubTab === 'improvements' && [styles.liveSegmentTabActive, { backgroundColor: '#EFF6FF' }],
-                      ]}
-                      onPress={() => {
-                        setCornerLiveSubTab('improvements');
-                      }}
-                    >
-                      <AlertTriangle
-                        size={14}
-                        color={cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          styles.liveSegmentTabText,
-                          {
-                            color: cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary,
-                            fontWeight: cornerLiveSubTab === 'improvements' ? '700' : '600',
-                          },
-                        ]}
-                        maxFontSizeMultiplier={1.3}
-                      >
-                        Opportunity
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={[styles.liveSegmentDivider, { backgroundColor: '#DBEAFE' }]} />
-
-                    <TouchableOpacity
-                      style={[
-                        styles.liveSegmentTab,
-                        cornerLiveSubTab === 'stats' && [styles.liveSegmentTabActive, { backgroundColor: '#EFF6FF' }],
-                      ]}
-                      onPress={() => {
-                        setCornerLiveSubTab('stats');
-                      }}
-                    >
-                      <TrendingUp
-                        size={14}
-                        color={cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          styles.liveSegmentTabText,
-                          {
-                            color: cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary,
-                            fontWeight: cornerLiveSubTab === 'stats' ? '700' : '600',
-                          },
-                        ]}
-                        maxFontSizeMultiplier={1.3}
-                      >
-                        Stats
-                      </Text>
-                    </TouchableOpacity>
+                        {grammarianSummaryVisibleToMembers ? (
+                          <Eye size={16} color="#ffffff" />
+                        ) : (
+                          <EyeOff size={16} color={theme.colors.textSecondary} />
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
+                )}
+                {!grammarianSummaryVisibilityFetched ? (
+                  <View style={{ paddingVertical: 28, alignItems: 'center', justifyContent: 'center' }}>
+                    <ActivityIndicator color={theme.colors.primary} />
+                    <Text
+                      style={[styles.viewOnlyBannerText, { color: theme.colors.textSecondary, marginTop: 12 }]}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      Checking report visibility…
+                    </Text>
+                  </View>
+                ) : !grammarianSummaryVisibleToMembers ? (
+                  <View
+                    style={[
+                      styles.viewOnlyBanner,
+                      {
+                        marginHorizontal: 16,
+                        marginTop: 8,
+                        marginBottom: 8,
+                        backgroundColor: theme.colors.surface,
+                        borderColor: theme.colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.unpublishedReportTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                      Report is yet to be published..
+                    </Text>
+                    <Text style={[styles.viewOnlyBannerText, { color: theme.colors.textSecondary, marginTop: 8 }]} maxFontSizeMultiplier={1.15}>
+                      Turn on &quot;Show report to member&quot; above when you are ready to share this report with the meeting.
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <View style={[styles.preMeetingSection, { backgroundColor: theme.colors.surface, paddingTop: 14 }]}>
+                      <View style={[styles.liveSegmentControl, { backgroundColor: '#F8FAFC', borderColor: '#DBEAFE' }]}>
+                        <TouchableOpacity
+                          style={[
+                            styles.liveSegmentTab,
+                            cornerLiveSubTab === 'good-usage' && [styles.liveSegmentTabActive, { backgroundColor: '#EFF6FF' }],
+                          ]}
+                          onPress={() => {
+                            setCornerLiveSubTab('good-usage');
+                          }}
+                        >
+                          <CheckCircle2
+                            size={14}
+                            color={cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary}
+                          />
+                          <Text
+                            style={[
+                              styles.liveSegmentTabText,
+                              {
+                                color: cornerLiveSubTab === 'good-usage' ? '#111827' : theme.colors.textSecondary,
+                                fontWeight: cornerLiveSubTab === 'good-usage' ? '700' : '600',
+                              },
+                            ]}
+                            maxFontSizeMultiplier={1.3}
+                          >
+                            Good Usage
+                          </Text>
+                        </TouchableOpacity>
 
-                <View style={styles.inlineLiveMeetingPanel}>
-                  <GrammarianNotesScreen
-                    variant="live-inline"
-                    liveSubTab={cornerLiveSubTab}
-                    meetingId={meeting?.id}
-                  />
-                </View>
+                        <View style={[styles.liveSegmentDivider, { backgroundColor: '#DBEAFE' }]} />
+
+                        <TouchableOpacity
+                          style={[
+                            styles.liveSegmentTab,
+                            cornerLiveSubTab === 'improvements' && [styles.liveSegmentTabActive, { backgroundColor: '#EFF6FF' }],
+                          ]}
+                          onPress={() => {
+                            setCornerLiveSubTab('improvements');
+                          }}
+                        >
+                          <AlertTriangle
+                            size={14}
+                            color={cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary}
+                          />
+                          <Text
+                            style={[
+                              styles.liveSegmentTabText,
+                              {
+                                color: cornerLiveSubTab === 'improvements' ? '#111827' : theme.colors.textSecondary,
+                                fontWeight: cornerLiveSubTab === 'improvements' ? '700' : '600',
+                              },
+                            ]}
+                            maxFontSizeMultiplier={1.3}
+                          >
+                            Opportunity
+                          </Text>
+                        </TouchableOpacity>
+
+                        <View style={[styles.liveSegmentDivider, { backgroundColor: '#DBEAFE' }]} />
+
+                        <TouchableOpacity
+                          style={[
+                            styles.liveSegmentTab,
+                            cornerLiveSubTab === 'stats' && [styles.liveSegmentTabActive, { backgroundColor: '#EFF6FF' }],
+                          ]}
+                          onPress={() => {
+                            setCornerLiveSubTab('stats');
+                          }}
+                        >
+                          <TrendingUp
+                            size={14}
+                            color={cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary}
+                          />
+                          <Text
+                            style={[
+                              styles.liveSegmentTabText,
+                              {
+                                color: cornerLiveSubTab === 'stats' ? '#111827' : theme.colors.textSecondary,
+                                fontWeight: cornerLiveSubTab === 'stats' ? '700' : '600',
+                              },
+                            ]}
+                            maxFontSizeMultiplier={1.3}
+                          >
+                            Stats
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={styles.inlineLiveMeetingPanel}>
+                      <GrammarianNotesScreen
+                        variant="live-inline"
+                        liveSubTab={cornerLiveSubTab}
+                        meetingId={meeting?.id}
+                      />
+                    </View>
+                  </>
+                )}
               </>
             )}
 
             {/* Grammarian role guidance removed (requested by user). */}
 
         {/* Daily content placeholder for non-grammarians */}
-        {!canEditGrammarianCorner() && !hasAnyPublishedDailyContent() && (
+        {!canEditGrammarianCorner() && !hasAnyGrammarianShareableContent() && (
           <View style={styles.wordPlaceholderContainer}>
             <View style={[styles.wordPlaceholderIcon, { backgroundColor: theme.colors.primary + '15' }]}>
               <BookOpen size={32} color={theme.colors.primary} />
@@ -2130,8 +2306,8 @@ export default function GrammarianReport() {
             </Text>
             <Text style={[styles.wordPlaceholderSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
               {assignedGrammarian
-                ? `Open Grammarian Summary to read Word, Idiom, and Quote of the Day when ${assignedGrammarian.full_name.trim().split(/\s+/)[0]} publishes them.`
-                : 'Open Grammarian Summary to read Word, Idiom, and Quote of the Day when they are published.'}
+                ? `Open Grammarian Summary for Word, Idiom, Quote, or live Good usage and Opportunity when ${assignedGrammarian.full_name.trim().split(/\s+/)[0]} adds them.`
+                : 'Open Grammarian Summary for Word, Idiom, Quote, or live notes when they are added.'}
             </Text>
           </View>
         )}
@@ -2230,6 +2406,35 @@ export default function GrammarianReport() {
           </>
         )}
           </>
+        ) : !grammarianSummaryVisibilityFetched ? (
+          <View style={[styles.viewOnlyBanner, { marginHorizontal: 16, marginTop: 12, paddingVertical: 24 }]}>
+            <ActivityIndicator color={theme.colors.primary} />
+            <Text
+              style={[styles.viewOnlyBannerText, { color: theme.colors.textSecondary, marginTop: 12 }]}
+              maxFontSizeMultiplier={1.2}
+            >
+              Checking report visibility…
+            </Text>
+          </View>
+        ) : !grammarianSummaryVisibleToMembers ? (
+          <View
+            style={[
+              styles.viewOnlyBanner,
+              {
+                marginHorizontal: 16,
+                marginTop: 12,
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.unpublishedReportTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+              Report is yet to be published..
+            </Text>
+            <Text style={[styles.viewOnlyBannerText, { color: theme.colors.textSecondary, marginTop: 10 }]} maxFontSizeMultiplier={1.15}>
+              The Grammarian or VPE can turn on &quot;Show report to member&quot; under Grammarian Corner → Live meeting when the report is ready.
+            </Text>
+          </View>
         ) : (
           <GrammarianReportSummarySection
             theme={theme}
@@ -2245,6 +2450,7 @@ export default function GrammarianReport() {
             clubName={clubName}
             meetingId={meetingId as string}
             hasPublishedLiveObservations={hasPublishedLiveObservations}
+            hasAnyLiveMeetingNotes={hasAnyLiveMeetingNotes}
           />
         )}
         </View>
@@ -3025,6 +3231,56 @@ const styles = StyleSheet.create({
   },
   cornerPhaseTabTextActive: {
     fontWeight: '700',
+  },
+  liveMeetingVisibilityCard: {
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  summaryVisibilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  summaryVisibilityLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  summaryVisibilityTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  summaryVisibilityHint: {
+    fontSize: 11,
+    marginTop: 3,
+  },
+  summaryVisibilityButton: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 0,
+  },
+  viewOnlyBanner: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    alignItems: 'center',
+  },
+  viewOnlyBannerText: {
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  unpublishedReportTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   noAssignmentNotionCard: {
     marginHorizontal: 13,

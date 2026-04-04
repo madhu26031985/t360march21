@@ -1,12 +1,18 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useRef } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { fetchGrammarianClubMembersDirectory } from '@/lib/grammarianCornerQuery';
 import { ArrowLeft, StickyNote, BookOpen, AlertCircle, MessageSquareQuote, Lightbulb, Plus, X, CheckCircle2, AlertTriangle, Clock, Trash2, TrendingUp, Minus, MinusCircle, User, Eye, EyeOff, BarChart2 } from 'lucide-react-native';
+
+function isGrammarianSummaryVisibilityTableMissing(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const msg = (error.message || '').toLowerCase();
+  return error.code === '42P01' || msg.includes('grammarian_meeting_summary_visibility') || msg.includes('does not exist');
+}
 
 interface Meeting {
   id: string;
@@ -106,11 +112,24 @@ interface MemberUsage {
   id: string;
   member_user_id: string | null;
   member_name_manual?: string | null;
+  /** Word-of-the-day visiting guests only; links to `app_meeting_visiting_guests`. */
+  visiting_guest_id?: string | null;
+  visiting_guest?: { display_name: string } | null;
   usage_count: number;
   member_profile?: {
     full_name: string;
     avatar_url: string | null;
   };
+}
+
+function memberUsageDisplayName(u: MemberUsage): string {
+  const fromProfile = u.member_profile?.full_name?.trim();
+  if (fromProfile) return fromProfile;
+  const fromGuest = u.visiting_guest?.display_name?.trim();
+  if (fromGuest) return fromGuest;
+  const manual = u.member_name_manual?.trim();
+  if (manual) return manual;
+  return 'Unknown';
 }
 
 interface ClubMember {
@@ -179,7 +198,8 @@ export function GrammarianNotesScreen({
   const [idiomMemberUsage, setIdiomMemberUsage] = useState<MemberUsage[]>([]);
   const [quoteMemberUsage, setQuoteMemberUsage] = useState<MemberUsage[]>([]);
   const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
-  const [showMemberPicker, setShowMemberPicker] = useState<'word' | 'idiom' | 'quote' | null>(null);
+  /** Word-of-the-day adds use full-screen pick (Timer-style guests + members). Idiom/quote keep modal. */
+  const [showMemberPicker, setShowMemberPicker] = useState<'idiom' | 'quote' | null>(null);
   const [manualMemberName, setManualMemberName] = useState('');
   const [areGoodUsagePublished, setAreGoodUsagePublished] = useState(false);
   const [areImprovementsPublished, setAreImprovementsPublished] = useState(false);
@@ -187,11 +207,23 @@ export function GrammarianNotesScreen({
   const [statsInlineLoaded, setStatsInlineLoaded] = useState(false);
   const [isPublishingAll, setIsPublishingAll] = useState(false);
   const [isVPEClub, setIsVPEClub] = useState(false);
+  /** Full-screen Live meeting only: when false, report is withheld for everyone until eye is on. */
+  const [liveReportPublishedToMembers, setLiveReportPublishedToMembers] = useState(true);
+  const [liveReportVisibilityReady, setLiveReportVisibilityReady] = useState(false);
 
   const autoSaveTimeout = useRef<NodeJS.Timeout | null>(null);
   const inlineCoreLoadInFlightRef = useRef<Promise<void> | null>(null);
   const inlineStatsLoadInFlightRef = useRef<Promise<void> | null>(null);
   const lastInlineCoreLoadAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (variant === 'live-only') {
+      setLiveReportVisibilityReady(false);
+      setLiveReportPublishedToMembers(true);
+    } else {
+      setLiveReportVisibilityReady(true);
+    }
+  }, [meetingId, variant]);
 
   useEffect(() => {
     if (!meetingId) {
@@ -261,6 +293,34 @@ export function GrammarianNotesScreen({
     if (!meetingId || !user?.currentClubId) {
       setIsLoading(false);
       return;
+    }
+
+    if (variant === 'live-only') {
+      const { data: vis, error: visErr } = await supabase
+        .from('grammarian_meeting_summary_visibility')
+        .select('summary_visible_to_members')
+        .eq('meeting_id', meetingId)
+        .maybeSingle();
+
+      let published = true;
+      if (visErr && !isGrammarianSummaryVisibilityTableMissing(visErr)) {
+        console.error('grammarian_meeting_summary_visibility:', visErr);
+      } else if (vis && vis.summary_visible_to_members === false) {
+        published = false;
+      }
+      setLiveReportPublishedToMembers(published);
+      setLiveReportVisibilityReady(true);
+
+      if (!published) {
+        try {
+          await Promise.all([loadMeeting(), loadGrammarianOfDay(), loadIsVPEClub()]);
+        } catch (e) {
+          console.error('loadMeeting minimal for withheld live report:', e);
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
     }
 
     try {
@@ -604,7 +664,7 @@ export function GrammarianNotesScreen({
         promises.push(
           supabase
             .from('grammarian_word_of_the_day_member_usage')
-            .select('*, app_user_profiles(full_name, avatar_url)')
+            .select('*, app_user_profiles(full_name, avatar_url), app_meeting_visiting_guests(display_name)')
             .eq('word_of_the_day_id', wId)
         );
       }
@@ -636,6 +696,10 @@ export function GrammarianNotesScreen({
           id: item.id,
           member_user_id: item.member_user_id,
           member_name_manual: item.member_name_manual,
+          visiting_guest_id: item.visiting_guest_id ?? null,
+          visiting_guest: item.app_meeting_visiting_guests
+            ? { display_name: String(item.app_meeting_visiting_guests.display_name ?? '') }
+            : null,
           usage_count: item.usage_count,
           member_profile: item.app_user_profiles
         })));
@@ -669,6 +733,13 @@ export function GrammarianNotesScreen({
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!meetingId) return;
+      void loadMemberUsage();
+    }, [meetingId, wordOfTheDay?.id, idiomOfTheDay?.id, quoteOfTheDay?.id])
+  );
+
   const isAssignedGrammarian = () => {
     return grammarianOfDay?.assigned_user_id === user?.id;
   };
@@ -676,6 +747,18 @@ export function GrammarianNotesScreen({
     return isAssignedGrammarian() || isVPEClub;
   };
   const effectiveGrammarianUserId = grammarianOfDay?.assigned_user_id ?? user?.id ?? null;
+
+  const openWordMemberPickScreen = useCallback(() => {
+    if (!meetingId) return;
+    if (!wordOfTheDay?.id) {
+      Alert.alert('Word of the Day', 'Add and save a word of the day first, then you can track who used it.');
+      return;
+    }
+    router.push({
+      pathname: '/grammarian-wotd-member-pick',
+      params: { meetingId, wordOfTheDayId: wordOfTheDay.id },
+    });
+  }, [meetingId, wordOfTheDay?.id]);
 
   const handleNotesChange = (text: string) => {
     if (text.length <= 1000) {
@@ -1314,6 +1397,7 @@ export function GrammarianNotesScreen({
         const hasMember =
           !!u.member_profile ||
           !!u.member_user_id ||
+          !!u.visiting_guest_id ||
           !!u.member_name_manual?.trim();
         const usageOk = typeof u.usage_count === 'number' && Number.isFinite(u.usage_count) && u.usage_count >= 0;
         return !hasMember || !usageOk;
@@ -1662,6 +1746,36 @@ export function GrammarianNotesScreen({
           >
             <Text style={styles.backButtonText} maxFontSizeMultiplier={1.3}>Go Back</Text>
           </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (variant === 'live-only' && liveReportVisibilityReady && !liveReportPublishedToMembers) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Live meeting
+          </Text>
+          <View style={styles.saveButtonPlaceholder} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 28 }}>
+          <Text
+            style={{ textAlign: 'center', fontSize: 17, fontWeight: '700', color: theme.colors.text }}
+            maxFontSizeMultiplier={1.25}
+          >
+            Report is yet to be published..
+          </Text>
+          <Text
+            style={{ textAlign: 'center', fontSize: 14, color: theme.colors.textSecondary, marginTop: 12, lineHeight: 20 }}
+            maxFontSizeMultiplier={1.15}
+          >
+            Turn on &quot;Show report to member&quot; under Grammarian Corner → Live meeting when you are ready to share this report.
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -2341,7 +2455,7 @@ export function GrammarianNotesScreen({
                               <View key={usage.id} style={styles.inlineRow}>
                                 <View style={styles.inlineRowTextCol}>
                                   <Text style={[styles.inlineRowMainText, { fontSize: 12 }]} maxFontSizeMultiplier={1.3}>
-                                    {usage.member_profile?.full_name || usage.member_name_manual || 'Unknown'}
+                                    {memberUsageDisplayName(usage)}
                                   </Text>
                                 </View>
 
@@ -2399,7 +2513,7 @@ export function GrammarianNotesScreen({
                               styles.addMemberButton,
                               { backgroundColor: 'transparent', borderColor: '#3B82F6', paddingVertical: 12 },
                             ]}
-                            onPress={() => setShowMemberPicker('word')}
+                            onPress={openWordMemberPickScreen}
                           >
                             <Plus size={16} color="#3B82F6" />
                             <Text style={[styles.addMemberText, { color: '#3B82F6' }]} maxFontSizeMultiplier={1.3}>
@@ -2456,7 +2570,7 @@ export function GrammarianNotesScreen({
                           <View style={styles.memberInfo}>
                             <User size={15} color={theme.colors.textSecondary} />
                             <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                              {usage.member_profile?.full_name || usage.member_name_manual || 'Unknown'}
+                              {memberUsageDisplayName(usage)}
                             </Text>
                           </View>
                           <View style={styles.memberRowRight}>
@@ -2522,7 +2636,7 @@ export function GrammarianNotesScreen({
                     {isGrammarianOfDay() && (
                       <TouchableOpacity
                         style={[styles.addMemberButton, { backgroundColor: 'transparent', borderColor: '#3B82F6' }]}
-                        onPress={() => setShowMemberPicker('word')}
+                        onPress={openWordMemberPickScreen}
                       >
                         <Plus size={16} color="#3B82F6" />
                         <Text style={[styles.addMemberText, { color: '#3B82F6' }]} maxFontSizeMultiplier={1.3}>
@@ -2555,7 +2669,7 @@ export function GrammarianNotesScreen({
                           <View style={styles.memberInfo}>
                             <User size={15} color={theme.colors.textSecondary} />
                             <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                              {usage.member_profile?.full_name || usage.member_name_manual || 'Unknown'}
+                              {memberUsageDisplayName(usage)}
                             </Text>
                           </View>
                           <View style={styles.memberRowRight}>
@@ -2654,7 +2768,7 @@ export function GrammarianNotesScreen({
                           <View style={styles.memberInfo}>
                             <User size={15} color={theme.colors.textSecondary} />
                             <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                              {usage.member_profile?.full_name || usage.member_name_manual || 'Unknown'}
+                              {memberUsageDisplayName(usage)}
                             </Text>
                           </View>
                           <View style={styles.memberRowRight}>
@@ -2821,11 +2935,7 @@ export function GrammarianNotesScreen({
             </View>
 
             {clubMembers.filter(member => {
-              const usageList = showMemberPicker === 'word'
-                ? wordMemberUsage
-                : showMemberPicker === 'idiom'
-                ? idiomMemberUsage
-                : quoteMemberUsage;
+              const usageList = showMemberPicker === 'idiom' ? idiomMemberUsage : quoteMemberUsage;
               return !usageList.some(u => u.member_user_id === member.id);
             }).length > 0 && (
               <Text style={[styles.memberListDivider, { color: theme.colors.textSecondary, borderColor: theme.colors.border }]} maxFontSizeMultiplier={1.3}>
@@ -2836,11 +2946,7 @@ export function GrammarianNotesScreen({
             <ScrollView style={styles.memberList} keyboardShouldPersistTaps="handled">
               {clubMembers
                 .filter(member => {
-                  const usageList = showMemberPicker === 'word'
-                    ? wordMemberUsage
-                    : showMemberPicker === 'idiom'
-                    ? idiomMemberUsage
-                    : quoteMemberUsage;
+                  const usageList = showMemberPicker === 'idiom' ? idiomMemberUsage : quoteMemberUsage;
                   return !usageList.some(u => u.member_user_id === member.id);
                 })
                 .map(member => (

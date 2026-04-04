@@ -1,6 +1,6 @@
 import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
-import { BookOpen, ChevronRight, Lightbulb, MessageSquare } from 'lucide-react-native';
+import { BookOpen, Lightbulb, MessageSquare } from 'lucide-react-native';
+import { GrammarianConsolidatedReportInner } from '@/components/grammarian/GrammarianConsolidatedReportInner';
 
 export type SummarySubTab = 'word' | 'idiom' | 'quote';
 
@@ -36,6 +36,8 @@ type Props = {
   clubName: string | null;
   meetingId: string;
   hasPublishedLiveObservations: boolean;
+  /** True if any Good usage or Opportunity row exists (even when not individually published). */
+  hasAnyLiveMeetingNotes: boolean;
 };
 
 const LEXICON_TABS: { key: SummarySubTab; label: string }[] = [
@@ -58,16 +60,21 @@ export function GrammarianReportSummarySection({
   clubName,
   meetingId,
   hasPublishedLiveObservations,
+  hasAnyLiveMeetingNotes,
 }: Props) {
   const hasWord = wordOfTheDay.word.trim().length > 0;
   const hasIdiom = !!(idiomOfTheDay?.idiom?.trim());
   const hasQuote = !!(quoteOfTheDay?.quote?.trim());
 
-  const hasAnyPublishedData =
+  const hasLexiconText = hasWord || hasIdiom || hasQuote;
+
+  const hasReportsTabContent =
+    hasLexiconText ||
+    hasAnyLiveMeetingNotes ||
+    hasPublishedLiveObservations ||
     wordOfTheDay.is_published ||
-    idiomOfTheDay?.is_published ||
-    quoteOfTheDay?.is_published ||
-    hasPublishedLiveObservations;
+    !!idiomOfTheDay?.is_published ||
+    !!quoteOfTheDay?.is_published;
 
   return (
     <View style={local.summaryRoot}>
@@ -437,34 +444,8 @@ export function GrammarianReportSummarySection({
         </>
       ) : (
         <View style={local.panel}>
-          {hasAnyPublishedData ? (
-            <View style={g.summaryCardContainer}>
-              <View style={[g.summaryCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                <View style={g.summaryCardHeader}>
-                  <View style={g.summaryCardIconWrap}>
-                    <BookOpen size={22} color="#4f6ef7" />
-                  </View>
-                  <View style={g.summaryCardTextWrap}>
-                    <Text style={[g.summaryCardTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      View Full Grammarian Report
-                    </Text>
-                    <Text style={[g.summaryCardSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Detailed language insights, member usage & corrections
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={g.summaryCardButton}
-                  onPress={() => router.push(`/grammarian-consolidated-report?meetingId=${meetingId}`)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={g.summaryCardButtonText} maxFontSizeMultiplier={1.3}>
-                    Open Grammarian Report
-                  </Text>
-                  <ChevronRight size={18} color="#ffffff" />
-                </TouchableOpacity>
-              </View>
-            </View>
+          {hasReportsTabContent ? (
+            <GrammarianConsolidatedReportInner variant="embedded" meetingId={meetingId} />
           ) : (
             <View style={g.summaryRedirectContainer}>
               <View style={g.summaryRedirectContent}>
@@ -475,7 +456,7 @@ export function GrammarianReportSummarySection({
                   Summary Coming Soon
                 </Text>
                 <Text style={[g.summaryRedirectDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  The Grammarian will share the report at the end of the meeting — stay tuned!
+                  When the Grammarian adds Word, Idiom, Quote, or live Good usage / Opportunity, the report will appear here.
                 </Text>
               </View>
             </View>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,14 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Check, Users } from 'lucide-react-native';
+import { ArrowLeft, Check, Search, Users } from 'lucide-react-native';
 import { Image } from 'react-native';
 
 interface ClubMemberRow {
@@ -32,6 +33,13 @@ export default function AhCounterManageMembersScreen() {
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState<ClubMemberRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredMembers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter((m) => m.full_name.toLowerCase().includes(q));
+  }, [members, searchQuery]);
 
   const load = useCallback(async () => {
     if (!meetingId || !user?.currentClubId) {
@@ -103,6 +111,14 @@ export default function AhCounterManageMembersScreen() {
     });
   };
 
+  const handleSelectAll = () => {
+    setSelected(new Set(members.map((m) => m.id)));
+  };
+
+  const handleUnselectAll = () => {
+    setSelected(new Set());
+  };
+
   const handleSave = async () => {
     if (!meetingId || !user?.currentClubId || !user?.id) return;
     setSaving(true);
@@ -167,7 +183,44 @@ export default function AhCounterManageMembersScreen() {
         </View>
       ) : (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          {members.map((m) => {
+          <View style={[styles.searchWrap, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
+            <Search size={18} color={theme.colors.textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.colors.text }]}
+              placeholder="Search by name"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCorrect={false}
+              autoCapitalize="none"
+              clearButtonMode="while-editing"
+              maxFontSizeMultiplier={1.2}
+            />
+          </View>
+
+          {members.length > 0 ? (
+            <View style={styles.bulkRow}>
+              <TouchableOpacity onPress={handleSelectAll} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                <Text style={[styles.bulkLink, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.15}>
+                  Select all
+                </Text>
+              </TouchableOpacity>
+              <Text style={[styles.bulkSep, { color: theme.colors.textSecondary }]}>|</Text>
+              <TouchableOpacity onPress={handleUnselectAll} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                <Text style={[styles.bulkLink, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.15}>
+                  Unselect all
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {filteredMembers.length === 0 ? (
+            <Text style={[styles.emptySearch, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
+              {searchQuery.trim() ? 'No members match your search.' : 'No members to show.'}
+            </Text>
+          ) : null}
+
+          {filteredMembers.map((m) => {
             const on = selected.has(m.id);
             return (
               <TouchableOpacity
@@ -235,6 +288,40 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 13,
     lineHeight: 18,
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 0,
+    minHeight: 22,
+  },
+  bulkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+  },
+  bulkLink: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  bulkSep: {
+    fontSize: 14,
+  },
+  emptySearch: {
+    textAlign: 'center',
+    fontSize: 14,
+    paddingVertical: 20,
   },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   scroll: { flex: 1 },
