@@ -7,10 +7,11 @@ export type SummarySubTab = 'word' | 'idiom' | 'quote';
 export type SummaryMainTab = 'lexicon' | 'reports';
 
 type Props = {
-  theme: { colors: Record<string, string> };
+  theme: any;
   styles: Record<string, any>;
   summaryMainTab: SummaryMainTab;
   setSummaryMainTab: (t: SummaryMainTab) => void;
+  reportsVisibleToMembers: boolean;
   summarySubTab: SummarySubTab;
   setSummarySubTab: (t: SummarySubTab) => void;
   wordOfTheDay: {
@@ -51,6 +52,7 @@ export function GrammarianReportSummarySection({
   styles: g,
   summaryMainTab,
   setSummaryMainTab,
+  reportsVisibleToMembers,
   summarySubTab,
   setSummarySubTab,
   wordOfTheDay,
@@ -110,7 +112,10 @@ export function GrammarianReportSummarySection({
             summaryMainTab === 'reports' && local.mainTabActive,
             summaryMainTab === 'reports' && { borderBottomColor: theme.colors.primary },
           ]}
-          onPress={() => setSummaryMainTab('reports')}
+          onPress={() => {
+            if (reportsVisibleToMembers) setSummaryMainTab('reports');
+          }}
+          activeOpacity={reportsVisibleToMembers ? 0.85 : 1}
         >
           <Text
             style={[
@@ -118,6 +123,7 @@ export function GrammarianReportSummarySection({
               { color: theme.colors.textSecondary },
               summaryMainTab === 'reports' && local.mainTabTextActive,
               summaryMainTab === 'reports' && { color: theme.colors.primary },
+              !reportsVisibleToMembers && { opacity: 0.45 },
             ]}
             maxFontSizeMultiplier={1.3}
           >
@@ -444,7 +450,21 @@ export function GrammarianReportSummarySection({
         </>
       ) : (
         <View style={local.panel}>
-          {hasReportsTabContent ? (
+          {!reportsVisibleToMembers ? (
+            <View style={g.summaryRedirectContainer}>
+              <View style={g.summaryRedirectContent}>
+                <View style={[g.summaryIconContainer, { backgroundColor: theme.colors.primary + '15' }]}>
+                  <BookOpen size={32} color={theme.colors.primary} />
+                </View>
+                <Text style={[g.summaryRedirectTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Report is yet to be published..
+                </Text>
+                <Text style={[g.summaryRedirectDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  The Grammarian or VPE can turn on &quot;Show report to member&quot; under Grammarian Corner → Live meeting when the report is ready.
+                </Text>
+              </View>
+            </View>
+          ) : hasReportsTabContent ? (
             <GrammarianConsolidatedReportInner variant="embedded" meetingId={meetingId} />
           ) : (
             <View style={g.summaryRedirectContainer}>

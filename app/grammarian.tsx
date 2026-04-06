@@ -229,6 +229,13 @@ export default function GrammarianReport() {
     preMeetingBackgroundQueuedRef.current = false;
   }, [meetingId]);
 
+  useEffect(() => {
+    // Eye-off should hide only Summary -> Reports; keep Lexicon always accessible.
+    if (!grammarianSummaryVisibleToMembers && summaryMainTab === 'reports') {
+      setSummaryMainTab('lexicon');
+    }
+  }, [grammarianSummaryVisibleToMembers, summaryMainTab]);
+
   const wordOfTheDayDotScale = wordOfTheDayPulse.interpolate({
     inputRange: [1, 1.08],
     outputRange: [1, 1.35],
@@ -2416,31 +2423,13 @@ export default function GrammarianReport() {
               Checking report visibility…
             </Text>
           </View>
-        ) : !grammarianSummaryVisibleToMembers ? (
-          <View
-            style={[
-              styles.viewOnlyBanner,
-              {
-                marginHorizontal: 16,
-                marginTop: 12,
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.unpublishedReportTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-              Report is yet to be published..
-            </Text>
-            <Text style={[styles.viewOnlyBannerText, { color: theme.colors.textSecondary, marginTop: 10 }]} maxFontSizeMultiplier={1.15}>
-              The Grammarian or VPE can turn on &quot;Show report to member&quot; under Grammarian Corner → Live meeting when the report is ready.
-            </Text>
-          </View>
         ) : (
           <GrammarianReportSummarySection
             theme={theme}
             styles={styles}
             summaryMainTab={summaryMainTab}
             setSummaryMainTab={setSummaryMainTab}
+            reportsVisibleToMembers={grammarianSummaryVisibleToMembers}
             summarySubTab={summarySubTab}
             setSummarySubTab={setSummarySubTab}
             wordOfTheDay={wordOfTheDay}
