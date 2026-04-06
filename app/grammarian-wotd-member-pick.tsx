@@ -190,10 +190,14 @@ export default function GrammarianWotdMemberPickScreen() {
 
   const filteredMembers = useMemo(() => {
     if (!searchLower) return clubMembers;
-    return clubMembers.filter(
-      (m) =>
-        m.full_name.toLowerCase().includes(searchLower) || m.email.toLowerCase().includes(searchLower)
-    );
+    const searchByEmail = searchLower.includes('@');
+    return clubMembers.filter((m) => {
+      const name = (m.full_name || '').toLowerCase();
+      if (searchByEmail) {
+        return (m.email || '').toLowerCase().includes(searchLower);
+      }
+      return name.includes(searchLower);
+    });
   }, [clubMembers, searchLower]);
 
   const guestSlots = useMemo(() => {
@@ -491,11 +495,6 @@ export default function GrammarianWotdMemberPickScreen() {
                 <Text style={[styles.rowTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
                   {member.full_name}
                 </Text>
-                {member.email ? (
-                  <Text style={[styles.rowSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1} numberOfLines={1}>
-                    {member.email}
-                  </Text>
-                ) : null}
               </View>
             </TouchableOpacity>
           ))
