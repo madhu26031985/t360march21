@@ -9,7 +9,6 @@ import {
   Modal,
   AppState,
   AppStateStatus,
-  Platform,
 } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +21,6 @@ import {
   Building2,
   User,
   BookOpen,
-  Users,
   Calendar,
   Vote,
   FileText,
@@ -35,9 +33,10 @@ import {
   X,
   LucideBell,
   Timer,
-  CreditCard,
   Sparkles,
   UserCheck,
+  TrendingUp,
+  Settings,
 } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
@@ -66,10 +65,12 @@ import { prefetchMyMentorSnapshot } from '@/lib/myMentorSnapshot';
 import { prefetchTableTopicCorner } from '@/lib/prefetchTableTopicCorner';
 import { prefetchTimerReport } from '@/lib/prefetchTimerReport';
 import { prefetchToastmasterCorner } from '@/lib/prefetchToastmasterCorner';
-import { prefetchVpeNudges } from '@/lib/prefetchVpeNudges';
 import { prefetchEvaluationCornerSnapshot } from '@/lib/evaluationCornerSnapshot';
 import { prefetchMeetingAgendaView } from '@/lib/meetingAgendaPrefetch';
 import { journeyHomeQueryKeys, fetchJourneyHomeSnapshot } from '@/lib/journeyHomeQuery';
+import { fetchVpeNudgesSnapshot, vpeNudgesQueryKeys } from '@/lib/vpeNudgesSnapshot';
+import { computeVpeSmartDailyHomeReminder } from '@/lib/vpeSmartDailyHomeReminder';
+import { prefetchVpeNudges } from '@/lib/prefetchVpeNudges';
 
 const N = {
   page: '#FBFBFA',
@@ -491,6 +492,7 @@ export default function MyJourney() {
         return {
           club_id: user!.currentClubId!,
           open_meeting: null,
+          open_meetings_count: 0,
           journey_stats: {
             meeting_attended_count: 0,
             roles_completed_count: 0,
@@ -508,6 +510,13 @@ export default function MyJourney() {
     staleTime: 30 * 1000,
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
+  });
+
+  const { data: vpeNudgesSnapshot } = useQuery({
+    queryKey: vpeNudgesQueryKeys.snapshot(user?.currentClubId ?? '', user?.id ?? ''),
+    queryFn: () => fetchVpeNudgesSnapshot(user!.currentClubId!),
+    enabled: Boolean(isAuthenticated && user?.currentClubId && user?.id && isVPEForCurrentClub),
+    staleTime: 60 * 1000,
   });
 
   useEffect(() => {
@@ -691,7 +700,12 @@ export default function MyJourney() {
       return;
     }
     await refetchJourneyHome();
-  }, [user?.currentClubId, user?.id, refetchJourneyHome]);
+    if (user?.currentClubId && user?.id) {
+      void queryClient.invalidateQueries({
+        queryKey: vpeNudgesQueryKeys.snapshot(user.currentClubId, user.id),
+      });
+    }
+  }, [user?.currentClubId, user?.id, refetchJourneyHome, queryClient]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1189,7 +1203,11 @@ export default function MyJourney() {
     | 'educational_speech'
     | 'grammarian_wotd'
     | 'prepared_speech'
-    | 'vpe_nudge';
+    | 'vpe_open_meetings_0'
+    | 'vpe_open_meetings_1'
+    | 'vpe_open_meetings_2'
+    | 'vpe_open_meetings_3'
+    | 'vpe_smart_daily_insight';
 
   const pendingMeetingReminders = useMemo((): { key: PendingMeetingReminderKey; text: string }[] => {
     const name =
@@ -1210,6 +1228,35 @@ export default function MyJourney() {
         text: `${name}, Update Profile picture.`,
       });
     }
+
+    if (isVPEForCurrentClub && !isOpenMeetingLiveNow) {
+      const smart = computeVpeSmartDailyHomeReminder(vpeNudgesSnapshot ?? undefined);
+      if (smart) {
+        out.push({
+          key: 'vpe_smart_daily_insight',
+          text: smart.text,
+        });
+      }
+    }
+
+    const openMeetingsCount = Math.max(
+      journeyHomeSnapshot?.open_meetings_count ?? 0,
+      currentOpenMeetingId ? 1 : 0
+    );
+    if (isVPEForCurrentClub && !isOpenMeetingLiveNow) {
+      const bucket = Math.min(openMeetingsCount, 3) as 0 | 1 | 2 | 3;
+      const vpeTexts: Record<0 | 1 | 2 | 3, string> = {
+        0: `Hi ${name}, it's time to get started! 🚀\nLet's kick things off by creating your first meeting.`,
+        1: 'Only 1 meeting open. Open 2 more to stay ahead.',
+        2: `Hi ${name}, you're doing great! 🎯\nYou already have 2 meetings open — would you like to add the third?`,
+        3: `Hi ${name}, excellent planning! 🌟\nMembers can see several dates — keep filling the pipeline when you can.`,
+      };
+      out.push({
+        key: `vpe_open_meetings_${bucket}` as PendingMeetingReminderKey,
+        text: vpeTexts[bucket],
+      });
+    }
+
     if (!currentOpenMeetingId || isCurrentOpenMeetingCompleted) return out;
 
     if (isOpenMeetingLiveNow) {
@@ -1246,12 +1293,6 @@ export default function MyJourney() {
         text: `${name}, please add your speech details.`,
       });
     }
-    if (isVPEForCurrentClub && currentOpenMeetingId) {
-      out.push({
-        key: 'vpe_nudge',
-        text: `${name}, Your Smart Daily Insights to fill roles faster`,
-      });
-    }
     return out;
   }, [
     currentOpenMeetingId,
@@ -1267,6 +1308,8 @@ export default function MyJourney() {
     profileHasAbout,
     userAvatar,
     user?.fullName,
+    journeyHomeSnapshot?.open_meetings_count,
+    vpeNudgesSnapshot,
   ]);
 
   const userFirstName = useMemo(
@@ -1277,6 +1320,13 @@ export default function MyJourney() {
         .filter(Boolean)[0] || 'You',
     [user?.fullName]
   );
+
+  const isExComm = useMemo(() => {
+    const fromList =
+      user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
+    const fromField = user?.clubRole?.toLowerCase() === 'excomm';
+    return fromList || fromField;
+  }, [user?.clubs, user?.currentClubId, user?.clubRole]);
 
   const openRolePlayerCongrats = useCallback(() => {
     setRolePlayerCongratsBody(pickRolePlayerCongratsMessage(userFirstName));
@@ -1355,7 +1405,29 @@ export default function MyJourney() {
           prefetchEvaluationCornerSnapshot(currentOpenMeetingId);
           router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
           break;
-        case 'vpe_nudge':
+        case 'vpe_open_meetings_0':
+        case 'vpe_open_meetings_1':
+        case 'vpe_open_meetings_2':
+          router.push('/admin/meeting-management');
+          if (user?.currentClubId && user?.id) {
+            void queryClient.invalidateQueries({
+              queryKey: journeyHomeQueryKeys.snapshot(user.currentClubId, user.id),
+            });
+          }
+          break;
+        case 'vpe_open_meetings_3': {
+          const first =
+            (user?.fullName || '')
+              .trim()
+              .split(/\s+/)
+              .filter(Boolean)[0] || 'there';
+          Alert.alert(
+            `Congrats, ${first}!`,
+            "You're absolutely crushing it—top-tier VPE planning right there! 🚀"
+          );
+          break;
+        }
+        case 'vpe_smart_daily_insight':
           prefetchVpeNudges(queryClient, user?.currentClubId, user?.id);
           router.push('/vpe-nudges');
           break;
@@ -1363,7 +1435,7 @@ export default function MyJourney() {
           break;
       }
     },
-    [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId]
+    [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId, user?.fullName]
   );
 
   const showMyProfilePending =
@@ -1373,11 +1445,6 @@ export default function MyJourney() {
   const handleMyProfilePress = useCallback(() => {
     router.push('/profile');
   }, []);
-
-  const handleMyMentorPress = useCallback(() => {
-    prefetchMyMentorSnapshot(user?.currentClubId);
-    router.push('/my-growth-guidance');
-  }, [user?.currentClubId]);
 
   const goToReportsSection = useCallback(() => {
     router.push({ pathname: '/(tabs)/club', params: { section: 'reports' } });
@@ -1522,22 +1589,30 @@ export default function MyJourney() {
                 )}
               </View>
             </Animated.View>
-            <View style={styles.profileInfo}>
+            <TouchableOpacity
+              style={styles.profileInfo}
+              activeOpacity={0.7}
+              onPress={() => router.push('/business-card')}
+              accessibilityRole="button"
+              accessibilityLabel="Open business card"
+            >
               <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
                 {user.fullName}
               </Text>
               <Text style={[styles.profileSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
                 Welcome back
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
-          {Platform.OS === 'web' ? (
+          {isExComm && user?.currentClubId ? (
             <TouchableOpacity
-              style={[styles.businessCardButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
-              onPress={() => router.push('/business-card')}
+              style={[styles.toolkitHeaderButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
+              onPress={() => router.push('/my-tool-kit')}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Open My tool kit"
             >
-              <CreditCard size={18} color={N.iconStrong} />
+              <Settings size={18} color={N.iconStrong} strokeWidth={2} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -1608,25 +1683,14 @@ export default function MyJourney() {
                   inline
                 />
                 <JourneyListCard
-                  title="My Speeches"
-                  description="Manage and organize your speech documents"
-                  icon={<BookOpen size={18} color="#7C3AED" />}
-                  color="#7C3AED"
-                  iconBackgroundColor="#F5F3FF"
-                  onPress={() => router.push('/speech-repository')}
+                  title="My growth"
+                  description="Speeches, mentor, and My Role Insights"
+                  icon={<TrendingUp size={18} color="#0D9488" />}
+                  color="#0D9488"
+                  iconBackgroundColor="#CCFBF1"
+                  onPress={() => router.push('/my-growth')}
                   inline
                 />
-                {!isOpenMeetingLiveNow ? (
-                  <JourneyListCard
-                    title="My Mentor"
-                    description="Get guidance from your mentor"
-                    icon={<Users size={18} color="#16A34A" />}
-                    color="#16A34A"
-                    iconBackgroundColor="#ECFDF5"
-                    onPress={handleMyMentorPress}
-                    inline
-                  />
-                ) : null}
                 <TouchableOpacity
                   style={styles.journeySectionHeader}
                   onPress={() => router.push('/(tabs)/club')}
@@ -1667,25 +1731,14 @@ export default function MyJourney() {
                       inline
                     />
                     <JourneyListCard
-                      title="My Speeches"
-                      description="Manage and organize your speech documents"
-                      icon={<BookOpen size={18} color="#7C3AED" />}
-                      color="#7C3AED"
-                      iconBackgroundColor="#F5F3FF"
-                      onPress={() => router.push('/speech-repository')}
+                      title="My growth"
+                      description="Speeches, mentor, and My Role Insights"
+                      icon={<TrendingUp size={18} color="#0D9488" />}
+                      color="#0D9488"
+                      iconBackgroundColor="#CCFBF1"
+                      onPress={() => router.push('/my-growth')}
                       inline
                     />
-                    {!isOpenMeetingLiveNow ? (
-                      <JourneyListCard
-                        title="My Mentor"
-                        description="Get guidance from your mentor"
-                        icon={<Users size={18} color="#16A34A" />}
-                        color="#16A34A"
-                        iconBackgroundColor="#ECFDF5"
-                        onPress={handleMyMentorPress}
-                        inline
-                      />
-                    ) : null}
                     {!isOpenMeetingLiveNow ? (
                       <JourneyListCard
                         title="My Tasks"
@@ -2287,7 +2340,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  businessCardButton: {
+  toolkitHeaderButton: {
     width: 36,
     height: 36,
     borderRadius: 18,

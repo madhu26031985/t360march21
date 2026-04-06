@@ -31,6 +31,11 @@ import React from 'react';
 
 const FOOTER_NAV_ICON_SIZE = 15;
 
+export type SpeechRepositoryProps = {
+  /** When true, used inside My growth — no back header or tab footer. */
+  embedded?: boolean;
+};
+
 interface Speech {
   id: string;
   title: string;
@@ -39,7 +44,7 @@ interface Speech {
   updated_at: string;
 }
 
-export default function SpeechRepository() {
+export default function SpeechRepository({ embedded = false }: SpeechRepositoryProps) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -353,20 +358,23 @@ export default function SpeechRepository() {
     );
   };
 
+  const Root = embedded ? View : SafeAreaView;
+
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <Root style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Loading speeches...</Text>
         </View>
-      </SafeAreaView>
+      </Root>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <Root style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
       {/* Header */}
+      {!embedded ? (
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={theme.colors.text} />
@@ -382,6 +390,20 @@ export default function SpeechRepository() {
           </TouchableOpacity>
         </Animated.View>
       </View>
+      ) : (
+        <View style={[styles.embeddedSpeechesToolbar, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <View style={{ flex: 1 }} />
+          <Animated.View style={[styles.infoButtonPulseWrap, { transform: [{ scale: infoIconPulse }] }]}>
+            <TouchableOpacity
+              style={[styles.infoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
+              onPress={() => setShowInfoModal(true)}
+              activeOpacity={0.8}
+            >
+              <Info size={18} color="#6E839F" />
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      )}
 
       <ScrollView
         style={styles.content}
@@ -440,10 +462,10 @@ export default function SpeechRepository() {
           </View>
         )}
 
-        <View style={{ minHeight: Math.max(insets.bottom, 10) + 80 }} />
+        <View style={{ minHeight: embedded ? Math.max(insets.bottom, 10) + 24 : Math.max(insets.bottom, 10) + 80 }} />
       </ScrollView>
 
-      {/* Bottom navigation (match Edit Profile footer) */}
+      {!embedded ? (
       <View
         style={[
           styles.geBottomDock,
@@ -508,6 +530,7 @@ export default function SpeechRepository() {
           </TouchableOpacity>
         </ScrollView>
       </View>
+      ) : null}
 
       {/* Info Modal */}
       <Modal
@@ -641,7 +664,7 @@ export default function SpeechRepository() {
         onSave={handleSaveSpeech}
       />
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Root>
   );
 }
 
@@ -665,6 +688,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 0.5,
+  },
+  embeddedSpeechesToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backButton: {
     padding: 8,

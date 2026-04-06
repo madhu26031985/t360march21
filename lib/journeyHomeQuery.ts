@@ -17,6 +17,8 @@ export type JourneyHomeOpenMeeting = {
 export type JourneyHomeSnapshot = {
   club_id: string;
   open_meeting: JourneyHomeOpenMeeting | null;
+  /** Meetings with `meeting_status = 'open'` for this club (VPE My Tasks planning nudge). */
+  open_meetings_count: number;
   journey_stats: {
     meeting_attended_count: number;
     roles_completed_count: number;
@@ -53,7 +55,7 @@ async function fetchJourneyHomeLegacy(clubId: string, userId: string): Promise<J
   fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
   const cutoffDate = fourHoursAgo.toISOString().split('T')[0];
 
-  const [rolesRes, vpeRes, meetingsRes, pollsRes] = await Promise.all([
+  const [rolesRes, vpeRes, meetingsRes, openMeetingsCountRes, pollsRes] = await Promise.all([
     supabase
       .from('app_meeting_roles_management')
       .select('meeting_id, role_classification, role_name')
@@ -69,6 +71,11 @@ async function fetchJourneyHomeLegacy(clubId: string, userId: string): Promise<J
       .gte('meeting_date', cutoffDate)
       .order('meeting_date', { ascending: true })
       .limit(5),
+    supabase
+      .from('app_club_meeting')
+      .select('id', { count: 'exact', head: true })
+      .eq('club_id', clubId)
+      .eq('meeting_status', 'open'),
     supabase.from('polls').select('id').eq('club_id', clubId).eq('status', 'published'),
   ]);
 
@@ -101,9 +108,17 @@ async function fetchJourneyHomeLegacy(clubId: string, userId: string): Promise<J
     hasVotedInActivePoll = !votesError && votes && votes.length > 0;
   }
 
+  const openMeetingsCountRaw =
+    typeof openMeetingsCountRes.count === 'number' && !openMeetingsCountRes.error
+      ? openMeetingsCountRes.count
+      : 0;
+  /** If count query fails or lags, still match hero `open_meeting` (at least one open). */
+  const openMeetingsCount = Math.max(openMeetingsCountRaw, openMeeting ? 1 : 0);
+
   return {
     club_id: clubId,
     open_meeting: openMeeting,
+    open_meetings_count: openMeetingsCount,
     journey_stats: {
       meeting_attended_count: distinctMeetingIds.size,
       roles_completed_count: list.length,
@@ -127,7 +142,19 @@ export async function fetchJourneyHomeSnapshot(clubId: string, userId: string): 
   }
 
   if (!error && data != null && typeof data === 'object' && !Array.isArray(data)) {
-    return data as JourneyHomeSnapshot;
+    const base = data as JourneyHomeSnapshot;
+    const raw = (data as Record<string, unknown>).open_meetings_count;
+    const parsed =
+      typeof raw === 'number'
+        ? raw
+        : typeof raw === 'string' && raw.trim() !== '' && !Number.isNaN(Number(raw))
+          ? Number(raw)
+          : 0;
+    const n = Number.isFinite(parsed) ? parsed : 0;
+    return {
+      ...base,
+      open_meetings_count: Math.max(n, base.open_meeting ? 1 : 0),
+    };
   }
 
   if (error) {

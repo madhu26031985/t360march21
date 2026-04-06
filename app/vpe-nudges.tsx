@@ -281,9 +281,8 @@ export default function VPENudgesScreen() {
         const psRoles = (snap.prepared_roles || []) as { role_name: string; assigned_user_id: string }[];
         const speakerUserIds = [...new Set(psRoles.map((r) => r.assigned_user_id))];
         if (speakerUserIds.length === 0) {
-        setMeetingTitle(null);
-        setPreparedSpeakerNudges([]);
-        setEvaluatorNudges([]);
+          setPreparedSpeakerNudges([]);
+          setEvaluatorNudges([]);
         } else {
           const pathwayByUserRole = new Map<string, EvaluationPathwaySpeechRow>();
           for (const row of snap.pathways || []) {

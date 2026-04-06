@@ -54,6 +54,13 @@ export function isEducationalSpeakerRoleRow(r: MeetingRoleRow): boolean {
   return r.role_name === 'Educational Speaker';
 }
 
+export function isKeynoteSpeakerRoleRow(r: MeetingRoleRow): boolean {
+  const rc = norm(r.role_classification);
+  if (rc.includes('keynote')) return true;
+  const n = norm(r.role_name);
+  return n.includes('keynote');
+}
+
 export function isPreparedSpeakerRole(r: MeetingRoleRow): boolean {
   const rc = r.role_classification || '';
   const rn = norm(r.role_name);

@@ -25,7 +25,11 @@ interface VpeContactInfo {
   clubName: string;
 }
 
-export default function MyGrowthGuidance() {
+export type MyGrowthGuidanceProps = {
+  embedded?: boolean;
+};
+
+export default function MyGrowthGuidance({ embedded = false }: MyGrowthGuidanceProps) {
   const { theme } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -136,9 +140,11 @@ export default function MyGrowthGuidance() {
   ];
 
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+  const Root = embedded ? View : SafeAreaView;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <Root style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {!embedded ? (
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.colors.text} />
@@ -152,6 +158,18 @@ export default function MyGrowthGuidance() {
           <Info size={18} color="#6E839F" />
         </TouchableOpacity>
       </View>
+      ) : (
+        <View style={[styles.embeddedMentorToolbar, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={[styles.infoButton, { backgroundColor: '#E8EEF5', borderColor: '#D4DEE9' }]}
+            onPress={() => setShowInfoModal(true)}
+            activeOpacity={0.8}
+          >
+            <Info size={18} color="#6E839F" />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -254,12 +272,11 @@ export default function MyGrowthGuidance() {
             </View>
           )}
 
-          {/* Spacer so content doesn't hide under the footer dock */}
-          <View style={{ minHeight: Math.max(insets.bottom, 10) + 110 }} />
+          <View style={{ minHeight: embedded ? Math.max(insets.bottom, 10) + 24 : Math.max(insets.bottom, 10) + 110 }} />
         </ScrollView>
       )}
 
-      {/* Bottom navigation (match Edit Profile footer) */}
+      {!embedded ? (
       <View
         style={[
           styles.geBottomDock,
@@ -324,6 +341,7 @@ export default function MyGrowthGuidance() {
           </TouchableOpacity>
         </ScrollView>
       </View>
+      ) : null}
 
       <Modal
         visible={showInfoModal}
@@ -371,13 +389,21 @@ export default function MyGrowthGuidance() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </Root>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  embeddedMentorToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   header: {
     flexDirection: 'row',

@@ -2134,21 +2134,18 @@ export default function ClubMeetings() {
               </View>
             ) : (
               <View style={[styles.noMeetingsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                <Text style={[styles.noMeetingsEmoji, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  👩‍🍳🔥
-                </Text>
                 <Text style={[styles.noMeetingsText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Your VPE is cooking something big
+                  Something exciting is coming! 🚀
                 </Text>
                 <Text style={[styles.noMeetingsSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Watch this space!
+                  Your VPE is preparing upcoming meetings.
                 </Text>
                 <Text style={[styles.noMeetingsSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Connect with your VPE{' '}
+                  Stay tuned or connect with{' '}
                   <Text style={[styles.vpeName, { color: theme.colors.primary, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                    {vpeName}
+                    {vpeName.trim().split(/\s+/).filter(Boolean)[0] || vpeName}
                   </Text>
-                  {' '}to know more.
+                  {' '}for details.
                 </Text>
               </View>
             )}
@@ -2848,14 +2845,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
   },
-  noMeetingsEmoji: {
-    fontSize: 48,
-    marginBottom: 8,
-  },
   noMeetingsText: {
     fontSize: 16,
     fontWeight: '600',
-    marginTop: 8,
+    textAlign: 'center',
   },
   noMeetingsSubtext: {
     fontSize: 13,

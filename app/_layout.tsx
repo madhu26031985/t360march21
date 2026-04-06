@@ -31,6 +31,9 @@ function AppContent() {
         <Stack.Screen name="signup" options={{ headerShown: false }} />
         <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
         <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="my-growth" options={{ headerShown: false }} />
+        <Stack.Screen name="my-growth-role-detail" options={{ headerShown: false }} />
+        <Stack.Screen name="my-tool-kit" options={{ headerShown: false }} />
         <Stack.Screen name="vpe-nudges" options={{ headerShown: false }} />
         <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         <Stack.Screen name="accept-invitation" options={{ headerShown: false }} />
