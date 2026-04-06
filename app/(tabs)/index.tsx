@@ -35,7 +35,7 @@ import {
   Timer,
   Sparkles,
   UserCheck,
-  TrendingUp,
+  Trophy,
   Settings,
 } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
@@ -1247,7 +1247,7 @@ export default function MyJourney() {
       const bucket = Math.min(openMeetingsCount, 3) as 0 | 1 | 2 | 3;
       const vpeTexts: Record<0 | 1 | 2 | 3, string> = {
         0: `Hi ${name}, it's time to get started! 🚀\nLet's kick things off by creating your first meeting.`,
-        1: 'Only 1 meeting open. Open 2 more to stay ahead.',
+        1: '💡 Smart tip: You can open up to 3 meetings to stay ahead.',
         2: `Hi ${name}, you're doing great! 🎯\nYou already have 2 meetings open — would you like to add the third?`,
         3: `Hi ${name}, excellent planning! 🌟\nMembers can see several dates — keep filling the pipeline when you can.`,
       };
@@ -1685,9 +1685,9 @@ export default function MyJourney() {
                 <JourneyListCard
                   title="My growth"
                   description="Speeches, mentor, and My Role Insights"
-                  icon={<TrendingUp size={18} color="#0D9488" />}
-                  color="#0D9488"
-                  iconBackgroundColor="#CCFBF1"
+                  icon={<Trophy size={18} color="#D97706" />}
+                  color="#D97706"
+                  iconBackgroundColor="#FEF3C7"
                   onPress={() => router.push('/my-growth')}
                   inline
                 />
@@ -1733,9 +1733,9 @@ export default function MyJourney() {
                     <JourneyListCard
                       title="My growth"
                       description="Speeches, mentor, and My Role Insights"
-                      icon={<TrendingUp size={18} color="#0D9488" />}
-                      color="#0D9488"
-                      iconBackgroundColor="#CCFBF1"
+                      icon={<Trophy size={18} color="#D97706" />}
+                      color="#D97706"
+                      iconBackgroundColor="#FEF3C7"
                       onPress={() => router.push('/my-growth')}
                       inline
                     />
