@@ -9,6 +9,7 @@ import {
   Platform,
   Image,
   KeyboardAvoidingView,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useMemo } from 'react';
@@ -76,6 +77,7 @@ interface RoleAssignment {
 export default function RoleCompletionReport() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -495,16 +497,15 @@ export default function RoleCompletionReport() {
           {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
-            paddingBottom: Math.max(insets.bottom, 10),
+            width: windowWidth,
+            paddingBottom:
+              Platform.OS === 'web'
+                ? Math.min(Math.max(insets.bottom, 8), 14)
+                : Math.max(insets.bottom, 10),
           },
         ]}
       >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.footerNavigationContent}
-        >
+        <View style={styles.tabBarRow}>
           <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <Home size={ROLE_COMPLETION_DOCK_ICON_SIZE} color="#0a66c2" />
@@ -547,7 +548,7 @@ export default function RoleCompletionReport() {
               Settings
             </Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
       </View>
       </View>
       </KeyboardAvoidingView>
@@ -814,18 +815,24 @@ const styles = StyleSheet.create({
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  footerNavigationContent: {
+  tabBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   footerNavIcon: {
     width: 30,

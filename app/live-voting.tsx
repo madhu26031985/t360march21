@@ -1,10 +1,21 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Image,
+  Platform,
+  useWindowDimensions,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Vote, CircleCheck as CheckCircle, User } from 'lucide-react-native';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
+import { ArrowLeft, Vote, CircleCheck as CheckCircle, User, Home, Users, Calendar, Settings, Shield } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
 
 /** Notion-style neutrals (no red required badge; muted live state) */
@@ -54,6 +65,12 @@ interface UserVote {
 
 export default function LiveVoting() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const hasClub = Boolean(user?.currentClubId);
+  const isExComm = user?.clubs?.find((c) => c.id === user.currentClubId)?.role?.toLowerCase() === 'excomm';
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+  const FOOTER_NAV_ICON_SIZE = 16;
   
   const [activePolls, setActivePolls] = useState<Poll[]>([]);
   const [selectedPoll, setSelectedPoll] = useState<Poll | null>(null);
@@ -291,7 +308,7 @@ export default function LiveVoting() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]} edges={['top']}>
       <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <ArrowLeft size={22} color={N.iconMuted} strokeWidth={2} />
@@ -539,6 +556,59 @@ export default function LiveVoting() {
             </TouchableOpacity>
           </View>
         )}
+        <View
+          style={[
+            styles.geBottomDock,
+            {
+              borderTopColor: N.border,
+              backgroundColor: N.surface,
+              width: windowWidth,
+              paddingBottom:
+                Platform.OS === 'web'
+                  ? Math.min(Math.max(insets.bottom, 8), 14)
+                  : Math.max(insets.bottom, 10),
+            },
+          ]}
+        >
+          <View style={styles.tabBarRow}>
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Home size={FOOTER_NAV_ICON_SIZE} color="#0a66c2" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: N.text }]}>Home</Text>
+            </TouchableOpacity>
+            {hasClub ? (
+              <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: N.text }]}>Club</Text>
+              </TouchableOpacity>
+            ) : null}
+            {hasClub ? (
+              <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/meetings')} activeOpacity={0.75}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: N.text }]}>Meeting</Text>
+              </TouchableOpacity>
+            ) : null}
+            {isExComm ? (
+              <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/admin')} activeOpacity={0.75}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                  <Shield size={FOOTER_NAV_ICON_SIZE} color={EXCOMM_UI.adminTabIcon} />
+                </View>
+                <Text style={[styles.footerNavLabel, { color: N.text }]}>Admin</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Settings size={FOOTER_NAV_ICON_SIZE} color="#6b7280" />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: N.text }]}>Settings</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
     </SafeAreaView>
   );
 }
@@ -842,5 +912,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
     marginLeft: 8,
+  },
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  tabBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+  },
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

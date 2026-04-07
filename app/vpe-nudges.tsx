@@ -639,14 +639,9 @@ export default function VPENudgesScreen() {
                   {
                     borderRightWidth: ci < row.length - 1 ? tabHairline : 0,
                     borderBottomWidth: ri < NUDGE_TAB_ROWS.length - 1 ? tabHairline : 0,
-                    borderColor: theme.colors.border,
-                    backgroundColor: selected
-                      ? `${theme.colors.primary}22`
-                      : pressed
-                        ? theme.mode === 'dark'
-                          ? 'rgba(255,255,255,0.06)'
-                          : 'rgba(0,0,0,0.04)'
-                        : theme.colors.surface,
+                    borderColor: theme.colors.primary + '55',
+                    backgroundColor: theme.colors.primary,
+                    opacity: pressed ? 0.88 : 1,
                   },
                 ]}
                 accessibilityRole="tab"
@@ -655,7 +650,7 @@ export default function VPENudgesScreen() {
                 <Text
                   style={[
                     styles.tabCellText,
-                    { color: selected ? theme.colors.text : theme.colors.textSecondary },
+                    { color: '#ffffff' },
                   ]}
                   maxFontSizeMultiplier={1.12}
                   numberOfLines={1}
