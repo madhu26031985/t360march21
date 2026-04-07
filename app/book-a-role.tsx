@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Animated, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -118,6 +118,7 @@ export default function BookARole() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [showCategoryFilterModal, setShowCategoryFilterModal] = useState(false);
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
 
   // Removed all speech, evaluation, theme, word form modal states and their associated form states
 
@@ -1463,16 +1464,15 @@ export default function BookARole() {
           {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
-            paddingBottom: Math.max(insets.bottom, 10),
+            width: windowWidth,
+            paddingBottom:
+              Platform.OS === 'web'
+                ? Math.min(Math.max(insets.bottom, 8), 14)
+                : Math.max(insets.bottom, 10),
           },
         ]}
       >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.footerNavigationContent}
-        >
+        <View style={styles.tabBarRow}>
           <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <Home size={BOOK_ROLE_DOCK_ICON_SIZE} color="#0a66c2" />
@@ -1527,7 +1527,7 @@ export default function BookARole() {
               Settings
             </Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
       </View>
 
       </View>
@@ -1768,6 +1768,7 @@ const styles = StyleSheet.create({
   },
   bookRoleScroll: {
     flex: 1,
+    minHeight: 0,
   },
   scrollContentContainer: {
     paddingHorizontal: 16,
@@ -1777,18 +1778,24 @@ const styles = StyleSheet.create({
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  footerNavigationContent: {
+  tabBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   footerNavIcon: {
     width: 30,

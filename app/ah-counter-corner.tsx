@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -193,6 +193,8 @@ type AhCounterMemberChip = {
 export default function AhCounterCorner() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -1408,15 +1410,15 @@ export default function AhCounterCorner() {
           {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
+            paddingBottom:
+              Platform.OS === 'web'
+                ? Math.min(Math.max(insets.bottom, 8), 14)
+                : Math.max(insets.bottom, 10),
+            width: windowWidth,
           },
         ]}
       >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.geDockFooterNavigationContent}
-        >
+        <View style={styles.tabBarRow}>
           <TouchableOpacity
             style={styles.geDockFooterNavItem}
             onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
@@ -1529,7 +1531,7 @@ export default function AhCounterCorner() {
               VOTING
             </Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
       </View>
     );
   };
@@ -1573,7 +1575,7 @@ export default function AhCounterCorner() {
           style={styles.scrollMainUnbooked}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={[styles.noBookingContentContainer, { paddingBottom: 8 }]}
+          contentContainerStyle={[styles.noBookingContentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
         >
           <View style={styles.noBookingContentTop}>
           <View style={[styles.noAssignmentNotionCard, {
@@ -1767,7 +1769,7 @@ export default function AhCounterCorner() {
         style={styles.scrollMainUnbooked}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
       >
         <View style={styles.contentTop}>
         {assignedAhCounter && (
@@ -1777,8 +1779,7 @@ export default function AhCounterCorner() {
               {
                 backgroundColor: theme.colors.background,
                 borderBottomColor: theme.colors.border,
-                marginHorizontal: 16,
-                marginTop: 8,
+                marginTop: 12,
               },
             ]}
           >
@@ -2672,8 +2673,16 @@ const styles = StyleSheet.create({
   contentContainer: {
     flexGrow: 1,
     flexDirection: 'column',
+    alignItems: 'stretch',
+    width: '100%',
   },
-  contentTop: {},
+  contentContainerPadded: {
+    paddingHorizontal: 16,
+  },
+  contentTop: {
+    width: '100%',
+    alignItems: 'stretch',
+  },
   navSpacer: {
     flex: 1,
     minHeight: 16,
@@ -3131,16 +3140,28 @@ const styles = StyleSheet.create({
   mainBody: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'stretch',
   },
   scrollMainUnbooked: {
     flex: 1,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  /** Same bottom dock shell as Grammarian Report (unbooked). */
+  /** Same bottom dock shell as Grammarian / Educational Corner. */
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  tabBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   geDockFooterNavigationContent: {
     flexDirection: 'row',
@@ -3149,9 +3170,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   geDockFooterNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   geDockFooterNavIcon: {
     width: 30,
@@ -3176,7 +3201,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'stretch',
     width: '100%',
-    maxWidth: 720,
     overflow: 'visible',
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -3225,9 +3249,8 @@ const styles = StyleSheet.create({
   },
   consolidatedBottomDivider: {
     width: '100%',
-    maxWidth: 280,
     height: StyleSheet.hairlineWidth,
-    alignSelf: 'center',
+    alignSelf: 'stretch',
     marginTop: 18,
     marginBottom: 16,
   },

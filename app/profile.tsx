@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, Image, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, ScrollView, Animated, Image, Linking, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -29,7 +29,9 @@ export default function Profile() {
   const { theme } = useTheme();
   const { user, refreshUserProfile } = useAuth();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
 
+  const hasClub = user?.currentClubId != null;
   const isExComm =
     user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
@@ -775,54 +777,80 @@ export default function Profile() {
             {
               borderTopColor: theme.colors.border,
               backgroundColor: theme.colors.surface,
-              paddingBottom: Math.max(insets.bottom, 10),
+              paddingBottom:
+                Platform.OS === 'web'
+                  ? Math.min(Math.max(insets.bottom, 8), 14)
+                  : Math.max(insets.bottom, 10),
+              width: windowWidth,
             },
           ]}
         >
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.footerNavigationContent}
-          >
+          {/* Match (tabs)/_layout: full-width row + flex:1 per tab (no horizontal ScrollView shrink-wrap). */}
+          <View style={styles.tabBarRow}>
             <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
-              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
                 <Home size={FOOTER_NAV_ICON_SIZE} color="#0a66c2" />
               </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text
+                style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
                 Home
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
-              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
                 <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
               </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text
+                style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
                 Club
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.footerNavItem}
-              onPress={() => router.push('/(tabs)/meetings')}
-              activeOpacity={0.75}
-            >
-              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
-                <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
-              </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Meeting
-              </Text>
-            </TouchableOpacity>
+            {hasClub ? (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/(tabs)/meetings')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
+                </View>
+                <Text
+                  style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.3}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  Meeting
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             {isExComm ? (
               <TouchableOpacity
                 style={styles.footerNavItem}
                 onPress={() => router.push('/(tabs)/admin')}
                 activeOpacity={0.75}
               >
-                <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
                   <Shield size={FOOTER_NAV_ICON_SIZE} color={EXCOMM_UI.adminTabIcon} />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                <Text
+                  style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.3}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
                   Admin
                 </Text>
               </TouchableOpacity>
@@ -832,14 +860,20 @@ export default function Profile() {
               onPress={() => router.push('/(tabs)/settings')}
               activeOpacity={0.75}
             >
-              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
                 <Settings size={FOOTER_NAV_ICON_SIZE} color="#6b7280" />
               </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text
+                style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
                 Settings
               </Text>
             </TouchableOpacity>
-          </ScrollView>
+          </View>
         </View>
         </View>
       </KeyboardAvoidingView>
@@ -1447,18 +1481,24 @@ const styles = StyleSheet.create({
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  footerNavigationContent: {
+  tabBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   footerNavIcon: {
     width: 30,

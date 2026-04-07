@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Pressable, useWindowDimensions } from 'react-native';
 import { Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -244,6 +244,8 @@ export default function GeneralEvaluatorReport() {
           page: theme.colors.background,
         };
   const notionType = NOTION_FONT_FAMILY ? ({ fontFamily: NOTION_FONT_FAMILY } as const) : {};
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams();
@@ -1074,10 +1076,10 @@ export default function GeneralEvaluatorReport() {
       <ScrollView
         style={styles.scrollMain}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
       >
         <View style={styles.contentTop} nativeID="general-evaluator-report-content">
-        {/* General Evaluator Assignment Section */}
+        {/* General Evaluator Assignment Section — layout matches Educational Corner */}
         {generalEvaluator?.assigned_user_id && generalEvaluator.app_user_profiles ? (
           <View
             style={[
@@ -1085,8 +1087,7 @@ export default function GeneralEvaluatorReport() {
               {
                 backgroundColor: notion.page,
                 borderBottomColor: notion.divider,
-                marginHorizontal: 16,
-                marginTop: 8,
+                marginTop: 12,
               },
             ]}
           >
@@ -1433,15 +1434,15 @@ export default function GeneralEvaluatorReport() {
             {
               borderTopColor: notion.divider,
               backgroundColor: notion.surface,
+              paddingBottom:
+                Platform.OS === 'web'
+                  ? Math.min(Math.max(insets.bottom, 8), 14)
+                  : Math.max(insets.bottom, 10),
+              width: windowWidth,
             },
           ]}
         >
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.footerNavigationContent}
-            >
+            <View style={styles.tabBarRow}>
               <TouchableOpacity
                 style={styles.footerNavItem}
                 onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
@@ -1513,7 +1514,7 @@ export default function GeneralEvaluatorReport() {
                 </View>
                 <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>VOTING</Text>
               </TouchableOpacity>
-            </ScrollView>
+            </View>
         </View>
       </View>
       </View>
@@ -1661,22 +1662,41 @@ const styles = StyleSheet.create({
   mainBody: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'stretch',
   },
   scrollMain: {
     flex: 1,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   contentContainer: {
     flexGrow: 1,
     flexDirection: 'column',
+    alignItems: 'stretch',
+    width: '100%',
+  },
+  contentContainerPadded: {
+    paddingHorizontal: 16,
   },
   contentTop: {
+    width: '100%',
+    alignItems: 'stretch',
   },
   /** One unified bottom panel for shortcuts (not a separate floating card in the scroll). */
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  tabBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   navSpacer: {
     flex: 1,
@@ -1689,9 +1709,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   footerNavIcon: {
     width: 30,
@@ -1791,7 +1815,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'stretch',
     width: '100%',
-    maxWidth: 720,
     overflow: 'visible',
     borderBottomWidth: StyleSheet.hairlineWidth,
   },

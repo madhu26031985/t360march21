@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -227,6 +227,8 @@ function canTimerCornerManageAssignment(role: CategoryRole, canEditTimerCorner: 
 export default function TimerReportDetails() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -1777,15 +1779,15 @@ export default function TimerReportDetails() {
           {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
+            paddingBottom:
+              Platform.OS === 'web'
+                ? Math.min(Math.max(insets.bottom, 8), 14)
+                : Math.max(insets.bottom, 10),
+            width: windowWidth,
           },
         ]}
       >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.footerNavigationContent}
-        >
+        <View style={styles.tabBarRow}>
           <TouchableOpacity
             style={styles.footerNavItem}
             onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: mid } })}
@@ -1876,7 +1878,7 @@ export default function TimerReportDetails() {
               VOTING
             </Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
       </View>
     );
   };
@@ -2084,7 +2086,7 @@ export default function TimerReportDetails() {
                 style={styles.scrollMain}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+                contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
               >
                 <View style={styles.contentTop}>
                   <View
@@ -2538,10 +2540,10 @@ export default function TimerReportDetails() {
         style={styles.scrollMain}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
       >
         <View style={styles.contentTop}>
-        {/* Flat profile header — same pattern as Grammarian Report */}
+        {/* Flat profile header — matches Educational Corner */}
         {assignedTimer && (
           <View
             style={[
@@ -2549,8 +2551,7 @@ export default function TimerReportDetails() {
               {
                 backgroundColor: theme.colors.background,
                 borderBottomColor: theme.colors.border,
-                marginHorizontal: 16,
-                marginTop: 8,
+                marginTop: 12,
               },
             ]}
           >
@@ -4390,20 +4391,40 @@ const styles = StyleSheet.create({
   mainBody: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'stretch',
   },
   scrollMain: {
     flex: 1,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   contentContainer: {
     flexGrow: 1,
     flexDirection: 'column',
+    alignItems: 'stretch',
+    width: '100%',
   },
-  contentTop: {},
+  contentContainerPadded: {
+    paddingHorizontal: 16,
+  },
+  contentTop: {
+    width: '100%',
+    alignItems: 'stretch',
+  },
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  tabBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   footerNavigationContent: {
     flexDirection: 'row',
@@ -4412,9 +4433,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   footerNavIcon: {
     width: 30,
@@ -4438,7 +4463,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'stretch',
     width: '100%',
-    maxWidth: 720,
     overflow: 'visible',
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -4461,7 +4485,7 @@ const styles = StyleSheet.create({
   consolidatedAvatarWrap: {
     width: 96,
     height: 96,
-    borderRadius: 0,
+    borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -4470,7 +4494,7 @@ const styles = StyleSheet.create({
   consolidatedAvatarImage: {
     width: 96,
     height: 96,
-    borderRadius: 0,
+    borderRadius: 48,
   },
   consolidatedPersonName: {
     fontSize: 19,

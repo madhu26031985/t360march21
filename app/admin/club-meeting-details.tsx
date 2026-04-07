@@ -1,4 +1,16 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Modal,
+  ActivityIndicator,
+  Pressable,
+  useWindowDimensions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
@@ -46,6 +58,10 @@ export function ClubMeetingDetailsContent({
   const { theme } = useTheme();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { height: windowHeight } = useWindowDimensions();
+  /** Keep list + title + actions on screen; avoids action row laying out below the card on mobile. */
+  const modalOptionsScrollMaxHeight = Math.min(280, Math.max(140, windowHeight * 0.34));
+  const modalCardMaxHeight = Math.round(windowHeight * 0.88);
 
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [meetingDetails, setMeetingDetails] = useState<ClubMeetingDetails>(() =>
@@ -583,18 +599,28 @@ export function ClubMeetingDetailsContent({
             setShowDayModal(false);
           }}
         >
-          <TouchableOpacity activeOpacity={1}>
+          <Pressable style={styles.modalInnerWrapper} onPress={() => {}}>
             <View
+              collapsable={false}
               style={[
                 styles.typeDropdownModal,
-                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  maxHeight: modalCardMaxHeight,
+                },
               ]}
             >
               <Text style={[styles.typeModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
                 Select Meeting Day
               </Text>
               <View style={[styles.typeOptionsListBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-                <ScrollView style={styles.optionsList} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  style={[styles.optionsList, { maxHeight: modalOptionsScrollMaxHeight }]}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
                 {dayOptions.map((option, idx) => (
                   <TouchableOpacity
                     key={option.value}
@@ -652,7 +678,7 @@ export function ClubMeetingDetailsContent({
                 </TouchableOpacity>
               </View>
             </View>
-          </TouchableOpacity>
+          </Pressable>
         </TouchableOpacity>
       </Modal>
 
@@ -674,18 +700,28 @@ export function ClubMeetingDetailsContent({
             setShowFrequencyModal(false);
           }}
         >
-          <TouchableOpacity activeOpacity={1}>
+          <Pressable style={styles.modalInnerWrapper} onPress={() => {}}>
             <View
+              collapsable={false}
               style={[
                 styles.typeDropdownModal,
-                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  maxHeight: modalCardMaxHeight,
+                },
               ]}
             >
               <Text style={[styles.typeModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
                 Select Meeting Frequency
               </Text>
               <View style={[styles.typeOptionsListBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-                <ScrollView style={styles.optionsList} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  style={[styles.optionsList, { maxHeight: modalOptionsScrollMaxHeight }]}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
                 {frequencyOptions.map((option, idx) => (
                   <TouchableOpacity
                     key={option.value}
@@ -750,7 +786,7 @@ export function ClubMeetingDetailsContent({
                 </TouchableOpacity>
               </View>
             </View>
-          </TouchableOpacity>
+          </Pressable>
         </TouchableOpacity>
       </Modal>
 
@@ -772,11 +808,16 @@ export function ClubMeetingDetailsContent({
             setShowTypeModal(false);
           }}
         >
-          <TouchableOpacity activeOpacity={1}>
+          <Pressable style={styles.modalInnerWrapper} onPress={() => {}}>
             <View
+              collapsable={false}
               style={[
                 styles.typeDropdownModal,
-                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  maxHeight: modalCardMaxHeight,
+                },
               ]}
             >
               <Text style={[styles.typeModalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -841,7 +882,7 @@ export function ClubMeetingDetailsContent({
                 </TouchableOpacity>
               </View>
             </View>
-          </TouchableOpacity>
+          </Pressable>
         </TouchableOpacity>
       </Modal>
 
@@ -1153,16 +1194,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  /** Full-width wrapper so %-sized cards measure correctly (avoids action row sitting outside the card on iOS/Android). */
+  modalInnerWrapper: {
+    width: '100%',
+    maxWidth: 520,
+    alignItems: 'stretch',
+    justifyContent: 'center',
   },
   typeDropdownModal: {
     borderRadius: 0,
     paddingTop: 18,
     paddingHorizontal: 20,
     paddingBottom: 14,
-    marginHorizontal: 8,
-    width: '98%',
+    width: '100%',
     maxWidth: 483,
+    alignSelf: 'center',
     borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    flexDirection: 'column',
   },
   modalTitle: {
     fontSize: 18,
@@ -1180,10 +1231,12 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 0,
     overflow: 'hidden',
+    flexGrow: 0,
+    flexShrink: 1,
+    minHeight: 0,
   },
   optionsList: {
     marginBottom: 0,
-    maxHeight: 280,
   },
   option: {
     paddingVertical: 16,
@@ -1228,6 +1281,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 20,
+    flexShrink: 0,
   },
   typeModalActions: {
     marginTop: 12,

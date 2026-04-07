@@ -871,9 +871,9 @@ export default function PreparedSpeechEvaluations() {
           })
         )}
 
-        {/* Navigation Quick Actions */}
+        {/* Navigation Quick Actions — full-width wrapped grid (matches corner dock distribution) */}
         <View style={[styles.quickActionsBoxContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContent}>
+          <View style={styles.quickActionsContent}>
             <TouchableOpacity
               style={styles.quickActionItem}
               onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId } })}
@@ -1027,7 +1027,7 @@ export default function PreparedSpeechEvaluations() {
               </View>
               <Text style={[styles.quickActionLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Table Topics</Text>
             </TouchableOpacity>
-          </ScrollView>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1329,15 +1329,23 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 16,
     borderWidth: 1,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   quickActionsContent: {
-    gap: 16,
-    paddingHorizontal: 4,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    width: '100%',
+    rowGap: 16,
+    columnGap: 8,
   },
   quickActionItem: {
     alignItems: 'center',
     gap: 8,
-    minWidth: 80,
+    width: '31%',
+    minWidth: 0,
+    marginBottom: 4,
   },
   quickActionIcon: {
     width: 56,

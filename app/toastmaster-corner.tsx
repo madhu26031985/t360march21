@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -128,6 +128,7 @@ function formatConsolidatedMeetingMetaSingleLine(m: Meeting): string {
 export default function ToastmasterCorner() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -955,19 +956,15 @@ export default function ToastmasterCorner() {
           {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
-            paddingBottom: Math.max(insets.bottom + 10, 22),
+            paddingBottom:
+              Platform.OS === 'web'
+                ? Math.min(Math.max(insets.bottom, 8), 14)
+                : Math.max(insets.bottom + 10, 22),
+            width: windowWidth,
           },
         ]}
       >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={[
-            styles.footerNavigationContent,
-            { paddingHorizontal: Math.max(insets.left, insets.right, 4) },
-          ]}
-        >
+        <View style={styles.tabBarRow}>
           <TouchableOpacity
             style={styles.footerNavItem}
             onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
@@ -1058,7 +1055,7 @@ export default function ToastmasterCorner() {
               VOTING
             </Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
       </View>
       </View>
 
@@ -1240,7 +1237,13 @@ const styles = StyleSheet.create({
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 10,
-    paddingHorizontal: 0,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  tabBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     width: '100%',
     alignSelf: 'stretch',
   },
@@ -1781,11 +1784,13 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    minWidth: 56,
-    maxWidth: 72,
+    justifyContent: 'center',
     paddingHorizontal: 2,
+    paddingVertical: 2,
     paddingBottom: 2,
   },
   footerNavIcon: {

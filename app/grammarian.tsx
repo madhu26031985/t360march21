@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Animated, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Animated, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -140,6 +140,8 @@ interface UsageTracking {
 export default function GrammarianReport() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
   
@@ -1501,15 +1503,15 @@ export default function GrammarianReport() {
         {
           borderTopColor: theme.colors.border,
           backgroundColor: theme.colors.surface,
+          paddingBottom:
+            Platform.OS === 'web'
+              ? Math.min(Math.max(insets.bottom, 8), 14)
+              : Math.max(insets.bottom, 10),
+          width: windowWidth,
         },
       ]}
     >
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.footerNavigationContent}
-      >
+      <View style={styles.tabBarRow}>
         <TouchableOpacity
           style={styles.footerNavItem}
           onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
@@ -1619,7 +1621,7 @@ export default function GrammarianReport() {
             VOTING
           </Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </View>
   );
 
@@ -1667,7 +1669,7 @@ export default function GrammarianReport() {
         <ScrollView
           style={styles.scrollMain}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+          contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
         >
           <View style={styles.contentTop}>
           <View style={[styles.noAssignmentNotionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -1871,10 +1873,10 @@ export default function GrammarianReport() {
         style={styles.scrollMain}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
       >
         <View style={styles.contentTop}>
-        {/* Flat header — same pattern as General Evaluator Report */}
+        {/* Flat header — matches Educational Corner / GE Report */}
         {assignedGrammarian && (
           <View
             style={[
@@ -1882,8 +1884,7 @@ export default function GrammarianReport() {
               {
                 backgroundColor: theme.colors.background,
                 borderBottomColor: theme.colors.border,
-                marginHorizontal: 16,
-                marginTop: 8,
+                marginTop: 12,
               },
             ]}
           >
@@ -3070,21 +3071,41 @@ const styles = StyleSheet.create({
   contentContainer: {
     flexGrow: 1,
     flexDirection: 'column',
+    alignItems: 'stretch',
+    width: '100%',
+  },
+  contentContainerPadded: {
+    paddingHorizontal: 16,
   },
   mainBody: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'stretch',
   },
   scrollMain: {
     flex: 1,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  contentTop: {},
-  /** One unified bottom panel — same as General Evaluator / Toastmaster Corner */
+  contentTop: {
+    width: '100%',
+    alignItems: 'stretch',
+  },
+  /** One unified bottom panel — same as General Evaluator / Educational Corner */
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  tabBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   footerNavigationContent: {
     flexDirection: 'row',
@@ -3093,9 +3114,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   footerNavIcon: {
     width: 30,
@@ -3120,7 +3145,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'stretch',
     width: '100%',
-    maxWidth: 720,
     overflow: 'visible',
     borderBottomWidth: StyleSheet.hairlineWidth,
   },

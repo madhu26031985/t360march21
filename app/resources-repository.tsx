@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -7,7 +7,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, BookOpen, Youtube, FileText, Building2, Home, Users, Calendar, Settings } from 'lucide-react-native';
 
-const FOOTER_NAV_ICON_SIZE = 15;
+/** Match `app/club-info.tsx` bottom navigation icon tiles and colors. */
+const CLUB_INFO_DOCK_ICON_SIZE = 16;
 
 interface ClubInfo {
   id: string;
@@ -18,6 +19,8 @@ interface ClubInfo {
 export default function ResourcesRepository() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
 
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,7 +109,8 @@ export default function ResourcesRepository() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      <View style={styles.main}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -116,7 +120,12 @@ export default function ResourcesRepository() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Club Card */}
         {clubInfo && (
           <View
@@ -204,56 +213,72 @@ export default function ResourcesRepository() {
             );
           })}
         </View>
-
-        <View style={styles.navSpacer} />
-
-        {/* Navigation Icons */}
-        <View
-          style={[
-            styles.navigationSection,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-          ]}
-        >
-          <View style={styles.navigationBar}>
-            <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)')}>
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Home size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/club')}>
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Users size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/meetings')}>
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Calendar size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/settings')}>
-              <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
-            </TouchableOpacity>
-
-            {isExComm && (
-              <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/admin')}>
-                <View style={[styles.navIcon, { backgroundColor: theme.colors.background }]}>
-                  <Settings size={FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
       </ScrollView>
+
+      <View
+        style={[
+          styles.bottomDock,
+          {
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            width: windowWidth,
+            paddingBottom:
+              Platform.OS === 'web'
+                ? Math.min(Math.max(insets.bottom, 8), 14)
+                : Math.max(insets.bottom, 10),
+          },
+        ]}
+      >
+        <View style={styles.tabBarRow}>
+          <TouchableOpacity style={styles.dockNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+            <View style={[styles.dockNavIcon, { backgroundColor: '#E8F4FD' }]}>
+              <Home size={CLUB_INFO_DOCK_ICON_SIZE} color="#3b82f6" />
+            </View>
+            <Text style={[styles.dockNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Journey
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.dockNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+            <View style={[styles.dockNavIcon, { backgroundColor: '#FEF3E7' }]}>
+              <Users size={CLUB_INFO_DOCK_ICON_SIZE} color="#f59e0b" />
+            </View>
+            <Text style={[styles.dockNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Club
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.dockNavItem} onPress={() => router.push('/(tabs)/meetings')} activeOpacity={0.75}>
+            <View style={[styles.dockNavIcon, { backgroundColor: '#E0F2FE' }]}>
+              <Calendar size={CLUB_INFO_DOCK_ICON_SIZE} color="#0ea5e9" />
+            </View>
+            <Text style={[styles.dockNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Meetings
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.dockNavItem} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.75}>
+            <View style={[styles.dockNavIcon, { backgroundColor: '#F3E8FF' }]}>
+              <Settings size={CLUB_INFO_DOCK_ICON_SIZE} color="#8b5cf6" />
+            </View>
+            <Text style={[styles.dockNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Settings
+            </Text>
+          </TouchableOpacity>
+
+          {isExComm ? (
+            <TouchableOpacity style={styles.dockNavItem} onPress={() => router.push('/(tabs)/admin')} activeOpacity={0.75}>
+              <View style={[styles.dockNavIcon, { backgroundColor: '#FFE5E5' }]}>
+                <Settings size={CLUB_INFO_DOCK_ICON_SIZE} color="#dc2626" />
+              </View>
+              <Text style={[styles.dockNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Admin
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -292,8 +317,17 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 40,
   },
-  content: {
+  main: {
     flex: 1,
+    minHeight: 0,
+  },
+  scroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  scrollContent: {
+    paddingBottom: 24,
+    flexGrow: 1,
   },
   clubCard: {
     marginHorizontal: 16,
@@ -359,7 +393,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 16,
     justifyContent: 'flex-start',
   },
   categoryTile: {
@@ -388,27 +422,30 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 14,
   },
-  navSpacer: {
-    minHeight: 8,
+  bottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  navigationSection: {
-    marginTop: 8,
-    marginBottom: 16,
-    marginHorizontal: 16,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  navigationBar: {
+  tabBarRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  navItem: {
-    alignItems: 'center',
+  dockNavItem: {
     flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+    paddingHorizontal: 2,
   },
-  navIcon: {
+  /** Same footprint as `styles.navIcon` on Club Info. */
+  dockNavIcon: {
     width: 38,
     height: 38,
     borderRadius: 13,
@@ -416,7 +453,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 6,
   },
-  navLabel: {
+  dockNavLabel: {
     fontSize: 9,
     fontWeight: '500',
     textAlign: 'center',

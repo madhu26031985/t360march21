@@ -12,9 +12,10 @@ import {
   Linking,
   Platform,
   ActivityIndicator,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -198,6 +199,8 @@ export default function TableTopicCorner(): JSX.Element {
           placeholder: theme.colors.textSecondary,
         };
   const notionType = NOTION_FONT_FAMILY ? ({ fontFamily: NOTION_FONT_FAMILY } as const) : {};
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams();
@@ -1610,7 +1613,7 @@ export default function TableTopicCorner(): JSX.Element {
       <ScrollView
         style={styles.scrollMain}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.contentContainer, { paddingBottom: 8 }]}
+        contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
       >
         {isTtmBooked && tableTopicMaster?.app_user_profiles ? (
           <View
@@ -1619,8 +1622,7 @@ export default function TableTopicCorner(): JSX.Element {
               {
                 backgroundColor: notion.page,
                 borderBottomColor: notion.divider,
-                marginHorizontal: 16,
-                marginTop: 8,
+                marginTop: 12,
               },
             ]}
           >
@@ -2116,15 +2118,15 @@ export default function TableTopicCorner(): JSX.Element {
             {
               borderTopColor: notion.divider,
               backgroundColor: notion.surface,
+              paddingBottom:
+                Platform.OS === 'web'
+                  ? Math.min(Math.max(insets.bottom, 8), 14)
+                  : Math.max(insets.bottom, 10),
+              width: windowWidth,
             },
           ]}
         >
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.footerNavigationContent}
-          >
+          <View style={styles.tabBarRow}>
             <TouchableOpacity
               style={styles.footerNavItem}
               onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
@@ -2212,7 +2214,7 @@ export default function TableTopicCorner(): JSX.Element {
                 VOTING
               </Text>
             </TouchableOpacity>
-          </ScrollView>
+          </View>
         </View>
       </View>
       </View>
@@ -2568,17 +2570,29 @@ const styles = StyleSheet.create({
   kavInner: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
+    width: '100%',
   },
   mainBody: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'stretch',
   },
-  /** Bottom shortcut dock — matches General Evaluator Report. */
+  /** Bottom shortcut dock — matches Educational Corner / Grammarian. */
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  tabBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   footerNavigationContent: {
     flexDirection: 'row',
@@ -2587,9 +2601,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   footerNavIcon: {
     width: 30,
@@ -2606,10 +2624,17 @@ const styles = StyleSheet.create({
   },
   scrollMain: {
     flex: 1,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   contentContainer: {
     flexGrow: 1,
     flexDirection: 'column',
+    alignItems: 'stretch',
+    width: '100%',
+  },
+  contentContainerPadded: {
+    paddingHorizontal: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -2730,7 +2755,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'stretch',
     width: '100%',
-    maxWidth: 720,
     overflow: 'visible',
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
