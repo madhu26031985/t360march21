@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, BookOpen, Youtube, FileText, Building2, Home, Users, Calendar, Settings } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Youtube, FileText, Building2, Home, Users, Calendar, Settings, ChevronRight } from 'lucide-react-native';
 
 /** Match `app/club-info.tsx` bottom navigation icon tiles and colors. */
 const CLUB_INFO_DOCK_ICON_SIZE = 16;
@@ -89,13 +89,43 @@ export default function ResourcesRepository() {
   const resourceCategories: {
     id: string;
     title: string;
+    subtitle: string;
+    iconColor: string;
     route: '/resources-youtube' | '/resources-evaluation-forms' | '/resources-magazines' | '/resources-others';
     Icon: typeof Youtube;
   }[] = [
-    { id: 'youtube', title: 'YouTube Videos', Icon: Youtube, route: '/resources-youtube' },
-    { id: 'evaluation_form', title: 'Evaluation Forms', Icon: FileText, route: '/resources-evaluation-forms' },
-    { id: 'magazine', title: 'Magazines', Icon: BookOpen, route: '/resources-magazines' },
-    { id: 'other_pdf', title: 'Others', Icon: FileText, route: '/resources-others' },
+    {
+      id: 'youtube',
+      title: 'YouTube Videos',
+      subtitle: 'Speeches, mentors, and learning clips',
+      iconColor: '#ef4444',
+      Icon: Youtube,
+      route: '/resources-youtube',
+    },
+    {
+      id: 'evaluation_form',
+      title: 'Evaluation Forms',
+      subtitle: 'Structured feedback templates',
+      iconColor: '#0ea5e9',
+      Icon: FileText,
+      route: '/resources-evaluation-forms',
+    },
+    {
+      id: 'magazine',
+      title: 'Magazines',
+      subtitle: 'Club and Toastmasters publications',
+      iconColor: '#8b5cf6',
+      Icon: BookOpen,
+      route: '/resources-magazines',
+    },
+    {
+      id: 'other_pdf',
+      title: 'Others',
+      subtitle: 'Additional club resources and files',
+      iconColor: '#10b981',
+      Icon: FileText,
+      route: '/resources-others',
+    },
   ];
 
   if (isLoading) {
@@ -185,30 +215,31 @@ export default function ResourcesRepository() {
           </Text>
         </View>
 
-        <View style={styles.categoriesGrid}>
+        <View style={styles.categoriesList}>
           {resourceCategories.map((category) => {
             const CatIcon = category.Icon;
             return (
               <TouchableOpacity
                 key={category.id}
                 style={[
-                  styles.categoryTile,
+                  styles.categoryRow,
                   { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
                 ]}
                 onPress={() => router.push(category.route)}
                 activeOpacity={0.7}
               >
-                <View
-                  style={[
-                    styles.categoryIconWell,
-                    { backgroundColor: theme.colors.backgroundSecondary, borderColor: theme.colors.border },
-                  ]}
-                >
-                  <CatIcon size={22} color={theme.colors.textSecondary} strokeWidth={1.75} />
+                <View style={styles.categoryRowLeft}>
+                  <CatIcon size={20} color={category.iconColor} strokeWidth={1.9} />
+                  <View style={styles.categoryTextBlock}>
+                    <Text style={[styles.categoryTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      {category.title}
+                    </Text>
+                    <Text style={[styles.categorySubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                      {category.subtitle}
+                    </Text>
+                  </View>
                 </View>
-                <Text style={[styles.categoryTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {category.title}
-                </Text>
+                <ChevronRight size={18} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             );
           })}
@@ -388,39 +419,42 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
-  categoriesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  categoriesList: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 14,
     paddingBottom: 16,
-    justifyContent: 'flex-start',
   },
-  categoryTile: {
-    width: '31%',
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    minHeight: 95,
-  },
-  categoryIconWell: {
-    width: 44,
-    height: 44,
+  categoryRow: {
+    width: '100%',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
     borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  categoryRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+  },
+  categoryTextBlock: {
+    marginLeft: 12,
+    flex: 1,
+    minWidth: 0,
   },
   categoryTitle: {
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 14,
+    lineHeight: 18,
+  },
+  categorySubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
   },
   bottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,

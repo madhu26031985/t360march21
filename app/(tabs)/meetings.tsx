@@ -2025,7 +2025,7 @@ export default function ClubMeetings() {
 
                   return (
                     <View key={currentMeeting.id}>
-                      {selectedMeeting?.id === currentMeeting.id ? (
+                      {true ? (
                         /* Unified expanded box - meeting bar + tabs + content in one card */
                         <View style={[styles.unifiedExpandedMeetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                           <View style={styles.unifiedMeetingBar}>
@@ -2049,14 +2049,7 @@ export default function ClubMeetings() {
                                   Mode: {formatMeetingMode(currentMeeting.meeting_mode)}
                                 </Text>
                               </View>
-                              <TouchableOpacity
-                                style={[styles.enterMeetingButton, { backgroundColor: theme.colors.primary }]}
-                                onPress={() => handleMeetingPress(currentMeeting)}
-                                activeOpacity={0.8}
-                              >
-                                <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>Close</Text>
-                                <ChevronUp size={16} color="#ffffff" />
-                              </TouchableOpacity>
+                              <View style={styles.meetingActionSpacer} />
                             </View>
                           </View>
                           <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
@@ -2189,7 +2182,7 @@ export default function ClubMeetings() {
                         </View>
                         <View style={styles.heroCardDecoration} />
                       </View>
-                    ) : expandedNextMeeting === meeting.id ? (
+                    ) : true ? (
                       /* Unified expanded box for Next Meeting */
                       <View style={[styles.unifiedExpandedMeetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                         <View style={styles.unifiedMeetingBar}>
@@ -2213,14 +2206,7 @@ export default function ClubMeetings() {
                                 Mode: {formatMeetingMode(meeting.meeting_mode)}
                               </Text>
                             </View>
-                            <TouchableOpacity
-                              style={[styles.preplanButton, { backgroundColor: theme.colors.primary }]}
-                              onPress={() => handleNextMeetingPress(meeting.id)}
-                              activeOpacity={0.8}
-                            >
-                              <Text style={styles.preplanButtonText} maxFontSizeMultiplier={1.3}>Close</Text>
-                              <ChevronUp size={16} color="#ffffff" />
-                            </TouchableOpacity>
+                            <View style={styles.meetingActionSpacer} />
                           </View>
                         </View>
                         <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
@@ -2470,6 +2456,9 @@ const styles = StyleSheet.create({
   },
   heroMeetingInfo: {
     flex: 1,
+  },
+  meetingActionSpacer: {
+    width: 72,
   },
   heroMeetingTitle: {
     fontSize: 13,

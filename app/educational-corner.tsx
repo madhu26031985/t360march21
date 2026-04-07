@@ -20,6 +20,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
+import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import {
   educationalCornerQueryKeys,
   fetchEducationalCornerBundle,
@@ -129,6 +130,7 @@ export default function EducationalCorner(): JSX.Element {
   const [cornerEducationalTitle, setCornerEducationalTitle] = useState('');
   const [savingCornerEducational, setSavingCornerEducational] = useState(false);
   const [editingSavedCornerEducational, setEditingSavedCornerEducational] = useState(false);
+  const [bookingSuccessRole, setBookingSuccessRole] = useState<string | null>(null);
 
   useEffect(() => {
     skipFocusRefetchRef.current = true;
@@ -244,6 +246,7 @@ export default function EducationalCorner(): JSX.Element {
       }
       if (result.ok) {
         await refetch();
+        setBookingSuccessRole('Educational Speaker');
       } else {
         Alert.alert('Could not book', result.message);
       }
@@ -1041,6 +1044,11 @@ export default function EducationalCorner(): JSX.Element {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      <PremiumBookingSuccessModal
+        visible={!!bookingSuccessRole}
+        roleLabel={bookingSuccessRole ?? ''}
+        onClose={() => setBookingSuccessRole(null)}
+      />
 
     </SafeAreaView>
   );

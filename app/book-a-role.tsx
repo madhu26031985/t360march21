@@ -6,6 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
+import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import { ArrowLeft, Calendar, Users, User, Crown, Shield, Eye, UserCheck, Building2, X, Save, BookOpen, GraduationCap, MessageSquare, Lightbulb, CreditCard as Edit, Clock, MapPin, FileText, CreditCard as Edit2, ChevronDown, Layers, Tag, Mic, Briefcase, Star, MousePointerClick, Filter, Check, Home, Settings } from 'lucide-react-native';
 
 const BOOK_ROLE_DOCK_ICON_SIZE = 15;
@@ -117,6 +118,9 @@ export default function BookARole() {
   const [withdrawConfirmRole, setWithdrawConfirmRole] = useState<MeetingRole | null>(null);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [showCategoryFilterModal, setShowCategoryFilterModal] = useState(false);
+  const [bookedRoleName, setBookedRoleName] = useState<string | null>(null);
+  const [withdrawnRoleName, setWithdrawnRoleName] = useState<string | null>(null);
+  const [postBookSuccessRoute, setPostBookSuccessRoute] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
 
@@ -526,12 +530,8 @@ export default function BookARole() {
       const bookedToastmaster =
         role.role_name.toLowerCase().includes('toastmaster') &&
         !role.role_name.toLowerCase().includes('table topics master');
-      if (bookedToastmaster) {
-        router.push(`/toastmaster-corner?meetingId=${role.meeting_id}`);
-        return;
-      }
-
-      Alert.alert('Success', 'Role booked successfully!');
+      setPostBookSuccessRoute(bookedToastmaster ? `/toastmaster-corner?meetingId=${role.meeting_id}` : null);
+      setBookedRoleName(role.role_name);
     } catch (error) {
       console.error('Error booking role:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -580,6 +580,7 @@ export default function BookARole() {
 
       setWithdrawConfirmRole(null);
       loadMeetingRoles();
+      setWithdrawnRoleName(role.role_name);
     } catch (error) {
       console.error('Error withdrawing role:', error);
       setWithdrawConfirmRole(null);
@@ -587,6 +588,13 @@ export default function BookARole() {
     } finally {
       setIsWithdrawing(false);
     }
+  };
+
+  const closeBookSuccessModal = () => {
+    const route = postBookSuccessRoute;
+    setBookedRoleName(null);
+    setPostBookSuccessRoute(null);
+    if (route) router.push(route);
   };
 
   // const handleEditCollaboration = (role: MeetingRole) => {
@@ -1672,6 +1680,17 @@ export default function BookARole() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      <PremiumBookingSuccessModal
+        visible={!!bookedRoleName}
+        roleLabel={bookedRoleName ?? ''}
+        onClose={closeBookSuccessModal}
+      />
+      <PremiumBookingSuccessModal
+        visible={!!withdrawnRoleName}
+        roleLabel={withdrawnRoleName ?? ''}
+        action="withdrawn"
+        onClose={() => setWithdrawnRoleName(null)}
+      />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

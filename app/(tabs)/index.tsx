@@ -1683,7 +1683,7 @@ export default function MyJourney() {
                   inline
                 />
                 <JourneyListCard
-                  title="My growth"
+                  title="My Growth"
                   description="Speeches, mentor, and My Role Insights"
                   icon={<Trophy size={18} color="#D97706" />}
                   color="#D97706"
@@ -1731,7 +1731,7 @@ export default function MyJourney() {
                       inline
                     />
                     <JourneyListCard
-                      title="My growth"
+                      title="My Growth"
                       description="Speeches, mentor, and My Role Insights"
                       icon={<Trophy size={18} color="#D97706" />}
                       color="#D97706"

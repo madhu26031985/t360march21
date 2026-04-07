@@ -20,6 +20,7 @@ import {
   fetchGrammarianClubMembersDirectory,
   invalidateGrammarianCornerSnapshotCache,
 } from '@/lib/grammarianCornerQuery';
+import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import { GrammarianReportSummarySection } from '@/components/grammarian/GrammarianReportSummarySection';
 import { GrammarianNotesScreen } from './grammarian-notes';
 import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles, X, ChevronRight, ChevronLeft, ChevronDown, Plus, Minus, Search, FileText, NotebookPen, Bell, Users, Eye, EyeOff, CheckSquare, Timer, Star, Mic, FileBarChart, Award, MessageCircle, MessageSquare, Lightbulb, MessageSquareQuote, ThumbsUp, CheckCircle2, AlertTriangle, TrendingUp, RotateCcw, Info, UserPlus, UserCog, ClipboardCheck, Vote } from 'lucide-react-native';
@@ -208,6 +209,7 @@ export default function GrammarianReport() {
   const notebookPulse = useRef(new Animated.Value(1)).current;
   const wordOfTheDayPulse = useRef(new Animated.Value(1)).current;
   const [bookingGrammarianRole, setBookingGrammarianRole] = useState(false);
+  const [bookingSuccessRole, setBookingSuccessRole] = useState<string | null>(null);
   const [isVPEClub, setIsVPEClub] = useState(false);
   const [showAssignGrammarianModal, setShowAssignGrammarianModal] = useState(false);
   const [assignGrammarianSearch, setAssignGrammarianSearch] = useState('');
@@ -479,7 +481,7 @@ export default function GrammarianReport() {
           email: user.email || '',
           avatar_url: user.avatarUrl ?? null,
         });
-        Alert.alert('Booked', 'You are now the Grammarian for this meeting.');
+        setBookingSuccessRole('Grammarian');
         void loadData({ force: true });
       } else {
         Alert.alert('Could not book', result.message);
@@ -1730,6 +1732,21 @@ export default function GrammarianReport() {
                 </Text>
               )}
             </TouchableOpacity>
+            {isVPEClub ? (
+              <TouchableOpacity
+                style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12 }}
+                onPress={() => {
+                  setShowAssignGrammarianModal(true);
+                  void loadClubMembers();
+                }}
+                disabled={bookingGrammarianRole || assigningGrammarianRole}
+                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.primary }} maxFontSizeMultiplier={1.25}>
+                  Assign to a member
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             </View>
             <View style={styles.meetingCardDecoration} />
           </View>
@@ -3003,6 +3020,11 @@ Finally, don’t forget to share the Grammarian Report with all club members.
           </View>
         </SafeAreaView>
       </Modal>
+      <PremiumBookingSuccessModal
+        visible={!!bookingSuccessRole}
+        roleLabel={bookingSuccessRole ?? ''}
+        onClose={() => setBookingSuccessRole(null)}
+      />
       </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -8,6 +8,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
+import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import { fetchGeneralEvaluatorReportBundle, generalEvaluatorReportQueryKeys } from '@/lib/generalEvaluatorReportQuery';
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
 import { ArrowLeft, Calendar, Star, X, NotebookPen, FileText, Users, RotateCcw, ClipboardCheck, Search, Vote } from 'lucide-react-native';
@@ -265,6 +266,7 @@ export default function GeneralEvaluatorReport() {
   const [existingEvaluation, setExistingEvaluation] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'categories' | 'feedback'>('categories');
   const [bookingGeRole, setBookingGeRole] = useState(false);
+  const [bookingSuccessRole, setBookingSuccessRole] = useState<string | null>(null);
   const [isVPEClub, setIsVPEClub] = useState(false);
   const [showAssignGeModal, setShowAssignGeModal] = useState(false);
   const [assignGeSearch, setAssignGeSearch] = useState('');
@@ -440,6 +442,7 @@ export default function GeneralEvaluatorReport() {
       );
       if (result.ok) {
         await loadGeneralEvaluatorData();
+        setBookingSuccessRole('General Evaluator');
       } else {
         Alert.alert('Could not book', result.message);
       }
@@ -1235,6 +1238,21 @@ export default function GeneralEvaluatorReport() {
                   </Text>
                 )}
               </TouchableOpacity>
+              {isVPEClub ? (
+                <TouchableOpacity
+                  style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12 }}
+                  onPress={() => {
+                    setShowAssignGeModal(true);
+                    void loadClubMembers();
+                  }}
+                  disabled={bookingGeRole || assigningGeRole}
+                  hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.primary }} maxFontSizeMultiplier={1.25}>
+                    Assign to a member
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
             <View style={styles.meetingCardDecoration} pointerEvents="none" />
           </View>
@@ -1613,6 +1631,11 @@ export default function GeneralEvaluatorReport() {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+        <PremiumBookingSuccessModal
+          visible={!!bookingSuccessRole}
+          roleLabel={bookingSuccessRole ?? ''}
+          onClose={() => setBookingSuccessRole(null)}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

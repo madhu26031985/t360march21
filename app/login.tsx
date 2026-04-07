@@ -14,6 +14,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [signInError, setSignInError] = useState('');
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -23,21 +24,31 @@ export default function Login() {
 
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter both email and password');
+      const msg = 'Please enter both email and password';
+      setSignInError(msg);
+      Alert.alert('Error', msg);
       return;
     }
 
+    setSignInError('');
     setIsLoading(true);
 
     try {
       const result = await signIn(email, password);
 
       if (!result.success) {
+        const normalizedError = (result.error || '').toLowerCase();
+        const isInvalidCredentialsError =
+          normalizedError.includes('invalid login credentials') ||
+          normalizedError.includes('invalid credentials') ||
+          normalizedError.includes('invalid email or password');
+
         // Check if it's an email verification error
         if (result.error?.includes('verify your email') ||
             result.error?.includes('verification link') ||
             result.error?.includes('Email not confirmed') ||
             result.error?.includes('email not confirmed')) {
+          setSignInError('Please verify your email before signing in.');
           Alert.alert(
             'Email Verification Required',
             'Please check your email and click the verification link before signing in. If you didn\'t receive the email, you can request a new one.',
@@ -49,13 +60,20 @@ export default function Login() {
               { text: 'OK' }
             ]
           );
+        } else if (isInvalidCredentialsError) {
+          const msg = 'Incorrect email or password. Please try again.';
+          setSignInError(msg);
+          Alert.alert('Sign In Failed', msg);
         } else {
-          Alert.alert('Sign In Failed', result.error || 'Please check your credentials');
+          const msg = result.error || 'Please check your credentials';
+          setSignInError(msg);
+          Alert.alert('Sign In Failed', msg);
         }
       }
     } catch (error) {
       console.error('Sign in error:', error);
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      setSignInError(errorMessage);
       Alert.alert('Error', errorMessage);
     } finally {
       setIsLoading(false);
@@ -104,7 +122,10 @@ export default function Login() {
                 placeholder="Enter your email"
                 placeholderTextColor={theme.colors.textSecondary}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(v) => {
+                  if (signInError) setSignInError('');
+                  setEmail(v);
+                }}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -122,7 +143,10 @@ export default function Login() {
                 placeholder="Enter your password"
                 placeholderTextColor={theme.colors.textSecondary}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(v) => {
+                  if (signInError) setSignInError('');
+                  setPassword(v);
+                }}
                 secureTextEntry={!showPassword}
                 autoComplete="password"
               />
@@ -150,6 +174,11 @@ export default function Login() {
               {isLoading ? 'Signing In...' : 'Sign In'}
             </Text>
           </TouchableOpacity>
+          {signInError ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerText} maxFontSizeMultiplier={1.3}>{signInError}</Text>
+            </View>
+          ) : null}
 
           {/* Forgot Password Link */}
           <TouchableOpacity style={styles.forgotPasswordButton} onPress={() => router.push('/forgot-password')}>
@@ -267,6 +296,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#9ca3af',
     shadowOpacity: 0,
     elevation: 0,
+  },
+  errorBanner: {
+    marginTop: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  errorBannerText: {
+    color: '#b91c1c',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   signInButtonText: {
     fontSize: 14,

@@ -7,6 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
+import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import {
   fetchToastmasterCornerBundle,
   toastmasterCornerQueryKeys,
@@ -154,6 +155,7 @@ export default function ToastmasterCorner() {
   const [isExComm, setIsExComm] = useState(false);
   const [isVPEClub, setIsVPEClub] = useState(false);
   const [bookingTmodRole, setBookingTmodRole] = useState(false);
+  const [bookingSuccessRole, setBookingSuccessRole] = useState<string | null>(null);
   const [showAssignToastmasterModal, setShowAssignToastmasterModal] = useState(false);
   const [assignToastmasterSearch, setAssignToastmasterSearch] = useState('');
   const [assigningToastmasterRole, setAssigningToastmasterRole] = useState(false);
@@ -378,6 +380,7 @@ export default function ToastmasterCorner() {
       }
       if (result.ok) {
         await invalidateToastmasterCorner();
+        setBookingSuccessRole('Toastmaster of the Day');
       } else {
         Alert.alert('Could not book', result.message);
       }
@@ -1164,6 +1167,11 @@ export default function ToastmasterCorner() {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+        <PremiumBookingSuccessModal
+          visible={!!bookingSuccessRole}
+          roleLabel={bookingSuccessRole ?? ''}
+          onClose={() => setBookingSuccessRole(null)}
+        />
 
     </SafeAreaView>
   );

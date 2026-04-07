@@ -22,6 +22,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { fetchTableTopicCornerBundle, tableTopicCornerQueryKeys } from '@/lib/tableTopicCornerQuery';
+import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import {
   bookMeetingRoleForCurrentUser as bookMeetingRoleInline,
   bookOpenMeetingRole,
@@ -281,6 +282,7 @@ export default function TableTopicCorner(): JSX.Element {
   /** Inline book-a-role: loading state per participant row */
   const [bookingRoleId, setBookingRoleId] = useState<string | null>(null);
   const [bookingTableTopicMaster, setBookingTableTopicMaster] = useState<boolean>(false);
+  const [bookingSuccessRole, setBookingSuccessRole] = useState<string | null>(null);
   const hasLoadedOnceRef = useRef<boolean>(false);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
 
@@ -1216,6 +1218,7 @@ export default function TableTopicCorner(): JSX.Element {
       const result = await bookMeetingRoleInline(user.id, participant.id);
       if (result.ok) {
         await loadTableTopicParticipants();
+        setBookingSuccessRole('Table Topics participant');
       } else {
         Alert.alert('Could not book', result.message);
       }
@@ -1243,6 +1246,7 @@ export default function TableTopicCorner(): JSX.Element {
       );
       if (result.ok) {
         await loadTableTopicMaster();
+        setBookingSuccessRole('Table Topics Master');
       } else {
         Alert.alert('Could not book', result.message);
       }
@@ -1767,6 +1771,21 @@ export default function TableTopicCorner(): JSX.Element {
                   </Text>
                 )}
               </TouchableOpacity>
+              {isVPEClub ? (
+                <TouchableOpacity
+                  style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12 }}
+                  onPress={() => {
+                    setAssignMode('member');
+                    setShowAssignMemberModal(true);
+                  }}
+                  disabled={bookingTableTopicMaster}
+                  hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.primary }} maxFontSizeMultiplier={1.25}>
+                    Assign to a member
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
             <View style={styles.meetingCardDecoration} pointerEvents="none" />
           </View>
@@ -2558,6 +2577,11 @@ export default function TableTopicCorner(): JSX.Element {
           </View>
         </View>
       </Modal>
+      <PremiumBookingSuccessModal
+        visible={!!bookingSuccessRole}
+        roleLabel={bookingSuccessRole ?? ''}
+        onClose={() => setBookingSuccessRole(null)}
+      />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

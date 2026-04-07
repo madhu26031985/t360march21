@@ -7,6 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ahCounterQueryKeys, fetchAhCounterSnapshot } from '@/lib/ahCounterSnapshot';
+import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import {
   type MeetingVisitingGuest,
   VISITING_GUEST_SLOT_COUNT,
@@ -241,6 +242,7 @@ export default function AhCounterCorner() {
   const [showAddGuestModal, setShowAddGuestModal] = useState(false);
   const [newGuestInput, setNewGuestInput] = useState('');
   const [bookingAhCounterRole, setBookingAhCounterRole] = useState(false);
+  const [bookingSuccessRole, setBookingSuccessRole] = useState<string | null>(null);
   const [showAssignAhCounterModal, setShowAssignAhCounterModal] = useState(false);
   const [assignAhCounterSearch, setAssignAhCounterSearch] = useState('');
   const [assigningAhCounterRole, setAssigningAhCounterRole] = useState(false);
@@ -422,7 +424,7 @@ export default function AhCounterCorner() {
       if (result.ok) {
         bustAhCounterSnapshotCache();
         await loadData();
-        Alert.alert('Booked', 'You are now the Ah Counter for this meeting.');
+        setBookingSuccessRole('Ah Counter');
       } else {
         Alert.alert('Could not book', result.message);
       }
@@ -1644,6 +1646,21 @@ export default function AhCounterCorner() {
                 </Text>
               )}
             </TouchableOpacity>
+            {isVPEClub ? (
+              <TouchableOpacity
+                style={{ marginTop: 14, paddingVertical: 10, paddingHorizontal: 12 }}
+                onPress={() => {
+                  setShowAssignAhCounterModal(true);
+                  void loadClubMembers();
+                }}
+                disabled={bookingAhCounterRole || assigningAhCounterRole}
+                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.primary }} maxFontSizeMultiplier={1.25}>
+                  Assign to a member
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
             <View style={styles.meetingCardDecoration} />
           </View>
@@ -2637,6 +2654,11 @@ export default function AhCounterCorner() {
           </View>
         </View>
       </Modal>
+      <PremiumBookingSuccessModal
+        visible={!!bookingSuccessRole}
+        roleLabel={bookingSuccessRole ?? ''}
+        onClose={() => setBookingSuccessRole(null)}
+      />
     </SafeAreaView>
   );
 }

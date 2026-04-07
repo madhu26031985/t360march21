@@ -28,6 +28,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import { Image } from 'react-native';
+import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 
 interface PreparedSpeechEvaluation {
   id: string;
@@ -88,6 +89,7 @@ export default function PreparedSpeechEvaluations() {
   const [bookedSpeakerRoles, setBookedSpeakerRoles] = useState<any[]>([]);
   const [openSpeakerRoles, setOpenSpeakerRoles] = useState<OpenSpeakerRole[]>([]);
   const [bookingRoleId, setBookingRoleId] = useState<string | null>(null);
+  const [bookingSuccessRole, setBookingSuccessRole] = useState<string | null>(null);
   const [meetingInfo, setMeetingInfo] = useState<{
     title: string;
     date: string;
@@ -379,6 +381,7 @@ export default function PreparedSpeechEvaluations() {
           loadBookedSpeakerRoles(),
           loadEvaluations(),
         ]);
+        setBookingSuccessRole('Prepared Speech role');
       } else {
         Alert.alert('Could not book', result.message);
       }
@@ -1030,6 +1033,11 @@ export default function PreparedSpeechEvaluations() {
           </View>
         </View>
       </ScrollView>
+      <PremiumBookingSuccessModal
+        visible={!!bookingSuccessRole}
+        roleLabel={bookingSuccessRole ?? ''}
+        onClose={() => setBookingSuccessRole(null)}
+      />
     </SafeAreaView>
   );
 }

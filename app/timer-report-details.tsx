@@ -7,6 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole } from '@/lib/bookMeetingRoleInline';
+import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import { suggestTimerQualification } from '@/lib/timerQualificationSuggestion';
 import { fetchTimerReportSnapshot, fetchTimerReportCategoryBundle, timerReportQueryKeys } from '@/lib/timerReportSnapshot';
 import { propagateMeetingVisitingGuestDisplayRename } from '@/lib/syncVisitingGuestRosterNames';
@@ -282,6 +283,7 @@ export default function TimerReportDetails() {
   const [deletingReports, setDeletingReports] = useState<Set<string>>(new Set());
   const [bookedSpeakers, setBookedSpeakers] = useState<ClubMember[]>([]);
   const [bookingTimerRole, setBookingTimerRole] = useState(false);
+  const [bookingSuccessRole, setBookingSuccessRole] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [categoryRoles, setCategoryRoles] = useState<CategoryRole[]>([]);
   const [selectedCategoryRoleId, setSelectedCategoryRoleId] = useState<string | null>(null);
@@ -885,6 +887,7 @@ export default function TimerReportDetails() {
       );
       if (result.ok) {
         await loadAssignedTimer();
+        setBookingSuccessRole('Timer');
       } else {
         Alert.alert('Could not book', result.message);
       }
@@ -3523,6 +3526,11 @@ export default function TimerReportDetails() {
       </Modal>
 
       {renderSpeakerAssignmentModal()}
+      <PremiumBookingSuccessModal
+        visible={!!bookingSuccessRole}
+        roleLabel={bookingSuccessRole ?? ''}
+        onClose={() => setBookingSuccessRole(null)}
+      />
 
       </View>
       </KeyboardAvoidingView>
