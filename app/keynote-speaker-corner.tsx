@@ -46,6 +46,38 @@ const CORNER_KEYNOTE_TITLE_MAX_LEN = 50;
 const NOTION_FLAT_BORDER_LIGHT = 'rgba(55, 53, 47, 0.09)';
 const NOTION_FLAT_RADIUS = 4;
 
+function isReactNativeWebPlatform(): boolean {
+  try {
+    return Platform.OS === 'web';
+  } catch {
+    return false;
+  }
+}
+
+/** Expo Router / web may use `meetingId` or `meeting_id` in the query string. */
+function pickMeetingIdFromParams(
+  params: Record<string, string | string[] | undefined>
+): string | undefined {
+  const pick = (v: string | string[] | undefined): string | undefined => {
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (Array.isArray(v) && v[0] != null && String(v[0]).trim()) return String(v[0]).trim();
+    return undefined;
+  };
+  return pick(params.meetingId) ?? pick(params.meeting_id);
+}
+
+function isKeynoteCornerRpcUnavailable(error: { code?: string; message?: string; details?: string } | null): boolean {
+  if (!error) return false;
+  const text = `${error.message || ''} ${error.details || ''}`.toLowerCase();
+  return (
+    error.code === 'PGRST202' ||
+    error.code === '42883' ||
+    /could not find the function/i.test(error.message || '') ||
+    /function .* does not exist/i.test(text) ||
+    /404/.test(error.message || '')
+  );
+}
+
 // Type definitions
 interface Meeting {
   id: string;
@@ -116,6 +148,42 @@ interface ClubMember {
   avatar_url: string | null;
 }
 
+/** RPC `get_keynote_speaker_corner_snapshot` payload (slim JSON). */
+interface KeynoteCornerSnapshot {
+  meeting_id: string;
+  club_id: string;
+  meeting: {
+    id: string;
+    meeting_title: string;
+    meeting_date: string;
+    meeting_number: string | null;
+    meeting_start_time: string | null;
+    meeting_end_time: string | null;
+    meeting_mode: string;
+    meeting_location: string | null;
+    meeting_link: string | null;
+    meeting_status: string;
+    club_name: string | null;
+  } | null;
+  keynote_assignment: {
+    id: string;
+    role_name: string;
+    assigned_user_id: string;
+    booking_status: string;
+    role_status: string | null;
+    app_user_profiles: {
+      full_name: string;
+      email: string;
+      avatar_url: string | null;
+    } | null;
+  } | null;
+  keynote_content: {
+    speech_title: string | null;
+    notes: string | null;
+  } | null;
+  is_vpe_for_club: boolean;
+}
+
 /**
  * Keynote Speaker Corner — consolidated card, title-only (summary stored as null), Prep → private notes.
  */
@@ -125,7 +193,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
   const params = useLocalSearchParams();
-  const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
+  const meetingId = pickMeetingIdFromParams(params as Record<string, string | string[] | undefined>);
 
   // State management
   const [meeting, setMeeting] = useState<Meeting | null>(null);
@@ -142,79 +210,212 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   const [savingCornerKeynote, setSavingCornerKeynote] = useState(false);
   const [editingSavedCornerKeynote, setEditingSavedCornerKeynote] = useState(false);
 
-  // Load data on component mount
-  useEffect(() => {
-    if (meetingId) {
-      loadKeynoteCornerData();
-    }
-  }, [meetingId]);
-
-  // Reload keynote speaker data when screen comes back into focus
-  useFocusEffect(
-    useCallback(() => {
-      // Always refresh when coming back to this screen
-      if (meetingId && user?.id) {
-        loadKeynoteSpeaker();
-      }
-    }, [meetingId, user?.id])
-  );
-
-  /**
-   * Load all keynote speaker corner data
-   */
-  const loadKeynoteCornerData = async (): Promise<void> => {
-    if (!meetingId || !user?.currentClubId) {
-      setIsLoading(false);
-      return;
+  const applyKeynoteCornerSnapshot = useCallback((snap: KeynoteCornerSnapshot) => {
+    const m = snap.meeting;
+    if (m && typeof m === 'object' && m.id) {
+      setMeeting({
+        id: String(m.id),
+        meeting_title: String(m.meeting_title ?? ''),
+        meeting_date: String(m.meeting_date ?? ''),
+        meeting_number: m.meeting_number != null ? String(m.meeting_number) : null,
+        meeting_start_time: m.meeting_start_time != null ? String(m.meeting_start_time) : null,
+        meeting_end_time: m.meeting_end_time != null ? String(m.meeting_end_time) : null,
+        meeting_mode: String(m.meeting_mode ?? ''),
+        meeting_location: m.meeting_location != null ? String(m.meeting_location) : null,
+        meeting_link: m.meeting_link != null ? String(m.meeting_link) : null,
+        meeting_status: String(m.meeting_status ?? ''),
+        club_name: m.club_name != null ? String(m.club_name) : undefined,
+      });
+    } else {
+      setMeeting(null);
     }
 
+    const ka = snap.keynote_assignment;
+    if (ka && ka.assigned_user_id) {
+      const kc = snap.keynote_content;
+      const prof = ka.app_user_profiles;
+      setKeynoteSpeaker({
+        id: String(ka.id),
+        role_name: String(ka.role_name ?? ''),
+        assigned_user_id: String(ka.assigned_user_id),
+        booking_status: String(ka.booking_status ?? ''),
+        app_user_profiles: prof
+          ? {
+              full_name: String(prof.full_name ?? ''),
+              email: String(prof.email ?? ''),
+              avatar_url: prof.avatar_url != null ? String(prof.avatar_url) : null,
+            }
+          : undefined,
+        speech_title: kc?.speech_title != null ? String(kc.speech_title) : null,
+        summary: null,
+        notes: kc?.notes != null ? String(kc.notes) : null,
+      });
+    } else {
+      setKeynoteSpeaker(null);
+    }
+
+    setIsVPEClub(Boolean(snap.is_vpe_for_club));
+  }, []);
+
+  /** When the snapshot RPC is not deployed (404 / PGRST202), use targeted REST reads. */
+  const fetchKeynoteCornerLegacy = useCallback(async (): Promise<boolean> => {
+    if (!meetingId || !user?.currentClubId || !user?.id) return false;
     try {
-      await Promise.all([
-        loadMeeting(),
-        loadKeynoteSpeaker(),
-        checkUserRole(),
-        loadClubMembers(),
+      const [{ data: meetingRow, error: meetingErr }, { data: vpeData }] = await Promise.all([
+        supabase
+          .from('app_club_meeting')
+          .select('id, meeting_title, meeting_date, meeting_number, meeting_start_time, meeting_end_time, meeting_mode, meeting_location, meeting_link, meeting_status, clubs!inner(name)')
+          .eq('id', meetingId)
+          .single(),
+        supabase.from('club_profiles').select('vpe_id').eq('club_id', user.currentClubId).maybeSingle(),
       ]);
-    } catch (error) {
-      console.error('Error loading keynote speaker corner data:', error);
-      Alert.alert('Error', 'Failed to load keynote speaker corner data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  /**
-   * Load meeting details
-   */
-  const loadMeeting = async (): Promise<void> => {
-    if (!meetingId) return;
+      setIsVPEClub(vpeData?.vpe_id === user.id);
 
-    try {
-      const { data, error } = await supabase
-        .from('app_club_meeting')
-        .select(`
-          *,
-          clubs!inner(name)
-        `)
-        .eq('id', meetingId)
-        .single();
-
-      if (error) {
-        console.error('Error loading meeting:', error);
-        return;
+      if (meetingErr || !meetingRow) {
+        console.error('Error loading meeting (legacy):', meetingErr);
+        setMeeting(null);
+        setKeynoteSpeaker(null);
+        return false;
       }
 
-      // Flatten the club data
-      const meetingData: Meeting = {
-        ...data,
-        club_name: (data as any).clubs?.name
+      const row = meetingRow as Record<string, unknown> & { clubs?: { name?: string } };
+      setMeeting({
+        id: String(row.id),
+        meeting_title: String(row.meeting_title ?? ''),
+        meeting_date: String(row.meeting_date ?? ''),
+        meeting_number: row.meeting_number != null ? String(row.meeting_number) : null,
+        meeting_start_time: row.meeting_start_time != null ? String(row.meeting_start_time) : null,
+        meeting_end_time: row.meeting_end_time != null ? String(row.meeting_end_time) : null,
+        meeting_mode: String(row.meeting_mode ?? ''),
+        meeting_location: row.meeting_location != null ? String(row.meeting_location) : null,
+        meeting_link: row.meeting_link != null ? String(row.meeting_link) : null,
+        meeting_status: String(row.meeting_status ?? ''),
+        club_name: row.clubs?.name != null ? String(row.clubs.name) : undefined,
+      });
+
+      const { data: roleAssignment, error: roleError } = await supabase
+        .from('app_meeting_roles_management')
+        .select(
+          `
+          id,
+          role_name,
+          assigned_user_id,
+          booking_status,
+          role_status,
+          app_user_profiles (
+            full_name,
+            email,
+            avatar_url
+          )
+        `
+        )
+        .eq('meeting_id', meetingId)
+        .ilike('role_name', '%keynote%')
+        .eq('role_status', 'Available')
+        .eq('booking_status', 'booked')
+        .maybeSingle();
+
+      if (roleError && roleError.code !== 'PGRST116') {
+        console.error('Error loading keynote role (legacy):', roleError);
+        setKeynoteSpeaker(null);
+        return true;
+      }
+
+      if (!roleAssignment || !roleAssignment.assigned_user_id) {
+        setKeynoteSpeaker(null);
+        return true;
+      }
+
+      const speakerData: KeynoteSpeaker = {
+        id: roleAssignment.id,
+        role_name: roleAssignment.role_name,
+        assigned_user_id: roleAssignment.assigned_user_id,
+        booking_status: roleAssignment.booking_status ?? 'booked',
+        app_user_profiles: roleAssignment.app_user_profiles as KeynoteSpeaker['app_user_profiles'],
+        speech_title: null,
+        summary: null,
+        notes: null,
       };
 
-      setMeeting(meetingData);
-    } catch (error) {
-      console.error('Error loading meeting:', error);
+      const { data: keynoteContent, error: contentError } = await supabase
+        .from('app_meeting_keynote_speaker')
+        .select('speech_title, notes')
+        .eq('meeting_id', meetingId)
+        .eq('speaker_user_id', roleAssignment.assigned_user_id)
+        .maybeSingle();
+
+      if (contentError && contentError.code !== 'PGRST116') {
+        console.error('Error loading keynote content (legacy):', contentError);
+      }
+      if (keynoteContent) {
+        speakerData.speech_title = keynoteContent.speech_title;
+        speakerData.notes = keynoteContent.notes;
+      }
+      setKeynoteSpeaker(speakerData);
+      return true;
+    } catch (e) {
+      console.error('fetchKeynoteCornerLegacy:', e);
+      setMeeting(null);
+      setKeynoteSpeaker(null);
+      return false;
     }
-  };
+  }, [meetingId, user?.currentClubId, user?.id]);
+
+  const fetchKeynoteCornerSnapshot = useCallback(async (): Promise<boolean> => {
+    if (!meetingId || !user?.currentClubId || !user?.id) return false;
+    const { data, error } = await supabase.rpc('get_keynote_speaker_corner_snapshot', {
+      p_meeting_id: meetingId,
+    });
+    if (error) {
+      if (isKeynoteCornerRpcUnavailable(error)) {
+        if (__DEV__) {
+          console.warn(
+            '[Keynote corner] RPC get_keynote_speaker_corner_snapshot not available; using REST fallback. Apply migration 20260409150000_keynote_speaker_corner_snapshot_rpc.sql on Supabase for faster loads.'
+          );
+        }
+        return fetchKeynoteCornerLegacy();
+      }
+      console.error('get_keynote_speaker_corner_snapshot:', error);
+      return false;
+    }
+    if (data == null) {
+      setMeeting(null);
+      setKeynoteSpeaker(null);
+      setIsVPEClub(false);
+      return false;
+    }
+    applyKeynoteCornerSnapshot(data as KeynoteCornerSnapshot);
+    return true;
+  }, [meetingId, user?.currentClubId, user?.id, applyKeynoteCornerSnapshot, fetchKeynoteCornerLegacy]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!meetingId) {
+        setIsLoading(false);
+        return () => {};
+      }
+      if (!user?.currentClubId || !user?.id) {
+        return () => {};
+      }
+
+      let cancelled = false;
+      setIsLoading(true);
+      void (async () => {
+        try {
+          await fetchKeynoteCornerSnapshot();
+        } catch (e) {
+          console.error('Keynote corner snapshot load:', e);
+        } finally {
+          if (!cancelled) setIsLoading(false);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [meetingId, user?.currentClubId, user?.id, fetchKeynoteCornerSnapshot])
+  );
 
   /**
    * Book Keynote Speaker role inline (open row matching keynote role name)
@@ -315,104 +516,10 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
     );
   });
 
-  const loadKeynoteSpeaker = async (): Promise<void> => {
-    if (!meetingId || !user?.id) return;
-
-    try {
-      // Step 1: Load the Keynote Speaker assignment from app_meeting_roles_management
-      const { data: roleAssignment, error: roleError } = await supabase
-        .from('app_meeting_roles_management')
-        .select(`
-          id,
-          role_name,
-          assigned_user_id,
-          booking_status,
-          role_status,
-          role_classification,
-          app_user_profiles (
-            full_name,
-            email,
-            avatar_url
-          )
-        `)
-        .eq('meeting_id', meetingId)
-        .ilike('role_name', '%keynote%')
-        .eq('role_status', 'Available')
-        .eq('booking_status', 'booked')
-        .maybeSingle();
-
-      if (roleError && roleError.code !== 'PGRST116') {
-        console.error('Error loading keynote speaker role assignment:', roleError);
-        setKeynoteSpeaker(null);
-        return;
-      }
-
-      if (roleAssignment) {
-        // Found an assigned Keynote Speaker
-        const speakerData: KeynoteSpeaker = {
-          id: roleAssignment.id,
-          role_name: roleAssignment.role_name,
-          assigned_user_id: roleAssignment.assigned_user_id,
-          booking_status: roleAssignment.booking_status,
-          app_user_profiles: roleAssignment.app_user_profiles,
-          speech_title: null, // Initialize to null
-          summary: null,      // Initialize to null
-          notes: null,        // Initialize to null
-        };
-
-        // Step 2: Load keynote content for the assigned speaker (if any)
-        if (roleAssignment.assigned_user_id) { // Removed the check for user.id
-          const { data: keynoteContent, error: contentError } = await supabase
-            .from('app_meeting_keynote_speaker')
-            .select('speech_title, notes')
-            .eq('meeting_id', meetingId)
-            .eq('speaker_user_id', roleAssignment.assigned_user_id)
-            .maybeSingle();
-
-          if (contentError && contentError.code !== 'PGRST116') {
-            console.error('Error loading keynote content:', contentError);
-          }
-
-          if (keynoteContent) {
-            speakerData.speech_title = keynoteContent.speech_title;
-            speakerData.summary = null;
-            speakerData.notes = keynoteContent.notes;
-          }
-        }
-
-        setKeynoteSpeaker(speakerData);
-      } else {
-        // No Keynote Speaker assigned for this meeting
-        setKeynoteSpeaker(null);
-      }
-    } catch (error) {
-      console.error('Error in loadKeynoteSpeaker:', error);
-      setKeynoteSpeaker(null);
-    }
-  };
-
-  /**
-   * Whether current user is club VPE (for assign-to-member affordance).
-   */
-  const checkUserRole = async (): Promise<void> => {
-    if (!user?.id || !user?.currentClubId) return;
-
-    try {
-      const { data: vpeData, error: vpeError } = await supabase
-        .from('club_profiles')
-        .select('vpe_id')
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-      if (vpeError) {
-        console.error('Error loading club VPE:', vpeError);
-        setIsVPEClub(false);
-      } else {
-        setIsVPEClub(vpeData?.vpe_id === user.id);
-      }
-    } catch (error) {
-      console.error('Error loading user role:', error);
-    }
-  };
+  /** Refresh meeting + keynote state (after book/assign/save); single RPC round-trip. */
+  const loadKeynoteSpeaker = useCallback(async (): Promise<void> => {
+    await fetchKeynoteCornerSnapshot();
+  }, [fetchKeynoteCornerSnapshot]);
 
   /**
    * Booked Keynote Speaker (same idea as Toastmaster Corner: assigned + booked status)
@@ -433,7 +540,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
   const KEYNOTE_CONGRATS_SEEN_KEY = meetingId ? `keynoteCongratsSeen_${meetingId}` : null;
 
   const alertCorner = (title: string, message?: string) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (isReactNativeWebPlatform() && typeof window !== 'undefined') {
       window.alert(message ? `${title}\n\n${message}` : title);
       return;
     }
@@ -583,10 +690,9 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
 
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
 
-  const tabBarBottomPadding =
-    Platform.OS === 'web'
-      ? Math.min(Math.max(insets.bottom, 8), 14)
-      : Math.max(insets.bottom + 10, 22);
+  const tabBarBottomPadding = isReactNativeWebPlatform()
+    ? Math.min(Math.max(insets.bottom, 8), 14)
+    : Math.max(insets.bottom + 10, 22);
 
   // Loading state
   if (isLoading) {
@@ -1000,7 +1106,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
             paddingBottom: tabBarBottomPadding,
-            width: Platform.OS === 'web' ? windowWidth : '100%',
+            width: isReactNativeWebPlatform() ? windowWidth : '100%',
             paddingHorizontal: Math.max(insets.left, insets.right, 4),
           },
         ]}
