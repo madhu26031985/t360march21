@@ -1,38 +1,52 @@
 import { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
-import { ChevronRight } from 'lucide-react-native';
+import { ChevronRight, Shield } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   INSIGHT_TRACKS,
   INSIGHT_ROW_LABELS,
-  INSIGHT_STALE_DAYS,
   emptyMyRoleInsightsPayload,
   fetchMyRoleInsights,
-  formatDaysSinceMeeting,
-  computeSmartInsight,
   insightDaysSinceMeeting,
+  computeSmartInsight,
   type InsightCategory,
   type MyRoleInsightsMap,
+  type OccurrencesByCategory,
 } from '@/lib/myRoleInsights';
 
 function TrackRoleRow({
   categoryKey,
   insights,
+  occurrencesByCategory,
   theme,
   isLast,
 }: {
   categoryKey: InsightCategory;
   insights: MyRoleInsightsMap;
+  occurrencesByCategory: OccurrencesByCategory;
   theme: ReturnType<typeof useTheme>['theme'];
   isLast: boolean;
 }) {
   const { totalCount, lastBooking: row } = insights[categoryKey];
   const label = INSIGHT_ROW_LABELS[categoryKey];
-  const days = row?.meetingDate ? insightDaysSinceMeeting(row.meetingDate) : null;
-  const showStale = row && days !== null && days >= INSIGHT_STALE_DAYS;
   const canOpenDetail = totalCount > 0;
+  const recentCount = (occurrencesByCategory[categoryKey] || []).reduce((sum, item) => {
+    const days = insightDaysSinceMeeting(item.meetingDate);
+    return days !== null && days <= 30 ? sum + 1 : sum;
+  }, 0);
+
+  const getTierColors = () => {
+    if (totalCount >= 12) {
+      return { bg: '#EAF1FF', border: '#A9C8FF', icon: '#5B7BBF', number: '#1F4B9A' };
+    }
+    if (totalCount >= 8) {
+      return { bg: '#FFF4E5', border: '#E8BE7C', icon: '#A6691E', number: '#8A4F0A' };
+    }
+    return { bg: '#FFF8EE', border: '#D7B27E', icon: '#9A6830', number: '#8A5A24' };
+  };
+  const tierColors = getTierColors();
 
   return (
     <TouchableOpacity
@@ -50,35 +64,31 @@ function TrackRoleRow({
       accessibilityRole="button"
       accessibilityLabel={canOpenDetail ? `${label}, view all bookings` : `${label}, not done yet`}
     >
+      <View
+        style={[
+          styles.roleBadgeWrap,
+          {
+            borderColor: tierColors.border,
+            backgroundColor: tierColors.bg,
+          },
+        ]}
+      >
+        <Shield size={40} color={tierColors.icon} strokeWidth={1.8} />
+        <Text style={[styles.roleBadgeNumber, { color: tierColors.number }]} maxFontSizeMultiplier={1.0}>
+          {totalCount}
+        </Text>
+      </View>
+
       <View style={styles.trackRowTop}>
-        <Text style={[styles.trackRowTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15} numberOfLines={2}>
+        <Text style={[styles.trackRowTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15} numberOfLines={1}>
           {label}
         </Text>
-        <View style={styles.trackRowCountWrap}>
-          <Text style={[styles.trackRowCount, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
-            {totalCount}x
-          </Text>
-          {canOpenDetail ? <ChevronRight size={18} color={theme.colors.textSecondary} strokeWidth={2} /> : null}
-        </View>
-      </View>
-      {row ? (
-        <View style={styles.trackRowLastWrap}>
-          <Text style={[styles.trackRowLast, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.12}>
-            Last:{' '}
-            <Text style={{ color: theme.colors.text, fontWeight: '600' }}>{formatDaysSinceMeeting(row.meetingDate)}</Text>
-            {showStale ? (
-              <Text style={{ color: theme.colors.text }} accessibilityLabel="Stale role reminder">
-                {' '}
-                ⚠️
-              </Text>
-            ) : null}
-          </Text>
-        </View>
-      ) : (
-        <Text style={[styles.trackRowEmpty, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.12}>
-          Not done yet
+        <Text style={[styles.trackRowRecent, { color: '#1B7F4A' }]} maxFontSizeMultiplier={1.05}>
+          +{recentCount} last 30 days
         </Text>
-      )}
+      </View>
+
+      {canOpenDetail ? <ChevronRight size={20} color={theme.colors.textSecondary} strokeWidth={2.1} /> : null}
     </TouchableOpacity>
   );
 }
@@ -87,14 +97,20 @@ export default function MyRoleInsightsPanel() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const [insights, setInsights] = useState<MyRoleInsightsMap>(() => emptyMyRoleInsightsPayload().map);
+  const [occurrencesByCategory, setOccurrencesByCategory] = useState<OccurrencesByCategory>(
+    () => emptyMyRoleInsightsPayload().occurrencesByCategory
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedTrackId, setSelectedTrackId] = useState<string>(INSIGHT_TRACKS[0]?.id ?? 'speaking');
 
   const smart = useMemo(() => computeSmartInsight(insights), [insights]);
 
   const load = useCallback(async () => {
     if (!user?.currentClubId || !user?.id) {
-      setInsights(emptyMyRoleInsightsPayload().map);
+      const empty = emptyMyRoleInsightsPayload();
+      setInsights(empty.map);
+      setOccurrencesByCategory(empty.occurrencesByCategory);
       setLoading(false);
       setError(null);
       return;
@@ -104,10 +120,13 @@ export default function MyRoleInsightsPanel() {
     try {
       const payload = await fetchMyRoleInsights(user.currentClubId, user.id);
       setInsights(payload.map);
+      setOccurrencesByCategory(payload.occurrencesByCategory);
     } catch (e) {
       console.error(e);
       setError('Could not load role insights.');
-      setInsights(emptyMyRoleInsightsPayload().map);
+      const empty = emptyMyRoleInsightsPayload();
+      setInsights(empty.map);
+      setOccurrencesByCategory(empty.occurrencesByCategory);
     } finally {
       setLoading(false);
     }
@@ -150,30 +169,63 @@ export default function MyRoleInsightsPanel() {
     );
   }
 
+  const selectedTrack = INSIGHT_TRACKS.find((t) => t.id === selectedTrackId) ?? INSIGHT_TRACKS[0];
+  const selectedTrackSortedCategories = [...selectedTrack.categories].sort((a, b) => {
+    const byCount = insights[b].totalCount - insights[a].totalCount;
+    if (byCount !== 0) return byCount;
+    return INSIGHT_ROW_LABELS[a].localeCompare(INSIGHT_ROW_LABELS[b]);
+  });
+
   return (
     <ScrollView
       style={[styles.scroll, { backgroundColor: theme.colors.background }]}
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      {INSIGHT_TRACKS.map((track) => (
-        <View key={track.id} style={styles.trackSection}>
-          <Text style={[styles.trackHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
-            {track.emoji} {track.title}
-          </Text>
+      <View style={styles.trackTabsGrid}>
+        {INSIGHT_TRACKS.map((track) => {
+          const active = selectedTrack?.id === track.id;
+          return (
+            <TouchableOpacity
+              key={track.id}
+              style={[
+                styles.trackTab,
+                {
+                  borderColor: active ? theme.colors.primary : theme.colors.border,
+                  backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                },
+              ]}
+              activeOpacity={0.85}
+              onPress={() => setSelectedTrackId(track.id)}
+            >
+              <Text
+                style={[styles.trackTabText, { color: active ? '#ffffff' : theme.colors.text }]}
+                maxFontSizeMultiplier={1.1}
+                numberOfLines={1}
+              >
+                {track.emoji} {track.title}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {selectedTrack ? (
+        <View style={styles.trackSection}>
           <View style={[styles.trackCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            {track.categories.map((key, i) => (
+            {selectedTrackSortedCategories.map((key, i) => (
               <TrackRoleRow
                 key={key}
                 categoryKey={key}
                 insights={insights}
+                occurrencesByCategory={occurrencesByCategory}
                 theme={theme}
-                isLast={i === track.categories.length - 1}
+                isLast={i === selectedTrackSortedCategories.length - 1}
               />
             ))}
           </View>
         </View>
-      ))}
+      ) : null}
 
       {smart ? (
         <View style={styles.smartSection}>
@@ -227,56 +279,75 @@ const styles = StyleSheet.create({
   trackSection: {
     marginBottom: 18,
   },
+  trackTabsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 8,
+  },
+  trackTab: {
+    width: '48.8%',
+    borderWidth: 1,
+    borderRadius: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 40,
+  },
+  trackTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   trackHeading: {
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 8,
   },
   trackCard: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     overflow: 'hidden',
   },
   trackRow: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  trackRowTop: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
-  trackRowTitle: {
+  roleBadgeWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 0,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  roleBadgeNumber: {
+    position: 'absolute',
+    fontSize: 18,
+    fontWeight: '900',
+    lineHeight: 20,
+  },
+  trackRowTop: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
+    minWidth: 0,
+  },
+  trackRowTitle: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   trackRowDisabled: {
     opacity: 0.85,
   },
-  trackRowCountWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  trackRowCount: {
-    fontSize: 15,
+  trackRowRecent: {
+    marginTop: 4,
+    fontSize: 11,
     fontWeight: '700',
-    minWidth: 28,
-    textAlign: 'right',
-  },
-  trackRowLastWrap: {
-    marginTop: 6,
-  },
-  trackRowLast: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  trackRowEmpty: {
-    fontSize: 13,
-    marginTop: 6,
-    fontStyle: 'italic',
   },
   smartSection: {
     marginTop: 4,
@@ -289,7 +360,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   smartCard: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 14,
   },
@@ -307,7 +378,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
   },
   smartCtaText: {

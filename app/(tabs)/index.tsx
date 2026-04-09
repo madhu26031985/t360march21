@@ -1057,17 +1057,22 @@ export default function MyJourney() {
     if (!meetingId || !uid) return;
 
     try {
-      const { data: att, error: attErr } = await supabase
+      const { data: attendanceRows, error: attErr } = await supabase
         .from('app_meeting_attendance')
-        .select('attendance_marked_by')
+        .select('attendance_marked_by, attendance_marked_at, updated_at')
         .eq('meeting_id', meetingId)
         .eq('user_id', uid)
-        .maybeSingle();
+        .order('updated_at', { ascending: false })
+        .limit(5);
 
       if (attErr) {
         setJourneyNeedsAttendanceReminder(true);
       } else {
-        setJourneyNeedsAttendanceReminder(!att || att.attendance_marked_by == null);
+        const hasMarkedAttendance = (attendanceRows || []).some(
+          (row) => row.attendance_marked_by != null
+        );
+        const hasAnyAttendanceRow = (attendanceRows || []).length > 0;
+        setJourneyNeedsAttendanceReminder(!hasAnyAttendanceRow || !hasMarkedAttendance);
       }
 
       const { data: roles, error: rolesErr } = await supabase
@@ -1247,7 +1252,7 @@ export default function MyJourney() {
       const bucket = Math.min(openMeetingsCount, 3) as 0 | 1 | 2 | 3;
       const vpeTexts: Record<0 | 1 | 2 | 3, string> = {
         0: `Hi ${name}, it's time to get started! 🚀\nLet's kick things off by creating your first meeting.`,
-        1: '💡 Smart tip: You can open up to 3 meetings to stay ahead.',
+        1: '💡 Smart tip: Open 2 more meetings to stay ahead.',
         2: `Hi ${name}, you're doing great! 🎯\nYou already have 2 meetings open — would you like to add the third?`,
         3: `Hi ${name}, excellent planning! 🌟\nMembers can see several dates — keep filling the pipeline when you can.`,
       };

@@ -33,11 +33,14 @@ import {
   shouldShowBookRoleNudge,
 } from '@/lib/vpeNudgeMeetingWindow';
 import {
+  buildGrammarianDailyElementsNudgeWhatsApp,
   buildEducationalSpeakerTitleNudgeWhatsApp,
   buildEducationalVpeSelfReminderWhatsApp,
   buildEvaluatorPrepNudgeWhatsApp,
+  buildInviteGuestWelcomeWhatsApp,
   buildKeynoteTitleNudgeWhatsApp,
   buildToastmasterThemeNudgeWhatsApp,
+  buildVpprMeetingUpdateWhatsApp,
 } from '@/lib/vpeNudgeWhatsAppTemplates';
 import {
   buildPreparedSpeakerSpeechDetailsWhatsApp,
@@ -46,6 +49,7 @@ import {
   type EvaluationPathwaySpeechRow,
 } from '@/lib/vpePreparedSpeakerNudge';
 import { fetchVpeNudgesSnapshot, vpeNudgesQueryKeys } from '@/lib/vpeNudgesSnapshot';
+import { supabase } from '@/lib/supabase';
 
 const VPE_CARD_SUBTITLE = 'Nudge members to book the role';
 
@@ -62,7 +66,16 @@ Stay ahead with smart, daily reminders tailored to your club.
 
 ⏳ Book-the-role copy rotates daily while that window is active; open again tomorrow for the next line.`;
 
-type NudgeTabId = 'book_role' | 'prepared' | 'toastmaster' | 'educational' | 'keynote' | 'evaluator';
+type NudgeTabId =
+  | 'book_role'
+  | 'prepared'
+  | 'toastmaster'
+  | 'educational'
+  | 'keynote'
+  | 'evaluator'
+  | 'grammarian'
+  | 'message_vppr'
+  | 'invite_guest';
 
 const NUDGE_TABS: { id: NudgeTabId; label: string }[] = [
   { id: 'book_role', label: 'Book role' },
@@ -71,9 +84,12 @@ const NUDGE_TABS: { id: NudgeTabId; label: string }[] = [
   { id: 'educational', label: 'Educational' },
   { id: 'keynote', label: 'Keynote' },
   { id: 'evaluator', label: 'Evaluator' },
+  { id: 'grammarian', label: 'Grammarian' },
+  { id: 'message_vppr', label: 'Message VPPR' },
+  { id: 'invite_guest', label: 'Invite Guest/Visitor' },
 ];
 
-const NUDGE_TAB_ROWS = [NUDGE_TABS.slice(0, 3), NUDGE_TABS.slice(3, 6)] as const;
+const NUDGE_TAB_ROWS = [NUDGE_TABS.slice(0, 3), NUDGE_TABS.slice(3, 6), NUDGE_TABS.slice(6, 9)] as const;
 
 const VPE_HEADER_TITLE = 'VPE Smart Insights';
 
@@ -107,6 +123,11 @@ export default function VPENudgesScreen() {
   const [evaluatorNudges, setEvaluatorNudges] = useState<
     { key: string; evaluatorName: string; speakerName: string; message: string }[]
   >([]);
+  const [grammarianNudges, setGrammarianNudges] = useState<
+    { userId: string; fullName: string; message: string }[]
+  >([]);
+  const [vpprUpdates, setVpprUpdates] = useState<{ message: string }[]>([]);
+  const [inviteGuestMessages, setInviteGuestMessages] = useState<{ message: string }[]>([]);
   const [nudgesHiddenFinalHour, setNudgesHiddenFinalHour] = useState(false);
   const [educationalVpeSelfNeedsTitle, setEducationalVpeSelfNeedsTitle] = useState(false);
   const [nudgeClubName, setNudgeClubName] = useState('Our club');
@@ -163,6 +184,9 @@ export default function VPENudgesScreen() {
       setEducationalNudges([]);
       setKeynoteNudges([]);
       setEvaluatorNudges([]);
+      setGrammarianNudges([]);
+      setVpprUpdates([]);
+      setInviteGuestMessages([]);
       setNudgesHiddenFinalHour(false);
       setEducationalVpeSelfNeedsTitle(false);
       setNudgeClubName('Our club');
@@ -190,6 +214,9 @@ export default function VPENudgesScreen() {
           setEducationalNudges([]);
           setKeynoteNudges([]);
           setEvaluatorNudges([]);
+          setGrammarianNudges([]);
+          setVpprUpdates([]);
+          setInviteGuestMessages([]);
           setNudgesHiddenFinalHour(false);
           setEducationalVpeSelfNeedsTitle(false);
           setNudgeClubName('Our club');
@@ -214,6 +241,9 @@ export default function VPENudgesScreen() {
           setEducationalNudges([]);
           setKeynoteNudges([]);
           setEvaluatorNudges([]);
+          setGrammarianNudges([]);
+          setVpprUpdates([]);
+          setInviteGuestMessages([]);
           setNudgesHiddenFinalHour(false);
           setEducationalVpeSelfNeedsTitle(false);
           return;
@@ -242,6 +272,9 @@ export default function VPENudgesScreen() {
           setEducationalNudges([]);
           setKeynoteNudges([]);
           setEvaluatorNudges([]);
+          setGrammarianNudges([]);
+          setVpprUpdates([]);
+          setInviteGuestMessages([]);
           setEducationalVpeSelfNeedsTitle(false);
         };
 
@@ -264,6 +297,18 @@ export default function VPENudgesScreen() {
         );
         const keynoteRole = roles.find(
           (r) => isBooked(r) && (r.role_name || '').toLowerCase().includes('keynote')
+        );
+        const grammarianRole = roles.find(
+          (r) => isBooked(r) && (r.role_name || '').toLowerCase().includes('grammarian')
+        );
+        const generalEvaluatorRole = roles.find(
+          (r) => isBooked(r) && (r.role_name || '').toLowerCase().includes('general evaluator')
+        );
+        const tableTopicMasterRole = roles.find(
+          (r) =>
+            isBooked(r) &&
+            ((r.role_name || '').toLowerCase().includes('table topic') ||
+              (r.role_name || '').toLowerCase().includes('tabletopics'))
         );
 
         const psRoles = (snap.prepared_roles || []) as { role_name: string; assigned_user_id: string }[];
@@ -427,6 +472,132 @@ export default function VPENudgesScreen() {
           });
         }
         setKeynoteNudges(knList);
+
+        const grammarianList: { userId: string; fullName: string; message: string }[] = [];
+        if (grammarianRole?.assigned_user_id && grammarianRole.assigned_user_id !== vpeUserId) {
+          const grammarianUserId = grammarianRole.assigned_user_id;
+          const [dailyRes, wotdRes, idiomRes, quoteRes] = await Promise.all([
+            supabase
+              .from('app_grammarian_daily_elements')
+              .select('word_of_the_day, idiom_of_the_day, quote_of_the_day')
+              .eq('meeting_id', m.id)
+              .eq('grammarian_user_id', grammarianUserId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+            supabase
+              .from('grammarian_word_of_the_day')
+              .select('word')
+              .eq('meeting_id', m.id)
+              .eq('grammarian_user_id', grammarianUserId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+            supabase
+              .from('grammarian_idiom_of_the_day')
+              .select('idiom')
+              .eq('meeting_id', m.id)
+              .eq('grammarian_user_id', grammarianUserId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+            supabase
+              .from('grammarian_quote_of_the_day')
+              .select('quote')
+              .eq('meeting_id', m.id)
+              .eq('grammarian_user_id', grammarianUserId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+          ]);
+
+          const dailyWord = (dailyRes.data?.word_of_the_day || '').trim();
+          const dailyIdiom = (dailyRes.data?.idiom_of_the_day || '').trim();
+          const dailyQuote = (dailyRes.data?.quote_of_the_day || '').trim();
+          const structuredWord = (wotdRes.data?.word || '').trim();
+          const structuredIdiom = (idiomRes.data?.idiom || '').trim();
+          const structuredQuote = (quoteRes.data?.quote || '').trim();
+
+          const hasWord = Boolean(dailyWord || structuredWord);
+          const hasIdiom = Boolean(dailyIdiom || structuredIdiom);
+          const hasQuote = Boolean(dailyQuote || structuredQuote);
+
+          if (!hasWord || !hasIdiom || !hasQuote) {
+            const fullName = tmEduKnNameById.get(grammarianUserId) || 'Member';
+            grammarianList.push({
+              userId: grammarianUserId,
+              fullName,
+              message: buildGrammarianDailyElementsNudgeWhatsApp({
+                grammarianFirstName: firstNameFromFullName(fullName),
+                vpeName: ctx.vpeName,
+                clubName: ctx.clubName,
+                meetingDateDisplay: ctx.meetingDateDisplay,
+                meetingNumber: ctx.meetingNumber,
+              }),
+            });
+          }
+        }
+        setGrammarianNudges(grammarianList);
+
+        const toastmasterRole = tmodRows[0] ?? null;
+        const toastmasterName = toastmasterRole?.assigned_user_id
+          ? tmEduKnNameById.get(toastmasterRole.assigned_user_id) || null
+          : null;
+        const generalEvaluatorName = generalEvaluatorRole?.assigned_user_id
+          ? tmEduKnNameById.get(generalEvaluatorRole.assigned_user_id) || null
+          : null;
+        const tableTopicMasterName = tableTopicMasterRole?.assigned_user_id
+          ? tmEduKnNameById.get(tableTopicMasterRole.assigned_user_id) || null
+          : null;
+        const educationalSpeakerName = eduRole?.assigned_user_id
+          ? tmEduKnNameById.get(eduRole.assigned_user_id) || null
+          : null;
+        const themeOfTheDay =
+          toastmasterRole?.assigned_user_id
+            ? (themeByTmod.get(toastmasterRole.assigned_user_id) || '').trim() || null
+            : null;
+        const educationalTitle = (snap.educational_content?.speech_title || '').trim() || null;
+
+        const hasVpprData = Boolean(
+          toastmasterName ||
+            generalEvaluatorName ||
+            tableTopicMasterName ||
+            educationalSpeakerName ||
+            themeOfTheDay ||
+            educationalTitle
+        );
+
+        if (hasVpprData) {
+          setVpprUpdates([
+            {
+              message: buildVpprMeetingUpdateWhatsApp({
+                vpeName: ctx.vpeName,
+                clubName: ctx.clubName,
+                meetingDateDisplay: ctx.meetingDateDisplay,
+                meetingNumber: ctx.meetingNumber,
+                toastmasterName,
+                generalEvaluatorName,
+                tableTopicMasterName,
+                educationalSpeakerName,
+                themeOfTheDay,
+                educationalTitle,
+              }),
+            },
+          ]);
+        } else {
+          setVpprUpdates([]);
+        }
+
+        setInviteGuestMessages([
+          {
+            message: buildInviteGuestWelcomeWhatsApp({
+              vpeName: ctx.vpeName,
+              clubName: ctx.clubName,
+              meetingDateDisplay: ctx.meetingDateDisplay,
+              meetingNumber: ctx.meetingNumber,
+            }),
+          },
+        ]);
       } catch (e) {
         console.error('VPE nudges load:', e);
         setMessages([]);
@@ -435,6 +606,9 @@ export default function VPENudgesScreen() {
         setEducationalNudges([]);
         setKeynoteNudges([]);
         setEvaluatorNudges([]);
+        setGrammarianNudges([]);
+        setVpprUpdates([]);
+        setInviteGuestMessages([]);
         setNudgesHiddenFinalHour(false);
         setEducationalVpeSelfNeedsTitle(false);
       } finally {
@@ -475,6 +649,12 @@ export default function VPENudgesScreen() {
           return keynoteNudges.length;
         case 'evaluator':
           return evaluatorNudges.length;
+        case 'grammarian':
+          return grammarianNudges.length;
+        case 'message_vppr':
+          return vpprUpdates.length;
+        case 'invite_guest':
+          return inviteGuestMessages.length;
         default:
           return 0;
       }
@@ -486,6 +666,9 @@ export default function VPENudgesScreen() {
       educationalVpeSelfNeedsTitle,
       keynoteNudges.length,
       evaluatorNudges.length,
+      grammarianNudges.length,
+      vpprUpdates.length,
+      inviteGuestMessages.length,
     ]
   );
 
@@ -621,48 +804,50 @@ export default function VPENudgesScreen() {
     </View>
   );
 
-  const tabHairline = StyleSheet.hairlineWidth;
   const tabGrid = (
     <View style={[styles.tabGridWrap, { borderColor: theme.colors.border }]}>
-      {NUDGE_TAB_ROWS.map((row, ri) => (
-        <View key={`nudge-tab-row-${ri}`} style={styles.tabGridRow}>
-          {row.map((tab, ci) => {
-            const selected = activeNudgeTab === tab.id;
-            const count = tabBadgeCount(tab.id);
-            const suffix = count > 0 ? ` (${count})` : '';
-            return (
-              <Pressable
-                key={tab.id}
-                onPress={() => setActiveNudgeTab(tab.id)}
-                style={({ pressed }) => [
-                  styles.tabCell,
-                  {
-                    borderRightWidth: ci < row.length - 1 ? tabHairline : 0,
-                    borderBottomWidth: ri < NUDGE_TAB_ROWS.length - 1 ? tabHairline : 0,
-                    borderColor: theme.colors.primary + '55',
-                    backgroundColor: theme.colors.primary,
-                    opacity: pressed ? 0.88 : 1,
-                  },
+      <View style={styles.tabGridCards}>
+        {NUDGE_TABS.map((tab, idx) => {
+          const selected = activeNudgeTab === tab.id;
+          const count = tabBadgeCount(tab.id);
+          const isRightEdge = (idx + 1) % 3 === 0;
+          return (
+            <Pressable
+              key={tab.id}
+              onPress={() => setActiveNudgeTab(tab.id)}
+              style={({ pressed }) => [
+                styles.tabCell,
+                {
+                  marginRight: isRightEdge ? 0 : '2.2%',
+                  backgroundColor: selected ? theme.colors.primary : '#EAF2FD',
+                  borderColor: selected ? theme.colors.primary : '#BFD8F7',
+                  opacity: pressed ? 0.9 : 1,
+                },
+              ]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+            >
+              <Text
+                style={[
+                  styles.tabCellText,
+                  { color: selected ? '#FFFFFF' : '#0B4F93' },
                 ]}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
+                maxFontSizeMultiplier={1.12}
+                numberOfLines={2}
               >
-                <Text
-                  style={[
-                    styles.tabCellText,
-                    { color: '#ffffff' },
-                  ]}
-                  maxFontSizeMultiplier={1.12}
-                  numberOfLines={1}
-                >
-                  {tab.label}
-                  <Text style={{ fontWeight: '700' }}>{suffix}</Text>
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ))}
+                {tab.label}
+              </Text>
+              {count > 0 ? (
+                <View style={[styles.tabCountBadge, { backgroundColor: selected ? '#FFFFFF' : theme.colors.primary }]}>
+                  <Text style={[styles.tabCountText, { color: selected ? theme.colors.primary : '#FFFFFF' }]}>
+                    {count}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 
@@ -1056,6 +1241,129 @@ export default function VPENudgesScreen() {
                       </View>
                     )
                   ) : null}
+
+                  {activeNudgeTab === 'grammarian' ? (
+                    grammarianNudges.length > 0 ? (
+                      <View style={styles.preparedNudgeSection}>
+                        <Text style={[styles.preparedNudgeSectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
+                          Grammarian — daily elements pending
+                        </Text>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                          Grammarian role is booked, but one or more items are missing. Nudge to add Word of the Day, Quote of the Day, and Idiom of the Day.
+                        </Text>
+                        {grammarianNudges.map((n) => (
+                          <View
+                            key={n.userId}
+                            style={[messageCardStyle, styles.preparedNudgeCard]}
+                          >
+                            <Text style={[styles.preparedNudgeName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
+                              {n.fullName}
+                            </Text>
+                            <View style={messageBodyWrapStyle}>
+                              <Text style={[styles.vpeMessageBody, { color: theme.colors.text }]} selectable>
+                                {n.message}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={sendBtnStyle}
+                              onPress={() => shareWhatsApp(n.message)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
+                                Send WhatsApp to {firstNameFromFullName(n.fullName)}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <View style={messageCardStyle}>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: theme.colors.textSecondary, marginBottom: 0 }]} maxFontSizeMultiplier={1.2}>
+                          No grammarian reminder needed — Word of the Day, Quote of the Day, and Idiom of the Day are already set, or no grammarian role is booked.
+                        </Text>
+                      </View>
+                    )
+                  ) : null}
+
+                  {activeNudgeTab === 'message_vppr' ? (
+                    vpprUpdates.length > 0 ? (
+                      <View style={styles.preparedNudgeSection}>
+                        <Text style={[styles.preparedNudgeSectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
+                          VPPR update — available details
+                        </Text>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                          Share this update with VPPR when role bookings and agenda details become available.
+                        </Text>
+                        {vpprUpdates.map((n, idx) => (
+                          <View
+                            key={`vppr-update-${idx}`}
+                            style={[messageCardStyle, styles.preparedNudgeCard]}
+                          >
+                            <View style={messageBodyWrapStyle}>
+                              <Text style={[styles.vpeMessageBody, { color: theme.colors.text }]} selectable>
+                                {n.message}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={sendBtnStyle}
+                              onPress={() => shareWhatsApp(n.message)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
+                                Send WhatsApp to VPPR
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <View style={messageCardStyle}>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: theme.colors.textSecondary, marginBottom: 0 }]} maxFontSizeMultiplier={1.2}>
+                          No VPPR update yet — this appears once at least one detail is available (booked roles, theme, or educational title).
+                        </Text>
+                      </View>
+                    )
+                  ) : null}
+
+                  {activeNudgeTab === 'invite_guest' ? (
+                    inviteGuestMessages.length > 0 ? (
+                      <View style={styles.preparedNudgeSection}>
+                        <Text style={[styles.preparedNudgeSectionTitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
+                          Invite guest / visiting Toastmaster
+                        </Text>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                          Personalized welcome message from VPE to motivate guests and visitors to install and explore the app.
+                        </Text>
+                        {inviteGuestMessages.map((n, idx) => (
+                          <View
+                            key={`invite-guest-${idx}`}
+                            style={[messageCardStyle, styles.preparedNudgeCard]}
+                          >
+                            <View style={messageBodyWrapStyle}>
+                              <Text style={[styles.vpeMessageBody, { color: theme.colors.text }]} selectable>
+                                {n.message}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={sendBtnStyle}
+                              onPress={() => shareWhatsApp(n.message)}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.vpeMessageSendBtnText} maxFontSizeMultiplier={1.2}>
+                                Send WhatsApp Welcome Message
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <View style={messageCardStyle}>
+                        <Text style={[styles.preparedNudgeSectionSub, { color: theme.colors.textSecondary, marginBottom: 0 }]} maxFontSizeMultiplier={1.2}>
+                          Welcome message is not available right now. Please refresh and try again.
+                        </Text>
+                      </View>
+                    )
+                  ) : null}
                   </View>
                 </>
               )}
@@ -1136,23 +1444,49 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     marginTop: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 0,
+    borderRadius: 14,
+    padding: 10,
+    backgroundColor: '#F8FBFF',
+  },
+  tabGridCards: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   tabGridRow: {
     flexDirection: 'row',
   },
   tabCell: {
-    flex: 1,
-    minHeight: 44,
+    width: '31.8%',
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    position: 'relative',
   },
   tabCellText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
+  },
+  tabCountBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  tabCountText: {
+    fontSize: 10,
+    fontWeight: '800',
+    lineHeight: 12,
   },
   notionPanelContent: {
     paddingTop: 8,

@@ -81,3 +81,84 @@ export function buildEvaluatorPrepNudgeWhatsApp(params: {
     vpeRegardsSignatureBlock(vpeName, clubName)
   );
 }
+
+export function buildGrammarianDailyElementsNudgeWhatsApp(params: {
+  grammarianFirstName: string;
+  vpeName: string;
+  clubName: string;
+} & MeetingCtx): string {
+  const { grammarianFirstName, vpeName, clubName, meetingDateDisplay, meetingNumber } = params;
+  return (
+    `Hello ${grammarianFirstName}\n\n` +
+    dateAndMeetingNoBlock(meetingDateDisplay, meetingNumber) +
+    `Thank you for taking up the Grammarian role for this meeting.\n\n` +
+    `Please update these details in the app before the meeting:\n` +
+    `• Word of the Day\n` +
+    `• Quote of the Day\n` +
+    `• Idiom of the Day\n\n` +
+    `This helps the team and members prepare better.\n\n` +
+    `Thank you for your support!` +
+    vpeRegardsSignatureBlock(vpeName, clubName)
+  );
+}
+
+export function buildVpprMeetingUpdateWhatsApp(params: {
+  vpeName: string;
+  clubName: string;
+  toastmasterName?: string | null;
+  generalEvaluatorName?: string | null;
+  tableTopicMasterName?: string | null;
+  educationalSpeakerName?: string | null;
+  themeOfTheDay?: string | null;
+  educationalTitle?: string | null;
+} & MeetingCtx): string {
+  const {
+    vpeName,
+    clubName,
+    meetingDateDisplay,
+    meetingNumber,
+    toastmasterName,
+    generalEvaluatorName,
+    tableTopicMasterName,
+    educationalSpeakerName,
+    themeOfTheDay,
+    educationalTitle,
+  } = params;
+
+  const lines = [
+    toastmasterName ? `• Toastmaster of the Day: ${toastmasterName}` : null,
+    generalEvaluatorName ? `• General Evaluator: ${generalEvaluatorName}` : null,
+    tableTopicMasterName ? `• Table Topics Master: ${tableTopicMasterName}` : null,
+    educationalSpeakerName ? `• Educational Speaker: ${educationalSpeakerName}` : null,
+    themeOfTheDay ? `• Theme of the Day: ${themeOfTheDay}` : null,
+    educationalTitle ? `• Educational Title: ${educationalTitle}` : null,
+  ].filter(Boolean) as string[];
+
+  return (
+    `Hello VPPR\n\n` +
+    dateAndMeetingNoBlock(meetingDateDisplay, meetingNumber) +
+    `Sharing the latest meeting updates available in the app:\n\n` +
+    `${lines.join('\n')}\n\n` +
+    `Please use this for promotions and member communication.\n\n` +
+    `Thank you!` +
+    vpeRegardsSignatureBlock(vpeName, clubName)
+  );
+}
+
+export function buildInviteGuestWelcomeWhatsApp(params: {
+  vpeName: string;
+  clubName: string;
+} & MeetingCtx): string {
+  const { vpeName, clubName, meetingDateDisplay, meetingNumber } = params;
+  return (
+    `Hello and a Warm Welcome! 🌟\n\n` +
+    `I’m ${vpeName}, Vice President Education (VPE) of ${clubName}.\n\n` +
+    dateAndMeetingNoBlock(meetingDateDisplay, meetingNumber) +
+    `We are excited to have you with us. To make your journey smoother and more enjoyable, please install our club app and take a quick look around.\n\n` +
+    `In the app, you can:\n` +
+    `• Explore upcoming meetings\n` +
+    `• Stay updated with club activities\n\n` +
+    `You are always welcome here — we look forward to seeing you grow with us! 🚀\n\n` +
+    `Warm regards,\n${vpeName}. VPE\n${clubName}`
+  );
+}
