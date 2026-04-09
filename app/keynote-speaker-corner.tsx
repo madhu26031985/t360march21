@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   TextInput,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -121,6 +122,7 @@ interface ClubMember {
 export default function KeynoteSpeakerCorner(): JSX.Element {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -581,6 +583,11 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
 
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
 
+  const tabBarBottomPadding =
+    Platform.OS === 'web'
+      ? Math.min(Math.max(insets.bottom, 8), 14)
+      : Math.max(insets.bottom + 10, 22);
+
   // Loading state
   if (isLoading) {
     return (
@@ -992,27 +999,29 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
           {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.surface,
-            paddingBottom: Math.max(insets.bottom + 10, 22),
+            paddingBottom: tabBarBottomPadding,
+            width: Platform.OS === 'web' ? windowWidth : '100%',
+            paddingHorizontal: Math.max(insets.left, insets.right, 4),
           },
         ]}
       >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={[
-            styles.footerNavigationContent,
-            { paddingHorizontal: Math.max(insets.left, insets.right, 4) },
-          ]}
-        >
+        {/* Full-width row + flex:1 per item; horizontal ScrollView on web shrink-wraps and clusters items. */}
+        <View style={styles.footerTabBarRow}>
           <TouchableOpacity
             style={styles.footerNavItem}
             onPress={() => router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id } })}
+            activeOpacity={0.75}
           >
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
             </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[styles.footerNavLabel, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+            >
               Book the role
             </Text>
           </TouchableOpacity>
@@ -1022,11 +1031,18 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
             onPress={() =>
               router.push({ pathname: '/book-a-role', params: { meetingId: meeting.id, initialTab: 'my_bookings' } })
             }
+            activeOpacity={0.75}
           >
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
             </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[styles.footerNavLabel, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+            >
               Withdraw role
             </Text>
           </TouchableOpacity>
@@ -1034,11 +1050,18 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
           <TouchableOpacity
             style={styles.footerNavItem}
             onPress={() => router.push({ pathname: '/attendance-report', params: { meetingId: meeting.id } })}
+            activeOpacity={0.75}
           >
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <Users size={FOOTER_NAV_ICON_SIZE} color="#ec4899" />
             </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[styles.footerNavLabel, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+            >
               Attendance
             </Text>
           </TouchableOpacity>
@@ -1046,11 +1069,18 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
           <TouchableOpacity
             style={styles.footerNavItem}
             onPress={() => router.push({ pathname: '/role-completion-report', params: { meetingId: meeting.id } })}
+            activeOpacity={0.75}
           >
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
             </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[styles.footerNavLabel, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+            >
               Role completion
             </Text>
           </TouchableOpacity>
@@ -1063,11 +1093,18 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
                 params: { meetingId: meeting.id, clubId: user?.currentClubId ?? '' },
               })
             }
+            activeOpacity={0.75}
           >
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
             </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[styles.footerNavLabel, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+            >
               prep space
             </Text>
           </TouchableOpacity>
@@ -1075,11 +1112,18 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
           <TouchableOpacity
             style={styles.footerNavItem}
             onPress={() => router.push({ pathname: '/meeting-agenda-view', params: { meetingId: meeting.id } })}
+            activeOpacity={0.75}
           >
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
             </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[styles.footerNavLabel, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+            >
               AGENDA
             </Text>
           </TouchableOpacity>
@@ -1087,15 +1131,22 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
           <TouchableOpacity
             style={styles.footerNavItem}
             onPress={() => router.push({ pathname: '/live-voting', params: { meetingId: meeting.id } })}
+            activeOpacity={0.75}
           >
             <View style={[styles.footerNavIcon, footerIconTileStyle]}>
               <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
             </View>
-            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            <Text
+              style={[styles.footerNavLabel, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+            >
               VOTING
             </Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
       </View>
       </View>
 
@@ -1866,20 +1917,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
   },
-  footerNavigationContent: {
+  footerTabBarRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'center',
-    flexGrow: 1,
-    gap: 8,
+    width: '100%',
+    alignSelf: 'stretch',
     paddingVertical: 2,
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'flex-start',
-    minWidth: 56,
-    maxWidth: 72,
-    paddingHorizontal: 2,
+    paddingHorizontal: 1,
     paddingBottom: 2,
   },
   footerNavIcon: {
@@ -1894,6 +1945,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '500',
     textAlign: 'center',
+    lineHeight: 11,
   },
   /** Flat Notion-style block — matches TM Corner. */
   consolidatedCornerCard: {

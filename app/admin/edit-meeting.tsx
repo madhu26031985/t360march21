@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useCallback } from 'react';
@@ -52,7 +53,13 @@ export default function EditMeeting() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const params = useLocalSearchParams();
+
+  const tabBarBottomPadding =
+    Platform.OS === 'web'
+      ? Math.min(Math.max(insets.bottom, 8), 14)
+      : Math.max(insets.bottom, 10);
 
   const isExComm =
     user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
@@ -803,21 +810,23 @@ export default function EditMeeting() {
             {
               borderTopColor: theme.colors.border,
               backgroundColor: theme.colors.surface,
-              paddingBottom: Math.max(insets.bottom, 10),
+              paddingBottom: tabBarBottomPadding,
+              width: Platform.OS === 'web' ? windowWidth : '100%',
             },
           ]}
         >
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.footerNavigationContent}
-          >
+          <View style={styles.footerTabBarRow}>
             <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
               <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                 <Home size={FOOTER_NAV_ICON_SIZE} color="#0a66c2" />
               </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text
+                style={[styles.footerNavLabel, { color: theme.colors.text }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
                 Home
               </Text>
             </TouchableOpacity>
@@ -825,7 +834,13 @@ export default function EditMeeting() {
               <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                 <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
               </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text
+                style={[styles.footerNavLabel, { color: theme.colors.text }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
                 Club
               </Text>
             </TouchableOpacity>
@@ -837,7 +852,13 @@ export default function EditMeeting() {
               <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                 <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
               </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text
+                style={[styles.footerNavLabel, { color: theme.colors.text }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
                 Meeting
               </Text>
             </TouchableOpacity>
@@ -850,7 +871,13 @@ export default function EditMeeting() {
                 <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                   <Shield size={FOOTER_NAV_ICON_SIZE} color={EXCOMM_UI.adminTabIcon} />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                <Text
+                  style={[styles.footerNavLabel, { color: theme.colors.text }]}
+                  maxFontSizeMultiplier={1.3}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
                   Admin
                 </Text>
               </TouchableOpacity>
@@ -863,11 +890,17 @@ export default function EditMeeting() {
               <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                 <Settings size={FOOTER_NAV_ICON_SIZE} color="#6b7280" />
               </View>
-              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              <Text
+                style={[styles.footerNavLabel, { color: theme.colors.text }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
                 Settings
               </Text>
             </TouchableOpacity>
-          </ScrollView>
+          </View>
         </View>
       </View>
 
@@ -1006,18 +1039,24 @@ const styles = StyleSheet.create({
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  footerNavigationContent: {
+  footerTabBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   footerNavItem: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
-    minWidth: 62,
+    justifyContent: 'center',
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   footerNavIcon: {
     width: 30,
