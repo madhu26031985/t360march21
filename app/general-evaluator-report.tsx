@@ -1468,7 +1468,7 @@ export default function GeneralEvaluatorReport() {
                 <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                   <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book the role</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1480,7 +1480,7 @@ export default function GeneralEvaluatorReport() {
                 <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                   <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw role</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Withdraw</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1500,7 +1500,7 @@ export default function GeneralEvaluatorReport() {
                 <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                   <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Role completion</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Complete</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1510,7 +1510,7 @@ export default function GeneralEvaluatorReport() {
                 <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                   <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>prep space</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>My Space</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1520,7 +1520,7 @@ export default function GeneralEvaluatorReport() {
                 <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                   <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>AGENDA</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Agenda</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1530,7 +1530,7 @@ export default function GeneralEvaluatorReport() {
                 <View style={[styles.footerNavIcon, footerIconTileStyle]}>
                   <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
                 </View>
-                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>VOTING</Text>
+                <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Voting</Text>
               </TouchableOpacity>
             </View>
         </View>

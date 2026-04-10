@@ -1128,7 +1128,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               adjustsFontSizeToFit
               minimumFontScale={0.65}
             >
-              Book the role
+              Book
             </Text>
           </TouchableOpacity>
 
@@ -1149,7 +1149,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               adjustsFontSizeToFit
               minimumFontScale={0.65}
             >
-              Withdraw role
+              Withdraw
             </Text>
           </TouchableOpacity>
 
@@ -1187,7 +1187,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               adjustsFontSizeToFit
               minimumFontScale={0.65}
             >
-              Role completion
+              Complete
             </Text>
           </TouchableOpacity>
 
@@ -1211,7 +1211,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               adjustsFontSizeToFit
               minimumFontScale={0.65}
             >
-              prep space
+              My Space
             </Text>
           </TouchableOpacity>
 
@@ -1230,7 +1230,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               adjustsFontSizeToFit
               minimumFontScale={0.65}
             >
-              AGENDA
+              Agenda
             </Text>
           </TouchableOpacity>
 
@@ -1249,7 +1249,7 @@ export default function KeynoteSpeakerCorner(): JSX.Element {
               adjustsFontSizeToFit
               minimumFontScale={0.65}
             >
-              VOTING
+              Voting
             </Text>
           </TouchableOpacity>
         </View>

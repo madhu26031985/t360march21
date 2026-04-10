@@ -1522,7 +1522,7 @@ export default function GrammarianReport() {
             <Calendar size={FOOTER_NAV_ICON_SIZE} color="#004165" />
           </View>
           <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Book the role
+            Book
           </Text>
         </TouchableOpacity>
 
@@ -1536,7 +1536,7 @@ export default function GrammarianReport() {
             <RotateCcw size={FOOTER_NAV_ICON_SIZE} color="#4F46E5" />
           </View>
           <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Withdraw role
+            Withdraw
           </Text>
         </TouchableOpacity>
 
@@ -1579,7 +1579,7 @@ export default function GrammarianReport() {
             <ClipboardCheck size={FOOTER_NAV_ICON_SIZE} color="#3b82f6" />
           </View>
           <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Role completion
+            Complete
           </Text>
         </TouchableOpacity>
 
@@ -1596,7 +1596,7 @@ export default function GrammarianReport() {
             <NotebookPen size={FOOTER_NAV_ICON_SIZE} color="#dc2626" />
           </View>
           <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            prep space
+            My Space
           </Text>
         </TouchableOpacity>
 
@@ -1608,7 +1608,7 @@ export default function GrammarianReport() {
             <FileText size={FOOTER_NAV_ICON_SIZE} color="#f59e0b" />
           </View>
           <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            AGENDA
+            Agenda
           </Text>
         </TouchableOpacity>
 
@@ -1620,7 +1620,7 @@ export default function GrammarianReport() {
             <Vote size={FOOTER_NAV_ICON_SIZE} color="#a855f7" />
           </View>
           <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            VOTING
+            Voting
           </Text>
         </TouchableOpacity>
       </View>

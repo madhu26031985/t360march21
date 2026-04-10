@@ -21,7 +21,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users } from 'lucide-react-native';
+import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users, Home, Shield, Settings } from 'lucide-react-native';
 import { exportAgendaToPDF, generatePDFFilename } from '@/lib/pdfExportUtils';
 import { parseMemberPreparedAgenda } from '@/lib/preparedSpeechesAgendaParse';
 import {
@@ -1114,6 +1114,7 @@ export function MeetingAgendaViewContent({
 
       <ScrollView
         style={styles.content}
+        contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
@@ -2049,6 +2050,31 @@ export function MeetingAgendaViewContent({
         </View>
       </ScrollView>
 
+      {!embedded && (
+        <View style={[styles.footerNav, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/index')} activeOpacity={0.75}>
+            <Home size={16} color={theme.colors.textSecondary} />
+            <Text style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Home</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+            <Users size={16} color={theme.colors.textSecondary} />
+            <Text style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Club</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/meetings')} activeOpacity={0.75}>
+            <Calendar size={16} color={theme.colors.primary} />
+            <Text style={[styles.footerNavLabel, { color: theme.colors.primary, fontWeight: '700' }]} maxFontSizeMultiplier={1.2}>Meeting</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/admin')} activeOpacity={0.75}>
+            <Shield size={16} color={theme.colors.textSecondary} />
+            <Text style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Admin</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.75}>
+            <Settings size={16} color={theme.colors.textSecondary} />
+            <Text style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Settings</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Export Progress Overlay */}
       {isExporting && (
         <View style={styles.exportOverlay}>
@@ -2147,6 +2173,31 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
+    paddingBottom: 88,
+  },
+  footerNav: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    borderTopWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  footerNavItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minWidth: 56,
+  },
+  footerNavLabel: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   clubInfoBanner: {
     paddingHorizontal: Platform.OS === 'web' ? 16 : 24,
