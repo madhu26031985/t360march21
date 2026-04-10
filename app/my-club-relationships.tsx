@@ -1,552 +1,246 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Linking,
+  Alert,
+  Platform,
+  useWindowDimensions,
+  Image,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { ArrowLeft, Home, Settings, Users, Calendar, Shield } from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Building2, Crown, Shield, Eye, UserCheck, User, X, Mail, Check, Clock, Info } from 'lucide-react-native';
+import { EXCOMM_UI } from '@/lib/excommUiTokens';
 
-interface PendingInvite {
-  id: string;
-  invite_token: string;
-  club_id: string;
-  invitee_email: string;
-  invitee_full_name: string;
-  invitee_role: string;
-  invited_by: string;
-  status: string;
-  created_at: string;
-  expires_at: string;
-  club?: {
-    name: string;
-    club_number: string | null;
-  };
-}
+const WHATSAPP_SUPPORT_URL = 'https://wa.me/9597491113';
+const FOOTER_NAV_ICON_SIZE = 15;
+
+/** Match `app/create-club.tsx` Notion-style tokens and hero typography. */
+const N = {
+  page: '#FBFBFA',
+  surface: '#FFFFFF',
+  border: 'rgba(55, 53, 47, 0.10)',
+  text: '#37352F',
+  textSecondary: '#787774',
+  accent: '#2383E2',
+};
 
 export default function MyClubRelationships() {
-  const { user, refreshUserProfile } = useAuth();
-  const N = {
-    bg: '#F7F6F3',
-    surface: '#FFFFFF',
-    surfaceSoft: '#F1EFEB',
-    border: '#E6E1D8',
-    text: '#2F2A25',
-    textSecondary: '#6B635C',
-    accent: '#8B6F4E',
-  };
+  const { theme } = useTheme();
+  const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
 
-  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
-  const [clubToDisconnect, setClubToDisconnect] = useState<any>(null);
-  const [clubs, setClubs] = useState<any[]>([]);
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
-  const [isLoadingInvites, setIsLoadingInvites] = useState(false);
-  const [showInfoModal, setShowInfoModal] = useState(false);
+  const hasClub = user?.currentClubId != null;
+  const isExComm =
+    user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
 
-  useEffect(() => {
-    setClubs(user?.clubs || []);
-  }, [user?.clubs]);
-
-
-  const loadPendingInvites = async () => {
-    if (!user) return;
-
-    setIsLoadingInvites(true);
+  const openWhatsAppSupport = async () => {
     try {
-      const { data, error } = await supabase
-        .from('app_user_invitation')
-        .select(`
-          *,
-          club:clubs(name, club_number)
-        `)
-        .or(`invitee_email.eq.${user.email},accepted_user_id.eq.${user.id}`)
-        .eq('status', 'pending')
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error loading invites:', error);
-        return;
-      }
-
-      setPendingInvites((data as any) || []);
-    } catch (error) {
-      console.error('Error loading invites:', error);
-    } finally {
-      setIsLoadingInvites(false);
+      const supported = await Linking.canOpenURL(WHATSAPP_SUPPORT_URL);
+      if (supported) await Linking.openURL(WHATSAPP_SUPPORT_URL);
+      else Alert.alert('Error', 'Cannot open WhatsApp');
+    } catch {
+      Alert.alert('Error', 'Failed to open WhatsApp');
     }
   };
 
-  const handleAcceptInvite = async (invite: PendingInvite) => {
-    if (!user) return;
-
-    try {
-      console.log('Accepting invitation:', invite.id);
-      console.log('User ID:', user.id);
-      console.log('Club ID:', invite.club_id);
-      console.log('Role:', invite.invitee_role);
-
-      const { data: existingRelation, error: checkError } = await supabase
-        .from('app_club_user_relationship')
-        .select('id, is_authenticated')
-        .eq('user_id', user.id)
-        .eq('club_id', invite.club_id)
-        .maybeSingle();
-
-      if (checkError) {
-        console.error('Error checking existing relationship:', checkError);
-        Alert.alert('Error', `Failed to check membership: ${checkError.message}`);
-        return;
-      }
-
-      if (existingRelation && (existingRelation as any).is_authenticated) {
-        console.log('User already a member, updating invitation status only');
-        Alert.alert('Already a Member', 'You are already a member of this club.');
-        const { error: updateError } = await supabase
-          .from('app_user_invitation')
-          .update({
-            status: 'accepted',
-            accepted_at: new Date().toISOString(),
-            accepted_user_id: user.id,
-            updated_at: new Date().toISOString(),
-          } as any)
-          .eq('id', invite.id);
-
-        if (updateError) {
-          console.error('Error updating invitation:', updateError);
-        }
-        loadPendingInvites();
-        return;
-      }
-
-      console.log('Creating club relationship...');
-      const { data: relationshipData, error: relationshipError } = await supabase
-        .from('app_club_user_relationship')
-        .upsert({
-          user_id: user.id,
-          club_id: invite.club_id,
-          role: invite.invitee_role,
-          is_authenticated: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        } as any, {
-          onConflict: 'user_id,club_id'
-        })
-        .select();
-
-      if (relationshipError) {
-        console.error('Error creating relationship:', relationshipError);
-        console.error('Error details:', JSON.stringify(relationshipError, null, 2));
-        Alert.alert('Error', `Failed to join club: ${relationshipError.message}\n\nPlease try again or contact support.`);
-        return;
-      }
-
-      console.log('Relationship created successfully:', relationshipData);
-      console.log('Updating invitation status...');
-
-      const { error: acceptError } = await supabase
-        .from('app_user_invitation')
-        .update({
-          status: 'accepted',
-          accepted_at: new Date().toISOString(),
-          accepted_user_id: user.id,
-          updated_at: new Date().toISOString(),
-        } as any)
-        .eq('id', invite.id);
-
-      if (acceptError) {
-        console.error('Error accepting invite:', acceptError);
-        console.error('Accept error details:', JSON.stringify(acceptError, null, 2));
-      } else {
-        console.log('Invitation status updated successfully');
-      }
-
-      Alert.alert('Success', `You've joined ${invite.club?.name || 'the club'}!`);
-      console.log('Refreshing user profile...');
-      await refreshUserProfile();
-      loadPendingInvites();
-    } catch (error) {
-      console.error('Error accepting invite:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      Alert.alert('Error', `Failed to accept invitation: ${errorMessage}\n\nPlease try again or contact support.`);
-    }
-  };
-
-  const handleRejectInvite = async (invite: PendingInvite) => {
-    Alert.alert(
-      'Reject Invitation',
-      `Are you sure you want to reject the invitation from ${invite.club?.name || 'this club'}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('app_user_invitation')
-                .update({
-                  status: 'rejected',
-                  updated_at: new Date().toISOString(),
-                } as any)
-                .eq('id', invite.id);
-
-              if (error) {
-                console.error('Error rejecting invite:', error);
-                Alert.alert('Error', 'Failed to reject invitation');
-                return;
-              }
-
-              loadPendingInvites();
-            } catch (error) {
-              console.error('Error rejecting invite:', error);
-              Alert.alert('Error', 'An unexpected error occurred');
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleDisconnectClub = (club: any) => {
-    setClubToDisconnect(club);
-    setShowDisconnectModal(true);
-  };
-
-  const handleConfirmDisconnect = async () => {
-    if (!clubToDisconnect || !user) return;
-
-    try {
-      const { error } = await supabase
-        .from('app_club_user_relationship')
-        .update({ is_authenticated: false } as any)
-        .eq('user_id', user.id)
-        .eq('club_id', clubToDisconnect.id);
-
-      if (error) {
-        console.error('Error disconnecting from club:', error);
-        Alert.alert('Error', 'Failed to disconnect from club');
-        return;
-      }
-
-      Alert.alert('Success', `Disconnected from ${clubToDisconnect.name}`);
-      setClubs((prev) => prev.filter((club) => club.id !== clubToDisconnect.id));
-      setShowDisconnectModal(false);
-      setClubToDisconnect(null);
-
-      await refreshUserProfile();
-    } catch (error) {
-      console.error('Error disconnecting from club:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-    }
-  };
-
-
-  const getRoleIcon = (role: string) => {
-    switch (role.toLowerCase()) {
-      case 'excomm': return <Crown size={14} color="#6B635C" />;
-      case 'visiting_tm': return <UserCheck size={14} color="#6B635C" />;
-      case 'club_leader': return <Shield size={14} color="#6B635C" />;
-      case 'guest': return <Eye size={14} color="#6B635C" />;
-      case 'member': return <User size={14} color="#6B635C" />;
-      default: return <User size={14} color="#6B635C" />;
-    }
-  };
-
-  const formatRole = (role: string) => {
-    switch (role.toLowerCase()) {
-      case 'excomm': return 'ExComm';
-      case 'visiting_tm': return 'Visiting TM';
-      case 'club_leader': return 'Club Leader';
-      case 'guest': return 'Guest';
-      case 'member': return 'Member';
-      default: return role;
-    }
-  };
-
-
-  const getTimeRemaining = (expiresAt: string) => {
-    const now = new Date();
-    const expires = new Date(expiresAt);
-    const diffInHours = Math.ceil((expires.getTime() - now.getTime()) / (1000 * 60 * 60));
-
-    if (diffInHours <= 0) return 'Expired';
-    if (diffInHours < 24) return `${diffInHours}h left`;
-    const days = Math.ceil(diffInHours / 24);
-    return `${days}d left`;
-  };
-
-  const renderJoinedTab = () => (
-    <>
-      {/* Summary Card */}
-      <View style={[styles.summaryCard, { backgroundColor: N.surface, borderColor: N.border }]}>
-        <Text style={[styles.summaryCount, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-          {clubs.length}
-        </Text>
-        <Text style={[styles.summaryLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-          {clubs.length === 1 ? 'Active Club' : 'Active Clubs'}
-        </Text>
-      </View>
-
-      {/* Club Cards */}
-      <View style={styles.clubsSection}>
-        {clubs.length > 0 ? (
-          clubs.map((club) => (
-            <View key={club.id} style={[styles.clubCard, { backgroundColor: N.surface, borderColor: N.border }]}>
-              {/* Club Header */}
-              <View style={styles.clubHeader}>
-                <View style={[styles.clubIconContainer, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
-                  <Building2 size={20} color={N.textSecondary} />
-                </View>
-                <View style={styles.clubInfo}>
-                  <Text style={[styles.clubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-                    {club.name}
-                  </Text>
-                  {club.club_number && (
-                    <Text style={[styles.clubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Club #{club.club_number}
-                    </Text>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={[styles.disconnectButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
-                  onPress={() => handleDisconnectClub(club)}
-                >
-                  <Text style={styles.disconnectButtonText} maxFontSizeMultiplier={1.3}>
-                    Disconnect Club
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Club Details */}
-              <View style={styles.clubDetails}>
-                {/* Role Badge */}
-                <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Role
-                  </Text>
-                  <View style={[styles.roleBadge, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
-                    {getRoleIcon(club.role)}
-                    <Text style={[styles.roleBadgeText, { color: N.text }]} maxFontSizeMultiplier={1.3}>{formatRole(club.role)}</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          ))
-        ) : (
-          <View style={[styles.emptyState, { backgroundColor: N.surface, borderColor: N.border }]}>
-            <Building2 size={48} color={N.textSecondary} />
-            <Text style={[styles.emptyStateTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-              No Joined Clubs
-            </Text>
-            <Text style={[styles.emptyStateDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              You haven't joined any clubs yet. Contact your club administrator for an invitation.
-            </Text>
-          </View>
-        )}
-      </View>
-    </>
-  );
-
-  const renderInvitesTab = () => (
-    <View style={styles.invitesSection}>
-      {isLoadingInvites ? (
-        <View style={[styles.emptyState, { backgroundColor: N.surface, borderColor: N.border }]}>
-          <Text style={[styles.emptyStateDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Loading invitations...
-          </Text>
-        </View>
-      ) : pendingInvites.length > 0 ? (
-        pendingInvites.map((invite) => (
-          <View key={invite.id} style={[styles.inviteCard, { backgroundColor: N.surface, borderColor: N.border }]}>
-            <View style={styles.inviteHeader}>
-              <View style={[styles.inviteIconContainer, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
-                <Mail size={20} color={N.textSecondary} />
-              </View>
-              <View style={styles.inviteInfo}>
-                <Text style={[styles.inviteClubName, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-                  {invite.club?.name || 'Unknown Club'}
-                </Text>
-                {invite.club?.club_number && (
-                  <Text style={[styles.inviteClubNumber, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Club #{invite.club.club_number}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            <View style={styles.inviteDetails}>
-              <View style={styles.inviteDetailRow}>
-                <Text style={[styles.inviteDetailLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Role Offered
-                </Text>
-                <View style={[styles.roleBadge, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}>
-                  {getRoleIcon(invite.invitee_role)}
-                  <Text style={[styles.roleBadgeText, { color: N.text }]} maxFontSizeMultiplier={1.3}>{formatRole(invite.invitee_role)}</Text>
-                </View>
-              </View>
-
-              <View style={styles.inviteDetailRow}>
-                <Text style={[styles.inviteDetailLabel, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Expires
-                </Text>
-                <View style={styles.detailValue}>
-                  <Clock size={14} color={N.textSecondary} />
-                  <Text style={[styles.detailText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-                    {getTimeRemaining(invite.expires_at)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.inviteActions}>
-              <TouchableOpacity
-                style={[styles.inviteActionButton, styles.rejectButton, { borderColor: N.border, backgroundColor: N.surfaceSoft }]}
-                onPress={() => handleRejectInvite(invite)}
-              >
-                <X size={16} color={N.textSecondary} />
-                <Text style={[styles.inviteActionText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>Reject</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.inviteActionButton, styles.acceptButton, { backgroundColor: N.text, borderColor: N.text }]}
-                onPress={() => handleAcceptInvite(invite)}
-              >
-                <Check size={16} color="#ffffff" />
-                <Text style={[styles.inviteActionText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>Accept</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))
-      ) : (
-        <View style={[styles.emptyState, { backgroundColor: N.surface, borderColor: N.border }]}>
-          <Mail size={48} color={N.textSecondary} />
-          <Text style={[styles.emptyStateTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-            No Pending Invites
-          </Text>
-          <Text style={[styles.emptyStateDescription, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            You don't have any pending club invitations at the moment.
-          </Text>
-        </View>
-      )}
-    </View>
-  );
-
+  const tabBarBottomPadding =
+    Platform.OS === 'web'
+      ? Math.min(Math.max(insets.bottom, 8), 14)
+      : Math.max(insets.bottom, 10);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: N.bg }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: N.bg, borderBottomColor: N.border }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color={N.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>My Club Relationships</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => setShowInfoModal(true)}>
-          <Info size={22} color={N.textSecondary} />
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={[styles.container, { backgroundColor: N.page }]} edges={['top']}>
+      <View style={styles.flex1}>
+        <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()} accessibilityLabel="Go back">
+            <ArrowLeft size={22} color={N.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+            Joining a club
+          </Text>
+          <View style={styles.helpButton} />
+        </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-        {renderJoinedTab()}
+        <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+          {/* Hero — same asset, layout, and type scale as Create New Club */}
+          <View style={[styles.heroSection, { backgroundColor: N.surface, borderColor: N.border }]}>
+            <Image
+              source={require('@/assets/images/yy.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+            <Text style={[styles.tagline, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              We Salute Toastmasters.
+            </Text>
+            <Text style={[styles.heroTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+              Start Your Journey
+            </Text>
+          </View>
 
-        <View style={styles.navSpacer} />
-      </ScrollView>
+          <View style={[styles.formSection, { backgroundColor: N.surface, borderColor: N.border }]}>
+            <Text style={[styles.body, { color: N.text }]} maxFontSizeMultiplier={1.25}>
+              If your club invited you to T360, ask your ExCom or VPE to add your email to the club.
+            </Text>
 
-      {/* Info Modal */}
-      <Modal
-        visible={showInfoModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowInfoModal(false)}
-      >
-        <View style={styles.infoModalOverlay}>
-          <View style={[styles.infoModalContainer, { backgroundColor: N.surface, borderColor: N.border }]}>
-            <View style={styles.infoModalHeader}>
-              <Text style={[styles.infoModalTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-                My Club Relationships
-              </Text>
-              <TouchableOpacity
-                style={styles.infoModalCloseButton}
-                onPress={() => setShowInfoModal(false)}
-              >
-                <X size={24} color={N.textSecondary} />
-              </TouchableOpacity>
-            </View>
+            <Text style={[styles.body, styles.onceAddedLead, { color: N.text }]} maxFontSizeMultiplier={1.25}>
+              Once added:
+            </Text>
 
-            <ScrollView
-              style={styles.infoModalContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={[styles.infoModalText, { color: N.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                🤝 My Club Relationships
-              </Text>
+            <Text style={[styles.body, styles.stepLine, { color: N.text }]} maxFontSizeMultiplier={1.25}>
+              → Go to Settings
+            </Text>
+            <Text style={[styles.body, styles.stepLine, { color: N.text }]} maxFontSizeMultiplier={1.25}>
+              → Tap Sign out
+            </Text>
+            <Text style={[styles.body, styles.stepLine, { color: N.text }]} maxFontSizeMultiplier={1.25}>
+              → Then Sign in again
+            </Text>
 
-              <Text style={[styles.infoModalText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-                Your choice, your community 🌍 View the clubs you're part of and the role you hold in each one 🎯
-              </Text>
+            <Text style={[styles.body, styles.bodyGap, { color: N.text }]} maxFontSizeMultiplier={1.25}>
+              {"You'll see your club instantly."}
+            </Text>
 
-              <Text style={[styles.infoModalText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-                Each card shows a club you selected. You can disconnect anytime 🔄 and remain in full control of your memberships.
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-                Want to rejoin a club later? 📩 Reach out to that club's ExCom team.
-              </Text>
-
-              <Text style={[styles.infoModalText, { color: N.text, marginBottom: 0 }]} maxFontSizeMultiplier={1.3}>
-                Your network. Your growth. 🌱
-              </Text>
-            </ScrollView>
+            <Text style={[styles.helpLead, { color: N.text }]} maxFontSizeMultiplier={1.2}>
+              Need help?
+            </Text>
 
             <TouchableOpacity
-              style={[styles.infoModalButton, { backgroundColor: N.text }]}
-              onPress={() => setShowInfoModal(false)}
+              onPress={openWhatsAppSupport}
+              activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel="Contact WhatsApp Support"
             >
-              <Text style={styles.infoModalButtonText} maxFontSizeMultiplier={1.3}>Got it</Text>
+              <Text style={[styles.whatsAppLink, { color: N.accent }]} maxFontSizeMultiplier={1.2}>
+                Contact WhatsApp Support
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
+        <View
+          style={[
+            styles.bottomDock,
+            {
+              borderTopColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+              paddingBottom: tabBarBottomPadding,
+              width: windowWidth,
+            },
+          ]}
+        >
+          <View style={styles.tabBarRow}>
+            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+              <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
+                <Home size={FOOTER_NAV_ICON_SIZE} color="#0a66c2" />
+              </View>
+              <Text
+                style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
+                Home
+              </Text>
+            </TouchableOpacity>
+            {hasClub ? (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/(tabs)/club')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
+                  <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
+                </View>
+                <Text
+                  style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.3}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  Club
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {hasClub ? (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/(tabs)/meetings')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
+                  <Calendar size={FOOTER_NAV_ICON_SIZE} color="#0ea5e9" />
+                </View>
+                <Text
+                  style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.3}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  Meeting
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {isExComm ? (
+              <TouchableOpacity
+                style={styles.footerNavItem}
+                onPress={() => router.push('/(tabs)/admin')}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
+                  <Shield size={FOOTER_NAV_ICON_SIZE} color={EXCOMM_UI.adminTabIcon} />
+                </View>
+                <Text
+                  style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.3}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  Admin
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/(tabs)/settings')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
+                <Settings size={FOOTER_NAV_ICON_SIZE} color="#6b7280" />
+              </View>
+              <Text
+                style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                maxFontSizeMultiplier={1.3}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
+                Settings
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
-
-      {/* Disconnect Confirmation Modal */}
-      <Modal
-        visible={showDisconnectModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowDisconnectModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modal, { backgroundColor: N.surface, borderColor: N.border }]}>
-            <Text style={[styles.modalTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-              Disconnect from Club
-            </Text>
-            <Text style={[styles.modalMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Are you sure you want to disconnect from {clubToDisconnect?.name}? You will lose access to this club's features and data.
-            </Text>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
-                onPress={() => setShowDisconnectModal(false)}
-              >
-                <Text style={[styles.modalButtonText, { color: N.text }]} maxFontSizeMultiplier={1.3}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: '#ef4444', borderColor: '#ef4444' }]}
-                onPress={handleConfirmDisconnect}
-              >
-                <Text style={[styles.modalButtonText, { color: '#ffffff' }]} maxFontSizeMultiplier={1.3}>Disconnect</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  flex1: {
     flex: 1,
   },
   header: {
@@ -562,300 +256,114 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 16,
   },
-  headerSpacer: {
-    width: 40,
+  helpButton: {
+    padding: 8,
   },
   content: {
     flex: 1,
   },
   contentContainer: {
-    paddingBottom: 24,
-    flexGrow: 1,
+    paddingBottom: 32,
   },
-  navSpacer: {
-    flex: 1,
-    minHeight: 24,
-  },
-  summaryCard: {
+  heroSection: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 6,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: 'center',
-  },
-  summaryCount: {
-    fontSize: 36,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  clubsSection: {
-    marginTop: 16,
-    paddingHorizontal: 16,
-  },
-  clubCard: {
-    borderRadius: 6,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 12,
-  },
-  clubHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  clubIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 6,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  clubInfo: {
-    flex: 1,
-  },
-  clubName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  clubNumber: {
-    fontSize: 12,
-  },
-  disconnectButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
     borderRadius: 4,
     borderWidth: 1,
+    padding: 20,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  disconnectButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#DC2626',
+  logoImage: {
+    width: 82,
+    height: 82,
+    marginBottom: 8,
   },
-  clubDetails: {
-    gap: 12,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  detailLabel: {
-    fontSize: 13,
+  tagline: {
+    fontSize: 11,
     fontWeight: '500',
-  },
-  detailValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  detailText: {
-    fontSize: 13,
-  },
-  roleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    gap: 6,
-  },
-  roleBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  invitesSection: {
-    marginTop: 16,
-    paddingHorizontal: 16,
-  },
-  inviteCard: {
-    borderRadius: 6,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 12,
-  },
-  inviteHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  inviteIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 6,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  inviteInfo: {
-    flex: 1,
-  },
-  inviteClubName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  inviteClubNumber: {
-    fontSize: 12,
-  },
-  inviteDetails: {
-    gap: 12,
-    marginBottom: 16,
-  },
-  inviteDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  inviteDetailLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  inviteActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  inviteActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 6,
-  },
-  rejectButton: {
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-  },
-  acceptButton: {
-    borderWidth: 1,
-  },
-  inviteActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  emptyState: {
-    borderRadius: 6,
-    borderWidth: 1,
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyStateTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 16,
     textAlign: 'center',
+    marginBottom: 16,
+    letterSpacing: 0.3,
   },
-  emptyStateDescription: {
-    fontSize: 13,
+  heroTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  formSection: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 4,
+    borderWidth: 1,
+    padding: 20,
+  },
+  body: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '400',
+  },
+  bodyGap: {
+    marginTop: 16,
+  },
+  onceAddedLead: {
+    marginTop: 16,
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  stepLine: {
     marginTop: 8,
-    textAlign: 'center',
-    lineHeight: 20,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modal: {
-    width: '85%',
-    borderRadius: 6,
-    borderWidth: 1,
-    padding: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  modalMessage: {
-    fontSize: 14,
-    marginBottom: 20,
-    lineHeight: 22,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  modalButtonText: {
-    fontSize: 14,
+  helpLead: {
+    marginTop: 22,
+    fontSize: 15,
     fontWeight: '600',
+    lineHeight: 22,
   },
-  infoModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+  whatsAppLink: {
+    marginTop: 8,
+    fontSize: 15,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
-  infoModalContainer: {
-    borderRadius: 6,
-    borderWidth: 1,
-    width: '100%',
-    maxWidth: 500,
-    maxHeight: '80%',
+  bottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 4,
+    alignSelf: 'stretch',
   },
-  infoModalHeader: {
+  tabBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  infoModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+  footerNavItem: {
     flex: 1,
-  },
-  infoModalCloseButton: {
-    padding: 4,
-  },
-  infoModalContent: {
-    padding: 20,
-    maxHeight: 500,
-  },
-  infoModalText: {
-    fontSize: 14,
-    lineHeight: 22,
-    marginBottom: 16,
-  },
-  infoModalButton: {
-    margin: 20,
-    marginTop: 0,
-    paddingVertical: 16,
-    borderRadius: 12,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+    paddingHorizontal: 2,
   },
-  infoModalButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#ffffff',
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

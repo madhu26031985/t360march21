@@ -18,7 +18,6 @@ import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
-  Building2,
   User,
   BookOpen,
   Calendar,
@@ -1570,147 +1569,163 @@ export default function MyJourney() {
     );
   }
 
+  const noClubOnboarding = !user?.currentClubId;
+
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: N.page }]}>
+    <SafeAreaView
+      edges={['top', 'left', 'right']}
+      style={[
+        styles.container,
+        { backgroundColor: N.page },
+      ]}
+    >
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: N.surface, borderBottomColor: N.border }]}>
-        <View style={styles.profileHeader}>
-          <View style={styles.profileHeaderLeft}>
-            <Animated.View
-              style={[
-                styles.profileAvatarOuter,
-                showHeaderAvatarPending && styles.profileAvatarOuterPending,
-                showHeaderAvatarPending && headerAvatarRingAnimatedStyle,
-              ]}
-            >
-              <View style={styles.profileAvatar}>
-                {userAvatar && !headerAvatarLoadFailed ? (
-                  <Image
-                    source={{ uri: userAvatar }}
-                    style={styles.profileAvatarImage}
-                    onError={() => setHeaderAvatarLoadFailed(true)}
-                  />
-                ) : (
-                  <User size={20} color="#ffffff" />
-                )}
-              </View>
-            </Animated.View>
-            <TouchableOpacity
-              style={styles.profileInfo}
-              activeOpacity={0.7}
-              onPress={() => router.push('/business-card')}
-              accessibilityRole="button"
-              accessibilityLabel="Open business card"
-            >
-              <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {user.fullName}
-              </Text>
-              <Text style={[styles.profileSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Welcome back
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {isExComm && user?.currentClubId ? (
-            <TouchableOpacity
-              style={[styles.toolkitHeaderButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
-              onPress={() => router.push('/my-tool-kit')}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Open My tool kit"
-            >
-              <Briefcase size={18} color={N.iconStrong} strokeWidth={2} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* No club card - only when user has no club */}
-        {!user?.currentClubId && (
-          <View style={[styles.noClubSwitcher, { backgroundColor: N.surface }]}>
-            <View style={styles.noClubHeader}>
-              <View style={[styles.noClubIcon, { backgroundColor: N.iconTile }]}>
-                <Building2 size={20} color={N.textSecondary} />
-              </View>
-              <View style={styles.noClubInfo}>
-                <Text style={[styles.noClubText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  No club
-                </Text>
-                <Text style={[styles.noClubSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Join or create a club to get started
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Welcome Message - only show if user has no clubs */}
-        {!user?.currentClubId && (
-          <>
-            <View style={styles.welcomeMessageSection}>
-              <View style={[styles.welcomeMessageCard, { backgroundColor: N.surface }]}>
-                <Text style={[styles.welcomeTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  🎉 Welcome to T-360! 🎉
-                </Text>
-
-                <Text style={[styles.welcomeSubtitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  Thank you for signing up!
-                </Text>
-
-                <View style={styles.welcomeContent}>
-                  <View style={styles.welcomePoint}>
-                    <Text style={[styles.welcomePointText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      👉 If you want to join a Toastmasters club, go to Settings → Club → My Club Relationships and request to join from the available clubs.
-                    </Text>
-                  </View>
-
-                  <View style={styles.welcomePoint}>
-                    <Text style={[styles.welcomePointText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      👉 If you are an ExCom member starting a new club on T-360, simply go to Settings → Create Club to get started with managing your Toastmasters club seamlessly.
-                    </Text>
-                  </View>
+      {!noClubOnboarding ? (
+        <View
+          style={[
+            styles.header,
+            { backgroundColor: N.surface, borderBottomColor: N.border },
+          ]}
+        >
+          <View style={styles.profileHeader}>
+            <View style={styles.profileHeaderLeft}>
+              <Animated.View
+                style={[
+                  styles.profileAvatarOuter,
+                  showHeaderAvatarPending && styles.profileAvatarOuterPending,
+                  showHeaderAvatarPending && headerAvatarRingAnimatedStyle,
+                ]}
+              >
+                <View style={styles.profileAvatar}>
+                  {userAvatar && !headerAvatarLoadFailed ? (
+                    <Image
+                      source={{ uri: userAvatar }}
+                      style={styles.profileAvatarImage}
+                      onError={() => setHeaderAvatarLoadFailed(true)}
+                    />
+                  ) : (
+                    <User size={20} color="#ffffff" />
+                  )}
                 </View>
-
-                <Text style={[styles.welcomeClosing, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  We're excited to have you onboard and can't wait to see your club thrive with T-360! 🚀
+              </Animated.View>
+              <TouchableOpacity
+                style={styles.profileInfo}
+                activeOpacity={0.7}
+                onPress={() => router.push('/business-card')}
+                accessibilityRole="button"
+                accessibilityLabel="Open business card"
+              >
+                <Text style={[styles.profileName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {user.fullName}
                 </Text>
-              </View>
+                <Text
+                  style={[styles.profileSubtitle, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.3}
+                >
+                  Welcome back
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {isExComm && user?.currentClubId ? (
+              <TouchableOpacity
+                style={[styles.toolkitHeaderButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
+                onPress={() => router.push('/my-tool-kit')}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Open My tool kit"
+              >
+                <Briefcase size={18} color={N.iconStrong} strokeWidth={2} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      <ScrollView
+        style={[styles.content, { backgroundColor: N.page }]}
+        contentContainerStyle={[styles.scrollContent, noClubOnboarding && styles.noClubScrollContent]}
+        showsVerticalScrollIndicator={false}
+      >
+        {noClubOnboarding ? (
+          <View style={styles.noClubOnboardingStack}>
+            {/* Hero: same asset + type scale as `app/create-club.tsx` */}
+            <View style={[styles.noClubHeroSection, { backgroundColor: N.surface, borderColor: N.border }]}>
+              <Image
+                source={require('@/assets/images/yy.png')}
+                style={styles.noClubLogoImage}
+                resizeMode="contain"
+              />
+              <Text style={[styles.noClubTagline, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                We Salute Toastmasters.
+              </Text>
+              <Text style={[styles.noClubHeroTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
+                Start Your Journey
+              </Text>
             </View>
 
-            <View style={[styles.journeyUnifiedBox, { backgroundColor: N.surface, borderColor: N.border }]}>
-              <View style={styles.journeyListCardsContainer}>
-                <JourneyListCard
-                  title="My Profile"
-                  description="View and edit your personal information"
-                  icon={<User size={18} color="#111827" />}
-                  color="#111827"
-                  iconBackgroundColor="#F3F4F6"
-                  onPress={handleMyProfilePress}
-                  inline
-                />
-                <JourneyListCard
-                  title="My Growth"
-                  description="Speeches, mentor, and My Role Insights"
-                  icon={<Trophy size={18} color="#D97706" />}
-                  color="#D97706"
-                  iconBackgroundColor="#FEF3C7"
-                  onPress={() => router.push('/my-growth')}
-                  inline
-                />
-                <TouchableOpacity
-                  style={styles.journeySectionHeader}
-                  onPress={() => router.push('/(tabs)/club')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.journeySectionHeaderText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    Your Toastmasters Journey
+            <View style={[styles.noClubActionsSection, { backgroundColor: N.surface, borderColor: N.border }]}>
+              <TouchableOpacity
+                style={styles.noClubOptionBlock}
+                onPress={() => router.push('/create-club')}
+                activeOpacity={0.65}
+                accessibilityRole="button"
+                accessibilityLabel="Create your club. For leaders and ExComm."
+              >
+                <View style={styles.noClubOptionTitleRow}>
+                  <Text style={styles.noClubOptionEmojiInline} maxFontSizeMultiplier={1.2}>
+                    🚀
                   </Text>
-                  <ChevronRight size={18} color={theme.colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+                  <Text style={[styles.noClubOptionHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
+                    Create your club
+                  </Text>
+                </View>
+                <Text
+                  style={[styles.noClubOptionDesc, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  Plan meetings, assign roles, and run your club digitally.
+                </Text>
+                <Text
+                  style={[styles.noClubOptionFooter, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.1}
+                >
+                  Leaders & Excomm
+                </Text>
+              </TouchableOpacity>
+
+              <View style={[styles.noClubUnifiedDivider, { backgroundColor: N.border }]} />
+
+              <TouchableOpacity
+                style={styles.noClubOptionBlock}
+                onPress={() => router.push('/my-club-relationships')}
+                activeOpacity={0.65}
+                accessibilityRole="button"
+                accessibilityLabel="Join an existing club. For guest, visiting Toastmasters, and members."
+              >
+                <View style={styles.noClubOptionTitleRow}>
+                  <Text style={styles.noClubOptionEmojiInline} maxFontSizeMultiplier={1.2}>
+                    🤝
+                  </Text>
+                  <Text style={[styles.noClubOptionHeading, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
+                    Join an existing club
+                  </Text>
+                </View>
+                <Text
+                  style={[styles.noClubOptionDesc, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.15}
+                >
+                  Join your existing Toastmasters club using an invite or request access.
+                </Text>
+                <Text
+                  style={[styles.noClubOptionFooter, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.1}
+                >
+                  Guest, Visiting Toastmasters, Members
+                </Text>
+              </TouchableOpacity>
             </View>
-          </>
-        )}
+          </View>
+        ) : null}
 
             {/* My Journey + Meeting - One Master Box (when user has a club) */}
         {user?.currentClubId && (
@@ -2358,95 +2373,89 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  noClubSwitcher: {
+  scrollContent: {
+    flexGrow: 1,
+  },
+  noClubScrollContent: {
+    flexGrow: 1,
+    backgroundColor: N.page,
+    paddingBottom: 8,
+  },
+  noClubOnboardingStack: {
+    flexGrow: 1,
+    paddingBottom: 24,
+  },
+  /** Match `create-club` heroSection / logoImage / tagline / heroTitle */
+  noClubHeroSection: {
     marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: N.border,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  noClubHeader: {
-    flexDirection: 'row',
+    padding: 20,
     alignItems: 'center',
   },
-  noClubIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+  noClubLogoImage: {
+    width: 82,
+    height: 82,
+    marginBottom: 8,
   },
-  noClubInfo: {
-    flex: 1,
+  noClubTagline: {
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 16,
+    letterSpacing: 0.3,
   },
-  noClubText: {
+  noClubHeroTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 2,
+    textAlign: 'center',
+    marginBottom: 6,
+    letterSpacing: -0.5,
   },
-  noClubSubtext: {
-    fontSize: 13,
-  },
-  welcomeMessageSection: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  welcomeMessageCard: {
+  /** Match `create-club` formSection container for actions */
+  noClubActionsSection: {
+    marginHorizontal: 16,
+    marginTop: 16,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: N.border,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    padding: 20,
   },
-  welcomeTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 8,
-    letterSpacing: -0.3,
+  noClubUnifiedDivider: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+    marginVertical: 20,
   },
-  welcomeSubtitle: {
-    fontSize: 13,
+  noClubOptionBlock: {
+    paddingVertical: 4,
+    borderRadius: 0,
+  },
+  noClubOptionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  noClubOptionEmojiInline: {
+    fontSize: 22,
+    lineHeight: 26,
+  },
+  noClubOptionHeading: {
+    flex: 1,
+    fontSize: 16,
     fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 14,
     letterSpacing: -0.2,
   },
-  welcomeContent: {
-    marginBottom: 14,
-    gap: 12,
+  noClubOptionDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 10,
+    fontWeight: '400',
   },
-  welcomePoint: {
-    paddingHorizontal: 4,
-  },
-  welcomePointText: {
+  noClubOptionFooter: {
     fontSize: 11,
-    lineHeight: 16,
-    textAlign: 'left',
-  },
-  welcomeClosing: {
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 16,
-    letterSpacing: -0.1,
+    fontWeight: '500',
+    marginTop: 14,
+    opacity: 0.85,
   },
   featuresGrid: {
     paddingHorizontal: 16,
@@ -2572,18 +2581,6 @@ const styles = StyleSheet.create({
   },
   masterStatsHDivider: {
     height: 1,
-  },
-  journeyUnifiedBox: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 4,
-    borderWidth: 1,
-  },
-  journeyUnifiedDivider: {
-    height: 1,
-    marginVertical: 14,
   },
   journeyListCardsContainer: {
     width: '100%',

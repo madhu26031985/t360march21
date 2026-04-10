@@ -801,20 +801,22 @@ export default function Profile() {
                 Home
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
-              <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
-                <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
-              </View>
-              <Text
-                style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
-                maxFontSizeMultiplier={1.3}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.75}
-              >
-                Club
-              </Text>
-            </TouchableOpacity>
+            {hasClub ? (
+              <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+                <View style={[styles.footerNavIcon, footerIconTileStyle, { opacity: 0.5 }]}>
+                  <Users size={FOOTER_NAV_ICON_SIZE} color="#d97706" />
+                </View>
+                <Text
+                  style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]}
+                  maxFontSizeMultiplier={1.3}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
+                  Club
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             {hasClub ? (
               <TouchableOpacity
                 style={styles.footerNavItem}

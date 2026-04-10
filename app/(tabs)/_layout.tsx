@@ -76,7 +76,7 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
   const tabItems = (
     <>
       {renderTab('index')}
-      {renderTab('club')}
+      {hasClub ? renderTab('club') : null}
       {hasClub ? renderTab('meetings') : null}
       {isExComm ? renderTab('admin') : null}
       {renderTab('settings')}
@@ -103,7 +103,7 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
         },
       ]}
     >
-      {/* Full-width row + flex:1 per tab so 4 or 5 icons share space (no shrink-wrapped ScrollView). */}
+      {/* Full-width row + flex:1 per tab so visible tabs share space (no shrink-wrapped ScrollView). */}
       <View style={styles.tabBarRow}>{tabItems}</View>
     </View>
   );
@@ -128,7 +128,10 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home', href: '/(tabs)' }} />
-      <Tabs.Screen name="club" options={{ title: 'Club', href: '/(tabs)/club' }} />
+      <Tabs.Screen
+        name="club"
+        options={{ title: 'Club', href: hasClub ? '/(tabs)/club' : null }}
+      />
       <Tabs.Screen
         name="meetings"
         options={{
