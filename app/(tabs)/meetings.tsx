@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useState, useEffect, useCallback, useRef, useMemo, type ComponentType } from 'react';
@@ -11,6 +11,7 @@ import { prefetchToastmasterCorner } from '@/lib/prefetchToastmasterCorner';
 import { Calendar, Vote, Building2, Clock, Lock, FileText, Timer, ChartBar as BarChart3, BookOpen, Star, MessageSquare, ClipboardCheck, UserCheck, Award, Book, MessageCircle, ChevronRight, ChevronDown, ChevronUp, BookCheck, Ear, UserPlus, Mic, ClipboardList, MessageSquareQuote, ScrollText, UserCog, Lightbulb, Target, RefreshCw, MonitorCheck, CheckCircle, Search, AlertCircle } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
+import { ClubReportsList } from '@/components/ClubReportsList';
 
 const ROLE_AVATAR_ROTATE_MS = 3000;
 
@@ -545,6 +546,7 @@ function KeyRoleCardWithTmodAlert({
 export default function ClubMeetings() {
   const { theme } = useTheme();
   const { user, isAuthenticated, refreshUserProfile } = useAuth();
+  const params = useLocalSearchParams<{ section?: string }>();
   const queryClient = useQueryClient();
   const [currentMeeting, setCurrentMeeting] = useState<Meeting | null>(null);
   const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
@@ -591,6 +593,14 @@ export default function ClubMeetings() {
   const [ahCounterAvatarsByMeeting, setAhCounterAvatarsByMeeting] = useState<Record<string, string[]>>({});
   const lastRefreshTime = useRef<number>(0);
   const hasLoadedOnce = useRef<boolean>(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const [reportsAnchorY, setReportsAnchorY] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (params?.section !== 'reports') return;
+    if (reportsAnchorY === null) return;
+    scrollRef.current?.scrollTo({ y: Math.max(reportsAnchorY - 12, 0), animated: true });
+  }, [params?.section, reportsAnchorY]);
 
   useEffect(() => {
     if (user?.currentClubId) {
@@ -1506,7 +1516,7 @@ export default function ClubMeetings() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.keyRoleCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                onPress={() => router.push('/club?section=reports')}
+                onPress={() => router.push({ pathname: '/(tabs)/meetings', params: { section: 'reports' } })}
                 activeOpacity={0.7}
               >
                 <View style={[styles.keyRoleIcon, { backgroundColor: '#3b82f625' }]}>
@@ -1992,7 +2002,7 @@ export default function ClubMeetings() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
         {user?.currentClubId ? (
           <View style={[styles.meetingsMasterBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <ClubSwitcher
@@ -2284,6 +2294,13 @@ export default function ClubMeetings() {
           </View>
             </>
           )}
+
+          <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
+          <ClubReportsList
+            theme={theme}
+            onReportPress={handleFeaturePress}
+            onSectionLayout={setReportsAnchorY}
+          />
 
           </View>
         ) : (

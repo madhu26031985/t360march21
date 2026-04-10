@@ -1452,7 +1452,7 @@ export default function MyJourney() {
   }, []);
 
   const goToReportsSection = useCallback(() => {
-    router.push({ pathname: '/(tabs)/club', params: { section: 'reports' } });
+    router.push({ pathname: '/(tabs)/meetings', params: { section: 'reports' } });
   }, []);
 
   const handlePreparedSpeechesPress = useCallback(() => {

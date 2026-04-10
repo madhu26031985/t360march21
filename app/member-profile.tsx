@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -141,6 +141,13 @@ export default function MemberProfile() {
     }
   };
 
+  const handleCopyAbout = async () => {
+    if (member?.About) {
+      await Clipboard.setStringAsync(member.About);
+      Alert.alert('Copied', 'About Me copied to clipboard');
+    }
+  };
+
   const handleCall = () => {
     if (member?.phone_number) {
       const phoneUrl = `tel:${member.phone_number}`;
@@ -269,8 +276,22 @@ export default function MemberProfile() {
           {/* About Section */}
           {member.About && (
             <View style={styles.aboutSection}>
-              <Text style={styles.aboutTitle} maxFontSizeMultiplier={1.3}>About Me</Text>
-              <Text style={styles.aboutText} maxFontSizeMultiplier={1.3}>{member.About}</Text>
+              <View style={styles.aboutHeaderRow}>
+                <Text style={styles.aboutTitle} maxFontSizeMultiplier={1.3}>
+                  About Me
+                </Text>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={handleCopyAbout}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy About Me"
+                >
+                  <Copy size={16} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.aboutText} maxFontSizeMultiplier={1.3}>
+                {member.About}
+              </Text>
             </View>
           )}
 
@@ -496,11 +517,17 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
+  aboutHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   aboutTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#111827',
-    marginBottom: 12,
+    flex: 1,
   },
   aboutText: {
     fontSize: 14,

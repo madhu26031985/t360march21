@@ -378,7 +378,7 @@ export default function MeetingRecords() {
                 </View>
                 <ChevronRight size={16} color={N.textSecondary} />
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push('/club?section=reports')}>
+              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push({ pathname: '/(tabs)/meetings', params: { section: 'reports' } })}>
                 <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
                   <Eye size={16} color={N.textSecondary} />
                 </View>
