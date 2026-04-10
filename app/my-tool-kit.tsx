@@ -181,13 +181,13 @@ export default function MyToolKitScreen() {
             <ArrowLeft size={24} color={N.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-            My tool kit
+            Excomm Quick access
           </Text>
           <View style={styles.headerRightSpacer} />
         </View>
         <View style={styles.centered}>
           <Text style={[styles.deniedText, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
-            Join a club to use My tool kit.
+            Join a club to use Excomm Quick access.
           </Text>
         </View>
       </SafeAreaView>
@@ -202,7 +202,7 @@ export default function MyToolKitScreen() {
             <ArrowLeft size={24} color={N.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-            My tool kit
+            Excomm Quick access
           </Text>
           <View style={styles.headerRightSpacer} />
         </View>
@@ -212,7 +212,7 @@ export default function MyToolKitScreen() {
             ExComm only
           </Text>
           <Text style={[styles.accessDeniedMessage, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
-            My tool kit is available to Executive Committee members for this club.
+            Excomm Quick access is available to Executive Committee members for this club.
           </Text>
           <TouchableOpacity
             style={[styles.createClubButton, { backgroundColor: N.text, borderColor: N.text }]}
@@ -236,7 +236,7 @@ export default function MyToolKitScreen() {
           <ArrowLeft size={24} color={N.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-          My tool kit
+          Excomm Quick access
         </Text>
         <View style={styles.headerRightSpacer} />
       </View>

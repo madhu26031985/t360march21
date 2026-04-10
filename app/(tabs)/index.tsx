@@ -37,6 +37,7 @@ import {
   UserCheck,
   Trophy,
   Settings,
+  Briefcase,
 } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
@@ -1617,7 +1618,7 @@ export default function MyJourney() {
               accessibilityRole="button"
               accessibilityLabel="Open My tool kit"
             >
-              <Settings size={18} color={N.iconStrong} strokeWidth={2} />
+              <Briefcase size={18} color={N.iconStrong} strokeWidth={2} />
             </TouchableOpacity>
           ) : null}
         </View>

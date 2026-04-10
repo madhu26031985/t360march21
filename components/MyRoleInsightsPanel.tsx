@@ -183,29 +183,37 @@ export default function MyRoleInsightsPanel() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.trackTabsGrid}>
-        {INSIGHT_TRACKS.map((track) => {
-          const active = selectedTrack?.id === track.id;
+        {[0, 2].map((startIndex) => {
+          const rowTracks = INSIGHT_TRACKS.slice(startIndex, startIndex + 2);
           return (
-            <TouchableOpacity
-              key={track.id}
-              style={[
-                styles.trackTab,
-                {
-                  borderColor: active ? theme.colors.primary : theme.colors.border,
-                  backgroundColor: active ? theme.colors.primary : theme.colors.surface,
-                },
-              ]}
-              activeOpacity={0.85}
-              onPress={() => setSelectedTrackId(track.id)}
-            >
-              <Text
-                style={[styles.trackTabText, { color: active ? '#ffffff' : theme.colors.text }]}
-                maxFontSizeMultiplier={1.1}
-                numberOfLines={1}
-              >
-                {track.emoji} {track.title}
-              </Text>
-            </TouchableOpacity>
+            <View key={`track-row-${startIndex}`} style={styles.trackTabsRow}>
+              {rowTracks.map((track, indexInRow) => {
+                const active = selectedTrack?.id === track.id;
+                return (
+                  <TouchableOpacity
+                    key={track.id}
+                    style={[
+                      styles.trackTab,
+                      indexInRow === 0 ? styles.trackTabLeft : styles.trackTabRight,
+                      {
+                        borderColor: active ? theme.colors.primary : theme.colors.border,
+                        backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                      },
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedTrackId(track.id)}
+                  >
+                    <Text
+                      style={[styles.trackTabText, { color: active ? '#ffffff' : theme.colors.text }]}
+                      maxFontSizeMultiplier={1.1}
+                      numberOfLines={1}
+                    >
+                      {track.emoji} {track.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           );
         })}
       </View>
@@ -280,13 +288,16 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   trackTabsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
     gap: 8,
     paddingBottom: 8,
   },
+  trackTabsRow: {
+    flexDirection: 'row',
+    width: '100%',
+  },
   trackTab: {
-    width: '48.8%',
+    flex: 1,
     borderWidth: 1,
     borderRadius: 0,
     paddingHorizontal: 10,
@@ -294,6 +305,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 40,
+  },
+  trackTabLeft: {
+    marginRight: 4,
+  },
+  trackTabRight: {
+    marginLeft: 4,
   },
   trackTabText: {
     fontSize: 12,

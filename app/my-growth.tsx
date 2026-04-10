@@ -2,15 +2,14 @@ import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowLeft, BookOpen, Users, Sparkles, Home, Calendar, Settings, Shield } from 'lucide-react-native';
+import { ArrowLeft, Users, Sparkles, Home, Calendar, Settings, Shield, UserCheck, Award } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import SpeechRepository from './speech-repository';
-import MyGrowthGuidance from './my-growth-guidance';
-import { prefetchMyMentorSnapshot } from '@/lib/myMentorSnapshot';
 import MyRoleInsightsPanel from '@/components/MyRoleInsightsPanel';
+import MyAttendancePanel from '@/components/MyAttendancePanel';
+import MyAwardsPanel from '@/components/MyAwardsPanel';
 
-type GrowthTab = 'speeches' | 'mentor' | 'role_insights';
+type GrowthTab = 'awards' | 'attendance' | 'role_insights';
 const FOOTER_NAV_ICON_SIZE = 15;
 
 export default function MyGrowthScreen() {
@@ -24,13 +23,12 @@ export default function MyGrowthScreen() {
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
   const [tab, setTab] = useState<GrowthTab>('role_insights');
 
-  useEffect(() => {
-    if (tab === 'mentor' && user?.currentClubId) {
-      prefetchMyMentorSnapshot(user.currentClubId);
-    }
-  }, [tab, user?.currentClubId]);
-
-  const tabButton = (key: GrowthTab, label: string, Icon: typeof BookOpen, active: boolean) => (
+  const tabButton = (
+    key: GrowthTab,
+    label: string,
+    Icon: typeof Sparkles,
+    active: boolean
+  ) => (
     <TouchableOpacity
       key={key}
       style={[
@@ -77,17 +75,17 @@ export default function MyGrowthScreen() {
         >
           {tabButton('role_insights', 'My Role Insights', Sparkles, tab === 'role_insights')}
           <View style={[styles.segmentDivider, { backgroundColor: '#BFDBFE' }]} />
-          {tabButton('mentor', 'My Mentor', Users, tab === 'mentor')}
+          {tabButton('attendance', 'My Attendance', UserCheck, tab === 'attendance')}
           <View style={[styles.segmentDivider, { backgroundColor: '#BFDBFE' }]} />
-          {tabButton('speeches', 'My Speeches', BookOpen, tab === 'speeches')}
+          {tabButton('awards', 'My Awards', Award, tab === 'awards')}
         </ScrollView>
       </View>
 
       <View style={styles.body}>
-        {tab === 'speeches' ? (
-          <SpeechRepository embedded />
-        ) : tab === 'mentor' ? (
-          <MyGrowthGuidance embedded />
+        {tab === 'attendance' ? (
+          <MyAttendancePanel />
+        ) : tab === 'awards' ? (
+          <MyAwardsPanel />
         ) : (
           <MyRoleInsightsPanel />
         )}
@@ -191,7 +189,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 8,
-    borderRadius: 10,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 3,
     overflow: 'hidden',
@@ -213,7 +211,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 10,
     paddingHorizontal: 6,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: 'transparent',
   },
