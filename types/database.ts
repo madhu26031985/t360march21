@@ -130,6 +130,35 @@ export interface Database {
           updated_at?: string | null;
         };
       };
+      club_faq_items: {
+        Row: {
+          id: string;
+          club_id: string;
+          sort_order: number;
+          question: string;
+          answer: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          club_id: string;
+          sort_order: number;
+          question: string;
+          answer: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          club_id?: string;
+          question?: string;
+          answer?: string;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       club_profiles: {
         Row: {
           id: string;

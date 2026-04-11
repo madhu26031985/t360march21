@@ -12,6 +12,7 @@ import {
   Building2,
   Share2,
   FileText,
+  HelpCircle,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCallback, useState, useMemo, type ReactNode } from 'react';
@@ -26,6 +27,7 @@ const CLUB_OPERATIONS_SUB_PAGES = [
   { title: 'Club ExComm', route: '/admin/excomm-management' as const, Icon: Crown },
   { title: 'Club Social Media', route: '/admin/social-media-management' as const, Icon: Share2 },
   { title: 'Club Resources', route: '/admin/member-resources-management' as const, Icon: FileText },
+  { title: 'Club FAQ', route: '/admin/club-faq-management' as const, Icon: HelpCircle },
 ] as const;
 
 const N = {
@@ -152,7 +154,9 @@ export default function MyToolKitScreen() {
               ? { icon: EXCOMM_UI.pillFg, bg: EXCOMM_UI.pillBg }
               : title === 'Club Social Media'
                 ? { icon: '#0891B2', bg: '#ECFEFF' }
-                : { icon: '#475569', bg: '#F8FAFC' };
+                : title === 'Club FAQ'
+                  ? { icon: '#7C3AED', bg: '#F5F3FF' }
+                  : { icon: '#475569', bg: '#F8FAFC' };
 
         return {
           key: route,

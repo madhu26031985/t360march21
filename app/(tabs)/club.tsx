@@ -13,9 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { Building2 } from 'lucide-react-native';
+import { Building2, Calendar, Clock, MapPin, RefreshCw } from 'lucide-react-native';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   fetchClubInfoManagementBundle,
@@ -26,6 +26,14 @@ const EXCOMM_CAROUSEL_MS = 3000;
 const MEMBERS_CAROUSEL_MS = 2000;
 const CLUB_STATS_CAROUSEL_MS = 2000;
 const ED_SPEECH_CAROUSEL_MS = 3500;
+/** Club FAQ hero: longer hold so question + answer can be read */
+const CLUB_FAQ_CAROUSEL_MS = 4800;
+/** Word of the day: cycle published entries from last 6 months */
+const CLUB_WOTD_CAROUSEL_MS = 4000;
+/** Quote / idiom carousels on Club tab */
+const CLUB_GRAMMARIAN_CAROUSEL_MS = 4000;
+/** Rolling window for published quote & idiom carousels (calendar days) */
+const GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS = 180;
 
 /** Club page design system — white-first, Notion-style (spec) */
 const C = {
@@ -38,6 +46,7 @@ const C = {
   cta: '#111111',
   chipBg: '#F3F4F6',
   tileBg: '#FAFAFA',
+  mapPlaceholder: '#E8EDF3',
 };
 
 type ClubSocialRow = {
@@ -63,6 +72,12 @@ type MemberPreview = {
   full_name: string;
   avatar_url: string | null;
   clubRole: MemberPreviewClubRole;
+};
+
+type ClubFaqHeroRow = {
+  id: string;
+  question: string;
+  answer: string;
 };
 
 const PREVIEW_ROLES = ['member', 'visiting_tm', 'guest'] as const;
@@ -186,30 +201,47 @@ function ExcommCarouselCard({
 }) {
   const [index, setIndex] = useState(0);
   const opacity = useRef(new Animated.Value(1)).current;
+  const slideX = useRef(new Animated.Value(0)).current;
   const rowsLenRef = useRef(rows.length);
   rowsLenRef.current = rows.length;
 
   useEffect(() => {
     setIndex(0);
     opacity.setValue(1);
-  }, [rows, opacity]);
+    slideX.setValue(0);
+  }, [rows, opacity, slideX]);
 
   useEffect(() => {
     if (rows.length <= 1) return;
 
     const advance = () => {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideX, {
+          toValue: -36,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
         if (!finished) return;
         setIndex((i) => (i + 1) % rowsLenRef.current);
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 280,
-          useNativeDriver: true,
-        }).start();
+        slideX.setValue(36);
+        Animated.parallel([
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 280,
+            useNativeDriver: true,
+          }),
+          Animated.timing(slideX, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start();
       });
     };
 
@@ -217,8 +249,9 @@ function ExcommCarouselCard({
     return () => {
       clearInterval(id);
       opacity.stopAnimation();
+      slideX.stopAnimation();
     };
-  }, [rows.length, opacity]);
+  }, [rows.length, opacity, slideX]);
 
   if (!rows.length) return null;
 
@@ -238,7 +271,15 @@ function ExcommCarouselCard({
         </TouchableOpacity>
       </View>
 
-      <Animated.View style={[styles.excommSlide, { opacity }]}>
+      <Animated.View
+        style={[
+          styles.excommSlide,
+          {
+            opacity,
+            transform: [{ translateX: slideX }],
+          },
+        ]}
+      >
         <Text style={styles.excommRole} maxFontSizeMultiplier={1.1}>
           {row.title}
         </Text>
@@ -282,30 +323,61 @@ function MembersCarouselCard({
   const pageCount = Math.ceil(rows.length / 2);
   const [pairIndex, setPairIndex] = useState(0);
   const opacity = useRef(new Animated.Value(1)).current;
+  const slideY = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
   const pageCountRef = useRef(pageCount);
   pageCountRef.current = pageCount;
 
   useEffect(() => {
     setPairIndex(0);
     opacity.setValue(1);
-  }, [rows, opacity]);
+    slideY.setValue(0);
+    scale.setValue(1);
+  }, [rows, opacity, slideY, scale]);
 
   useEffect(() => {
     if (pageCount <= 1) return;
 
     const advance = () => {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideY, {
+          toValue: -28,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 0.94,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
         if (!finished) return;
         setPairIndex((i) => (i + 1) % pageCountRef.current);
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 280,
-          useNativeDriver: true,
-        }).start();
+        slideY.setValue(32);
+        scale.setValue(0.96);
+        Animated.parallel([
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(slideY, {
+            toValue: 0,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scale, {
+            toValue: 1,
+            friction: 7,
+            tension: 80,
+            useNativeDriver: true,
+          }),
+        ]).start();
       });
     };
 
@@ -313,8 +385,10 @@ function MembersCarouselCard({
     return () => {
       clearInterval(id);
       opacity.stopAnimation();
+      slideY.stopAnimation();
+      scale.stopAnimation();
     };
-  }, [pageCount, opacity]);
+  }, [pageCount, opacity, slideY, scale]);
 
   if (!rows.length) return null;
 
@@ -369,7 +443,15 @@ function MembersCarouselCard({
         </TouchableOpacity>
       </View>
 
-      <Animated.View style={[styles.memberPairSlide, { opacity }]}>
+      <Animated.View
+        style={[
+          styles.memberPairSlide,
+          {
+            opacity,
+            transform: [{ translateY: slideY }, { scale }],
+          },
+        ]}
+      >
         <View style={styles.memberPairRow}>{renderTile(left)}{renderTile(right)}</View>
       </Animated.View>
 
@@ -489,6 +571,13 @@ function formatLocalYmd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function meetingDateRangeRollingDays(daysBack: number): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - daysBack);
+  return { from: formatLocalYmd(from), to: formatLocalYmd(to) };
+}
+
 async function countThemesForMeetings(clubId: string, meetingIds: string[]): Promise<number> {
   if (meetingIds.length === 0) return 0;
   const CHUNK = 100;
@@ -575,6 +664,176 @@ async function fetchClubStatsLast6Months(clubId: string): Promise<ClubStatsLast6
   } catch (e) {
     console.warn('Club stats load error:', e);
     return empty;
+  }
+}
+
+type GrammarianPublishedCarouselRow = {
+  id: string;
+  lead: string;
+  meaning: string | null;
+  usage: string | null;
+  meetingDateLabel: string;
+};
+
+/** Published quotes for meetings in the rolling last N calendar days (newest first). */
+async function fetchPublishedClubQuotesRollingDays(
+  clubId: string,
+  daysBack: number
+): Promise<GrammarianPublishedCarouselRow[]> {
+  try {
+    const { from, to } = meetingDateRangeRollingDays(daysBack);
+    const { data, error } = await supabase
+      .from('grammarian_quote_of_the_day')
+      .select('id, quote, meaning, usage, app_club_meeting(meeting_date)')
+      .eq('club_id', clubId)
+      .eq('is_published', true)
+      .limit(400);
+    if (error || !data?.length) {
+      if (error) console.warn('Club quotes of the day:', error.message);
+      return [];
+    }
+    const meetingDateOf = (r: (typeof data)[number]) => {
+      const m = r.app_club_meeting as { meeting_date?: string } | { meeting_date?: string }[] | null;
+      if (Array.isArray(m)) return m[0]?.meeting_date ?? '';
+      return m?.meeting_date ?? '';
+    };
+    const mapped = data
+      .map((r) => {
+        const md = meetingDateOf(r);
+        if (md < from || md > to) return null;
+        const lead = (r.quote ?? '').trim();
+        if (!lead) return null;
+        const rawUsage = (r as { usage?: string | null }).usage;
+        const usageStr = typeof rawUsage === 'string' ? rawUsage.trim() : '';
+        return {
+          id: r.id,
+          lead,
+          meaning: ((r.meaning ?? '').trim()) || null,
+          usage: usageStr || null,
+          meetingDateRaw: md,
+          meetingDateLabel: formatCharterDateShort(md) || md || '—',
+        };
+      })
+      .filter(Boolean) as Array<GrammarianPublishedCarouselRow & { meetingDateRaw: string }>;
+    mapped.sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw));
+    return mapped.map(({ meetingDateRaw: _x, ...rest }) => rest);
+  } catch (e) {
+    console.warn('Club quotes carousel load error:', e);
+    return [];
+  }
+}
+
+/** Published idioms for meetings in the rolling last N calendar days (newest first). */
+async function fetchPublishedClubIdiomsRollingDays(
+  clubId: string,
+  daysBack: number
+): Promise<GrammarianPublishedCarouselRow[]> {
+  try {
+    const { from, to } = meetingDateRangeRollingDays(daysBack);
+    const { data, error } = await supabase
+      .from('grammarian_idiom_of_the_day')
+      .select('id, idiom, meaning, usage, app_club_meeting(meeting_date)')
+      .eq('club_id', clubId)
+      .eq('is_published', true)
+      .limit(400);
+    if (error || !data?.length) {
+      if (error) console.warn('Club idioms of the day:', error.message);
+      return [];
+    }
+    const meetingDateOf = (r: (typeof data)[number]) => {
+      const m = r.app_club_meeting as { meeting_date?: string } | { meeting_date?: string }[] | null;
+      if (Array.isArray(m)) return m[0]?.meeting_date ?? '';
+      return m?.meeting_date ?? '';
+    };
+    const mapped = data
+      .map((r) => {
+        const md = meetingDateOf(r);
+        if (md < from || md > to) return null;
+        const lead = (r.idiom ?? '').trim();
+        if (!lead) return null;
+        const rawUsage = (r as { usage?: string | null }).usage;
+        const usageStr = typeof rawUsage === 'string' ? rawUsage.trim() : '';
+        return {
+          id: r.id,
+          lead,
+          meaning: ((r.meaning ?? '').trim()) || null,
+          usage: usageStr || null,
+          meetingDateRaw: md,
+          meetingDateLabel: formatCharterDateShort(md) || md || '—',
+        };
+      })
+      .filter(Boolean) as Array<GrammarianPublishedCarouselRow & { meetingDateRaw: string }>;
+    mapped.sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw));
+    return mapped.map(({ meetingDateRaw: _x, ...rest }) => rest);
+  } catch (e) {
+    console.warn('Club idioms carousel load error:', e);
+    return [];
+  }
+}
+
+type ClubWotdCarouselRow = {
+  id: string;
+  word: string;
+  meaning: string | null;
+  partOfSpeech: string | null;
+  usage: string | null;
+  meetingDateLabel: string;
+};
+
+/** Published words of the day for meetings in the rolling last 6 calendar months (newest meeting first). */
+async function fetchPublishedClubWordsLast6Months(clubId: string): Promise<ClubWotdCarouselRow[]> {
+  try {
+    const end = new Date();
+    const start = new Date();
+    start.setMonth(start.getMonth() - 6);
+    const meetingDateStart = formatLocalYmd(start);
+    const meetingDateEnd = formatLocalYmd(end);
+
+    const { data, error } = await supabase
+      .from('grammarian_word_of_the_day')
+      .select('id, word, meaning, part_of_speech, usage, app_club_meeting(meeting_date)')
+      .eq('club_id', clubId)
+      .eq('is_published', true)
+      .limit(400);
+
+    if (error || !data?.length) {
+      if (error) console.warn('Club words of the day:', error.message);
+      return [];
+    }
+
+    const meetingDateOf = (r: (typeof data)[number]) => {
+      const m = r.app_club_meeting as { meeting_date?: string } | { meeting_date?: string }[] | null;
+      if (Array.isArray(m)) return m[0]?.meeting_date ?? '';
+      return m?.meeting_date ?? '';
+    };
+
+    const mapped = data
+      .map((r) => {
+        const md = meetingDateOf(r);
+        if (md < meetingDateStart || md > meetingDateEnd) return null;
+        const word = (r.word ?? '').trim();
+        if (!word) return null;
+        const rawUsage = (r as { usage?: string | null }).usage;
+        const usageStr = typeof rawUsage === 'string' ? rawUsage.trim() : '';
+        return {
+          id: r.id,
+          word,
+          meaning: ((r.meaning ?? '').trim()) || null,
+          partOfSpeech: ((r.part_of_speech ?? '').trim()) || null,
+          usage: usageStr || null,
+          meetingDateRaw: md,
+          meetingDateLabel: formatCharterDateShort(md) || md || '—',
+        };
+      })
+      .filter(Boolean) as Array<
+        ClubWotdCarouselRow & { meetingDateRaw: string }
+      >;
+
+    mapped.sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw));
+    return mapped.map(({ meetingDateRaw: _d, ...rest }) => rest);
+  } catch (e) {
+    console.warn('Club words of the day load error:', e);
+    return [];
   }
 }
 
@@ -778,7 +1037,10 @@ async function fetchToastmasterThemesDeliveredLast6Months(
 type PreparedSpeechDeliveredRow = {
   key: string;
   speechTitle: string;
-  pathwayLabel: string;
+  /** Pathway name line (e.g. Presentation Mastery). */
+  pathwayName: string;
+  /** Second line: Level N · project (no pathway repeat). */
+  pathwayDetail: string;
   speakerName: string;
   avatarUrl: string | null;
   meetingDateRaw: string;
@@ -961,17 +1223,18 @@ async function fetchPreparedSpeechesDeliveredLast6Months(
       const meetingDateLabel =
         formatCharterDateShort(meetingDateRaw) || meetingDateRaw || '—';
 
-      const pathParts: string[] = [];
-      if (r.pathway_name?.trim()) pathParts.push(r.pathway_name.trim());
-      if (r.level != null) pathParts.push(`Level ${r.level}`);
+      const pathwayName = r.pathway_name?.trim() ?? '';
+      const detailParts: string[] = [];
+      if (r.level != null) detailParts.push(`Level ${r.level}`);
       const proj = r.project_name?.trim();
-      if (proj && proj !== r.speechTitle.trim()) pathParts.push(proj);
-      const pathwayLabel = pathParts.length ? pathParts.join(' · ') : '';
+      if (proj && proj !== r.speechTitle.trim()) detailParts.push(proj);
+      const pathwayDetail = detailParts.join(' · ');
 
       return {
         key: r.key,
         speechTitle: r.speechTitle,
-        pathwayLabel,
+        pathwayName,
+        pathwayDetail,
         speakerName: prof?.full_name?.trim() || 'Speaker',
         avatarUrl: prof?.avatar_url ?? null,
         meetingDateRaw,
@@ -997,13 +1260,441 @@ type DeliveredHighlightRow = {
   meetingDateLabel: string;
 };
 
+function ClubFaqHeroCard({ items }: { items: ClubFaqHeroRow[] }) {
+  const [index, setIndex] = useState(0);
+  const opacity = useRef(new Animated.Value(1)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const nRef = useRef(items.length);
+  nRef.current = items.length;
+
+  useEffect(() => {
+    setIndex(0);
+    opacity.setValue(1);
+    scale.setValue(1);
+  }, [items, opacity, scale]);
+
+  useEffect(() => {
+    if (items.length <= 1) return;
+
+    const advance = () => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 0.92,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (!finished) return;
+        setIndex((i) => (i + 1) % nRef.current);
+        scale.setValue(1.04);
+        Animated.parallel([
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scale, {
+            toValue: 1,
+            friction: 7,
+            tension: 76,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    };
+
+    const id = setInterval(advance, CLUB_FAQ_CAROUSEL_MS);
+    return () => {
+      clearInterval(id);
+      opacity.stopAnimation();
+      scale.stopAnimation();
+    };
+  }, [items.length, opacity, scale]);
+
+  if (!items.length) return null;
+
+  const safeIndex = Math.min(index, items.length - 1);
+  const row = items[safeIndex];
+
+  return (
+    <View style={[styles.card, styles.faqHeroCard]}>
+      <Text style={[styles.sectionTitle, styles.faqHeroSectionTitle]} maxFontSizeMultiplier={1.2}>
+        Club FAQ
+      </Text>
+
+      <Animated.View
+        style={[
+          styles.faqHeroSlide,
+          {
+            opacity,
+            transform: [{ scale }],
+          },
+        ]}
+        accessibilityRole="summary"
+        accessibilityLabel={`${row.question}. ${row.answer}`}
+      >
+        <Text style={styles.faqHeroQuestion} maxFontSizeMultiplier={1.12}>
+          {row.question}
+        </Text>
+        <Text style={styles.faqHeroAnswer} maxFontSizeMultiplier={1.1}>
+          {row.answer}
+        </Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+function GrammarianPublishedCarousel({
+  title,
+  rows,
+  intervalMs,
+}: {
+  title: string;
+  rows: GrammarianPublishedCarouselRow[];
+  intervalMs: number;
+}) {
+  const [index, setIndex] = useState(0);
+  const opacity = useRef(new Animated.Value(1)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const nRef = useRef(rows.length);
+  nRef.current = rows.length;
+
+  useEffect(() => {
+    setIndex(0);
+    opacity.setValue(1);
+    translateY.setValue(0);
+  }, [rows, opacity, translateY]);
+
+  useEffect(() => {
+    if (rows.length <= 1) return;
+
+    const advance = () => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: -20,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (!finished) return;
+        setIndex((i) => (i + 1) % nRef.current);
+        translateY.setValue(24);
+        Animated.parallel([
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+          Animated.spring(translateY, {
+            toValue: 0,
+            friction: 8,
+            tension: 72,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    };
+
+    const id = setInterval(advance, intervalMs);
+    return () => {
+      clearInterval(id);
+      opacity.stopAnimation();
+      translateY.stopAnimation();
+    };
+  }, [rows.length, opacity, translateY, intervalMs]);
+
+  if (!rows.length) return null;
+
+  const safeIndex = Math.min(index, rows.length - 1);
+  const row = rows[safeIndex];
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+        {title}
+      </Text>
+
+      <Animated.View
+        style={[
+          styles.wotdCarouselSlide,
+          {
+            opacity,
+            transform: [{ translateY }],
+          },
+        ]}
+        accessibilityRole="summary"
+        accessibilityLabel={`${row.lead}. ${row.meaning ?? ''}. ${row.meetingDateLabel}`}
+      >
+        <Text style={styles.grammarianClubDayLead} maxFontSizeMultiplier={1.15}>
+          {row.lead}
+        </Text>
+        {row.meaning ? (
+          <Text style={styles.grammarianClubDayMeaning} maxFontSizeMultiplier={1.12}>
+            {row.meaning}
+          </Text>
+        ) : null}
+        {row.usage ? (
+          <Text style={styles.wotdUsage} maxFontSizeMultiplier={1.1}>
+            {row.usage}
+          </Text>
+        ) : null}
+        <Text style={styles.wotdMeetingDate} maxFontSizeMultiplier={1.08}>
+          {row.meetingDateLabel}
+        </Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
+  const [index, setIndex] = useState(0);
+  const opacity = useRef(new Animated.Value(1)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const nRef = useRef(rows.length);
+  nRef.current = rows.length;
+
+  useEffect(() => {
+    setIndex(0);
+    opacity.setValue(1);
+    translateY.setValue(0);
+  }, [rows, opacity, translateY]);
+
+  useEffect(() => {
+    if (rows.length <= 1) return;
+
+    const advance = () => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: -20,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (!finished) return;
+        setIndex((i) => (i + 1) % nRef.current);
+        translateY.setValue(24);
+        Animated.parallel([
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+          Animated.spring(translateY, {
+            toValue: 0,
+            friction: 8,
+            tension: 72,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    };
+
+    const id = setInterval(advance, CLUB_WOTD_CAROUSEL_MS);
+    return () => {
+      clearInterval(id);
+      opacity.stopAnimation();
+      translateY.stopAnimation();
+    };
+  }, [rows.length, opacity, translateY]);
+
+  if (!rows.length) return null;
+
+  const safeIndex = Math.min(index, rows.length - 1);
+  const row = rows[safeIndex];
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+        Word of the day
+      </Text>
+
+      <Animated.View
+        style={[
+          styles.wotdCarouselSlide,
+          {
+            opacity,
+            transform: [{ translateY }],
+          },
+        ]}
+        accessibilityRole="summary"
+        accessibilityLabel={`${row.word}. ${row.meaning ?? ''}. ${row.meetingDateLabel}`}
+      >
+        <Text style={styles.grammarianClubDayLead} maxFontSizeMultiplier={1.15}>
+          {row.word}
+        </Text>
+        {row.partOfSpeech ? (
+          <Text style={styles.wotdPartOfSpeech} maxFontSizeMultiplier={1.08}>
+            {row.partOfSpeech}
+          </Text>
+        ) : null}
+        {row.meaning ? (
+          <Text style={styles.grammarianClubDayMeaning} maxFontSizeMultiplier={1.12}>
+            {row.meaning}
+          </Text>
+        ) : null}
+        {row.usage ? (
+          <Text style={styles.wotdUsage} maxFontSizeMultiplier={1.1}>
+            {row.usage}
+          </Text>
+        ) : null}
+        <Text style={styles.wotdMeetingDate} maxFontSizeMultiplier={1.08}>
+          {row.meetingDateLabel}
+        </Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+/** Prepared speeches: two-column layout (speaker + date | title + pathway), same fade carousel as other highlights. */
+function PreparedSpeechesHighlightCarousel({ rows }: { rows: PreparedSpeechDeliveredRow[] }) {
+  const [index, setIndex] = useState(0);
+  const opacity = useRef(new Animated.Value(1)).current;
+  const rowsLenRef = useRef(rows.length);
+  rowsLenRef.current = rows.length;
+
+  useEffect(() => {
+    setIndex(0);
+    opacity.setValue(1);
+  }, [rows, opacity]);
+
+  useEffect(() => {
+    if (rows.length <= 1) return;
+
+    const advance = () => {
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        setIndex((i) => (i + 1) % rowsLenRef.current);
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: true,
+        }).start();
+      });
+    };
+
+    const id = setInterval(advance, ED_SPEECH_CAROUSEL_MS);
+    return () => {
+      clearInterval(id);
+      opacity.stopAnimation();
+    };
+  }, [rows.length, opacity]);
+
+  if (!rows.length) return null;
+
+  const safeIndex = Math.min(index, rows.length - 1);
+  const row = rows[safeIndex];
+  const pathwayNameT = row.pathwayName.trim();
+  const pathwayDetailT = row.pathwayDetail.trim();
+  const hasPathway = pathwayNameT.length > 0 || pathwayDetailT.length > 0;
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+        Prepared speeches — last 6 months
+      </Text>
+      <Text style={styles.clubStatsPeriod} maxFontSizeMultiplier={1.15}>
+        Completed roles with a recorded speech title
+      </Text>
+
+      <Animated.View
+        style={[styles.preparedSpeechSlide, { opacity }]}
+        accessibilityRole="summary"
+        accessibilityLabel={`${row.speechTitle}. ${row.speakerName}. ${row.meetingDateLabel}`}
+      >
+        <View style={styles.preparedSpeechColumns}>
+          <View style={styles.preparedSpeechLeft}>
+            {row.avatarUrl ? (
+              <Image
+                source={{ uri: row.avatarUrl }}
+                style={styles.preparedSpeechAvatar}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.preparedSpeechAvatar, styles.preparedSpeechAvatarPh]}>
+                <Text style={styles.preparedSpeechInitial} maxFontSizeMultiplier={1.15}>
+                  {(row.speakerName || '?').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <Text style={styles.preparedSpeechSpeakerName} numberOfLines={2} maxFontSizeMultiplier={1.12}>
+              {row.speakerName}
+            </Text>
+            <Text style={styles.preparedSpeechDate} maxFontSizeMultiplier={1.08}>
+              {row.meetingDateLabel}
+            </Text>
+          </View>
+
+          <View style={styles.preparedSpeechRight}>
+            <Text style={styles.preparedSpeechTitle} numberOfLines={4} maxFontSizeMultiplier={1.12}>
+              {row.speechTitle}
+            </Text>
+            <Text style={styles.preparedSpeechPathwayLabel} maxFontSizeMultiplier={1.05}>
+              Pathway
+            </Text>
+            {hasPathway ? (
+              <>
+                <Text style={styles.preparedSpeechPathwayLine} numberOfLines={3} maxFontSizeMultiplier={1.1}>
+                  {pathwayNameT || pathwayDetailT}
+                </Text>
+                {pathwayNameT && pathwayDetailT ? (
+                  <Text
+                    style={styles.preparedSpeechPathwaySubline}
+                    numberOfLines={3}
+                    maxFontSizeMultiplier={1.08}
+                  >
+                    {pathwayDetailT}
+                  </Text>
+                ) : null}
+              </>
+            ) : (
+              <Text style={styles.preparedSpeechPathwayLineMuted} maxFontSizeMultiplier={1.08}>
+                —
+              </Text>
+            )}
+          </View>
+        </View>
+      </Animated.View>
+
+      {rows.length > 1 ? (
+        <View style={styles.excommDots}>
+          {rows.map((r, i) => (
+            <View
+              key={r.key}
+              style={[styles.excommDot, i === safeIndex && styles.excommDotActive]}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function DeliveredHighlightCarousel({
   sectionTitle,
   subtitle,
   rows,
 }: {
   sectionTitle: string;
-  subtitle: string;
+  subtitle?: string;
   rows: DeliveredHighlightRow[];
 }) {
   const [index, setIndex] = useState(0);
@@ -1052,9 +1743,11 @@ function DeliveredHighlightCarousel({
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         {sectionTitle}
       </Text>
-      <Text style={styles.clubStatsPeriod} maxFontSizeMultiplier={1.15}>
-        {subtitle}
-      </Text>
+      {subtitle ? (
+        <Text style={styles.clubStatsPeriod} maxFontSizeMultiplier={1.15}>
+          {subtitle}
+        </Text>
+      ) : null}
 
       <Animated.View
         style={[styles.edSpeechSlide, { opacity }]}
@@ -1205,6 +1898,10 @@ export default function MyClub() {
   const [preparedSpeechesDelivered, setPreparedSpeechesDelivered] = useState<
     PreparedSpeechDeliveredRow[]
   >([]);
+  const [clubFaqItems, setClubFaqItems] = useState<ClubFaqHeroRow[]>([]);
+  const [clubQuoteRows, setClubQuoteRows] = useState<GrammarianPublishedCarouselRow[]>([]);
+  const [clubIdiomRows, setClubIdiomRows] = useState<GrammarianPublishedCarouselRow[]>([]);
+  const [clubWotdRows, setClubWotdRows] = useState<ClubWotdCarouselRow[]>([]);
   const [landingLoading, setLandingLoading] = useState(false);
 
   useFocusEffect(
@@ -1225,6 +1922,10 @@ export default function MyClub() {
         setEducationalSpeechesDelivered([]);
         setToastmasterThemesDelivered([]);
         setPreparedSpeechesDelivered([]);
+        setClubFaqItems([]);
+        setClubQuoteRows([]);
+        setClubIdiomRows([]);
+        setClubWotdRows([]);
         return;
       }
       setLandingLoading(true);
@@ -1232,25 +1933,49 @@ export default function MyClub() {
       setEducationalSpeechesDelivered([]);
       setToastmasterThemesDelivered([]);
       setPreparedSpeechesDelivered([]);
+      setClubFaqItems([]);
+      setClubQuoteRows([]);
+      setClubIdiomRows([]);
+      setClubWotdRows([]);
       try {
         const clubId = user.currentClubId;
-        const [b, socialRes, excomm, membersP, stats, edSpeeches, tmThemes, prepSpeeches] =
-          await Promise.all([
-            fetchClubInfoManagementBundle(clubId),
-            supabase
-              .from('club_profiles')
-              .select(
-                'facebook_url, twitter_url, linkedin_url, instagram_url, whatsapp_url, youtube_url, website_url'
-              )
-              .eq('club_id', clubId)
-              .maybeSingle(),
-            fetchExcommPreview(clubId),
-            fetchMembersPreview(clubId, 24),
-            fetchClubStatsLast6Months(clubId),
-            fetchEducationalSpeechesDeliveredLast6Months(clubId),
-            fetchToastmasterThemesDeliveredLast6Months(clubId),
-            fetchPreparedSpeechesDeliveredLast6Months(clubId),
-          ]);
+        const [
+          b,
+          socialRes,
+          excomm,
+          membersP,
+          stats,
+          edSpeeches,
+          tmThemes,
+          prepSpeeches,
+          faqRes,
+          quoteRows,
+          idiomRows,
+          wotdRows,
+        ] = await Promise.all([
+          fetchClubInfoManagementBundle(clubId),
+          supabase
+            .from('club_profiles')
+            .select(
+              'facebook_url, twitter_url, linkedin_url, instagram_url, whatsapp_url, youtube_url, website_url'
+            )
+            .eq('club_id', clubId)
+            .maybeSingle(),
+          fetchExcommPreview(clubId),
+          fetchMembersPreview(clubId, 24),
+          fetchClubStatsLast6Months(clubId),
+          fetchEducationalSpeechesDeliveredLast6Months(clubId),
+          fetchToastmasterThemesDeliveredLast6Months(clubId),
+          fetchPreparedSpeechesDeliveredLast6Months(clubId),
+          supabase
+            .from('club_faq_items')
+            .select('id, question, answer')
+            .eq('club_id', clubId)
+            .order('sort_order', { ascending: true }),
+          fetchPublishedClubQuotesRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
+          fetchPublishedClubIdiomsRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
+          fetchPublishedClubWordsLast6Months(clubId),
+        ]);
         if (cancelled) return;
         setBundle(b);
         setSocial((socialRes.data as ClubSocialRow) ?? null);
@@ -1260,6 +1985,23 @@ export default function MyClub() {
         setEducationalSpeechesDelivered(edSpeeches);
         setToastmasterThemesDelivered(tmThemes);
         setPreparedSpeechesDelivered(prepSpeeches);
+        if (faqRes.error) {
+          console.warn('Club FAQ load:', faqRes.error.message);
+          setClubFaqItems([]);
+        } else {
+          setClubFaqItems(
+            (faqRes.data ?? [])
+              .filter((r) => (r.question?.trim() || r.answer?.trim()))
+              .map((r) => ({
+                id: r.id,
+                question: (r.question ?? '').trim(),
+                answer: (r.answer ?? '').trim(),
+              }))
+          );
+        }
+        setClubQuoteRows(quoteRows);
+        setClubIdiomRows(idiomRows);
+        setClubWotdRows(wotdRows);
       } catch (e) {
         console.error('Club landing load error:', e);
         if (!cancelled) {
@@ -1271,6 +2013,10 @@ export default function MyClub() {
           setEducationalSpeechesDelivered([]);
           setToastmasterThemesDelivered([]);
           setPreparedSpeechesDelivered([]);
+          setClubFaqItems([]);
+          setClubQuoteRows([]);
+          setClubIdiomRows([]);
+          setClubWotdRows([]);
         }
       } finally {
         if (!cancelled) setLandingLoading(false);
@@ -1327,6 +2073,44 @@ export default function MyClub() {
   const timeRange =
     startT && endT ? `${startT}–${endT}` : startT || endT || '—';
 
+  const charterShort = bundle ? formatCharterDateShort(bundle.clubInfo.charter_date) : null;
+  const clubNumberCharterLine = bundle
+    ? [
+        bundle.clubInfo.club_number ? `Club #${bundle.clubInfo.club_number}` : null,
+        charterShort ? `Chartered ${charterShort}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
+  const orgMetaLine = bundle
+    ? [
+        bundle.clubData.district?.trim()
+          ? `District ${bundle.clubData.district.trim()}`
+          : null,
+        bundle.clubData.division?.trim()
+          ? `Division ${bundle.clubData.division.trim()}`
+          : null,
+        bundle.clubData.area?.trim() ? `Area ${bundle.clubData.area.trim()}` : null,
+        bundle.clubData.region?.trim()
+          ? `Region ${bundle.clubData.region.trim()}`
+          : null,
+        bundle.clubData.country?.trim() || null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
+  const frequencyDisplay =
+    bundle && formatMeetingFrequency(bundle.meetingSchedule.meeting_frequency)
+      ? formatMeetingFrequency(bundle.meetingSchedule.meeting_frequency)!
+      : '—';
+  const formatDisplay =
+    bundle && formatMeetingMode(bundle.meetingSchedule.meeting_type)
+      ? formatMeetingMode(bundle.meetingSchedule.meeting_type)!
+      : '—';
+  const onlineMeetingUrl = bundle
+    ? normalizeExternalUrl(bundle.meetingSchedule.online_meeting_link ?? undefined)
+    : null;
+
   const educationalHighlightRows = useMemo(
     () =>
       educationalSpeechesDelivered.map((r) => ({
@@ -1351,19 +2135,6 @@ export default function MyClub() {
     [toastmasterThemesDelivered]
   );
 
-  const preparedSpeechHighlightRows = useMemo(
-    () =>
-      preparedSpeechesDelivered.map((r) => ({
-        key: r.key,
-        headline: r.speechTitle,
-        pathwayDisplay: r.pathwayLabel,
-        personName: r.speakerName,
-        avatarUrl: r.avatarUrl,
-        meetingDateLabel: r.meetingDateLabel,
-      })),
-    [preparedSpeechesDelivered]
-  );
-
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: C.bg }]} edges={['top']}>
       <ScrollView
@@ -1386,133 +2157,125 @@ export default function MyClub() {
               </View>
             ) : bundle ? (
               <>
-                {/* Hero */}
-                <View style={styles.heroCard}>
-                  <Text style={styles.heroClubName} maxFontSizeMultiplier={1.15}>
+                {/* Notion-style single top card: club, about, meeting grid, location */}
+                <View style={styles.notionTopCard}>
+                  <Text style={styles.notionTitle} maxFontSizeMultiplier={1.12}>
                     {bundle.clubInfo.name}
                   </Text>
-                  {bundle.clubInfo.club_number ? (
-                    <Text style={styles.heroMeta} maxFontSizeMultiplier={1.2}>
-                      Club #{bundle.clubInfo.club_number}
+                  {clubNumberCharterLine ? (
+                    <Text style={styles.notionMetaLine} maxFontSizeMultiplier={1.2}>
+                      {clubNumberCharterLine}
                     </Text>
                   ) : null}
-                  {(() => {
-                    const d = bundle.clubData.district?.trim();
-                    const div = bundle.clubData.division?.trim();
-                    const ar = bundle.clubData.area?.trim();
-                    const parts = [
-                      d ? `District ${d}` : null,
-                      div ? `Division ${div}` : null,
-                      ar ? `Area ${ar}` : null,
-                    ].filter(Boolean) as string[];
-                    if (!parts.length) return null;
-                    return (
-                      <Text style={[styles.heroMeta, styles.heroMetaSpaced]} maxFontSizeMultiplier={1.2}>
-                        {parts.join(' · ')}
-                      </Text>
-                    );
-                  })()}
-                  {formatCharterDateShort(bundle.clubInfo.charter_date) ? (
-                    <Text style={[styles.heroMeta, styles.heroMetaTight]} maxFontSizeMultiplier={1.2}>
-                      Chartered {formatCharterDateShort(bundle.clubInfo.charter_date)}
+                  {orgMetaLine ? (
+                    <Text style={[styles.notionMetaLine, styles.notionMetaLineTight]} maxFontSizeMultiplier={1.2}>
+                      {orgMetaLine}
                     </Text>
                   ) : null}
-                </View>
 
-                {/* About */}
-                <View style={styles.card}>
-                  <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+                  <View style={styles.notionDivider} />
+
+                  <Text style={styles.notionSectionLabel} maxFontSizeMultiplier={1.15}>
                     About
                   </Text>
                   {bundle.clubData.club_mission?.trim() ? (
-                    <Text style={styles.aboutBody} maxFontSizeMultiplier={1.25}>
+                    <Text style={styles.notionAboutBody} maxFontSizeMultiplier={1.25}>
                       {bundle.clubData.club_mission.trim()}
                     </Text>
                   ) : (
-                    <Text style={styles.aboutPlaceholder} maxFontSizeMultiplier={1.2}>
+                    <Text style={styles.notionAboutPlaceholder} maxFontSizeMultiplier={1.2}>
                       No description yet. Your club can add a mission statement in club information settings.
                     </Text>
                   )}
-                </View>
 
-                {/* Meeting */}
-                <View style={styles.card}>
-                  <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+                  <View style={styles.notionDivider} />
+
+                  <Text style={styles.notionSectionLabel} maxFontSizeMultiplier={1.15}>
                     Meeting
                   </Text>
-                  <LvRow label="Day" value={meetingDayLabel} />
-                  <LvRow label="Time" value={timeRange !== '—' ? timeRange : '—'} />
-                  {formatMeetingFrequency(bundle.meetingSchedule.meeting_frequency) ? (
-                    <LvRow
-                      label="Frequency"
-                      value={formatMeetingFrequency(bundle.meetingSchedule.meeting_frequency)!}
-                    />
-                  ) : null}
-                  {formatMeetingMode(bundle.meetingSchedule.meeting_type) ? (
-                    <LvRow label="Format" value={formatMeetingMode(bundle.meetingSchedule.meeting_type)!} />
-                  ) : null}
-                  <LvRow label="Location" value={locationText || '—'} />
-                  {(bundle.clubData.region?.trim() || bundle.clubData.country?.trim()) && (
-                    <LvRow
-                      label="Region"
-                      value={[bundle.clubData.region?.trim(), bundle.clubData.country?.trim()]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    />
-                  )}
-                  {mapsUrl ? (
-                    <TouchableOpacity
-                      style={styles.ctaButton}
-                      onPress={() => openUrl(mapsUrl)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.ctaButtonText} maxFontSizeMultiplier={1.15}>
-                        Open in Maps
+                  <View style={styles.notionMeetingGrid}>
+                    <View style={styles.notionMeetingRow}>
+                      <NotionMeetingTile
+                        icon={<Calendar size={16} color={C.textSecondary} />}
+                        label="Day"
+                        value={meetingDayLabel}
+                      />
+                      <NotionMeetingTile
+                        icon={<Clock size={16} color={C.textSecondary} />}
+                        label="Time"
+                        value={timeRange !== '—' ? timeRange : '—'}
+                      />
+                    </View>
+                    <View style={styles.notionMeetingRow}>
+                      <NotionMeetingTile
+                        icon={<RefreshCw size={16} color="#3b82f6" />}
+                        label="Frequency"
+                        value={frequencyDisplay}
+                      />
+                      <NotionMeetingTile
+                        icon={<MapPin size={16} color="#ef4444" />}
+                        label="Format"
+                        value={formatDisplay}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.notionDivider} />
+
+                  <Text style={styles.notionSectionLabel} maxFontSizeMultiplier={1.15}>
+                    Location
+                  </Text>
+                  <View style={styles.notionLocationShell}>
+                    {mapsUrl ? (
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => openUrl(mapsUrl)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Open map preview in maps"
+                      >
+                        <View style={styles.notionMapPlaceholder}>
+                          <MapPin size={28} color={C.textMuted} />
+                          <Text style={styles.notionMapHint} maxFontSizeMultiplier={1.1}>
+                            Tap to open map
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.notionMapPlaceholder}>
+                        <MapPin size={28} color={C.textMuted} />
+                      </View>
+                    )}
+                    <View style={styles.notionLocationBody}>
+                      <Text style={styles.notionAddress} maxFontSizeMultiplier={1.2}>
+                        {locationText || '—'}
                       </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  {normalizeExternalUrl(bundle.meetingSchedule.online_meeting_link ?? undefined) ? (
+                      {mapsUrl ? (
+                        <TouchableOpacity
+                          style={styles.notionMapsButton}
+                          onPress={() => openUrl(mapsUrl)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.notionMapsButtonText} maxFontSizeMultiplier={1.12}>
+                            Open in Maps
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  {onlineMeetingUrl ? (
                     <TouchableOpacity
-                      style={[styles.ctaButton, styles.ctaButtonSpaced]}
-                      onPress={() =>
-                        openUrl(normalizeExternalUrl(bundle.meetingSchedule.online_meeting_link)!)
-                      }
+                      style={[styles.notionMapsButton, styles.notionOnlineButton]}
+                      onPress={() => openUrl(onlineMeetingUrl)}
                       activeOpacity={0.85}
                     >
-                      <Text style={styles.ctaButtonText} maxFontSizeMultiplier={1.15}>
+                      <Text style={styles.notionMapsButtonText} maxFontSizeMultiplier={1.12}>
                         Open online meeting link
                       </Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
 
-                {educationalHighlightRows.length > 0 ? (
-                  <DeliveredHighlightCarousel
-                    sectionTitle="Educational speeches — last 6 months"
-                    subtitle="Sessions with a recorded title"
-                    rows={educationalHighlightRows}
-                  />
-                ) : null}
-
-                {toastmasterHighlightRows.length > 0 ? (
-                  <DeliveredHighlightCarousel
-                    sectionTitle="Toastmaster & theme — last 6 months"
-                    subtitle="Meetings with a recorded theme"
-                    rows={toastmasterHighlightRows}
-                  />
-                ) : null}
-
-                {preparedSpeechHighlightRows.length > 0 ? (
-                  <DeliveredHighlightCarousel
-                    sectionTitle="Prepared speeches — last 6 months"
-                    subtitle="Completed roles with a recorded speech title"
-                    rows={preparedSpeechHighlightRows}
-                  />
-                ) : null}
-
-                {clubStats ? <ClubStatsCarouselCard stats={clubStats} /> : null}
-
-                {/* Executive committee — one role at a time, cycles every 3s */}
                 {excommPreview.length > 0 ? (
                   <ExcommCarouselCard
                     rows={excommPreview}
@@ -1520,7 +2283,6 @@ export default function MyClub() {
                   />
                 ) : null}
 
-                {/* Members — two adjacent tiles, pair rotates every 2s */}
                 {membersPreview.length > 0 ? (
                   <MembersCarouselCard
                     rows={membersPreview}
@@ -1531,7 +2293,47 @@ export default function MyClub() {
                   />
                 ) : null}
 
-                {/* Connect — below members; icon-only chips */}
+                {clubFaqItems.length > 0 ? <ClubFaqHeroCard items={clubFaqItems} /> : null}
+
+                {educationalHighlightRows.length > 0 ? (
+                  <DeliveredHighlightCarousel
+                    sectionTitle="Educational speeches — last 6 months"
+                    rows={educationalHighlightRows}
+                  />
+                ) : null}
+
+                {toastmasterHighlightRows.length > 0 ? (
+                  <DeliveredHighlightCarousel
+                    sectionTitle="Toastmaster & theme — last 6 months"
+                    rows={toastmasterHighlightRows}
+                  />
+                ) : null}
+
+                {preparedSpeechesDelivered.length > 0 ? (
+                  <PreparedSpeechesHighlightCarousel rows={preparedSpeechesDelivered} />
+                ) : null}
+
+                {clubStats ? <ClubStatsCarouselCard stats={clubStats} /> : null}
+
+                {clubWotdRows.length > 0 ? <ClubWordOfTheDayCarousel rows={clubWotdRows} /> : null}
+
+                {clubQuoteRows.length > 0 ? (
+                  <GrammarianPublishedCarousel
+                    title="Quote of the day"
+                    rows={clubQuoteRows}
+                    intervalMs={CLUB_GRAMMARIAN_CAROUSEL_MS}
+                  />
+                ) : null}
+
+                {clubIdiomRows.length > 0 ? (
+                  <GrammarianPublishedCarousel
+                    title="Idiom of the day"
+                    rows={clubIdiomRows}
+                    intervalMs={CLUB_GRAMMARIAN_CAROUSEL_MS}
+                  />
+                ) : null}
+
+                {/* Connect */}
                 <View style={styles.card}>
                   <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
                     Connect
@@ -1598,13 +2400,24 @@ export default function MyClub() {
   );
 }
 
-function LvRow({ label, value }: { label: string; value: string }) {
+function NotionMeetingTile({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
-    <View style={styles.lvRow}>
-      <Text style={styles.lvLabel} maxFontSizeMultiplier={1.15}>
-        {label}
-      </Text>
-      <Text style={styles.lvValue} maxFontSizeMultiplier={1.15}>
+    <View style={styles.notionTile} accessibilityRole="text">
+      <View style={styles.notionTileLabelRow}>
+        {icon}
+        <Text style={styles.notionTileLabel} maxFontSizeMultiplier={1.1}>
+          {label}
+        </Text>
+      </View>
+      <Text style={styles.notionTileValue} maxFontSizeMultiplier={1.15}>
         {value}
       </Text>
     </View>
@@ -1630,32 +2443,135 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  heroCard: {
+  notionTopCard: {
     backgroundColor: C.card,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: C.border,
-    padding: 16,
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 20,
     marginBottom: SECTION_GAP,
   },
-  heroClubName: {
-    fontSize: 22,
+  notionTitle: {
+    fontSize: 26,
     fontWeight: '600',
     color: C.text,
-    lineHeight: 28,
+    lineHeight: 32,
+    letterSpacing: -0.3,
   },
-  heroMeta: {
+  notionMetaLine: {
     fontSize: 14,
     fontWeight: '400',
     color: C.textSecondary,
-    marginTop: 6,
+    marginTop: 10,
     lineHeight: 20,
   },
-  heroMetaSpaced: {
-    marginTop: 12,
-  },
-  heroMetaTight: {
+  notionMetaLineTight: {
     marginTop: 6,
+  },
+  notionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+    marginVertical: 20,
+  },
+  notionSectionLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 12,
+  },
+  notionAboutBody: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: C.text,
+    lineHeight: 24,
+  },
+  notionAboutPlaceholder: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: C.textMuted,
+    lineHeight: 22,
+  },
+  notionMeetingGrid: {
+    gap: 10,
+  },
+  notionMeetingRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  notionTile: {
+    flex: 1,
+    backgroundColor: C.chipBg,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    minWidth: 0,
+  },
+  notionTileLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  notionTileLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: C.textSecondary,
+  },
+  notionTileValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: C.text,
+    lineHeight: 22,
+  },
+  notionLocationShell: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: 'hidden',
+    backgroundColor: C.card,
+  },
+  notionMapPlaceholder: {
+    height: 132,
+    backgroundColor: C.mapPlaceholder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  notionMapHint: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: C.textMuted,
+  },
+  notionLocationBody: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+  },
+  notionAddress: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: C.text,
+    lineHeight: 22,
+  },
+  notionMapsButton: {
+    backgroundColor: C.cta,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  notionMapsButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  notionOnlineButton: {
+    marginTop: 14,
   },
   card: {
     backgroundColor: C.card,
@@ -1702,6 +2618,168 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: C.text,
     letterSpacing: -0.5,
+  },
+  grammarianClubDayLead: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: C.text,
+    lineHeight: 22,
+    marginTop: 2,
+  },
+  grammarianClubDayMeaning: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: C.textSecondary,
+    lineHeight: 20,
+    marginTop: 8,
+  },
+  wotdCarouselSlide: {
+    overflow: 'hidden',
+    minHeight: 88,
+    paddingVertical: 6,
+    justifyContent: 'flex-start',
+    alignSelf: 'stretch',
+  },
+  wotdPartOfSpeech: {
+    fontSize: 12,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    color: C.textMuted,
+    marginTop: 4,
+  },
+  wotdUsage: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: C.textSecondary,
+    lineHeight: 19,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  wotdMeetingDate: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: C.textMuted,
+    marginTop: 10,
+  },
+  faqHeroCard: {
+    padding: 6,
+  },
+  faqHeroSectionTitle: {
+    marginBottom: 5,
+  },
+  faqHeroSlide: {
+    overflow: 'hidden',
+    paddingVertical: 3,
+    minHeight: 66,
+    justifyContent: 'flex-start',
+    alignSelf: 'stretch',
+  },
+  faqHeroQuestion: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.text,
+    textAlign: 'left',
+    lineHeight: 16,
+    marginBottom: 5,
+    paddingHorizontal: 0,
+    width: '100%',
+  },
+  faqHeroAnswer: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: C.textSecondary,
+    textAlign: 'left',
+    lineHeight: 16,
+    paddingHorizontal: 0,
+    width: '100%',
+  },
+  preparedSpeechSlide: {
+    paddingVertical: 10,
+    minHeight: 140,
+  },
+  preparedSpeechColumns: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
+  preparedSpeechLeft: {
+    width: 108,
+    alignItems: 'center',
+  },
+  preparedSpeechAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginBottom: 8,
+  },
+  preparedSpeechAvatarPh: {
+    backgroundColor: C.chipBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  preparedSpeechInitial: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: C.textSecondary,
+  },
+  preparedSpeechSpeakerName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: C.text,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 4,
+    width: '100%',
+  },
+  preparedSpeechDate: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: C.textMuted,
+    textAlign: 'center',
+  },
+  preparedSpeechRight: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 2,
+  },
+  preparedSpeechTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: C.text,
+    textAlign: 'left',
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  preparedSpeechPathwayLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  preparedSpeechPathwayLine: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: C.textSecondary,
+    textAlign: 'left',
+    lineHeight: 20,
+  },
+  preparedSpeechPathwaySubline: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: C.textSecondary,
+    textAlign: 'left',
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  preparedSpeechPathwayLineMuted: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: C.textMuted,
+    textAlign: 'left',
   },
   edSpeechSlide: {
     alignItems: 'center',
@@ -1794,43 +2872,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontStyle: 'italic',
   },
-  lvRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 8,
-    gap: 12,
-  },
-  lvLabel: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: C.textMuted,
-    width: 88,
-  },
-  lvValue: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '400',
-    color: C.text,
-    textAlign: 'right',
-    lineHeight: 20,
-  },
-  ctaButton: {
-    backgroundColor: C.cta,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  ctaButtonSpaced: {
-    marginTop: 10,
-  },
-  ctaButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
   pillWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1856,6 +2897,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     minHeight: 172,
+    overflow: 'hidden',
   },
   excommDots: {
     flexDirection: 'row',
@@ -1912,6 +2954,7 @@ const styles = StyleSheet.create({
   memberPairSlide: {
     minHeight: 188,
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   memberPairRow: {
     flexDirection: 'row',
