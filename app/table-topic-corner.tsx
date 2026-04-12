@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -203,6 +204,7 @@ export default function TableTopicCorner(): JSX.Element {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
+  const navigation = useNavigation();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -234,6 +236,7 @@ export default function TableTopicCorner(): JSX.Element {
   const cornerSaveTimersRef = useRef<Record<number, ReturnType<typeof setTimeout> | undefined>>({});
   const cornerPersistInFlightRef = useRef<Record<number, boolean>>({});
   const questionsRef = useRef<TableTopicQuestion[]>(questions);
+  const persistCornerSlotAtIndexRef = useRef<(index: number) => Promise<void>>(async () => {});
 
   const beginCornerAutoSave = () => {
     cornerAutoSaveOpsRef.current += 1;
@@ -295,19 +298,6 @@ export default function TableTopicCorner(): JSX.Element {
       void loadTableTopicCornerData();
     }
   }, [meetingId, user?.currentClubId]);
-
-  // Reload published questions when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      if (!hasLoadedOnceRef.current) {
-        hasLoadedOnceRef.current = true;
-        return;
-      }
-      if (meetingId && user?.currentClubId) {
-        void loadPublishedQuestions();
-      }
-    }, [meetingId, user?.currentClubId])
-  );
 
   /**
    * Load all table topic corner data
@@ -721,9 +711,38 @@ export default function TableTopicCorner(): JSX.Element {
     });
   }, []);
 
+  const fetchAndHydrateQuestionBank = useCallback(async () => {
+    if (!meetingId || !tableTopicQuestionOwnerId) return;
+    const canEdit =
+      Boolean(user?.id && tableTopicMaster?.assigned_user_id === user.id) || isVPEClub;
+    if (!canEdit) return;
+    const { data, error } = await supabase
+      .from('table_topic_master_questions')
+      .select('*')
+      .eq('meeting_id', meetingId)
+      .eq('table_topic_master_id', tableTopicQuestionOwnerId)
+      .order('question_order');
+    if (error) {
+      console.error('Error loading table topic question bank:', error);
+      return;
+    }
+    const list = (data || []) as TableTopicQuestion[];
+    setQuestions(list);
+    hydrateCornerSlotsFromQuestions(list);
+  }, [
+    meetingId,
+    tableTopicQuestionOwnerId,
+    user?.id,
+    tableTopicMaster?.assigned_user_id,
+    isVPEClub,
+    hydrateCornerSlotsFromQuestions,
+  ]);
+
   const persistCornerSlotAtIndex = useCallback(
     async (index: number) => {
-      if (!canManageTableTopicCorner()) return;
+      const canEdit =
+        Boolean(user?.id && tableTopicMaster?.assigned_user_id === user.id) || isVPEClub;
+      if (!canEdit) return;
       if (!meetingId || !user?.currentClubId || !tableTopicQuestionOwnerId) return;
       if (cornerPersistInFlightRef.current[index]) return;
 
@@ -841,8 +860,57 @@ export default function TableTopicCorner(): JSX.Element {
         endCornerAutoSave();
       }
     },
-    [meetingId, tableTopicQuestionOwnerId, user?.currentClubId]
+    [
+      meetingId,
+      tableTopicQuestionOwnerId,
+      user?.currentClubId,
+      user?.id,
+      tableTopicMaster?.assigned_user_id,
+      isVPEClub,
+    ]
   );
+
+  persistCornerSlotAtIndexRef.current = persistCornerSlotAtIndex;
+
+  /** Clear debounce timers and persist every slot (used when leaving the screen or the Corner tab). */
+  const flushAllPendingCornerSlotSaves = useCallback(() => {
+    for (let i = 0; i < CORNER_QUESTION_SLOT_COUNT; i++) {
+      const t = cornerSaveTimersRef.current[i];
+      if (t) {
+        clearTimeout(t);
+        cornerSaveTimersRef.current[i] = undefined;
+      }
+      void persistCornerSlotAtIndexRef.current(i);
+    }
+  }, []);
+
+  // Reload question bank whenever this screen is shown; flush drafts when leaving.
+  useFocusEffect(
+    useCallback(() => {
+      void fetchAndHydrateQuestionBank();
+
+      if (!hasLoadedOnceRef.current) {
+        hasLoadedOnceRef.current = true;
+      } else if (meetingId && user?.currentClubId) {
+        void loadPublishedQuestions();
+      }
+
+      return () => {
+        flushAllPendingCornerSlotSaves();
+      };
+    }, [
+      meetingId,
+      user?.currentClubId,
+      fetchAndHydrateQuestionBank,
+      flushAllPendingCornerSlotSaves,
+    ])
+  );
+
+  useEffect(() => {
+    return navigation.addListener('beforeRemove', () => {
+      flushAllPendingCornerSlotSaves();
+    });
+  }, [navigation, flushAllPendingCornerSlotSaves]);
 
   const scheduleCornerSlotAutoSave = useCallback(
     (index: number) => {
@@ -916,46 +984,19 @@ export default function TableTopicCorner(): JSX.Element {
     const prev = prevActiveTabRef.current;
     prevActiveTabRef.current = activeTab;
     if (prev === 'table_topic_corner' && activeTab !== 'table_topic_corner') {
-      for (let i = 0; i < CORNER_QUESTION_SLOT_COUNT; i++) {
-        const t = cornerSaveTimersRef.current[i];
-        if (t) {
-          clearTimeout(t);
-          cornerSaveTimersRef.current[i] = undefined;
-          void persistCornerSlotAtIndex(i);
-        }
-      }
+      flushAllPendingCornerSlotSaves();
     }
-  }, [activeTab, persistCornerSlotAtIndex]);
+  }, [activeTab, flushAllPendingCornerSlotSaves]);
 
   useEffect(() => {
     return () => {
-      Object.keys(cornerSaveTimersRef.current).forEach((key) => {
-        const t = cornerSaveTimersRef.current[Number(key)];
-        if (t) clearTimeout(t);
-      });
-      cornerSaveTimersRef.current = {};
+      flushAllPendingCornerSlotSaves();
     };
-  }, []);
+  }, [flushAllPendingCornerSlotSaves]);
 
   useEffect(() => {
-    const loadQuestionBank = async () => {
-      if (!meetingId || !tableTopicQuestionOwnerId || !canManageTableTopicCorner()) return;
-      const { data, error } = await supabase
-        .from('table_topic_master_questions')
-        .select('*')
-        .eq('meeting_id', meetingId)
-        .eq('table_topic_master_id', tableTopicQuestionOwnerId)
-        .order('question_order');
-      if (error) {
-        console.error('Error loading table topic question bank:', error);
-        return;
-      }
-      const list = (data || []) as TableTopicQuestion[];
-      setQuestions(list);
-      hydrateCornerSlotsFromQuestions(list);
-    };
-    void loadQuestionBank();
-  }, [meetingId, tableTopicQuestionOwnerId, isVPEClub, tableTopicMaster?.assigned_user_id, hydrateCornerSlotsFromQuestions]);
+    void fetchAndHydrateQuestionBank();
+  }, [fetchAndHydrateQuestionBank]);
 
   /**
    * Handle adding/editing question for a participant from question bank
