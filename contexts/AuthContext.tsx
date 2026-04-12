@@ -717,8 +717,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getOAuthRedirectUrl = (): string => {
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-      const path = window.location.pathname || '/login';
-      return `${window.location.origin}${path.startsWith('/') ? path : `/${path}`}`;
+      return `${window.location.origin}/weblogin/`;
     }
     return Linking.createURL('/login');
   };
