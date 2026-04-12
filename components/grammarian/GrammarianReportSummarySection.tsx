@@ -449,7 +449,15 @@ export function GrammarianReportSummarySection({
           </View>
         </>
       ) : (
-        <View style={local.panel}>
+        <View
+          style={[
+            local.panel,
+            {
+              backgroundColor:
+                theme.mode === 'light' ? '#FBFBFA' : theme.colors.background,
+            },
+          ]}
+        >
           {!reportsVisibleToMembers ? (
             <View style={g.summaryRedirectContainer}>
               <View style={g.summaryRedirectContent}>

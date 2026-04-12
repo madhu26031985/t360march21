@@ -217,6 +217,28 @@ export default function AhCounterCorner() {
   const [clubName, setClubName] = useState('');
   const isAssignedAhCounter = !!(assignedAhCounter && user?.id && assignedAhCounter.id === user.id);
   const canEditAhCounterCorner = isAssignedAhCounter || isVPEClub;
+  /** Matches Timer Report → Timer Summary tab (Notion-like grid, same scale). */
+  const ahSummaryNotion = useMemo(
+    () =>
+      theme.mode === 'light'
+        ? {
+            canvas: '#FBFBFA',
+            card: '#FFFFFF',
+            divider: 'rgba(55, 53, 47, 0.09)',
+            text: '#37352F',
+            muted: '#787774',
+            count: '#37352F',
+          }
+        : {
+            canvas: theme.colors.background,
+            card: theme.colors.surface,
+            divider: theme.colors.border,
+            text: theme.colors.text,
+            muted: theme.colors.textSecondary,
+            count: theme.colors.text,
+          },
+    [theme.mode, theme.colors]
+  );
   const effectiveTab: TabType = canEditAhCounterCorner ? activeTab : 'summary';
   const [isPublished, setIsPublished] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -289,9 +311,6 @@ export default function AhCounterCorner() {
       .map(([slug, v]) => ({ slug, label: v.label, count: v.count }))
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   }, [reportEntries, customFillerWords]);
-
-  const ahCounterSummaryTotalInstances = reportEntries.length;
-  const ahCounterSummaryDistinctFillers = ahCounterSummaryFillerAggregates.length;
 
   const ahCounterSummaryMemberRows = useMemo(() => {
     type Agg = { name: string; fillers: Map<string, { label: string; count: number }> };
@@ -2318,149 +2337,301 @@ export default function AhCounterCorner() {
                 </Text>
               </View>
             ) : (
-              <View
-                style={[
-                  styles.ahCounterNotionPanel,
-                  { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.ahCounterPanelSection,
-                    { borderBottomColor: theme.colors.border, borderBottomWidth: 0 },
-                  ]}
-                >
-                  <Text style={[styles.auditBoxTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    Filler word counts
-                    {ahCounterSummaryTotalInstances > 0 ? ` (${ahCounterSummaryTotalInstances})` : ''}
-                  </Text>
+              <View style={{ flexGrow: 1, backgroundColor: ahSummaryNotion.canvas }}>
+                <View style={styles.ahSummaryPage}>
                   {reportEntries.length === 0 ? (
-                    <Text style={[styles.auditEmptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      No Ah Counter entries recorded yet for this meeting.
-                    </Text>
-                  ) : (
-                    <>
-                      {ahCounterSummaryFillerAggregates.map((row, index) => (
-                        <View
-                          key={row.slug}
-                          style={[
-                            styles.summaryAggregateRow,
-                            { borderBottomColor: theme.colors.border },
-                            index === ahCounterSummaryFillerAggregates.length - 1 && { borderBottomWidth: 0 },
-                          ]}
-                        >
-                          <Text
-                            style={[styles.summaryAggregateLabel, { color: theme.colors.text }]}
-                            maxFontSizeMultiplier={1.3}
-                          >
-                            {row.label}
-                          </Text>
-                          <Text
-                            style={[styles.summaryAggregateCount, { color: theme.colors.textSecondary }]}
-                            maxFontSizeMultiplier={1.3}
-                          >
-                            {row.count === 1 ? '1 time' : `${row.count} times`}
-                          </Text>
-                        </View>
-                      ))}
-                      <Text
-                        style={[styles.auditBoxTitle, styles.summaryOverallTitle, { color: theme.colors.text }]}
-                        maxFontSizeMultiplier={1.3}
-                      >
-                        Overall usage
-                      </Text>
+                    <View
+                      style={[
+                        styles.ahSummarySectionCard,
+                        {
+                          backgroundColor: ahSummaryNotion.card,
+                          borderColor: ahSummaryNotion.divider,
+                        },
+                      ]}
+                    >
                       <View
                         style={[
-                          styles.summaryOverallBox,
-                          { backgroundColor: theme.colors.background, borderColor: theme.colors.border },
+                          styles.ahSummarySectionHeadCenter,
+                          { borderBottomColor: ahSummaryNotion.divider },
                         ]}
                       >
-                        <Text style={[styles.summaryOverallLine, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-                          {ahCounterSummaryTotalInstances === 1
-                            ? '1 filler instance recorded for this meeting.'
-                            : `${ahCounterSummaryTotalInstances} filler instances recorded for this meeting.`}
-                        </Text>
                         <Text
-                          style={[styles.summaryOverallSubline, { color: theme.colors.textSecondary }]}
-                          maxFontSizeMultiplier={1.2}
+                          style={[styles.ahSummarySectionTitleCenter, { color: ahSummaryNotion.text }]}
+                          maxFontSizeMultiplier={1.15}
                         >
-                          {ahCounterSummaryDistinctFillers === 0
-                            ? ''
-                            : ahCounterSummaryDistinctFillers === 1
-                              ? 'Across 1 distinct filler word or phrase.'
-                              : `Across ${ahCounterSummaryDistinctFillers} distinct filler words or phrases.`}
+                          Filler Word Counts
                         </Text>
                       </View>
                       <Text
-                        style={[styles.auditBoxTitle, styles.summaryMemberSectionTitle, { color: theme.colors.text }]}
-                        maxFontSizeMultiplier={1.3}
+                        style={[styles.ahSummaryEmptyInline, { color: ahSummaryNotion.muted }]}
+                        maxFontSizeMultiplier={1.1}
                       >
-                        Member filler count
+                        No Ah Counter entries recorded yet for this meeting.
                       </Text>
-                      {ahCounterSummaryMemberRows.map((row, rowIndex) => {
-                        const expanded = expandedSummaryMemberKey === row.memberKey;
-                        return (
+                    </View>
+                  ) : (
+                    <>
+                      <View
+                        style={[
+                          styles.ahSummarySectionCard,
+                          {
+                            backgroundColor: ahSummaryNotion.card,
+                            borderColor: ahSummaryNotion.divider,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.ahSummarySectionHeadCenter,
+                            { borderBottomColor: ahSummaryNotion.divider },
+                          ]}
+                        >
+                          <Text
+                            style={[styles.ahSummarySectionTitleCenter, { color: ahSummaryNotion.text }]}
+                            maxFontSizeMultiplier={1.15}
+                          >
+                            Filler Word Counts
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.ahSummaryGridHeaderRow,
+                            {
+                              borderBottomColor: ahSummaryNotion.divider,
+                              borderBottomWidth: StyleSheet.hairlineWidth,
+                            },
+                          ]}
+                        >
                           <View
-                            key={row.memberKey}
                             style={[
-                              styles.summaryMemberBlock,
-                              rowIndex < ahCounterSummaryMemberRows.length - 1 && {
-                                borderBottomWidth: 1,
-                                borderBottomColor: theme.colors.border,
+                              styles.ahSummaryGridCellWord,
+                              {
+                                borderRightColor: ahSummaryNotion.divider,
+                                borderRightWidth: StyleSheet.hairlineWidth,
+                                alignItems: 'flex-start',
+                                justifyContent: 'center',
                               },
                             ]}
                           >
-                            <TouchableOpacity
-                              style={styles.summaryMemberRowHit}
-                              onPress={() =>
-                                setExpandedSummaryMemberKey((k) => (k === row.memberKey ? null : row.memberKey))
-                              }
-                              activeOpacity={0.7}
-                              accessibilityRole="button"
-                              accessibilityState={{ expanded }}
+                            <Text
+                              style={[styles.ahSummaryColLabel, { color: ahSummaryNotion.muted, textAlign: 'left' }]}
+                              maxFontSizeMultiplier={1.05}
                             >
-                              <View style={styles.summaryMemberRowInner}>
-                                <Text
-                                  style={[styles.summaryMemberName, { color: theme.colors.text }]}
-                                  maxFontSizeMultiplier={1.3}
-                                  numberOfLines={2}
-                                >
-                                  {row.memberName}
-                                </Text>
-                                <Text
-                                  style={[styles.summaryMemberTotal, { color: theme.colors.textSecondary }]}
-                                  maxFontSizeMultiplier={1.3}
-                                >
-                                  {row.total} count
-                                </Text>
-                                {expanded ? (
-                                  <ChevronUp size={18} color={theme.colors.textSecondary} />
-                                ) : (
-                                  <ChevronDown size={18} color={theme.colors.textSecondary} />
-                                )}
-                              </View>
-                            </TouchableOpacity>
-                            {expanded ? (
+                              Word
+                            </Text>
+                          </View>
+                          <View style={[styles.ahSummaryGridCellCount, { alignItems: 'center', justifyContent: 'center' }]}>
+                            <Text
+                              style={[styles.ahSummaryColLabel, { color: ahSummaryNotion.muted, textAlign: 'center' }]}
+                              maxFontSizeMultiplier={1.05}
+                            >
+                              Times
+                            </Text>
+                          </View>
+                        </View>
+                        {ahCounterSummaryFillerAggregates.map((row, index) => {
+                          const N = ahSummaryNotion;
+                          const isLast = index === ahCounterSummaryFillerAggregates.length - 1;
+                          return (
+                            <View
+                              key={row.slug}
+                              style={[
+                                styles.ahSummaryGridRow,
+                                !isLast && {
+                                  borderBottomWidth: StyleSheet.hairlineWidth,
+                                  borderBottomColor: N.divider,
+                                },
+                              ]}
+                            >
                               <View
                                 style={[
-                                  styles.summaryMemberBreakdown,
-                                  { borderLeftColor: theme.colors.primary + '55' },
+                                  styles.ahSummaryGridCellWord,
+                                  {
+                                    borderRightColor: N.divider,
+                                    borderRightWidth: StyleSheet.hairlineWidth,
+                                  },
                                 ]}
                               >
-                                {row.byFiller.map((f) => (
+                                <Text
+                                  style={[styles.ahSummaryCellTitle, { color: N.text }]}
+                                  numberOfLines={2}
+                                  maxFontSizeMultiplier={1.25}
+                                >
+                                  {row.label}
+                                </Text>
+                              </View>
+                              <View style={[styles.ahSummaryGridCellCount, { alignItems: 'center', justifyContent: 'center' }]}>
+                                <Text
+                                  style={[styles.ahSummaryCellCountPlain, { color: N.count }]}
+                                  maxFontSizeMultiplier={1.2}
+                                >
+                                  {row.count === 1 ? '1 time' : `${row.count} times`}
+                                </Text>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+
+                      <View
+                        style={[
+                          styles.ahSummarySectionCard,
+                          {
+                            backgroundColor: ahSummaryNotion.card,
+                            borderColor: ahSummaryNotion.divider,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.ahSummarySectionHeadCenter,
+                            { borderBottomColor: ahSummaryNotion.divider },
+                          ]}
+                        >
+                          <Text
+                            style={[styles.ahSummarySectionTitleCenter, { color: ahSummaryNotion.text }]}
+                            maxFontSizeMultiplier={1.15}
+                          >
+                            Member Filler Count
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.ahSummaryGridHeaderRow,
+                            {
+                              borderBottomColor: ahSummaryNotion.divider,
+                              borderBottomWidth: StyleSheet.hairlineWidth,
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.ahSummaryGridCellWord,
+                              {
+                                borderRightColor: ahSummaryNotion.divider,
+                                borderRightWidth: StyleSheet.hairlineWidth,
+                                alignItems: 'flex-start',
+                                justifyContent: 'center',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[styles.ahSummaryColLabel, { color: ahSummaryNotion.muted, textAlign: 'left' }]}
+                              maxFontSizeMultiplier={1.05}
+                            >
+                              Member
+                            </Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.ahSummaryGridCellCount,
+                              {
+                                borderRightColor: ahSummaryNotion.divider,
+                                borderRightWidth: StyleSheet.hairlineWidth,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[styles.ahSummaryColLabel, { color: ahSummaryNotion.muted, textAlign: 'center' }]}
+                              maxFontSizeMultiplier={1.05}
+                            >
+                              Total
+                            </Text>
+                          </View>
+                          <View style={styles.ahSummaryGridCellChevron} />
+                        </View>
+                        {ahCounterSummaryMemberRows.map((row, rowIndex) => {
+                          const N = ahSummaryNotion;
+                          const expanded = expandedSummaryMemberKey === row.memberKey;
+                          const isLastBlock = rowIndex === ahCounterSummaryMemberRows.length - 1;
+                          return (
+                            <View
+                              key={row.memberKey}
+                              style={
+                                !isLastBlock
+                                  ? {
+                                      borderBottomWidth: StyleSheet.hairlineWidth,
+                                      borderBottomColor: N.divider,
+                                    }
+                                  : undefined
+                              }
+                            >
+                              <TouchableOpacity
+                                style={styles.ahSummaryGridRow}
+                                onPress={() =>
+                                  setExpandedSummaryMemberKey((k) => (k === row.memberKey ? null : row.memberKey))
+                                }
+                                activeOpacity={0.7}
+                                accessibilityRole="button"
+                                accessibilityState={{ expanded }}
+                              >
+                                <View
+                                  style={[
+                                    styles.ahSummaryGridCellWord,
+                                    {
+                                      borderRightColor: N.divider,
+                                      borderRightWidth: StyleSheet.hairlineWidth,
+                                    },
+                                  ]}
+                                >
                                   <Text
-                                    key={f.slug}
-                                    style={[styles.summaryMemberBreakdownLine, { color: theme.colors.textSecondary }]}
+                                    style={[styles.ahSummaryCellTitle, { color: N.text }]}
+                                    numberOfLines={2}
                                     maxFontSizeMultiplier={1.25}
                                   >
-                                    {formatAhCounterSummaryMemberBreakdownLine(f.label, f.count)}
+                                    {row.memberName}
                                   </Text>
-                                ))}
-                              </View>
-                            ) : null}
-                          </View>
-                        );
-                      })}
+                                </View>
+                                <View
+                                  style={[
+                                    styles.ahSummaryGridCellCount,
+                                    {
+                                      borderRightColor: N.divider,
+                                      borderRightWidth: StyleSheet.hairlineWidth,
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[styles.ahSummaryCellCountPlain, { color: N.muted }]}
+                                    maxFontSizeMultiplier={1.2}
+                                  >
+                                    {row.total === 1 ? '1 count' : `${row.total} counts`}
+                                  </Text>
+                                </View>
+                                <View style={styles.ahSummaryGridCellChevron}>
+                                  {expanded ? (
+                                    <ChevronUp size={14} color={N.muted} />
+                                  ) : (
+                                    <ChevronDown size={14} color={N.muted} />
+                                  )}
+                                </View>
+                              </TouchableOpacity>
+                              {expanded ? (
+                                <View
+                                  style={[
+                                    styles.ahSummaryMemberBreakdown,
+                                    { borderLeftColor: ahSummaryNotion.divider },
+                                  ]}
+                                >
+                                  {row.byFiller.map((f) => (
+                                    <Text
+                                      key={f.slug}
+                                      style={[styles.ahSummaryMemberBreakdownLine, { color: N.muted }]}
+                                      maxFontSizeMultiplier={1.15}
+                                    >
+                                      {formatAhCounterSummaryMemberBreakdownLine(f.label, f.count)}
+                                    </Text>
+                                  ))}
+                                </View>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
                     </>
                   )}
                 </View>
@@ -3333,6 +3504,93 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     overflow: 'hidden',
   },
+  ahSummaryPage: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 32,
+  },
+  ahSummarySectionCard: {
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 18,
+    overflow: 'hidden',
+  },
+  ahSummarySectionHeadCenter: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ahSummarySectionTitleCenter: {
+    fontSize: 11.2,
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: -0.12,
+  },
+  ahSummaryGridHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 36,
+  },
+  ahSummaryGridRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 52,
+  },
+  ahSummaryGridCellWord: {
+    flex: 2.2,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  ahSummaryGridCellCount: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+  },
+  ahSummaryGridCellChevron: {
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  ahSummaryColLabel: {
+    fontSize: 8,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.65,
+  },
+  ahSummaryCellTitle: {
+    fontSize: 11.2,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    lineHeight: 15.2,
+  },
+  ahSummaryCellCountPlain: {
+    fontSize: 11.2,
+    fontWeight: '400',
+    fontVariant: ['tabular-nums'],
+  },
+  ahSummaryEmptyInline: {
+    fontSize: 10.4,
+    textAlign: 'center',
+    lineHeight: 15.2,
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+  },
+  ahSummaryMemberBreakdown: {
+    marginLeft: 4,
+    marginBottom: 10,
+    paddingLeft: 12,
+    paddingTop: 4,
+    gap: 6,
+    borderLeftWidth: 2,
+  },
+  ahSummaryMemberBreakdownLine: {
+    fontSize: 9.6,
+    lineHeight: 14,
+  },
   ahCounterPanelSection: {
     paddingHorizontal: 14,
     paddingVertical: 14,
@@ -3748,78 +4006,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     paddingVertical: 8,
-  },
-  summaryAggregateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    gap: 12,
-  },
-  summaryAggregateLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    flex: 1,
-  },
-  summaryAggregateCount: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  summaryOverallTitle: {
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  summaryOverallBox: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 14,
-    gap: 6,
-  },
-  summaryOverallLine: {
-    fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 22,
-  },
-  summaryOverallSubline: {
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  summaryMemberSectionTitle: {
-    marginTop: 22,
-    marginBottom: 10,
-  },
-  summaryMemberBlock: {
-    marginBottom: 0,
-  },
-  summaryMemberRowHit: {
-    paddingVertical: 4,
-  },
-  summaryMemberRowInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
-  },
-  summaryMemberName: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  summaryMemberTotal: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  summaryMemberBreakdown: {
-    marginLeft: 4,
-    marginBottom: 10,
-    paddingLeft: 12,
-    gap: 6,
-    borderLeftWidth: 3,
-  },
-  summaryMemberBreakdownLine: {
-    fontSize: 13,
-    lineHeight: 20,
   },
   reportEntryRow: {
     flexDirection: 'row',

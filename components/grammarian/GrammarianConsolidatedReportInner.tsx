@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -94,6 +94,29 @@ export function GrammarianConsolidatedReportInner({
   const { theme } = useTheme();
   const { user } = useAuth();
   const embedded = variant === 'embedded';
+
+  /** Same palette / scale as Timer Summary & Ah Counter summary tables */
+  const gSummaryNotion = useMemo(
+    () =>
+      theme.mode === 'light'
+        ? {
+            canvas: '#FBFBFA',
+            card: '#FFFFFF',
+            divider: 'rgba(55, 53, 47, 0.09)',
+            text: '#37352F',
+            muted: '#787774',
+            count: '#37352F',
+          }
+        : {
+            canvas: theme.colors.background,
+            card: theme.colors.surface,
+            divider: theme.colors.border,
+            text: theme.colors.text,
+            muted: theme.colors.textSecondary,
+            count: theme.colors.text,
+          },
+    [theme.mode, theme.colors]
+  );
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
@@ -390,7 +413,13 @@ export function GrammarianConsolidatedReportInner({
 
   if (isLoading) {
     return (
-      <View style={[styles.loadingWrap, embedded && styles.loadingWrapEmbedded]}>
+      <View
+        style={[
+          styles.loadingWrap,
+          embedded && styles.loadingWrapEmbedded,
+          embedded && { backgroundColor: gSummaryNotion.canvas },
+        ]}
+      >
         <ActivityIndicator size="large" color={theme.colors.primary} />
         <Text style={[styles.loadingText, { color: theme.colors.textSecondary, marginTop: 10 }]}>Loading report…</Text>
       </View>
@@ -398,7 +427,22 @@ export function GrammarianConsolidatedReportInner({
   }
 
   if (reportWithheld) {
-    const inner = (
+    const N = gSummaryNotion;
+    const inner = embedded ? (
+      <View
+        style={[
+          notionEmb.sectionCard,
+          { borderColor: N.divider, backgroundColor: N.card, marginBottom: 0 },
+        ]}
+      >
+        <Text
+          style={[notionEmb.withheldText, { color: N.text }]}
+          maxFontSizeMultiplier={1.2}
+        >
+          Report is yet to be published..
+        </Text>
+      </View>
+    ) : (
       <View
         style={[styles.withheldBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
       >
@@ -408,16 +452,30 @@ export function GrammarianConsolidatedReportInner({
       </View>
     );
     if (embedded) {
-      return <View style={local.embeddedOuter}>{inner}</View>;
+      return (
+        <View style={[notionEmb.embeddedRoot, { backgroundColor: N.canvas }]}>
+          <View style={notionEmb.page}>{inner}</View>
+        </View>
+      );
     }
     return <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>{inner}</View>;
   }
 
   if (!meeting) {
     if (embedded) {
+      const N = gSummaryNotion;
       return (
-        <View style={[local.embeddedCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Could not load this meeting.</Text>
+        <View style={[notionEmb.embeddedRoot, { backgroundColor: N.canvas }]}>
+          <View style={notionEmb.page}>
+            <View
+              style={[
+                notionEmb.sectionCard,
+                { borderColor: N.divider, backgroundColor: N.card },
+              ]}
+            >
+              <Text style={[notionEmb.withheldText, { color: N.muted }]}>Could not load this meeting.</Text>
+            </View>
+          </View>
         </View>
       );
     }
@@ -436,13 +494,356 @@ export function GrammarianConsolidatedReportInner({
   const totalQuoteUses = quoteMemberStats.reduce((s, m) => s + m.usage_count, 0);
   const hasStats = totalWordUses > 0 || totalIdiomUses > 0 || totalQuoteUses > 0;
   const hasReportSections = liveGoodUsage.length > 0 || liveImprovements.length > 0 || hasStats;
+
+  if (embedded) {
+    const N = gSummaryNotion;
+    const h = StyleSheet.hairlineWidth;
+
+    return (
+      <View style={[notionEmb.embeddedRoot, { backgroundColor: N.canvas }]}>
+        <View style={notionEmb.page}>
+          {liveGoodUsage.length > 0 ? (
+            <View style={[notionEmb.sectionCard, { borderColor: N.divider, backgroundColor: N.card }]}>
+              <View style={[notionEmb.headCenter, { borderBottomColor: N.divider }]}>
+                <Text style={[notionEmb.title, { color: N.text }]} maxFontSizeMultiplier={1.15}>
+                  Good Usage
+                </Text>
+              </View>
+              <View style={[notionEmb.gridHeaderRow, { borderBottomColor: N.divider, borderBottomWidth: h }]}>
+                <View
+                  style={[
+                    notionEmb.cellIdx,
+                    { borderRightColor: N.divider, borderRightWidth: h },
+                  ]}
+                >
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'center' }]} maxFontSizeMultiplier={1.05}>
+                    #
+                  </Text>
+                </View>
+                <View style={[notionEmb.cellGrow, { justifyContent: 'center', paddingLeft: 4 }]}>
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'left' }]} maxFontSizeMultiplier={1.05}>
+                    Note
+                  </Text>
+                </View>
+              </View>
+              {liveGoodUsage.map((item, index) => {
+                const last = index === liveGoodUsage.length - 1;
+                return (
+                  <View
+                    key={item.id}
+                    style={[notionEmb.gridRow, !last && { borderBottomWidth: h, borderBottomColor: N.divider }]}
+                  >
+                    <View
+                      style={[
+                        notionEmb.cellIdx,
+                        { borderRightColor: N.divider, borderRightWidth: h },
+                      ]}
+                    >
+                      <Text style={[notionEmb.cellCountPlain, { color: N.muted }]} maxFontSizeMultiplier={1.15}>
+                        {index + 1}
+                      </Text>
+                    </View>
+                    <View style={[notionEmb.cellGrow, { justifyContent: 'center' }]}>
+                      <Text style={[notionEmb.cellBody, { color: N.text }]} maxFontSizeMultiplier={1.25}>
+                        {item.observation}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {liveImprovements.length > 0 ? (
+            <View style={[notionEmb.sectionCard, { borderColor: N.divider, backgroundColor: N.card }]}>
+              <View style={[notionEmb.headCenter, { borderBottomColor: N.divider }]}>
+                <Text style={[notionEmb.title, { color: N.text }]} maxFontSizeMultiplier={1.15}>
+                  Improvement Areas
+                </Text>
+              </View>
+              <View style={[notionEmb.gridHeaderRow, { borderBottomColor: N.divider, borderBottomWidth: h }]}>
+                <View
+                  style={[
+                    notionEmb.cellIdx,
+                    { borderRightColor: N.divider, borderRightWidth: h },
+                  ]}
+                >
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'center' }]} maxFontSizeMultiplier={1.05}>
+                    #
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    notionEmb.cellHalf,
+                    { borderRightColor: N.divider, borderRightWidth: h, justifyContent: 'center' },
+                  ]}
+                >
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'left' }]} maxFontSizeMultiplier={1.05}>
+                    Instead of
+                  </Text>
+                </View>
+                <View style={[notionEmb.cellHalf, { justifyContent: 'center' }]}>
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'left' }]} maxFontSizeMultiplier={1.05}>
+                    Use
+                  </Text>
+                </View>
+              </View>
+              {liveImprovements.map((item, index) => {
+                const last = index === liveImprovements.length - 1;
+                return (
+                  <View
+                    key={item.id}
+                    style={[notionEmb.gridRow, !last && { borderBottomWidth: h, borderBottomColor: N.divider }]}
+                  >
+                    <View
+                      style={[
+                        notionEmb.cellIdx,
+                        { borderRightColor: N.divider, borderRightWidth: h },
+                      ]}
+                    >
+                      <Text style={[notionEmb.cellCountPlain, { color: N.muted }]} maxFontSizeMultiplier={1.15}>
+                        {index + 1}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        notionEmb.cellHalf,
+                        { borderRightColor: N.divider, borderRightWidth: h, justifyContent: 'center' },
+                      ]}
+                    >
+                      <Text style={[notionEmb.cellBody, { color: N.text }]} maxFontSizeMultiplier={1.2}>
+                        {item.incorrect_usage}
+                      </Text>
+                    </View>
+                    <View style={[notionEmb.cellHalf, { justifyContent: 'center' }]}>
+                      <Text style={[notionEmb.cellBody, { color: N.text }]} maxFontSizeMultiplier={1.2}>
+                        {item.correct_usage}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {dailyElements.word_of_the_day && totalWordUses > 0 ? (
+            <View style={[notionEmb.sectionCard, { borderColor: N.divider, backgroundColor: N.card }]}>
+              <View style={[notionEmb.headCenter, { borderBottomColor: N.divider }]}>
+                <Text style={[notionEmb.title, { color: N.text }]} maxFontSizeMultiplier={1.15}>
+                  Word of the Day Usage
+                </Text>
+                <Text style={[notionEmb.subtitle, { color: N.muted }]} numberOfLines={4} maxFontSizeMultiplier={1.1}>
+                  {dailyElements.word_of_the_day}
+                </Text>
+              </View>
+              <View style={[notionEmb.gridHeaderRow, { borderBottomColor: N.divider, borderBottomWidth: h }]}>
+                <View
+                  style={[
+                    notionEmb.cellMember,
+                    { borderRightColor: N.divider, borderRightWidth: h, alignItems: 'flex-start', justifyContent: 'center' },
+                  ]}
+                >
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'left' }]} maxFontSizeMultiplier={1.05}>
+                    Member
+                  </Text>
+                </View>
+                <View style={[notionEmb.cellCountNarrow, { justifyContent: 'center', alignItems: 'center' }]}>
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'center' }]} maxFontSizeMultiplier={1.05}>
+                    Uses
+                  </Text>
+                </View>
+              </View>
+              {wordMemberStats.map((stat, index) => {
+                const last = index === wordMemberStats.length - 1;
+                return (
+                  <View
+                    key={stat.id ?? `${stat.member_name}-${index}`}
+                    style={[notionEmb.gridRow, !last && { borderBottomWidth: h, borderBottomColor: N.divider }]}
+                  >
+                    <View
+                      style={[
+                        notionEmb.cellMember,
+                        { borderRightColor: N.divider, borderRightWidth: h, justifyContent: 'center' },
+                      ]}
+                    >
+                      <Text style={[notionEmb.cellText, { color: N.text }]} numberOfLines={2} maxFontSizeMultiplier={1.25}>
+                        {stat.member_name}
+                      </Text>
+                    </View>
+                    <View style={[notionEmb.cellCountNarrow, { alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={[notionEmb.cellCountPlain, { color: N.count }]} maxFontSizeMultiplier={1.2}>
+                        {stat.usage_count}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {dailyElements.quote_of_the_day && totalQuoteUses > 0 ? (
+            <View style={[notionEmb.sectionCard, { borderColor: N.divider, backgroundColor: N.card }]}>
+              <View style={[notionEmb.headCenter, { borderBottomColor: N.divider }]}>
+                <Text style={[notionEmb.title, { color: N.text }]} maxFontSizeMultiplier={1.15}>
+                  Quote of the Day Usage
+                </Text>
+                <Text style={[notionEmb.subtitle, { color: N.muted, fontStyle: 'italic' }]} numberOfLines={5} maxFontSizeMultiplier={1.1}>
+                  {'\u201c'}
+                  {dailyElements.quote_of_the_day}
+                  {'\u201d'}
+                </Text>
+              </View>
+              <View style={[notionEmb.gridHeaderRow, { borderBottomColor: N.divider, borderBottomWidth: h }]}>
+                <View
+                  style={[
+                    notionEmb.cellMember,
+                    { borderRightColor: N.divider, borderRightWidth: h, alignItems: 'flex-start', justifyContent: 'center' },
+                  ]}
+                >
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'left' }]} maxFontSizeMultiplier={1.05}>
+                    Member
+                  </Text>
+                </View>
+                <View style={[notionEmb.cellCountNarrow, { justifyContent: 'center', alignItems: 'center' }]}>
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'center' }]} maxFontSizeMultiplier={1.05}>
+                    Uses
+                  </Text>
+                </View>
+              </View>
+              {quoteMemberStats.map((stat, index) => {
+                const last = index === quoteMemberStats.length - 1;
+                return (
+                  <View
+                    key={`q-${stat.member_name}-${index}`}
+                    style={[notionEmb.gridRow, !last && { borderBottomWidth: h, borderBottomColor: N.divider }]}
+                  >
+                    <View
+                      style={[
+                        notionEmb.cellMember,
+                        { borderRightColor: N.divider, borderRightWidth: h, justifyContent: 'center' },
+                      ]}
+                    >
+                      <Text style={[notionEmb.cellText, { color: N.text }]} numberOfLines={2} maxFontSizeMultiplier={1.25}>
+                        {stat.member_name}
+                      </Text>
+                    </View>
+                    <View style={[notionEmb.cellCountNarrow, { alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={[notionEmb.cellCountPlain, { color: N.count }]} maxFontSizeMultiplier={1.2}>
+                        {stat.usage_count}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {dailyElements.idiom_of_the_day && totalIdiomUses > 0 ? (
+            <View style={[notionEmb.sectionCard, { borderColor: N.divider, backgroundColor: N.card }]}>
+              <View style={[notionEmb.headCenter, { borderBottomColor: N.divider }]}>
+                <Text style={[notionEmb.title, { color: N.text }]} maxFontSizeMultiplier={1.15}>
+                  Idiom of the Day Usage
+                </Text>
+                <Text style={[notionEmb.subtitle, { color: N.muted }]} numberOfLines={4} maxFontSizeMultiplier={1.1}>
+                  {dailyElements.idiom_of_the_day}
+                </Text>
+              </View>
+              <View style={[notionEmb.gridHeaderRow, { borderBottomColor: N.divider, borderBottomWidth: h }]}>
+                <View
+                  style={[
+                    notionEmb.cellMember,
+                    { borderRightColor: N.divider, borderRightWidth: h, alignItems: 'flex-start', justifyContent: 'center' },
+                  ]}
+                >
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'left' }]} maxFontSizeMultiplier={1.05}>
+                    Member
+                  </Text>
+                </View>
+                <View style={[notionEmb.cellCountNarrow, { justifyContent: 'center', alignItems: 'center' }]}>
+                  <Text style={[notionEmb.colLabel, { color: N.muted, textAlign: 'center' }]} maxFontSizeMultiplier={1.05}>
+                    Uses
+                  </Text>
+                </View>
+              </View>
+              {idiomMemberStats.map((stat, index) => {
+                const last = index === idiomMemberStats.length - 1;
+                return (
+                  <View
+                    key={`i-${stat.member_name}-${index}`}
+                    style={[notionEmb.gridRow, !last && { borderBottomWidth: h, borderBottomColor: N.divider }]}
+                  >
+                    <View
+                      style={[
+                        notionEmb.cellMember,
+                        { borderRightColor: N.divider, borderRightWidth: h, justifyContent: 'center' },
+                      ]}
+                    >
+                      <Text style={[notionEmb.cellText, { color: N.text }]} numberOfLines={2} maxFontSizeMultiplier={1.25}>
+                        {stat.member_name}
+                      </Text>
+                    </View>
+                    <View style={[notionEmb.cellCountNarrow, { alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={[notionEmb.cellCountPlain, { color: N.count }]} maxFontSizeMultiplier={1.2}>
+                        {stat.usage_count}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {!hasReportSections ? (
+            <View style={[notionEmb.sectionCard, { borderColor: N.divider, backgroundColor: N.card }]}>
+              <View style={notionEmb.emptyCard}>
+                <BookOpen size={22} color={N.muted} />
+                <Text style={[notionEmb.emptyTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>
+                  No report sections yet
+                </Text>
+                <Text style={[notionEmb.emptySub, { color: N.muted }]} maxFontSizeMultiplier={1.1}>
+                  Good usage, improvement notes, or word / idiom / quote usage will appear here once added from Grammarian
+                  Corner.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          <View
+            style={[
+              notionEmb.footerBar,
+              { backgroundColor: N.card, borderWidth: h, borderColor: N.divider },
+            ]}
+          >
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {assignedGrammarian?.avatar_url ? (
+                <Image source={{ uri: assignedGrammarian.avatar_url }} style={notionEmb.footerAvatar} />
+              ) : (
+                <View style={[notionEmb.footerAvatar, { backgroundColor: N.divider, alignItems: 'center', justifyContent: 'center' }]}>
+                  <User size={14} color={N.muted} />
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={[notionEmb.footerName, { color: N.text }]} numberOfLines={1} maxFontSizeMultiplier={1.15}>
+                  {assignedGrammarian?.full_name || 'Grammarian'}
+                </Text>
+                <Text style={[notionEmb.footerRole, { color: N.muted }]} maxFontSizeMultiplier={1.05}>
+                  Grammarian · Published {publishedAt ? formatDate(publishedAt) : formatDate(meeting.meeting_date)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   const bannerColor1 = meeting.club_info_banner_color || '#0ea5e9';
   const bannerColor2 = meeting.datetime_banner_color || '#f97316';
 
   const reportInner = (
     <View
       nativeID={contentNativeID}
-      style={[styles.reportContent, { backgroundColor: embedded ? theme.colors.background : '#f8f9fa' }]}
+      style={[styles.reportContent, { backgroundColor: '#f8f9fa' }]}
     >
       <View style={[styles.clubBanner, { backgroundColor: bannerColor1 }]}>
         <View style={styles.bannerContent}>
@@ -656,18 +1057,6 @@ export function GrammarianConsolidatedReportInner({
           </View>
         )}
 
-        {embedded && !hasReportSections && (
-          <View style={[styles.section, { alignItems: 'center', paddingVertical: 22 }]}>
-            <BookOpen size={32} color="#94a3b8" />
-            <Text style={[styles.emptyEmbedTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-              No published report sections yet
-            </Text>
-            <Text style={[styles.emptyEmbedSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-              Good usage, opportunity notes, or word/idiom/quote usage stats appear here once published from Grammarian
-              Corner.
-            </Text>
-          </View>
-        )}
       </View>
 
       <View style={[styles.footer, { backgroundColor: bannerColor1 }]}>
@@ -700,19 +1089,6 @@ export function GrammarianConsolidatedReportInner({
     </View>
   );
 
-  if (embedded) {
-    return (
-      <View
-        style={[
-          local.embeddedOuter,
-          { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-        ]}
-      >
-        {reportInner}
-      </View>
-    );
-  }
-
   return reportInner;
 }
 
@@ -729,6 +1105,156 @@ const local = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
+  },
+});
+
+/** Embedded Grammarian Summary — aligns with Timer / Ah Counter summary tables */
+const notionEmb = StyleSheet.create({
+  embeddedRoot: {
+    width: '100%',
+  },
+  page: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  sectionCard: {
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 18,
+    overflow: 'hidden',
+  },
+  headCenter: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 11.2,
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: -0.12,
+  },
+  subtitle: {
+    fontSize: 9.6,
+    textAlign: 'center',
+    marginTop: 5,
+    lineHeight: 13.5,
+    paddingHorizontal: 8,
+  },
+  gridHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 36,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 48,
+  },
+  cellIdx: {
+    width: 36,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cellGrow: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+  },
+  cellHalf: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+  },
+  cellMember: {
+    flex: 2.2,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  cellCountNarrow: {
+    flex: 1,
+    minWidth: 52,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  colLabel: {
+    fontSize: 8,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.65,
+  },
+  cellText: {
+    fontSize: 11.2,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    lineHeight: 15.2,
+  },
+  cellBody: {
+    fontSize: 11.2,
+    fontWeight: '400',
+    lineHeight: 15.2,
+  },
+  cellCountPlain: {
+    fontSize: 11.2,
+    fontWeight: '400',
+    fontVariant: ['tabular-nums'],
+  },
+  emptyCard: {
+    paddingVertical: 24,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 12.8,
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: -0.15,
+    marginTop: 6,
+  },
+  emptySub: {
+    fontSize: 10.4,
+    textAlign: 'center',
+    lineHeight: 15,
+    maxWidth: 300,
+  },
+  withheldText: {
+    fontSize: 12.8,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+    lineHeight: 18,
+  },
+  footerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  footerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  footerName: {
+    fontSize: 11.2,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  footerRole: {
+    fontSize: 9.6,
+    fontWeight: '500',
+    marginTop: 3,
   },
 });
 

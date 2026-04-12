@@ -325,6 +325,41 @@ export default function TimerReportDetails() {
 
   const timerHeaderAvatarUrl = resolvedTimerAvatarUrl || fetchedTimerAvatarUrl;
 
+  /** Notion-like surface colors for Timer Summary tab only */
+  const timerSummaryNotion = useMemo(
+    () =>
+      theme.mode === 'light'
+        ? {
+            canvas: '#FBFBFA',
+            card: '#FFFFFF',
+            divider: 'rgba(55, 53, 47, 0.09)',
+            thead: 'rgba(55, 53, 47, 0.04)',
+            text: '#37352F',
+            muted: '#787774',
+            time: '#37352F',
+            yesBg: 'rgba(35, 131, 226, 0.12)',
+            yesText: '#1D6CB8',
+            noBg: 'rgba(235, 87, 87, 0.10)',
+            noText: '#B5473A',
+            ghostBtn: 'rgba(55, 53, 47, 0.06)',
+          }
+        : {
+            canvas: theme.colors.background,
+            card: theme.colors.surface,
+            divider: theme.colors.border,
+            thead: 'rgba(255, 255, 255, 0.05)',
+            text: theme.colors.text,
+            muted: theme.colors.textSecondary,
+            time: theme.colors.text,
+            yesBg: 'rgba(52, 211, 153, 0.18)',
+            yesText: '#6EE7B7',
+            noBg: 'rgba(248, 113, 113, 0.15)',
+            noText: '#FCA5A5',
+            ghostBtn: 'rgba(255, 255, 255, 0.08)',
+          },
+    [theme.mode, theme.colors]
+  );
+
   const speechCategories = [
     { value: 'prepared_speaker', label: 'Prepared speakers', color: '#3b82f6', icon: 'message-circle', classifications: ['Prepared Speaker'], roleNames: ['Prepared Speaker 1', 'Prepared Speaker 2', 'Prepared Speaker 3', 'Prepared Speaker 4', 'Prepared Speaker 5'] },
     { value: 'table_topic_speaker', label: 'Table topic speakers', color: '#f97316', icon: 'mic', classifications: ['On-the-Spot Speaking'], roleNames: ['Table Topics Speaker 1', 'Table Topics Speaker 2', 'Table Topics Speaker 3', 'Table Topics Speaker 4', 'Table Topics Speaker 5', 'Table Topics Speaker 6', 'Table Topics Speaker 7', 'Table Topics Speaker 8', 'Table Topics Speaker 9', 'Table Topics Speaker 10', 'Table Topics Speaker 11', 'Table Topics Speaker 12'] },
@@ -1550,61 +1585,84 @@ export default function TimerReportDetails() {
     return formatClubRelationshipRoleForTimerSummary(raw);
   };
 
-  const ReportCard = ({ report }: { report: TimerReport }) => {
+  const ReportCard = ({
+    report,
+    isLast,
+  }: {
+    report: TimerReport;
+    isLast?: boolean;
+  }) => {
     const isQualified = !!report.time_qualification;
     const displaySpeakerName =
       report.speaker_user_id != null && String(report.speaker_user_id).length > 0
         ? report.speaker_name
         : formatTimerGuestSummaryPrimaryName(report.speaker_name) ||
           formatTimerGuestDisplayName(report.speaker_name);
+    const N = timerSummaryNotion;
+    const gridLine = { borderRightColor: N.divider, borderRightWidth: StyleSheet.hairlineWidth };
     return (
-      <View style={[styles.reportTableRow, { borderBottomColor: theme.colors.border }]}>
-        <View style={styles.reportTableNameCell}>
-          <Text style={[styles.reportTableName, { color: theme.colors.text }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+      <View
+        style={[
+          styles.notionSummaryGridRow,
+          !isLast && {
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderBottomColor: N.divider,
+          },
+        ]}
+      >
+        <View style={[styles.notionSummaryGridCellSpeaker, gridLine]}>
+          <Text style={[styles.notionSummaryName, { color: N.text }]} numberOfLines={2} maxFontSizeMultiplier={1.25}>
             {displaySpeakerName}
           </Text>
-          <Text style={[styles.reportTableCategory, { color: theme.colors.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+          <Text style={[styles.notionSummaryMeta, { color: N.muted }]} numberOfLines={1} maxFontSizeMultiplier={1.15}>
             {getTimerSummarySpeakerSubtitle(report)}
           </Text>
         </View>
 
-        <View style={styles.reportTableCenterCell}>
-          <Text style={[styles.reportTableTime, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+        <View style={[styles.notionSummaryGridCellTime, gridLine]}>
+          <Text style={[styles.notionSummaryTimePlain, { color: N.time }]} maxFontSizeMultiplier={1.2}>
             {report.actual_time_display}
           </Text>
         </View>
 
-        <View style={styles.reportTableCenterCell}>
-          <View style={[styles.reportTableQualifiedBadge, { backgroundColor: isQualified ? '#e7f7ee' : '#fee2e2' }]}>
-            <Text style={[
-              styles.reportTableQualified,
-              { color: isQualified ? '#15803d' : '#dc2626' }
-            ]} maxFontSizeMultiplier={1.3}>
+        <View style={[styles.notionSummaryGridCellQual, canEditTimerCorner ? gridLine : null]}>
+          <View
+            style={[
+              styles.notionSummaryQualPill,
+              { backgroundColor: isQualified ? N.yesBg : N.noBg },
+            ]}
+          >
+            <Text
+              style={[styles.notionSummaryQualText, { color: isQualified ? N.yesText : N.noText }]}
+              maxFontSizeMultiplier={1.15}
+            >
               {isQualified ? 'Yes' : 'No'}
             </Text>
           </View>
         </View>
 
-        <View style={styles.reportTableActions}>
-          {canEditTimerCorner && (
+        {canEditTimerCorner ? (
+          <View style={styles.notionSummaryGridCellAction}>
             <TouchableOpacity
-              style={styles.reportTableActionButton}
+              style={styles.notionSummaryDeleteBtnPlain}
               onPress={() => handleDeleteReport(report.id!, displaySpeakerName)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete timer row for ${displaySpeakerName}`}
             >
-              <Trash2 size={16} color={theme.colors.textSecondary} />
+              <Trash2 size={12} color={N.muted} />
             </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        ) : null}
       </View>
     );
   };
 
   const summaryCategorySections = [
-    { key: 'prepared_speaker', title: 'Prepared Speaker', accent: '#2563EB', soft: '#EFF6FF' },
-    { key: 'evaluation', title: 'Evaluators', accent: '#059669', soft: '#ECFDF5' },
-    { key: 'table_topic_speaker', title: 'Table Topic Speaker', accent: '#EA580C', soft: '#FFF7ED' },
-    { key: 'educational_session', title: 'Educational Speaker', accent: '#7C3AED', soft: '#F5F3FF' },
+    { key: 'prepared_speaker', title: 'Prepared Speakers' },
+    { key: 'evaluation', title: 'Evaluators' },
+    { key: 'table_topic_speaker', title: 'Table Topic Speakers' },
+    { key: 'educational_session', title: 'Educational Speakers' },
   ] as const;
 
   const handleSaveReport = async () => {
@@ -3047,24 +3105,43 @@ export default function TimerReportDetails() {
 
           </>
         ) : (
-          /* Summary Tab */
-          <View style={styles.reportsTabContent}>
-            <View style={[styles.reportsSection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          /* Summary Tab — Notion-style layout */
+          <View style={[styles.reportsTabContent, { backgroundColor: timerSummaryNotion.canvas }]}>
+            <View style={styles.notionSummaryPage}>
               {!timerSummaryVisibleToMembers ? (
-                <View style={[styles.summaryHiddenCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-                  <EyeOff size={20} color={theme.colors.textSecondary} />
-                  <Text style={[styles.summaryHiddenTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                    Timer is yet to publish the report.
+                <View
+                  style={[
+                    styles.notionSummaryEmptyCard,
+                    {
+                      borderColor: timerSummaryNotion.divider,
+                      backgroundColor: timerSummaryNotion.card,
+                    },
+                  ]}
+                >
+                  <EyeOff size={18} color={timerSummaryNotion.muted} />
+                  <Text style={[styles.notionSummaryEmptyTitle, { color: timerSummaryNotion.text }]} maxFontSizeMultiplier={1.2}>
+                    Summary not visible to members yet
+                  </Text>
+                  <Text style={[styles.notionSummaryEmptySub, { color: timerSummaryNotion.muted }]} maxFontSizeMultiplier={1.1}>
+                    The timer can publish when ready from Timer Corner.
                   </Text>
                 </View>
               ) : savedReports.length === 0 ? (
-                <View style={[styles.summaryHiddenCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-                  <Clock size={20} color={theme.colors.textSecondary} />
-                  <Text style={[styles.summaryHiddenTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                    No timer reports yet
+                <View
+                  style={[
+                    styles.notionSummaryEmptyCard,
+                    {
+                      borderColor: timerSummaryNotion.divider,
+                      backgroundColor: timerSummaryNotion.card,
+                    },
+                  ]}
+                >
+                  <Clock size={18} color={timerSummaryNotion.muted} />
+                  <Text style={[styles.notionSummaryEmptyTitle, { color: timerSummaryNotion.text }]} maxFontSizeMultiplier={1.2}>
+                    No times recorded yet
                   </Text>
-                  <Text style={[styles.summaryHiddenSub, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
-                    Timer reports will appear here once time entries are saved.
+                  <Text style={[styles.notionSummaryEmptySub, { color: timerSummaryNotion.muted }]} maxFontSizeMultiplier={1.1}>
+                    Saved timer entries from Timer Corner will show up here, grouped by role.
                   </Text>
                 </View>
               ) : (
@@ -3074,35 +3151,87 @@ export default function TimerReportDetails() {
                       savedReports.filter((r) => r.speech_category === section.key)
                     );
                     if (sectionReports.length === 0) return null;
+                    const N = timerSummaryNotion;
                     return (
                       <View
                         key={section.key}
-                        style={[
-                          styles.summaryCategorySection,
-                          { borderColor: theme.colors.border, borderLeftColor: section.accent, backgroundColor: section.soft },
-                        ]}
+                        style={[styles.notionSummarySectionCard, { backgroundColor: N.card, borderColor: N.divider }]}
                       >
-                        <View style={styles.summaryCategoryTitleRow}>
-                          <View style={[styles.summaryCategoryDot, { backgroundColor: section.accent }]} />
-                          <Text style={[styles.summaryCategoryTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                        <View style={[styles.notionSummarySectionHeadCenter, { borderBottomColor: N.divider }]}>
+                          <Text style={[styles.notionSummarySectionTitleCenter, { color: N.text }]} maxFontSizeMultiplier={1.15}>
                             {section.title}
                           </Text>
                         </View>
-                        <View style={[styles.reportTableHeader, { borderBottomColor: theme.colors.border }]}>
-                          <Text style={[styles.reportTableHeaderText, { color: theme.colors.text, flex: 1.6 }]} maxFontSizeMultiplier={1.2}>
-                            Speaker
-                          </Text>
-                          <Text style={[styles.reportTableHeaderText, { color: theme.colors.text, flex: 0.9, textAlign: 'center' }]} maxFontSizeMultiplier={1.2}>
-                            Time
-                          </Text>
-                          <Text style={[styles.reportTableHeaderText, { color: theme.colors.text, flex: 0.9, textAlign: 'center' }]} maxFontSizeMultiplier={1.2}>
-                            Qualified
-                          </Text>
-                          <View style={{ flex: 0.4 }} />
+                        <View
+                          style={[
+                            styles.notionSummaryGridHeaderRow,
+                            {
+                              borderBottomColor: N.divider,
+                              borderBottomWidth: StyleSheet.hairlineWidth,
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.notionSummaryGridCellSpeaker,
+                              {
+                                borderRightColor: N.divider,
+                                borderRightWidth: StyleSheet.hairlineWidth,
+                                alignItems: 'flex-start',
+                                justifyContent: 'center',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[styles.notionSummaryColLabel, { color: N.muted, textAlign: 'left' }]}
+                              maxFontSizeMultiplier={1.05}
+                            >
+                              Speaker
+                            </Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.notionSummaryGridCellTime,
+                              {
+                                borderRightColor: N.divider,
+                                borderRightWidth: StyleSheet.hairlineWidth,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[styles.notionSummaryColLabel, { color: N.muted, textAlign: 'center' }]}
+                              maxFontSizeMultiplier={1.05}
+                            >
+                              Time
+                            </Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.notionSummaryGridCellQual,
+                              canEditTimerCorner
+                                ? {
+                                    borderRightColor: N.divider,
+                                    borderRightWidth: StyleSheet.hairlineWidth,
+                                  }
+                                : null,
+                            ]}
+                          >
+                            <Text
+                              style={[styles.notionSummaryColLabel, { color: N.muted, textAlign: 'center' }]}
+                              maxFontSizeMultiplier={1.05}
+                            >
+                              Qualified
+                            </Text>
+                          </View>
+                          {canEditTimerCorner ? <View style={styles.notionSummaryGridCellAction} /> : null}
                         </View>
                         <View>
-                          {sectionReports.map((report) => (
-                            <ReportCard key={report.id || `${report.speaker_name}-${report.recorded_at}`} report={report} />
+                          {sectionReports.map((report, idx) => (
+                            <ReportCard
+                              key={report.id || `${report.speaker_name}-${report.recorded_at}`}
+                              report={report}
+                              isLast={idx === sectionReports.length - 1}
+                            />
                           ))}
                         </View>
                       </View>
@@ -4575,6 +4704,127 @@ const styles = StyleSheet.create({
   },
   reportsTabContent: {
     flex: 1,
+  },
+  notionSummaryPage: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 32,
+  },
+  notionSummaryEmptyCard: {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 28,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    gap: 10,
+  },
+  notionSummaryEmptyTitle: {
+    fontSize: 12.8,
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: -0.2,
+    lineHeight: 17.6,
+  },
+  notionSummaryEmptySub: {
+    fontSize: 10.4,
+    textAlign: 'center',
+    lineHeight: 15.2,
+    maxWidth: 300,
+  },
+  notionSummarySectionCard: {
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 18,
+    overflow: 'hidden',
+  },
+  notionSummarySectionHeadCenter: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notionSummarySectionTitleCenter: {
+    fontSize: 11.2,
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: -0.12,
+  },
+  notionSummaryGridHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 36,
+  },
+  notionSummaryGridRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 52,
+  },
+  notionSummaryGridCellSpeaker: {
+    flex: 2.2,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  notionSummaryGridCellTime: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notionSummaryGridCellQual: {
+    flex: 1.1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notionSummaryGridCellAction: {
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  notionSummaryColLabel: {
+    fontSize: 8,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.65,
+  },
+  notionSummaryName: {
+    fontSize: 11.2,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    lineHeight: 15.2,
+  },
+  notionSummaryMeta: {
+    fontSize: 9.6,
+    fontWeight: '500',
+    marginTop: 3,
+    lineHeight: 12.8,
+  },
+  notionSummaryTimePlain: {
+    fontSize: 11.2,
+    fontWeight: '400',
+    fontVariant: ['tabular-nums'],
+  },
+  notionSummaryQualPill: {
+    paddingHorizontal: 10.4,
+    paddingVertical: 4.8,
+    borderRadius: 999,
+    minWidth: 41.6,
+    alignItems: 'center',
+  },
+  notionSummaryQualText: {
+    fontSize: 9.6,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  notionSummaryDeleteBtnPlain: {
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   summaryVisibilityCard: {
     marginHorizontal: 16,
