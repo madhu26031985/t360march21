@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { DEFAULT_TOASTMASTERS_CLUB_MISSION } from '@/lib/defaultClubMission';
 import { ArrowLeft } from 'lucide-react-native';
 
 export default function Mission() {
@@ -39,8 +40,6 @@ export default function Mission() {
       setIsLoading(false);
     }
   };
-
-  const defaultMission = "We provide a supportive and positive learning experience in which members are empowered to develop communication and leadership skills, resulting in greater self-confidence and personal growth.";
 
   if (isLoading) {
     return (
@@ -79,7 +78,7 @@ export default function Mission() {
           </View>
           <View style={[styles.missionCard, { backgroundColor: '#f8fafc' }]}>
             <Text style={[styles.missionText, { color: theme.colors.text }]}>
-              {clubMission || defaultMission}
+              {clubMission || DEFAULT_TOASTMASTERS_CLUB_MISSION}
             </Text>
           </View>
         </View>
