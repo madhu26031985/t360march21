@@ -5,6 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { Alert } from 'react-native';
 import Constants from 'expo-constants';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { invalidateClubLandingCriticalCache } from '@/lib/clubTabLandingData';
 
 // Conditional logging - only logs in development mode
@@ -45,6 +47,8 @@ interface AuthContextType {
   connectionError: boolean;
   retryConnection: () => void;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  /** Opens Google OAuth (web: full redirect; native: in-app browser + code/hash exchange). */
+  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
 
@@ -711,6 +715,105 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const getOAuthRedirectUrl = (): string => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+      const path = window.location.pathname || '/login';
+      return `${window.location.origin}${path.startsWith('/') ? path : `/${path}`}`;
+    }
+    return Linking.createURL('/login');
+  };
+
+  const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      if (!supabase) {
+        return { success: false, error: 'Authentication service not available' };
+      }
+
+      const redirectTo = getOAuthRedirectUrl();
+      devLog('🔐 AuthContext: Google OAuth redirectTo:', redirectTo);
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          skipBrowserRedirect: Platform.OS !== 'web',
+        },
+      });
+
+      if (error) {
+        devWarn('Google OAuth start error:', error.message);
+        return { success: false, error: error.message };
+      }
+
+      if (!data?.url) {
+        return { success: false, error: 'No OAuth URL returned. Enable Google in Supabase Auth providers.' };
+      }
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.location.assign(data.url);
+        return { success: true };
+      }
+
+      const authResult = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
+      if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
+        return { success: false, error: 'Sign in was cancelled' };
+      }
+
+      if (authResult.type !== 'success' || !authResult.url) {
+        return { success: false, error: 'Could not complete Google sign in' };
+      }
+
+      const incoming = authResult.url;
+      let code: string | null = null;
+      let hashParams = new URLSearchParams();
+      try {
+        const url = new URL(incoming);
+        code = url.searchParams.get('code');
+        if (url.hash.length > 1) {
+          hashParams = new URLSearchParams(url.hash.slice(1));
+        }
+      } catch {
+        const hashIdx = incoming.indexOf('#');
+        if (hashIdx >= 0) {
+          hashParams = new URLSearchParams(incoming.slice(hashIdx + 1).split('?')[0]);
+        }
+        const qIdx = incoming.indexOf('?');
+        if (qIdx >= 0) {
+          const qs = incoming.slice(qIdx + 1).split('#')[0];
+          code = new URLSearchParams(qs).get('code');
+        }
+      }
+
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          return { success: false, error: exchangeError.message };
+        }
+        return { success: true };
+      }
+
+      const access_token = hashParams.get('access_token');
+      const refresh_token = hashParams.get('refresh_token');
+      if (access_token && refresh_token) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+        if (sessionError) {
+          return { success: false, error: sessionError.message };
+        }
+        return { success: true };
+      }
+
+      return { success: false, error: 'Unexpected response from Google sign in' };
+    } catch (e) {
+      logError('Google sign in error:', e);
+      const msg = e instanceof Error ? e.message : 'Google sign in failed';
+      return { success: false, error: msg };
+    }
+  };
+
   const resetPassword = async (email: string): Promise<{ success: boolean; error?: string }> => {
     try {
       if (!supabase) {
@@ -950,6 +1053,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       connectionError,
       retryConnection,
       signIn,
+      signInWithGoogle,
       signUp,
       resetPassword,
       signOut,

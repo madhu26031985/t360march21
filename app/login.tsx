@@ -1,20 +1,27 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
+import * as WebBrowser from 'expo-web-browser';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { GoogleGLogo } from '@/components/auth/GoogleGLogo';
 
 export default function Login() {
   const { theme } = useTheme();
-  const { signIn, isAuthenticated } = useAuth();
-  
+  const { signIn, signInWithGoogle, isAuthenticated } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [signInError, setSignInError] = useState('');
+
+  useEffect(() => {
+    void WebBrowser.maybeCompleteAuthSession();
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -84,6 +91,23 @@ export default function Login() {
     router.push('/signup');
   };
 
+  const handleGoogleSignIn = async () => {
+    setSignInError('');
+    setGoogleLoading(true);
+    try {
+      const result = await signInWithGoogle();
+      if (!result.success && result.error) {
+        setSignInError(result.error);
+        Alert.alert('Google Sign In', result.error);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Google sign in failed';
+      setSignInError(msg);
+      Alert.alert('Error', msg);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -166,9 +190,9 @@ export default function Login() {
 
           {/* Sign In Button */}
           <TouchableOpacity
-            style={[styles.signInButton, isLoading && styles.signInButtonDisabled]}
+            style={[styles.signInButton, (isLoading || googleLoading) && styles.signInButtonDisabled]}
             onPress={handleSignIn}
-            disabled={isLoading}
+            disabled={isLoading || googleLoading}
           >
             <Text style={styles.signInButtonText} maxFontSizeMultiplier={1.3}>
               {isLoading ? 'Signing In...' : 'Sign In'}
@@ -179,6 +203,32 @@ export default function Login() {
               <Text style={styles.errorBannerText} maxFontSizeMultiplier={1.3}>{signInError}</Text>
             </View>
           ) : null}
+
+          <View style={styles.orRow}>
+            <View style={[styles.orLine, { backgroundColor: theme.colors.border }]} />
+            <Text style={[styles.orText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              or
+            </Text>
+            <View style={[styles.orLine, { backgroundColor: theme.colors.border }]} />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.googleButton, googleLoading && styles.googleButtonDisabled]}
+            onPress={handleGoogleSignIn}
+            disabled={googleLoading || isLoading}
+            activeOpacity={0.85}
+          >
+            <View style={styles.googleIconSlot} pointerEvents="none">
+              {googleLoading ? (
+                <ActivityIndicator color="#f0f6fc" size="small" />
+              ) : (
+                <GoogleGLogo size={18} />
+              )}
+            </View>
+            <Text style={styles.googleButtonText} maxFontSizeMultiplier={1.2}>
+              Continue with Google
+            </Text>
+          </TouchableOpacity>
 
           {/* Forgot Password Link */}
           <TouchableOpacity style={styles.forgotPasswordButton} onPress={() => router.push('/forgot-password')}>
@@ -318,6 +368,58 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
     letterSpacing: 0.4,
+  },
+  orRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 18,
+    marginBottom: 4,
+    width: '100%',
+  },
+  orLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth * 2,
+    minHeight: 1,
+    opacity: 0.9,
+  },
+  orText: {
+    fontSize: 12,
+    fontWeight: '500',
+    paddingHorizontal: 14,
+    textTransform: 'lowercase',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginTop: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    backgroundColor: '#21262d',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    minHeight: 44,
+  },
+  googleButtonDisabled: {
+    opacity: 0.72,
+  },
+  googleIconSlot: {
+    position: 'absolute',
+    left: 16,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleButtonText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#f0f6fc',
+    letterSpacing: -0.2,
   },
   bottomSection: {
     alignItems: 'center',
