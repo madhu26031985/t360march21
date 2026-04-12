@@ -71,6 +71,7 @@ import { journeyHomeQueryKeys, fetchJourneyHomeSnapshot } from '@/lib/journeyHom
 import { fetchVpeNudgesSnapshot, vpeNudgesQueryKeys } from '@/lib/vpeNudgesSnapshot';
 import { computeVpeSmartDailyHomeReminder } from '@/lib/vpeSmartDailyHomeReminder';
 import { prefetchVpeNudges } from '@/lib/prefetchVpeNudges';
+import { prefetchClubLandingCritical } from '@/lib/clubTabLandingData';
 
 const N = {
   page: '#FBFBFA',
@@ -1471,6 +1472,10 @@ export default function MyJourney() {
 
   useEffect(() => {
     prefetchMyMentorSnapshot(user?.currentClubId);
+  }, [user?.currentClubId]);
+
+  useEffect(() => {
+    prefetchClubLandingCritical(user?.currentClubId ?? null);
   }, [user?.currentClubId]);
 
   const handleGrammarianPress = useCallback(() => {

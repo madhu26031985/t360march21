@@ -19,7 +19,9 @@
     "clean": "rm -rf node_modules package-lock.json .expo && npm install",
     "doctor": "expo doctor",
     "fix-deps": "npx expo install --check && npm audit fix",
-    "test:supabase": "node scripts/test-supabase-connection.js"
+    "test:supabase": "node scripts/test-supabase-connection.js",
+    "test:web": "node scripts/start-product-web.js",
+    "local:test-web": "node scripts/local-web-server.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.1.2",

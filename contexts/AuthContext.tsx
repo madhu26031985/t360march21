@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { Alert } from 'react-native';
 import Constants from 'expo-constants';
+import { invalidateClubLandingCriticalCache } from '@/lib/clubTabLandingData';
 
 // Conditional logging - only logs in development mode
 const isDev = __DEV__;
@@ -739,6 +740,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
+    invalidateClubLandingCriticalCache();
     setUser(null);
     setSession(null);
     setIsAuthenticated(false);
@@ -788,6 +790,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       
       devLog('✅ AuthContext: Club switched successfully to:', selectedClub.name);
+      invalidateClubLandingCriticalCache();
       setUser(updatedUser);
     } catch (error) {
       console.error('💥 AuthContext: Error switching club:', error);

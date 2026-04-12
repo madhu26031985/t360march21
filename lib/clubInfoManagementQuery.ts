@@ -42,10 +42,41 @@ export interface ClubInfoManagementFormData {
   google_location_link: string | null;
 }
 
+/** Social links from `club_profiles` (Club tab + management). */
+export interface ClubSocialUrlsRow {
+  facebook_url: string | null;
+  twitter_url: string | null;
+  linkedin_url: string | null;
+  instagram_url: string | null;
+  whatsapp_url: string | null;
+  youtube_url: string | null;
+  website_url: string | null;
+}
+
+/** Filled executive-committee role slots (user ids from `club_profiles`) for the Club tab carousel. */
+export interface ClubExcommSlot {
+  key: string;
+  title: string;
+  userId: string;
+}
+
+const EXCOMM_PROFILE_ID_FIELDS: { key: string; title: string; column: string }[] = [
+  { key: 'president', title: 'President', column: 'president_id' },
+  { key: 'vpe', title: 'VP Education', column: 'vpe_id' },
+  { key: 'vpm', title: 'VP Membership', column: 'vpm_id' },
+  { key: 'vppr', title: 'VP Public Relations', column: 'vppr_id' },
+  { key: 'secretary', title: 'Secretary', column: 'secretary_id' },
+  { key: 'treasurer', title: 'Treasurer', column: 'treasurer_id' },
+  { key: 'saa', title: 'Sergeant at Arms', column: 'saa_id' },
+  { key: 'ipp', title: 'Immediate Past President', column: 'ipp_id' },
+];
+
 export interface ClubInfoManagementBundle {
   clubInfo: ClubInfoManagementClubInfo;
   clubData: ClubInfoManagementFormData;
   meetingSchedule: ClubInfoManagementMeetingSchedule;
+  social: ClubSocialUrlsRow | null;
+  excommSlots: ClubExcommSlot[];
 }
 
 export async function fetchClubInfoManagementBundle(clubId: string): Promise<ClubInfoManagementBundle> {
@@ -79,7 +110,22 @@ export async function fetchClubInfoManagementBundle(clubId: string): Promise<Clu
             meeting_start_time,
             meeting_end_time,
             meeting_type,
-            online_meeting_link
+            online_meeting_link,
+            president_id,
+            vpe_id,
+            vpm_id,
+            vppr_id,
+            secretary_id,
+            treasurer_id,
+            saa_id,
+            ipp_id,
+            facebook_url,
+            twitter_url,
+            linkedin_url,
+            instagram_url,
+            whatsapp_url,
+            youtube_url,
+            website_url
           )
         `)
     .eq('id', clubId)
@@ -130,6 +176,26 @@ export async function fetchClubInfoManagementBundle(clubId: string): Promise<Clu
     online_meeting_link: (p?.online_meeting_link as string | null) ?? null,
   };
 
+  const social: ClubSocialUrlsRow | null = p
+    ? {
+        facebook_url: p.facebook_url ?? null,
+        twitter_url: p.twitter_url ?? null,
+        linkedin_url: p.linkedin_url ?? null,
+        instagram_url: p.instagram_url ?? null,
+        whatsapp_url: p.whatsapp_url ?? null,
+        youtube_url: p.youtube_url ?? null,
+        website_url: p.website_url ?? null,
+      }
+    : null;
+
+  const excommSlots: ClubExcommSlot[] = [];
+  if (p) {
+    for (const { key, title, column } of EXCOMM_PROFILE_ID_FIELDS) {
+      const userId = (p[column] as string | null | undefined)?.trim();
+      if (userId) excommSlots.push({ key, title, userId });
+    }
+  }
+
   return {
     clubInfo: {
       id: clubRow.id,
@@ -139,5 +205,7 @@ export async function fetchClubInfoManagementBundle(clubId: string): Promise<Clu
     },
     clubData,
     meetingSchedule,
+    social,
+    excommSlots,
   };
 }

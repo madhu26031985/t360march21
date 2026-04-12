@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Building2,
@@ -24,13 +24,23 @@ import {
   Users,
 } from 'lucide-react-native';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import type { ClubInfoManagementBundle, ClubSocialUrlsRow } from '@/lib/clubInfoManagementQuery';
 import {
-  fetchClubInfoManagementBundle,
-  type ClubInfoManagementBundle,
-} from '@/lib/clubInfoManagementQuery';
+  fetchClubLandingCritical,
+  type ExcommPreviewRow,
+  type MemberPreview,
+  type MemberPreviewClubRole,
+} from '@/lib/clubTabLandingData';
 import { DEFAULT_TOASTMASTERS_CLUB_MISSION } from '@/lib/defaultClubMission';
+import { avatarUrlForDisplay } from '@/lib/avatarDisplayUrl';
+
+/** Web: defer offscreen images; async decode. Native: no-op spread. */
+function webImageExtra(lazy: boolean): Record<string, string> {
+  if (Platform.OS !== 'web') return {};
+  return { loading: lazy ? 'lazy' : 'eager', decoding: 'async' };
+}
 
 const EXCOMM_CAROUSEL_MS = 3000;
 const MEMBERS_CAROUSEL_MS = 2000;
@@ -57,44 +67,11 @@ const C = {
   tileBg: '#FAFAFA',
 };
 
-type ClubSocialRow = {
-  facebook_url: string | null;
-  twitter_url: string | null;
-  linkedin_url: string | null;
-  instagram_url: string | null;
-  whatsapp_url: string | null;
-  youtube_url: string | null;
-  website_url: string | null;
-};
-
-type ExcommPreviewRow = {
-  key: string;
-  title: string;
-  member: { id: string; full_name: string; avatar_url: string | null };
-};
-
-type MemberPreviewClubRole = 'member' | 'visiting_tm' | 'guest';
-
-type MemberPreview = {
-  id: string;
-  full_name: string;
-  avatar_url: string | null;
-  clubRole: MemberPreviewClubRole;
-};
-
 type ClubFaqHeroRow = {
   id: string;
   question: string;
   answer: string;
 };
-
-const PREVIEW_ROLES = ['member', 'visiting_tm', 'guest'] as const;
-
-function normalizePreviewRole(role: string | null | undefined): MemberPreviewClubRole {
-  if (role === 'visiting_tm') return 'visiting_tm';
-  if (role === 'guest') return 'guest';
-  return 'member';
-}
 
 function previewRoleLabel(cr: MemberPreviewClubRole): string {
   switch (cr) {
@@ -106,17 +83,6 @@ function previewRoleLabel(cr: MemberPreviewClubRole): string {
       return 'Member';
   }
 }
-
-const EXCOMM_ROLE_KEYS: { key: string; title: string }[] = [
-  { key: 'president', title: 'President' },
-  { key: 'vpe', title: 'VP Education' },
-  { key: 'vpm', title: 'VP Membership' },
-  { key: 'vppr', title: 'VP Public Relations' },
-  { key: 'secretary', title: 'Secretary' },
-  { key: 'treasurer', title: 'Treasurer' },
-  { key: 'saa', title: 'Sergeant at Arms' },
-  { key: 'ipp', title: 'Immediate Past President' },
-];
 
 function normalizeExternalUrl(raw: string | null | undefined): string | null {
   if (!raw?.trim()) return null;
@@ -294,7 +260,14 @@ function ExcommCarouselCard({
           {row.title}
         </Text>
         {row.member.avatar_url ? (
-          <Image source={{ uri: row.member.avatar_url }} style={styles.excommAvatar} resizeMode="cover" />
+          <Image
+            source={{
+              uri: avatarUrlForDisplay(row.member.avatar_url, 160) ?? row.member.avatar_url,
+            }}
+            style={styles.excommAvatar}
+            resizeMode="cover"
+            {...webImageExtra(false)}
+          />
         ) : (
           <View style={[styles.excommAvatar, styles.excommAvatarPlaceholder]}>
             <Text style={styles.excommInitial} maxFontSizeMultiplier={1.2}>
@@ -423,7 +396,12 @@ function MembersCarouselCard({
         ]}
       >
         {m.avatar_url ? (
-          <Image source={{ uri: m.avatar_url }} style={styles.memberAvatar} resizeMode="cover" />
+          <Image
+            source={{ uri: avatarUrlForDisplay(m.avatar_url, 112) ?? m.avatar_url }}
+            style={styles.memberAvatar}
+            resizeMode="cover"
+            {...webImageExtra(true)}
+          />
         ) : (
           <View style={[styles.memberAvatar, styles.memberAvatarPh]}>
             <Text style={styles.memberInitial} maxFontSizeMultiplier={1.2}>
@@ -484,95 +462,6 @@ function MembersCarouselCard({
       ) : null}
     </View>
   );
-}
-
-async function fetchExcommPreview(clubId: string): Promise<ExcommPreviewRow[]> {
-  const { data: profile, error } = await supabase
-    .from('club_profiles')
-    .select(
-      'president_id, vpe_id, vpm_id, vppr_id, secretary_id, treasurer_id, saa_id, ipp_id'
-    )
-    .eq('club_id', clubId)
-    .maybeSingle();
-
-  if (error || !profile) return [];
-
-  const p = profile as Record<string, string | null>;
-  const slots = EXCOMM_ROLE_KEYS.map((r) => ({
-    key: r.key,
-    title: r.title,
-    userId: p[`${r.key}_id`] ?? null,
-  })).filter((s) => s.userId);
-
-  if (slots.length === 0) return [];
-
-  const ids = slots.map((s) => s.userId as string);
-  const { data: people, error: pe } = await supabase
-    .from('app_user_profiles')
-    .select('id, full_name, avatar_url')
-    .in('id', ids);
-
-  if (pe || !people?.length) return [];
-
-  return slots
-    .map((s) => {
-      const m = people.find((x) => x.id === s.userId);
-      if (!m) return null;
-      return {
-        key: s.key,
-        title: s.title,
-        member: {
-          id: m.id,
-          full_name: m.full_name ?? 'Member',
-          avatar_url: m.avatar_url ?? null,
-        },
-      };
-    })
-    .filter(Boolean) as ExcommPreviewRow[];
-}
-
-async function fetchMembersPreview(clubId: string, limit: number): Promise<MemberPreview[]> {
-  const { data, error } = await supabase
-    .from('app_club_user_relationship')
-    .select(
-      `
-      role,
-      app_user_profiles (
-        id,
-        full_name,
-        avatar_url
-      )
-    `
-    )
-    .eq('club_id', clubId)
-    .eq('is_authenticated', true)
-    .in('role', [...PREVIEW_ROLES])
-    .limit(80);
-
-  if (error || !data?.length) return [];
-
-  const byId = new Map<string, MemberPreview>();
-  for (const row of data) {
-    const r = row as {
-      role: string;
-      app_user_profiles: { id: string; full_name: string; avatar_url: string | null } | null;
-    };
-    const prof = r.app_user_profiles;
-    if (!prof?.id) continue;
-    const clubRole = normalizePreviewRole(r.role);
-    if (!byId.has(prof.id)) {
-      byId.set(prof.id, {
-        id: prof.id,
-        full_name: prof.full_name ?? 'Member',
-        avatar_url: prof.avatar_url ?? null,
-        clubRole,
-      });
-    }
-  }
-
-  const rows = Array.from(byId.values());
-  rows.sort((a, b) => a.full_name.localeCompare(b.full_name));
-  return rows.slice(0, limit);
 }
 
 type ClubStatsCounts = {
@@ -713,7 +602,7 @@ async function fetchPublishedClubQuotesRollingDays(
       .select('id, quote, meaning, usage, app_club_meeting(meeting_date)')
       .eq('club_id', clubId)
       .eq('is_published', true)
-      .limit(400);
+      .limit(120);
     if (error || !data?.length) {
       if (error) console.warn('Club quotes of the day:', error.message);
       return [];
@@ -761,7 +650,7 @@ async function fetchPublishedClubIdiomsRollingDays(
       .select('id, idiom, meaning, usage, app_club_meeting(meeting_date)')
       .eq('club_id', clubId)
       .eq('is_published', true)
-      .limit(400);
+      .limit(120);
     if (error || !data?.length) {
       if (error) console.warn('Club idioms of the day:', error.message);
       return [];
@@ -820,7 +709,7 @@ async function fetchPublishedClubWordsLast6Months(clubId: string): Promise<ClubW
       .select('id, word, meaning, part_of_speech, usage, app_club_meeting(meeting_date)')
       .eq('club_id', clubId)
       .eq('is_published', true)
-      .limit(400);
+      .limit(120);
 
     if (error || !data?.length) {
       if (error) console.warn('Club words of the day:', error.message);
@@ -1674,9 +1563,10 @@ function PreparedSpeechesHighlightCarousel({ rows }: { rows: PreparedSpeechDeliv
           <View style={styles.preparedSpeechLeft}>
             {row.avatarUrl ? (
               <Image
-                source={{ uri: row.avatarUrl }}
+                source={{ uri: avatarUrlForDisplay(row.avatarUrl, 128) ?? row.avatarUrl }}
                 style={styles.preparedSpeechAvatar}
                 resizeMode="cover"
+                {...webImageExtra(true)}
               />
             ) : (
               <View style={[styles.preparedSpeechAvatar, styles.preparedSpeechAvatarPh]}>
@@ -1863,7 +1753,12 @@ function DeliveredHighlightCarousel({
           </View>
         ) : null}
         {row.avatarUrl ? (
-          <Image source={{ uri: row.avatarUrl }} style={styles.edSpeechAvatar} resizeMode="cover" />
+          <Image
+            source={{ uri: avatarUrlForDisplay(row.avatarUrl, 144) ?? row.avatarUrl }}
+            style={styles.edSpeechAvatar}
+            resizeMode="cover"
+            {...webImageExtra(true)}
+          />
         ) : (
           <View style={[styles.edSpeechAvatar, styles.edSpeechAvatarPh]}>
             <Text style={styles.edSpeechInitial} maxFontSizeMultiplier={1.2}>
@@ -1978,9 +1873,9 @@ function ClubStatsStaticCard({
 }
 
 export default function MyClub() {
-  const { user, isAuthenticated, refreshUserProfile } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [bundle, setBundle] = useState<ClubInfoManagementBundle | null>(null);
-  const [social, setSocial] = useState<ClubSocialRow | null>(null);
+  const [social, setSocial] = useState<ClubSocialUrlsRow | null>(null);
   const [excommPreview, setExcommPreview] = useState<ExcommPreviewRow[]>([]);
   const [membersPreview, setMembersPreview] = useState<MemberPreview[]>([]);
   const [clubStatsPeriodDays, setClubStatsPeriodDays] = useState(180);
@@ -2001,30 +1896,14 @@ export default function MyClub() {
   const [clubWotdRows, setClubWotdRows] = useState<ClubWotdCarouselRow[]>([]);
   const [landingLoading, setLandingLoading] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (isAuthenticated) refreshUserProfile();
-    }, [isAuthenticated, refreshUserProfile])
-  );
-
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      if (!user?.currentClubId) {
-        setBundle(null);
-        setSocial(null);
-        setExcommPreview([]);
-        setMembersPreview([]);
-        setEducationalSpeechesDelivered([]);
-        setToastmasterThemesDelivered([]);
-        setPreparedSpeechesDelivered([]);
-        setClubFaqItems([]);
-        setClubQuoteRows([]);
-        setClubIdiomRows([]);
-        setClubWotdRows([]);
-        return;
-      }
-      setLandingLoading(true);
+
+    if (!user?.currentClubId) {
+      setBundle(null);
+      setSocial(null);
+      setExcommPreview([]);
+      setMembersPreview([]);
       setEducationalSpeechesDelivered([]);
       setToastmasterThemesDelivered([]);
       setPreparedSpeechesDelivered([]);
@@ -2032,48 +1911,58 @@ export default function MyClub() {
       setClubQuoteRows([]);
       setClubIdiomRows([]);
       setClubWotdRows([]);
+      return;
+    }
+
+    const clubId = user.currentClubId;
+
+    setEducationalSpeechesDelivered([]);
+    setToastmasterThemesDelivered([]);
+    setPreparedSpeechesDelivered([]);
+    setClubFaqItems([]);
+    setClubQuoteRows([]);
+    setClubIdiomRows([]);
+    setClubWotdRows([]);
+
+    const runCritical = async () => {
+      setLandingLoading(true);
       try {
-        const clubId = user.currentClubId;
-        const [
-          b,
-          socialRes,
-          excomm,
-          membersP,
-          edSpeeches,
-          tmThemes,
-          prepSpeeches,
-          faqRes,
-          quoteRows,
-          idiomRows,
-          wotdRows,
-        ] = await Promise.all([
-          fetchClubInfoManagementBundle(clubId),
-          supabase
-            .from('club_profiles')
-            .select(
-              'facebook_url, twitter_url, linkedin_url, instagram_url, whatsapp_url, youtube_url, website_url'
-            )
-            .eq('club_id', clubId)
-            .maybeSingle(),
-          fetchExcommPreview(clubId),
-          fetchMembersPreview(clubId, 24),
-          fetchEducationalSpeechesDeliveredLast6Months(clubId),
-          fetchToastmasterThemesDeliveredLast6Months(clubId),
-          fetchPreparedSpeechesDeliveredLast6Months(clubId),
-          supabase
-            .from('club_faq_items')
-            .select('id, question, answer')
-            .eq('club_id', clubId)
-            .order('sort_order', { ascending: true }),
-          fetchPublishedClubQuotesRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
-          fetchPublishedClubIdiomsRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
-          fetchPublishedClubWordsLast6Months(clubId),
-        ]);
+        const { bundle: b, excomm, members: membersP } = await fetchClubLandingCritical(clubId);
         if (cancelled) return;
         setBundle(b);
-        setSocial((socialRes.data as ClubSocialRow) ?? null);
+        setSocial(b.social);
         setExcommPreview(excomm);
         setMembersPreview(membersP);
+      } catch (e) {
+        console.error('Club landing critical load error:', e);
+        if (!cancelled) {
+          setBundle(null);
+          setSocial(null);
+          setExcommPreview([]);
+          setMembersPreview([]);
+        }
+      } finally {
+        if (!cancelled) setLandingLoading(false);
+      }
+    };
+
+    const runSecondary = async () => {
+      try {
+        const [edSpeeches, tmThemes, prepSpeeches, faqRes, quoteRows, idiomRows, wotdRows] =
+          await Promise.all([
+            fetchEducationalSpeechesDeliveredLast6Months(clubId),
+            fetchToastmasterThemesDeliveredLast6Months(clubId),
+            fetchPreparedSpeechesDeliveredLast6Months(clubId),
+            supabase
+              .from('club_faq_items')
+              .select('id, question, answer')
+              .eq('club_id', clubId)
+              .order('sort_order', { ascending: true }),
+            fetchPublishedClubQuotesRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
+            fetchPublishedClubIdiomsRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
+            fetchPublishedClubWordsLast6Months(clubId),
+          ]);
+        if (cancelled) return;
         setEducationalSpeechesDelivered(edSpeeches);
         setToastmasterThemesDelivered(tmThemes);
         setPreparedSpeechesDelivered(prepSpeeches);
@@ -2095,12 +1984,8 @@ export default function MyClub() {
         setClubIdiomRows(idiomRows);
         setClubWotdRows(wotdRows);
       } catch (e) {
-        console.error('Club landing load error:', e);
+        console.error('Club landing secondary load error:', e);
         if (!cancelled) {
-          setBundle(null);
-          setSocial(null);
-          setExcommPreview([]);
-          setMembersPreview([]);
           setEducationalSpeechesDelivered([]);
           setToastmasterThemesDelivered([]);
           setPreparedSpeechesDelivered([]);
@@ -2109,18 +1994,20 @@ export default function MyClub() {
           setClubIdiomRows([]);
           setClubWotdRows([]);
         }
-      } finally {
-        if (!cancelled) setLandingLoading(false);
       }
     };
-    load();
+
+    void runCritical();
+    void runSecondary();
+
     return () => {
       cancelled = true;
     };
   }, [user?.currentClubId]);
 
   useEffect(() => {
-    if (!user?.currentClubId) {
+    const clubId = user?.currentClubId;
+    if (!clubId) {
       setClubStats(null);
       setClubStatsLoading(false);
       return;
@@ -2129,7 +2016,7 @@ export default function MyClub() {
     (async () => {
       setClubStatsLoading(true);
       try {
-        const s = await fetchClubStatsRollingDays(user.currentClubId, clubStatsPeriodDays);
+        const s = await fetchClubStatsRollingDays(clubId, clubStatsPeriodDays);
         if (!cancelled) setClubStats(s);
       } catch {
         if (!cancelled) setClubStats(emptyClubStats());
