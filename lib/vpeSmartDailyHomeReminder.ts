@@ -13,14 +13,12 @@ export function computeVpeSmartDailyHomeReminder(
   const m = snap.meeting;
   if (!m) {
     return {
-      text:
-        '💡 Smart Daily Insights\nWhen you have an upcoming open meeting, daily WhatsApp nudges show here — tap to preview.',
+      text: '💡 Smart Daily Insights\nNudges show once you have an open meeting. Tap to preview.',
     };
   }
   if (isWithinOneHourOfMeetingStart(m.meeting_date, m.meeting_start_time)) {
     return {
-      text:
-        '💡 Smart Daily Insights\nNudges pause within 1 hour of start. Tap after the meeting for the next cycle.',
+      text: '💡 Smart Daily Insights\nPaused near start time. Back after the meeting.',
     };
   }
   const today = localISODate(new Date());
@@ -32,6 +30,6 @@ export function computeVpeSmartDailyHomeReminder(
     };
   }
   return {
-    text: `💡 Smart Daily Insights\nYour next meeting is in ${daysUntil} days — book-role nudges unlock within 7 days. Tap to preview.`,
+    text: `💡 Smart Daily Insights\nMeeting in ${daysUntil} days · nudges start 7 days before. Tap to preview.`,
   };
 }

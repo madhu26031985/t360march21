@@ -2052,7 +2052,7 @@ export function MeetingAgendaViewContent({
 
       {!embedded && (
         <View style={[styles.footerNav, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
-          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/index')} activeOpacity={0.75}>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
             <Home size={16} color={theme.colors.textSecondary} />
             <Text style={[styles.footerNavLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>Home</Text>
           </TouchableOpacity>

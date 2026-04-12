@@ -553,6 +553,8 @@ export default function ClubMeetings() {
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [expandedNextMeeting, setExpandedNextMeeting] = useState<string | null>(null);
   const [openMeetingTab, setOpenMeetingTab] = useState<'actions' | 'roles' | 'evaluation'>('actions');
+  /** Expand/collapse the open meeting card (tabs + actions) to reduce scrolling */
+  const [openMeetingDetailExpanded, setOpenMeetingDetailExpanded] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [hasOnlyOneOpenMeeting, setHasOnlyOneOpenMeeting] = useState(false);
   const [vpeName, setVpeName] = useState<string>('VPE');
@@ -609,6 +611,10 @@ export default function ClubMeetings() {
       setIsLoading(false);
     }
   }, [user?.currentClubId]);
+
+  useEffect(() => {
+    setOpenMeetingDetailExpanded(true);
+  }, [currentMeeting?.id]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -1278,15 +1284,6 @@ export default function ClubMeetings() {
     } finally {
       hasLoadedOnce.current = true;
       if (isFirstLoad) setIsLoading(false);
-    }
-  };
-
-  const handleMeetingPress = (meeting: Meeting) => {
-    if (selectedMeeting?.id === meeting.id) {
-      setSelectedMeeting(null);
-    } else {
-      setSelectedMeeting(meeting);
-      setOpenMeetingTab('actions');
     }
   };
 
@@ -2035,7 +2032,7 @@ export default function ClubMeetings() {
 
                   return (
                     <View key={currentMeeting.id}>
-                      {true ? (
+                      {openMeetingDetailExpanded ? (
                         /* Unified expanded box - meeting bar + tabs + content in one card */
                         <View style={[styles.unifiedExpandedMeetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                           <View style={styles.unifiedMeetingBar}>
@@ -2059,7 +2056,20 @@ export default function ClubMeetings() {
                                   Mode: {formatMeetingMode(currentMeeting.meeting_mode)}
                                 </Text>
                               </View>
-                              <View style={styles.meetingActionSpacer} />
+                              <TouchableOpacity
+                                style={[styles.enterMeetingButton, { backgroundColor: theme.colors.primary }]}
+                                onPress={() => {
+                                  setOpenMeetingDetailExpanded(false);
+                                  setSelectedMeeting(null);
+                                }}
+                                activeOpacity={0.8}
+                                accessibilityLabel="Collapse meeting details"
+                              >
+                                <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>
+                                  Close
+                                </Text>
+                                <ChevronUp size={16} color="#ffffff" />
+                              </TouchableOpacity>
                             </View>
                           </View>
                           <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
@@ -2121,8 +2131,13 @@ export default function ClubMeetings() {
                             </View>
                             <TouchableOpacity
                               style={[styles.enterMeetingButton, { backgroundColor: theme.colors.primary }]}
-                              onPress={() => handleMeetingPress(currentMeeting)}
+                              onPress={() => {
+                                setOpenMeetingDetailExpanded(true);
+                                setSelectedMeeting(currentMeeting);
+                                setOpenMeetingTab('actions');
+                              }}
                               activeOpacity={0.8}
+                              accessibilityLabel="Expand meeting details"
                             >
                               <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>Open</Text>
                               <ChevronDown size={16} color="#ffffff" />
