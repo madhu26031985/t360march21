@@ -1,15 +1,30 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useState, useRef } from 'react';
-import { User, Mail, Eye, EyeOff, CircleCheck as CheckCircle, Mail as MailIcon, Lock } from 'lucide-react-native';
+import { useState, useRef, useEffect } from 'react';
+import * as WebBrowser from 'expo-web-browser';
+import { User, Mail, Eye, EyeOff, Lock } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { GoogleGLogo } from '@/components/auth/GoogleGLogo';
+import { AppleMark } from '@/components/auth/AppleMark';
 
 export default function SignUp() {
   const { theme } = useTheme();
-  const { signUp, verifyEmailOtp, resendVerificationEmail } = useAuth();
+  const { signUp, verifyEmailOtp, resendVerificationEmail, signInWithGoogle, signInWithApple, isAuthenticated } =
+    useAuth();
   
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -18,6 +33,8 @@ export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [signUpSuccess, setSignUpSuccess] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
@@ -25,6 +42,48 @@ export default function SignUp() {
 
   // Refs for OTP inputs
   const otpInputRefs = useRef<Array<TextInput | null>>([null, null, null, null, null, null]);
+
+  const oauthBusy = googleLoading || appleLoading;
+
+  useEffect(() => {
+    void WebBrowser.maybeCompleteAuthSession();
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated]);
+
+  const handleGoogleSignUp = async () => {
+    setGoogleLoading(true);
+    try {
+      const result = await signInWithGoogle();
+      if (!result.success && result.error) {
+        Alert.alert('Google', result.error);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Google sign in failed';
+      Alert.alert('Error', msg);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleAppleSignUp = async () => {
+    setAppleLoading(true);
+    try {
+      const result = await signInWithApple();
+      if (!result.success && result.error) {
+        Alert.alert('Sign in with Apple', result.error);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Apple sign in failed';
+      Alert.alert('Error', msg);
+    } finally {
+      setAppleLoading(false);
+    }
+  };
 
   const handleSignUp = async () => {
     // Check each field individually for better error messages
@@ -380,12 +439,56 @@ export default function SignUp() {
 
           {/* Sign Up Button */}
           <TouchableOpacity
-            style={[styles.signUpButton, isLoading && styles.signUpButtonDisabled]}
+            style={[styles.signUpButton, (isLoading || oauthBusy) && styles.signUpButtonDisabled]}
             onPress={handleSignUp}
-            disabled={isLoading}
+            disabled={isLoading || oauthBusy}
           >
             <Text style={styles.signUpButtonText} maxFontSizeMultiplier={1.3}>
               {isLoading ? 'Creating Account...' : 'Sign Up'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.orRow}>
+            <View style={[styles.orLine, { backgroundColor: theme.colors.border }]} />
+            <Text style={[styles.orText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              or
+            </Text>
+            <View style={[styles.orLine, { backgroundColor: theme.colors.border }]} />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.googleButton, (googleLoading || isLoading) && styles.googleButtonDisabled]}
+            onPress={handleGoogleSignUp}
+            disabled={googleLoading || isLoading || appleLoading}
+            activeOpacity={0.85}
+          >
+            <View style={styles.googleIconSlot} pointerEvents="none">
+              {googleLoading ? (
+                <ActivityIndicator color="#f0f6fc" size="small" />
+              ) : (
+                <GoogleGLogo size={18} />
+              )}
+            </View>
+            <Text style={styles.googleButtonText} maxFontSizeMultiplier={1.2}>
+              Continue with Google
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.appleButton, (appleLoading || isLoading) && styles.appleButtonDisabled]}
+            onPress={handleAppleSignUp}
+            disabled={appleLoading || isLoading || googleLoading}
+            activeOpacity={0.85}
+          >
+            <View style={styles.appleIconSlot} pointerEvents="none">
+              {appleLoading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <AppleMark size={18} color="#FFFFFF" />
+              )}
+            </View>
+            <Text style={styles.appleButtonText} maxFontSizeMultiplier={1.2}>
+              Sign in with Apple
             </Text>
           </TouchableOpacity>
         </View>
@@ -508,6 +611,91 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
     letterSpacing: 0.4,
+  },
+  orRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 4,
+    width: '100%',
+  },
+  orLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth * 2,
+    minHeight: 1,
+    opacity: 0.9,
+  },
+  orText: {
+    fontSize: 12,
+    fontWeight: '500',
+    paddingHorizontal: 14,
+    textTransform: 'lowercase',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginTop: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    backgroundColor: '#21262d',
+    borderWidth: 1,
+    borderColor: '#30363d',
+    minHeight: 44,
+  },
+  googleButtonDisabled: {
+    opacity: 0.72,
+  },
+  googleIconSlot: {
+    position: 'absolute',
+    left: 16,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleButtonText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#f0f6fc',
+    letterSpacing: -0.2,
+  },
+  appleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginTop: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#000000',
+    minHeight: 44,
+  },
+  appleButtonDisabled: {
+    opacity: 0.72,
+  },
+  appleIconSlot: {
+    position: 'absolute',
+    left: 16,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appleButtonText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
   bottomSection: {
     alignItems: 'center',

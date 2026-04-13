@@ -7,20 +7,41 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { GoogleGLogo } from '@/components/auth/GoogleGLogo';
+import { AppleMark } from '@/components/auth/AppleMark';
 
 export default function Login() {
   const { theme } = useTheme();
-  const { signIn, signInWithGoogle, isAuthenticated } = useAuth();
+  const { signIn, signInWithGoogle, signInWithApple, isAuthenticated } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [signInError, setSignInError] = useState('');
 
   useEffect(() => {
     void WebBrowser.maybeCompleteAuthSession();
+  }, []);
+
+  // OAuth redirect failures (e.g. Apple) land with ?error=&error_description= from Supabase.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const search = window.location.search;
+    if (!search || search.length < 2) return;
+    const params = new URLSearchParams(search);
+    const desc = params.get('error_description');
+    const err = params.get('error');
+    if (!err && !desc) return;
+    let msg = desc || err || 'Sign in failed';
+    try {
+      msg = decodeURIComponent(msg.replace(/\+/g, ' '));
+    } catch {
+      /* keep raw */
+    }
+    setSignInError(msg);
+    window.history.replaceState({}, document.title, window.location.pathname);
   }, []);
 
   useEffect(() => {
@@ -91,6 +112,8 @@ export default function Login() {
     router.push('/signup');
   };
 
+  const oauthBusy = googleLoading || appleLoading;
+
   const handleGoogleSignIn = async () => {
     setSignInError('');
     setGoogleLoading(true);
@@ -106,6 +129,24 @@ export default function Login() {
       Alert.alert('Error', msg);
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setSignInError('');
+    setAppleLoading(true);
+    try {
+      const result = await signInWithApple();
+      if (!result.success && result.error) {
+        setSignInError(result.error);
+        Alert.alert('Sign in with Apple', result.error);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Apple sign in failed';
+      setSignInError(msg);
+      Alert.alert('Error', msg);
+    } finally {
+      setAppleLoading(false);
     }
   };
 
@@ -190,9 +231,9 @@ export default function Login() {
 
           {/* Sign In Button */}
           <TouchableOpacity
-            style={[styles.signInButton, (isLoading || googleLoading) && styles.signInButtonDisabled]}
+            style={[styles.signInButton, (isLoading || oauthBusy) && styles.signInButtonDisabled]}
             onPress={handleSignIn}
-            disabled={isLoading || googleLoading}
+            disabled={isLoading || oauthBusy}
           >
             <Text style={styles.signInButtonText} maxFontSizeMultiplier={1.3}>
               {isLoading ? 'Signing In...' : 'Sign In'}
@@ -213,9 +254,9 @@ export default function Login() {
           </View>
 
           <TouchableOpacity
-            style={[styles.googleButton, googleLoading && styles.googleButtonDisabled]}
+            style={[styles.googleButton, (googleLoading || isLoading) && styles.googleButtonDisabled]}
             onPress={handleGoogleSignIn}
-            disabled={googleLoading || isLoading}
+            disabled={googleLoading || isLoading || appleLoading}
             activeOpacity={0.85}
           >
             <View style={styles.googleIconSlot} pointerEvents="none">
@@ -227,6 +268,24 @@ export default function Login() {
             </View>
             <Text style={styles.googleButtonText} maxFontSizeMultiplier={1.2}>
               Continue with Google
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.appleButton, (appleLoading || isLoading) && styles.appleButtonDisabled]}
+            onPress={handleAppleSignIn}
+            disabled={appleLoading || isLoading || googleLoading}
+            activeOpacity={0.85}
+          >
+            <View style={styles.appleIconSlot} pointerEvents="none">
+              {appleLoading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <AppleMark size={18} color="#FFFFFF" />
+              )}
+            </View>
+            <Text style={styles.appleButtonText} maxFontSizeMultiplier={1.2}>
+              Sign in with Apple
             </Text>
           </TouchableOpacity>
 
@@ -419,6 +478,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#f0f6fc',
+    letterSpacing: -0.2,
+  },
+  appleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginTop: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#000000',
+    minHeight: 44,
+  },
+  appleButtonDisabled: {
+    opacity: 0.72,
+  },
+  appleIconSlot: {
+    position: 'absolute',
+    left: 16,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appleButtonText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
     letterSpacing: -0.2,
   },
   bottomSection: {

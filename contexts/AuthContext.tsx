@@ -49,6 +49,8 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   /** Opens Google OAuth (web: full redirect; native: in-app browser + code/hash exchange). */
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
+  /** Same flow as Google; enable Apple in Supabase Auth → Providers. */
+  signInWithApple: () => Promise<{ success: boolean; error?: string }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
 
@@ -722,17 +724,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Linking.createURL('/login');
   };
 
-  const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+  const signInWithOAuthProvider = async (
+    provider: 'google' | 'apple',
+    providerLabel: string
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       if (!supabase) {
         return { success: false, error: 'Authentication service not available' };
       }
 
       const redirectTo = getOAuthRedirectUrl();
-      devLog('🔐 AuthContext: Google OAuth redirectTo:', redirectTo);
+      devLog(`🔐 AuthContext: ${providerLabel} OAuth redirectTo:`, redirectTo);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider,
         options: {
           redirectTo,
           skipBrowserRedirect: Platform.OS !== 'web',
@@ -740,12 +745,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        devWarn('Google OAuth start error:', error.message);
+        devWarn(`${providerLabel} OAuth start error:`, error.message);
         return { success: false, error: error.message };
       }
 
       if (!data?.url) {
-        return { success: false, error: 'No OAuth URL returned. Enable Google in Supabase Auth providers.' };
+        return {
+          success: false,
+          error: `No OAuth URL returned. Enable ${providerLabel} in Supabase Auth providers.`,
+        };
       }
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -760,7 +768,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (authResult.type !== 'success' || !authResult.url) {
-        return { success: false, error: 'Could not complete Google sign in' };
+        return { success: false, error: `Could not complete ${providerLabel} sign in` };
       }
 
       const incoming = authResult.url;
@@ -805,13 +813,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true };
       }
 
-      return { success: false, error: 'Unexpected response from Google sign in' };
+      return { success: false, error: `Unexpected response from ${providerLabel} sign in` };
     } catch (e) {
-      logError('Google sign in error:', e);
-      const msg = e instanceof Error ? e.message : 'Google sign in failed';
+      logError(`${providerLabel} sign in error:`, e);
+      const msg = e instanceof Error ? e.message : `${providerLabel} sign in failed`;
       return { success: false, error: msg };
     }
   };
+
+  const signInWithGoogle = () => signInWithOAuthProvider('google', 'Google');
+
+  const signInWithApple = () => signInWithOAuthProvider('apple', 'Apple');
 
   const resetPassword = async (email: string): Promise<{ success: boolean; error?: string }> => {
     try {
@@ -1053,6 +1065,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       retryConnection,
       signIn,
       signInWithGoogle,
+      signInWithApple,
       signUp,
       resetPassword,
       signOut,
