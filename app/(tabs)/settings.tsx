@@ -397,6 +397,12 @@ Welcome to a seamless digital experience! 🚀`;
                   <Text style={[styles.profileEmail, { color: N.textSecondary }]} maxFontSizeMultiplier={1.3}>
                     {user?.email || 'user@email.com'}
                   </Text>
+                  {user?.email?.toLowerCase().endsWith('@privaterelay.appleid.com') ? (
+                    <Text style={[styles.profileAppleRelayNote, { color: N.textTertiary }]} maxFontSizeMultiplier={1.2}>
+                      Sign in with Apple shared a private relay email (Hide My Email). It is not the same as your Gmail
+                      address, and Supabase treats it as a separate account unless you link identities.
+                    </Text>
+                  ) : null}
                 </View>
               </View>
               <TouchableOpacity
@@ -733,6 +739,11 @@ const styles = StyleSheet.create({
   profileEmail: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  profileAppleRelayNote: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 8,
   },
   editProfileButton: {
     alignSelf: 'flex-start',
