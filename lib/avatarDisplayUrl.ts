@@ -27,11 +27,12 @@ export function avatarUrlForDisplay(
     return raw;
   }
 
-  const edge = Math.min(512, Math.max(48, Math.round(maxEdgePx)));
+  const edge = Math.min(512, Math.max(24, Math.round(maxEdgePx)));
+  const quality = edge <= 40 ? 45 : edge <= 72 ? 55 : 62;
   const base = raw.split('#')[0];
   const rendered = base.replace(OBJECT_PUBLIC, RENDER_PUBLIC);
   if (rendered === base) return raw;
 
   const sep = base.includes('?') ? '&' : '?';
-  return `${rendered}${sep}width=${edge}&height=${edge}&resize=cover&quality=78`;
+  return `${rendered}${sep}width=${edge}&height=${edge}&resize=cover&quality=${quality}`;
 }

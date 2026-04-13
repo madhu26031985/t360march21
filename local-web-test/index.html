@@ -106,6 +106,28 @@
       </p>
 
       <div class="card">
+        <p style="margin: 0 0 0.5rem; font-size: 0.875rem">
+          <strong>Google sign-in (Supabase):</strong>
+          <a href="/google-auth.html">Open local Google OAuth test</a>
+          — uses <code>.env</code> and shows the exact redirect URL to paste into Supabase.
+        </p>
+      </div>
+
+      <div class="card">
+        <p style="margin: 0 0 0.75rem; font-size: 0.875rem">
+          <strong>3G-style testing:</strong> DevTools → <strong>Network</strong> → throttling →
+          <strong>Slow 3G</strong>, then reload and run the requests below. Times include
+          download + server work on localhost.
+        </p>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem">
+          <button type="button" id="ping">Small JSON (<code>/api/ping</code>)</button>
+          <button type="button" id="blob">~100 KB download (<code>/api/blob?kb=100</code>)</button>
+          <button type="button" id="delay">Server waits 2s (<code>/api/delay?ms=2000</code>)</button>
+        </div>
+        <div id="net-out" aria-live="polite" style="margin-top: 0.75rem; font-family: ui-monospace, monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; color: var(--muted)"></div>
+      </div>
+
+      <div class="card">
         <label for="msg">Echo (client-only)</label>
         <input id="msg" type="text" placeholder="Type something…" value="Hello" />
         <button type="button" id="go">Run</button>
@@ -116,16 +138,39 @@
         <p style="margin: 0; font-size: 0.875rem">
           <strong>Full app (Expo web):</strong>
           <code>npm run web</code>
+          &nbsp;·&nbsp;
+          <strong>This static lab:</strong>
+          <code>npm run local:test-web</code>
         </p>
       </div>
     </main>
     <script>
       const msg = document.getElementById("msg");
       const out = document.getElementById("out");
+      const netOut = document.getElementById("net-out");
+
       document.getElementById("go").addEventListener("click", () => {
         const t = new Date().toISOString();
         out.textContent = "[" + t + "] You typed: " + (msg.value || "(empty)");
       });
+
+      async function runNet(label, url) {
+        netOut.textContent = label + " …";
+        const t0 = performance.now();
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          const text = await r.text();
+          const ms = Math.round(performance.now() - t0);
+          const preview = text.length > 120 ? text.slice(0, 120) + "… (" + text.length + " chars)" : text;
+          netOut.textContent = label + "\nHTTP " + r.status + " in " + ms + " ms\n" + preview;
+        } catch (e) {
+          netOut.textContent = label + "\nError: " + (e && e.message ? e.message : String(e));
+        }
+      }
+
+      document.getElementById("ping").addEventListener("click", () => runNet("Ping", "/api/ping"));
+      document.getElementById("blob").addEventListener("click", () => runNet("Blob 100KB", "/api/blob?kb=100"));
+      document.getElementById("delay").addEventListener("click", () => runNet("Delay 2s", "/api/delay?ms=2000"));
     </script>
   </body>
 </html>

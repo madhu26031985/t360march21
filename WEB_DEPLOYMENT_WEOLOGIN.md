@@ -89,7 +89,9 @@ Add these URLs in Supabase Dashboard → Authentication → URL Configuration:
 
 ## 5. Local Development at /weblogin
 
-To test locally at `/weblogin`:
+**Expo dev (`npm run web`):** Expo Router does **not** mount the app under `/weblogin` in development (base URL is only applied in production builds). You can open **`http://localhost:8081/`** directly, or **`http://localhost:8081/weblogin/`** — the latter is rewritten in dev (see `app/weblogin.web.tsx`) so OAuth redirects and bookmarks still work.
+
+To test a **production-like** static build at `/weblogin`:
 
 ```bash
 npx serve dist -l 3000
@@ -97,7 +99,7 @@ npx serve dist -l 3000
 
 Then open `http://localhost:3000/weblogin` (the app is in `dist/weblogin/`)
 
-Or run the Expo web dev server (serves at root by default):
+Or run the Expo web dev server:
 
 ```bash
 npm run web

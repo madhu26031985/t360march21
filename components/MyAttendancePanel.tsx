@@ -23,6 +23,9 @@ type MonthStat = {
   attendanceRate: number;
 };
 
+const CACHE_TTL_MS = 2 * 60 * 1000;
+let attendanceCache: { key: string; at: number; rows: AttendanceRow[] } | null = null;
+
 function monthKey(dateStr: string): string {
   const d = new Date(dateStr);
   const y = d.getFullYear();
@@ -50,6 +53,15 @@ export default function MyAttendancePanel() {
       setError(null);
       return;
     }
+    const cacheKey = `${user.currentClubId}:${user.id}`;
+    const isFresh =
+      attendanceCache && attendanceCache.key === cacheKey && Date.now() - attendanceCache.at < CACHE_TTL_MS;
+    if (isFresh && attendanceCache) {
+      setRows(attendanceCache.rows);
+      setLoading(false);
+      setError(null);
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -64,7 +76,9 @@ export default function MyAttendancePanel() {
         .order('meeting_date', { ascending: false });
 
       if (fetchError) throw fetchError;
-      setRows((data || []) as AttendanceRow[]);
+      const nextRows = (data || []) as AttendanceRow[];
+      attendanceCache = { key: cacheKey, at: Date.now(), rows: nextRows };
+      setRows(nextRows);
     } catch (e) {
       console.error('MyAttendancePanel load failed:', e);
       setRows([]);

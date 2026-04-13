@@ -18,17 +18,24 @@ import {
   Building2,
   BookOpen,
   CircleHelp,
+  Globe,
+  Link as LinkIcon,
+  Instagram,
   Lightbulb,
+  Linkedin,
   MessageCircle,
   Mic2,
+  Facebook,
+  Twitter,
   Users,
+  Youtube,
 } from 'lucide-react-native';
-import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { ClubInfoManagementBundle, ClubSocialUrlsRow } from '@/lib/clubInfoManagementQuery';
 import {
   fetchClubLandingCritical,
+  getCachedClubLandingCritical,
   type ExcommPreviewRow,
   type MemberPreview,
   type MemberPreviewClubRole,
@@ -133,26 +140,24 @@ function formatCharterDateShort(dateStr: string | null | undefined): string | nu
   }
 }
 
-type SocialFaIconStyle = 'brand' | 'solid';
-
-function socialIconForKey(key: string): { name: string; iconStyle: SocialFaIconStyle } {
+function socialIconForKey(key: string) {
   switch (key) {
     case 'web':
-      return { name: 'globe', iconStyle: 'solid' };
+      return Globe;
     case 'wa':
-      return { name: 'whatsapp', iconStyle: 'brand' };
+      return MessageCircle;
     case 'fb':
-      return { name: 'facebook', iconStyle: 'brand' };
+      return Facebook;
     case 'ig':
-      return { name: 'instagram', iconStyle: 'brand' };
+      return Instagram;
     case 'li':
-      return { name: 'linkedin', iconStyle: 'brand' };
+      return Linkedin;
     case 'x':
-      return { name: 'x-twitter', iconStyle: 'brand' };
+      return Twitter;
     case 'yt':
-      return { name: 'youtube', iconStyle: 'brand' };
+      return Youtube;
     default:
-      return { name: 'link', iconStyle: 'solid' };
+      return LinkIcon;
   }
 }
 
@@ -1927,7 +1932,19 @@ export default function MyClub() {
     const runCritical = async () => {
       setLandingLoading(true);
       try {
-        const { bundle: b, excomm, members: membersP } = await fetchClubLandingCritical(clubId);
+        const warm = await getCachedClubLandingCritical(clubId);
+        if (!cancelled && warm) {
+          setBundle(warm.bundle);
+          setSocial(warm.bundle.social);
+          setExcommPreview(warm.excomm);
+          setMembersPreview(warm.members);
+          // Keep spinner off while refreshing in background.
+          setLandingLoading(false);
+        }
+
+        const { bundle: b, excomm, members: membersP } = await fetchClubLandingCritical(clubId, {
+          bypassCache: !!warm,
+        });
         if (cancelled) return;
         setBundle(b);
         setSocial(b.social);
@@ -1998,10 +2015,13 @@ export default function MyClub() {
     };
 
     void runCritical();
-    void runSecondary();
+    const secondaryTimer = setTimeout(() => {
+      void runSecondary();
+    }, 1400);
 
     return () => {
       cancelled = true;
+      clearTimeout(secondaryTimer);
     };
   }, [user?.currentClubId]);
 
@@ -2013,21 +2033,31 @@ export default function MyClub() {
       return;
     }
     let cancelled = false;
-    (async () => {
-      setClubStatsLoading(true);
-      try {
-        const s = await fetchClubStatsRollingDays(clubId, clubStatsPeriodDays);
-        if (!cancelled) setClubStats(s);
-      } catch {
-        if (!cancelled) setClubStats(emptyClubStats());
-      } finally {
-        if (!cancelled) setClubStatsLoading(false);
-      }
-    })();
+    const statsTimer = setTimeout(() => {
+      (async () => {
+        if (!clubStats) setClubStatsLoading(true);
+        try {
+          const s = await fetchClubStatsRollingDays(clubId, clubStatsPeriodDays);
+          if (!cancelled) setClubStats(s);
+        } catch {
+          if (!cancelled) setClubStats(emptyClubStats());
+        } finally {
+          if (!cancelled) setClubStatsLoading(false);
+        }
+      })();
+    }, 1800);
     return () => {
       cancelled = true;
+      clearTimeout(statsTimer);
     };
   }, [user?.currentClubId, clubStatsPeriodDays]);
+
+  useEffect(() => {
+    // Keep skeleton visible only when we truly have no data.
+    if (clubStats && clubStatsLoading) {
+      setClubStatsLoading(false);
+    }
+  }, [clubStats, clubStatsLoading]);
 
   const handleFeaturePress = (featurePath: string) => {
     if (!user?.currentClubId) {
@@ -2334,9 +2364,7 @@ export default function MyClub() {
                   {socialLinks.length > 0 ? (
                     <View style={styles.pillWrap}>
                       {socialLinks.map((s) => {
-                        const { name, iconStyle } = socialIconForKey(s.key);
-                        const faStyleProps =
-                          iconStyle === 'brand' ? { brand: true } : { solid: true };
+                        const Icon = socialIconForKey(s.key);
                         return (
                           <TouchableOpacity
                             key={s.key}
@@ -2346,12 +2374,7 @@ export default function MyClub() {
                             accessibilityRole="button"
                             accessibilityLabel={s.label}
                           >
-                            <FontAwesome6
-                              name={name as any}
-                              {...faStyleProps}
-                              size={20}
-                              color={C.text}
-                            />
+                            <Icon size={20} color={C.text} strokeWidth={2} />
                           </TouchableOpacity>
                         );
                       })}

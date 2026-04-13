@@ -72,6 +72,7 @@ import { fetchVpeNudgesSnapshot, vpeNudgesQueryKeys } from '@/lib/vpeNudgesSnaps
 import { computeVpeSmartDailyHomeReminder } from '@/lib/vpeSmartDailyHomeReminder';
 import { prefetchVpeNudges } from '@/lib/prefetchVpeNudges';
 import { prefetchClubLandingCritical } from '@/lib/clubTabLandingData';
+import { prefetchProfileSnapshot } from '@/lib/profileSnapshot';
 
 const N = {
   page: '#FBFBFA',
@@ -1449,8 +1450,9 @@ export default function MyJourney() {
   const showHeaderAvatarPending = profileFieldsLoaded && !userAvatar;
 
   const handleMyProfilePress = useCallback(() => {
+    prefetchProfileSnapshot(user?.id);
     router.push('/profile');
-  }, []);
+  }, [user?.id]);
 
   const goToReportsSection = useCallback(() => {
     router.push({ pathname: '/(tabs)/meetings', params: { section: 'reports' } });
@@ -1471,12 +1473,49 @@ export default function MyJourney() {
   }, [currentOpenMeetingId]);
 
   useEffect(() => {
+    if (!currentOpenMeetingId) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    // Warm all Meeting Actions role screens progressively so taps are instant on slow networks.
+    timers.push(
+      setTimeout(() => prefetchEvaluationCornerSnapshot(currentOpenMeetingId), 50),
+      setTimeout(
+        () => prefetchToastmasterCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
+        250
+      ),
+      setTimeout(
+        () => prefetchEducationalCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
+        450
+      ),
+      setTimeout(
+        () => prefetchGeneralEvaluatorReport(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
+        650
+      ),
+      setTimeout(
+        () => prefetchTableTopicCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
+        850
+      ),
+      setTimeout(() => prefetchTimerReport(queryClient, currentOpenMeetingId, user?.id), 1050),
+      setTimeout(() => prefetchAhCounter(queryClient, currentOpenMeetingId, user?.currentClubId, user?.id), 1250),
+      setTimeout(() => prefetchGrammarianCorner(currentOpenMeetingId, user?.id, user?.currentClubId), 1450)
+    );
+
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+    };
+  }, [currentOpenMeetingId, queryClient, user?.currentClubId, user?.id]);
+
+  useEffect(() => {
     prefetchMyMentorSnapshot(user?.currentClubId);
   }, [user?.currentClubId]);
 
   useEffect(() => {
     prefetchClubLandingCritical(user?.currentClubId ?? null);
   }, [user?.currentClubId]);
+
+  useEffect(() => {
+    prefetchProfileSnapshot(user?.id);
+  }, [user?.id]);
 
   const handleGrammarianPress = useCallback(() => {
     if (!currentOpenMeetingId) {
