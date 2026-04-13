@@ -6,6 +6,7 @@ import { Linking } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { getCachedPathwayFormSnapshot, prefetchPathwayFormSnapshot } from '@/lib/pathwayFormSnapshot';
 import { ArrowLeft, Calendar, Building2, User, BookOpen, GraduationCap, Target, MessageSquare, Save, Star, X, Link as LinkIcon, Upload, FileText } from 'lucide-react-native';
 import { Image } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -30,6 +31,13 @@ interface RoleBooking {
   role_metric: string;
   booking_status: string;
   role_classification: string | null;
+  speech_title?: string | null;
+  pathway_name?: string | null;
+  level?: number | null;
+  project_name?: string | null;
+  project_number?: string | null;
+  evaluation_form?: string | null;
+  comments_for_evaluator?: string | null;
   app_user_profiles: {
     id: string;
     full_name: string;
@@ -74,6 +82,7 @@ export default function PathwayForm() {
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
   const roleId = typeof params.roleId === 'string' ? params.roleId : params.roleId?.[0];
+  const currentClubId = user?.currentClubId;
   
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [roleBooking, setRoleBooking] = useState<RoleBooking | null>(null);
@@ -106,29 +115,57 @@ export default function PathwayForm() {
   ];
 
   useEffect(() => {
-    if (meetingId && roleId) {
+    if (meetingId && roleId && currentClubId) {
+      const warm = getCachedPathwayFormSnapshot(roleId);
+      if (warm?.meeting) setMeeting(warm.meeting as Meeting);
+      if (warm?.roleBooking) {
+        const booking = warm.roleBooking as RoleBooking;
+        setRoleBooking(booking);
+        setSelectedTab(booking.role_metric);
+      }
+      if (warm?.pathway) {
+        const pathway = warm.pathway as ExistingEvaluationPathway;
+        setVpeApprovalRequested(pathway.vpe_approval_requested || false);
+        setEditForm({
+          speech_title: pathway.speech_title || '',
+          pathway_name: pathway.pathway_name || '',
+          level: pathway.level?.toString() || '',
+          project_name: pathway.project_name || '',
+          project_number: pathway.project_number?.toString() || '',
+          evaluation_title: pathway.evaluation_title || '',
+          table_topics_title: pathway.table_topics_title || '',
+          evaluation_form: pathway.evaluation_form || '',
+          comments_for_evaluator: pathway.comments_for_evaluator || ''
+        });
+      }
       loadData();
     }
-  }, [meetingId, roleId]);
+  }, [meetingId, roleId, currentClubId]);
 
   useEffect(() => {
     if (roleBooking) {
+      const hasPrefilled =
+        !!(
+          roleBooking.speech_title ||
+          roleBooking.pathway_name ||
+          roleBooking.project_name ||
+          roleBooking.project_number ||
+          roleBooking.evaluation_form
+        );
+      if (hasPrefilled) return;
       loadExistingPathway();
     }
   }, [roleBooking]);
 
   const loadData = async () => {
-    if (!meetingId || !roleId || !user?.currentClubId) {
+    if (!meetingId || !roleId || !currentClubId) {
       setIsLoading(false);
       return;
     }
 
     try {
-      // Load meeting and role booking first
-      await Promise.all([
-        loadMeeting(),
-        loadRoleBooking()
-      ]);
+      await prefetchPathwayFormSnapshot(meetingId, roleId);
+      await Promise.all([loadMeeting(), loadRoleBooking()]);
 
     } catch (error) {
       console.error('Error loading data:', error);
@@ -194,15 +231,31 @@ export default function PathwayForm() {
         role_metric: data.role_metric,
         booking_status: data.booking_status,
         role_classification: data.role_classification,
-        app_user_profiles: (data as any).app_user_profiles
+        app_user_profiles: (data as any).app_user_profiles,
+        speech_title: null,
+        pathway_name: null,
+        level: null,
+        project_name: null,
+        project_number: null,
+        evaluation_form: null,
+        comments_for_evaluator: null,
       };
 
       setRoleBooking(booking);
+
+      // Optimistic prefill from booking row so form paints immediately on slow networks.
+      setEditForm((prev) => ({
+        ...prev,
+        speech_title: booking.speech_title || prev.speech_title,
+        pathway_name: booking.pathway_name || prev.pathway_name,
+        level: booking.level != null ? String(booking.level) : prev.level,
+        project_name: booking.project_name || prev.project_name,
+        project_number: booking.project_number || prev.project_number,
+        evaluation_form: booking.evaluation_form || prev.evaluation_form,
+        comments_for_evaluator: booking.comments_for_evaluator || prev.comments_for_evaluator,
+      }));
       
-      // Determine the tab based on role metric
       setSelectedTab(booking.role_metric);
-      
-      console.log('Role booking loaded, will trigger pathway loading');
     } catch (error) {
       console.error('Error loading role booking:', error);
     }

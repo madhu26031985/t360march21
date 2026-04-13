@@ -10,6 +10,7 @@ import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import {
   fetchToastmasterCornerBundle,
+  getCachedToastmasterCornerBundle,
   toastmasterCornerQueryKeys,
   type ToastmasterCornerMeeting as Meeting,
   type ToastmasterCornerClubInfo as ClubInfo,
@@ -37,6 +38,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { Image } from 'expo-image';
+import { avatarUrlForDisplay } from '@/lib/avatarDisplayUrl';
 
 /** Bottom nav: icons + labels scaled to 75% of prior size (25% reduction) */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -168,6 +170,24 @@ export default function ToastmasterCorner() {
   const [savingCornerTheme, setSavingCornerTheme] = useState(false);
   const [editingSavedCornerTheme, setEditingSavedCornerTheme] = useState(false);
 
+  useEffect(() => {
+    if (!meetingId || !clubId) return;
+    let cancelled = false;
+    (async () => {
+      const warm = await getCachedToastmasterCornerBundle(meetingId, clubId, uid ?? '');
+      if (!warm || cancelled) return;
+      setMeeting(warm.meeting);
+      setClubInfo(warm.clubInfo);
+      setToastmasterOfDay(warm.toastmasterOfDay);
+      setToastmasterMeetingData(warm.toastmasterMeetingData);
+      setIsExComm(warm.isExComm);
+      setIsVPEClub(warm.isVPEClub);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [meetingId, clubId, uid]);
+
   const isToastmasterOfDay = () => {
     const status = toastmasterOfDay?.booking_status?.toLowerCase();
     return (
@@ -210,8 +230,7 @@ export default function ToastmasterCorner() {
     Alert.alert('Error', 'Failed to load toastmaster corner data');
   }, [isError, error]);
 
-  const isLoading =
-    (queryEnabled && isPending);
+  const isLoading = queryEnabled && isPending && !meeting;
 
   const invalidateToastmasterCorner = useCallback(async () => {
     if (!meetingId || !user?.currentClubId || !user?.id) return;
@@ -491,6 +510,11 @@ export default function ToastmasterCorner() {
     );
   });
 
+  const tmodAvatarUrl = avatarUrlForDisplay(
+    toastmasterOfDay?.app_user_profiles?.avatar_url ?? null,
+    72
+  );
+
   const handleAddTheme = () => {
     router.push({
       pathname: '/toastmaster-theme-form',
@@ -641,11 +665,13 @@ export default function ToastmasterCorner() {
                   },
                 ]}
               >
-                {toastmasterOfDay!.app_user_profiles!.avatar_url ? (
+                {tmodAvatarUrl ? (
                   <Image
-                    source={{ uri: toastmasterOfDay!.app_user_profiles!.avatar_url }}
+                    source={{ uri: tmodAvatarUrl }}
                     cachePolicy="memory-disk"
                     style={styles.consolidatedAvatarImage}
+                    contentFit="cover"
+                    transition={100}
                   />
                 ) : (
                   <User
@@ -1139,11 +1165,13 @@ export default function ToastmasterCorner() {
                       disabled={assigningToastmasterRole}
                     >
                       <View style={styles.assignAvatar}>
-                        {member.avatar_url ? (
+                        {avatarUrlForDisplay(member.avatar_url, 36) ? (
                           <Image
-                            source={{ uri: member.avatar_url }}
+                            source={{ uri: avatarUrlForDisplay(member.avatar_url, 36)! }}
                             cachePolicy="memory-disk"
                             style={styles.assignAvatarImage}
+                            contentFit="cover"
+                            transition={80}
                           />
                         ) : (
                           <User size={20} color="#ffffff" />

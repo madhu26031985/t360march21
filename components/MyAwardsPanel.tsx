@@ -28,6 +28,9 @@ type MonthAwards = {
   categories: MonthCategoryRow[];
 };
 
+const CACHE_TTL_MS = 2 * 60 * 1000;
+let awardsCache: { key: string; at: number; awards: AwardRow[] } | null = null;
+
 /** Space-separated trophy emojis (one per win). */
 function trophyRun(count: number): string {
   if (count <= 0) return '';
@@ -112,10 +115,33 @@ export default function MyAwardsPanel() {
       setError(null);
       return;
     }
+    const cacheKey = `${user.currentClubId}:${user.id}`;
+    const isFresh = awardsCache && awardsCache.key === cacheKey && Date.now() - awardsCache.at < CACHE_TTL_MS;
+    if (isFresh && awardsCache) {
+      setAwards(awardsCache.awards);
+      setLoading(false);
+      setError(null);
+      return;
+    }
 
     setLoading(true);
     setError(null);
     try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_my_awards_snapshot', {
+        p_club_id: user.currentClubId,
+      });
+      if (!rpcError && Array.isArray(rpcData)) {
+        const rpcAwards = (rpcData as AwardRow[]).map((r) => ({
+          award_name: r.award_name ?? null,
+          question_text: r.question_text ?? null,
+          poll_title: r.poll_title ?? null,
+          meeting_date: r.meeting_date ?? null,
+        }));
+        awardsCache = { key: cacheKey, at: Date.now(), awards: rpcAwards };
+        setAwards(rpcAwards);
+        return;
+      }
+
       // Do not call get_user_awards RPC here: it is not shipped in all Supabase projects and
       // triggers noisy 404s in the browser network tab. Awards are derived from poll results.
       const fullName = (user.fullName || '').trim();
@@ -130,6 +156,7 @@ export default function MyAwardsPanel() {
         .order('created_at', { ascending: false })
         .limit(120);
       if (pollsError || !polls?.length) {
+        awardsCache = { key: cacheKey, at: Date.now(), awards: [] };
         setAwards([]);
         return;
       }
@@ -147,6 +174,7 @@ export default function MyAwardsPanel() {
         .select('poll_id, question_order, question_text, option_text, votes')
         .in('poll_id', pollIds);
       if (resultsError || !results?.length) {
+        awardsCache = { key: cacheKey, at: Date.now(), awards: [] };
         setAwards([]);
         return;
       }
@@ -191,6 +219,7 @@ export default function MyAwardsPanel() {
         });
       });
 
+      awardsCache = { key: cacheKey, at: Date.now(), awards: fallbackAwards };
       setAwards(fallbackAwards);
     } catch (e) {
       console.error('MyAwardsPanel load failed:', e);

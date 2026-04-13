@@ -550,6 +550,9 @@ export default function ClubMeetings() {
   const queryClient = useQueryClient();
   const [currentMeeting, setCurrentMeeting] = useState<Meeting | null>(null);
   const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
+  /** Completed (`close`) meetings for Meeting History section */
+  const [meetingHistory, setMeetingHistory] = useState<Meeting[]>([]);
+  const [expandedHistoryMeetingId, setExpandedHistoryMeetingId] = useState<string | null>(null);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [expandedNextMeeting, setExpandedNextMeeting] = useState<string | null>(null);
   const [openMeetingTab, setOpenMeetingTab] = useState<'actions' | 'roles' | 'evaluation'>('actions');
@@ -684,6 +687,9 @@ export default function ClubMeetings() {
     nextMeetings.forEach((m) => {
       if (m?.id && !m?.isPlaceholder && !m.id.startsWith('placeholder')) meetingIds.push(m.id);
     });
+    meetingHistory.forEach((m) => {
+      if (m?.id && !m?.isPlaceholder && !String(m.id).startsWith('placeholder')) meetingIds.push(m.id);
+    });
     if (meetingIds.length === 0 || !user?.id) {
       setTmodNeedsThemeByMeeting({});
       setEducationalSpeakerNeedsByMeeting({});
@@ -732,6 +738,11 @@ export default function ClubMeetings() {
         meetingById.set(currentMeeting.id, currentMeeting);
       }
       nextMeetings.forEach((mt) => {
+        if (mt?.id && !mt?.isPlaceholder && !String(mt.id).startsWith('placeholder')) {
+          meetingById.set(mt.id, mt);
+        }
+      });
+      meetingHistory.forEach((mt) => {
         if (mt?.id && !mt?.isPlaceholder && !String(mt.id).startsWith('placeholder')) {
           meetingById.set(mt.id, mt);
         }
@@ -1081,7 +1092,7 @@ export default function ClubMeetings() {
       }
     })();
     return () => { cancelled = true; };
-  }, [currentMeeting, nextMeetings, user?.id]);
+  }, [currentMeeting, nextMeetings, meetingHistory, user?.id]);
 
   const refreshBookRoleAttention = useCallback(() => {
     if (!user?.id || !user?.currentClubId) {
@@ -1098,9 +1109,15 @@ export default function ClubMeetings() {
     nextMeetings.forEach((m) => {
       if (m?.id && !m?.isPlaceholder && !String(m.id).startsWith('placeholder')) ids.add(m.id);
     });
+    meetingHistory.forEach((m) => {
+      if (m?.id && !m?.isPlaceholder && !String(m.id).startsWith('placeholder')) ids.add(m.id);
+    });
     if (selectedMeeting?.id && !selectedMeeting.isPlaceholder) ids.add(selectedMeeting.id);
     if (expandedNextMeeting && !String(expandedNextMeeting).startsWith('placeholder')) {
       ids.add(expandedNextMeeting);
+    }
+    if (expandedHistoryMeetingId && !String(expandedHistoryMeetingId).startsWith('placeholder')) {
+      ids.add(expandedHistoryMeetingId);
     }
     if (ids.size === 0) {
       setBookRoleNoRolesByMeeting({});
@@ -1162,7 +1179,7 @@ export default function ClubMeetings() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.currentClubId, user?.clubRole, user?.role, currentMeeting, nextMeetings, selectedMeeting, expandedNextMeeting]);
+  }, [user?.id, user?.currentClubId, user?.clubRole, user?.role, currentMeeting, nextMeetings, meetingHistory, selectedMeeting, expandedNextMeeting, expandedHistoryMeetingId]);
 
   useEffect(() => {
     const cleanup = refreshBookRoleAttention();
@@ -1211,6 +1228,8 @@ export default function ClubMeetings() {
 
   const loadOpenMeetings = async () => {
     if (!user?.currentClubId) {
+      setMeetingHistory([]);
+      setExpandedHistoryMeetingId(null);
       if (!hasLoadedOnce.current) {
         setIsLoading(false);
       }
@@ -1225,14 +1244,37 @@ export default function ClubMeetings() {
       fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
       const cutoffDate = fourHoursAgo.toISOString().split('T')[0];
 
-      const { data: openData, error: openError } = await supabase
-        .from('app_club_meeting')
-        .select('id, meeting_title, meeting_date, meeting_number, meeting_start_time, meeting_end_time, meeting_mode, meeting_location, meeting_link, meeting_status, meeting_day')
-        .eq('club_id', user.currentClubId)
-        .eq('meeting_status', 'open')
-        .gte('meeting_date', cutoffDate)
-        .order('meeting_date', { ascending: true })
-        .order('meeting_start_time', { ascending: true });
+      const meetingSelect =
+        'id, meeting_title, meeting_date, meeting_number, meeting_start_time, meeting_end_time, meeting_mode, meeting_location, meeting_link, meeting_status, meeting_day';
+
+      const [openRes, historyRes] = await Promise.all([
+        supabase
+          .from('app_club_meeting')
+          .select(meetingSelect)
+          .eq('club_id', user.currentClubId)
+          .eq('meeting_status', 'open')
+          .gte('meeting_date', cutoffDate)
+          .order('meeting_date', { ascending: true })
+          .order('meeting_start_time', { ascending: true }),
+        supabase
+          .from('app_club_meeting')
+          .select(meetingSelect)
+          .eq('club_id', user.currentClubId)
+          .eq('meeting_status', 'close')
+          .order('meeting_date', { ascending: false })
+          .order('meeting_start_time', { ascending: false })
+          .limit(50),
+      ]);
+
+      const { data: openData, error: openError } = openRes;
+      const { data: historyData, error: historyError } = historyRes;
+
+      if (historyError) {
+        console.error('Error loading meeting history:', historyError);
+        setMeetingHistory([]);
+      } else {
+        setMeetingHistory(historyData || []);
+      }
 
       if (openError) {
         console.error('Error loading open meetings:', openError);
@@ -2311,6 +2353,208 @@ export default function ClubMeetings() {
           )}
 
           <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
+          <View style={styles.meetingHistorySection}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Meeting History
+            </Text>
+            {isLoading ? (
+              <Text style={[styles.noMeetingsSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                Loading…
+              </Text>
+            ) : meetingHistory.length === 0 ? (
+              <View
+                style={[
+                  styles.historyPlaceholderCard,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
+                <View style={[styles.comingSoonIcon, { backgroundColor: theme.colors.textSecondary + '15' }]}>
+                  <Clock size={22} color={theme.colors.textSecondary} />
+                </View>
+                <View style={styles.comingSoonContent}>
+                  <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                    No completed meetings yet
+                  </Text>
+                  <Text style={[styles.comingSoonSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                    Past meetings appear here after they are closed.
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.nextMeetingsList}>
+                {meetingHistory.map((meeting) => {
+                  const meetingDate = new Date(meeting.meeting_date);
+                  const dayNum = meetingDate.getDate();
+                  const month = meetingDate.toLocaleString('default', { month: 'short' }).toUpperCase();
+                  const historyExpanded = expandedHistoryMeetingId === meeting.id;
+
+                  return (
+                    <View key={meeting.id}>
+                      {historyExpanded ? (
+                        <View
+                          style={[
+                            styles.unifiedExpandedMeetingCard,
+                            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                          ]}
+                        >
+                          <View style={styles.unifiedMeetingBar}>
+                            <View style={styles.heroCardContent}>
+                              <View style={[styles.dateBadge, { backgroundColor: theme.colors.textSecondary + '15' }]}>
+                                <Text style={[styles.dateBadgeDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                  {dayNum}
+                                </Text>
+                                <Text
+                                  style={[styles.dateBadgeMonth, { color: theme.colors.textSecondary }]}
+                                  maxFontSizeMultiplier={1.3}
+                                >
+                                  {month}
+                                </Text>
+                              </View>
+                              <View style={styles.heroMeetingInfo}>
+                                <Text style={[styles.heroMeetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                  {meeting.meeting_title}
+                                </Text>
+                                <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                  Day: {meetingDate.toLocaleDateString('default', { weekday: 'long' })}
+                                </Text>
+                                {meeting.meeting_start_time && (
+                                  <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                    Time: {formatTime(meeting.meeting_start_time)}
+                                    {meeting.meeting_end_time && ` - ${formatTime(meeting.meeting_end_time)}`}
+                                  </Text>
+                                )}
+                                <Text style={[styles.heroMeetingMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                  Mode: {formatMeetingMode(meeting.meeting_mode)}
+                                </Text>
+                              </View>
+                              <TouchableOpacity
+                                style={[styles.enterMeetingButton, { backgroundColor: theme.colors.primary }]}
+                                onPress={() => setExpandedHistoryMeetingId(null)}
+                                activeOpacity={0.8}
+                                accessibilityLabel="Close meeting history details"
+                              >
+                                <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>
+                                  Close
+                                </Text>
+                                <ChevronUp size={16} color="#ffffff" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
+                          <View style={[styles.openMeetingTabs, { backgroundColor: theme.colors.textSecondary + '08', borderColor: theme.colors.border }]}>
+                            {(['actions', 'roles', 'evaluation'] as const).map((tab) => (
+                              <TouchableOpacity
+                                key={tab}
+                                style={[
+                                  styles.openMeetingTab,
+                                  openMeetingTab === tab && styles.openMeetingTabActive,
+                                  openMeetingTab === tab && { backgroundColor: theme.colors.textSecondary + '15' },
+                                ]}
+                                onPress={() => setOpenMeetingTab(tab)}
+                                activeOpacity={0.7}
+                              >
+                                <Text
+                                  style={[
+                                    styles.openMeetingTabText,
+                                    { color: openMeetingTab === tab ? theme.colors.text : theme.colors.textSecondary },
+                                    openMeetingTab === tab ? styles.openMeetingTabTextActive : undefined,
+                                  ]}
+                                  maxFontSizeMultiplier={1.3}
+                                >
+                                  {tab === 'actions' ? 'Actions' : tab === 'roles' ? 'Roles' : 'Evaluation'}
+                                </Text>
+                                {openMeetingTab === tab && (
+                                  <View style={[styles.openMeetingTabIndicator, { backgroundColor: theme.colors.primary }]} />
+                                )}
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                          <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
+                          <View style={styles.unifiedMeetingContent}>
+                            {openMeetingTab === 'actions' && renderActionsTabContent(meeting.id)}
+                            {openMeetingTab === 'roles' && renderRolesTabContent(meeting.id)}
+                            {openMeetingTab === 'evaluation' && renderEvaluationTabContent(meeting.id)}
+                          </View>
+                        </View>
+                      ) : (
+                        <View
+                          style={[
+                            styles.heroMeetingCard,
+                            { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
+                          ]}
+                        >
+                          <View style={styles.heroCardContent}>
+                            <View style={[styles.dateBadge, { backgroundColor: theme.colors.textSecondary + '15' }]}>
+                              <Text style={[styles.dateBadgeDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                {dayNum}
+                              </Text>
+                              <Text
+                                style={[styles.dateBadgeMonth, { color: theme.colors.textSecondary }]}
+                                maxFontSizeMultiplier={1.3}
+                              >
+                                {month}
+                              </Text>
+                            </View>
+                            <View style={styles.heroMeetingInfo}>
+                              <Text style={[styles.heroMeetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                                {meeting.meeting_title}
+                              </Text>
+                              <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                Day: {meetingDate.toLocaleDateString('default', { weekday: 'long' })}
+                              </Text>
+                              {meeting.meeting_start_time && (
+                                <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                  Time: {formatTime(meeting.meeting_start_time)}
+                                  {meeting.meeting_end_time && ` - ${formatTime(meeting.meeting_end_time)}`}
+                                </Text>
+                              )}
+                              <Text style={[styles.heroMeetingMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                Mode: {formatMeetingMode(meeting.meeting_mode)}
+                              </Text>
+                            </View>
+                            <View style={styles.historyDualButtonColumn}>
+                              <TouchableOpacity
+                                style={[styles.enterMeetingButton, styles.historyCompactBtn, { backgroundColor: theme.colors.primary }]}
+                                onPress={() => {
+                                  setExpandedHistoryMeetingId(meeting.id);
+                                  setOpenMeetingTab('actions');
+                                }}
+                                activeOpacity={0.8}
+                                accessibilityLabel="Open meeting details"
+                              >
+                                <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.2}>
+                                  Open
+                                </Text>
+                                <ChevronDown size={14} color="#ffffff" />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.historyCloseSecondaryBtn,
+                                  { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+                                ]}
+                                onPress={() => {
+                                  if (expandedHistoryMeetingId === meeting.id) setExpandedHistoryMeetingId(null);
+                                }}
+                                activeOpacity={0.8}
+                                accessibilityLabel="Close meeting details"
+                              >
+                                <Text style={[styles.historyCloseSecondaryBtnText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                                  Close
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View style={styles.heroCardDecoration} />
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
+          <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
           <ClubReportsList
             theme={theme}
             onReportPress={handleFeaturePress}
@@ -2888,6 +3132,43 @@ const styles = StyleSheet.create({
   },
   nextMeetingsList: {
     gap: 16,
+  },
+  meetingHistorySection: {
+    paddingBottom: 0,
+  },
+  historyPlaceholderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    minHeight: 84,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  historyDualButtonColumn: {
+    flexDirection: 'column',
+    gap: 8,
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    minWidth: 86,
+    flexShrink: 0,
+  },
+  historyCompactBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 3,
+  },
+  historyCloseSecondaryBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 0,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyCloseSecondaryBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   lockedHeroMeetingCard: {
     borderRadius: 0,

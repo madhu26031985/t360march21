@@ -6,6 +6,7 @@ import { Linking } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { prefetchPathwayFormSnapshot } from '@/lib/pathwayFormSnapshot';
 import { fetchEvaluationCornerSnapshot, getCachedEvaluationCornerSnapshot, type EvaluationCornerSnapshot } from '@/lib/evaluationCornerSnapshot';
 import { ArrowLeft, Calendar, User, NotebookPen, X, Info, FileText, Users, ClipboardCheck, Vote, UserPlus, CheckCircle, Link as LinkIcon } from 'lucide-react-native';
 import { RotateCcw } from 'lucide-react-native';
@@ -1161,6 +1162,7 @@ export default function EvaluationCorner() {
 
     const openSpeechDetailsPage = () => {
       if (!meetingId) return;
+      void prefetchPathwayFormSnapshot(meetingId, booking.id);
       router.push({ pathname: '/pathway-form', params: { meetingId, roleId: booking.id } });
     };
 

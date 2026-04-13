@@ -16,6 +16,15 @@ import {
   type OccurrencesByCategory,
 } from '@/lib/myRoleInsights';
 
+const CACHE_TTL_MS = 2 * 60 * 1000;
+let roleInsightsCache:
+  | {
+      key: string;
+      at: number;
+      payload: ReturnType<typeof emptyMyRoleInsightsPayload>;
+    }
+  | null = null;
+
 function TrackRoleRow({
   categoryKey,
   insights,
@@ -115,10 +124,22 @@ export default function MyRoleInsightsPanel() {
       setError(null);
       return;
     }
+    const cacheKey = `${user.currentClubId}:${user.id}`;
+    const isFresh =
+      roleInsightsCache && roleInsightsCache.key === cacheKey && Date.now() - roleInsightsCache.at < CACHE_TTL_MS;
+    if (isFresh && roleInsightsCache) {
+      setInsights(roleInsightsCache.payload.map);
+      setOccurrencesByCategory(roleInsightsCache.payload.occurrencesByCategory);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const payload = await fetchMyRoleInsights(user.currentClubId, user.id);
+      roleInsightsCache = { key: cacheKey, at: Date.now(), payload };
       setInsights(payload.map);
       setOccurrencesByCategory(payload.occurrencesByCategory);
     } catch (e) {

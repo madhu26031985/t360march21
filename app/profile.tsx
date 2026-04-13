@@ -5,6 +5,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchProfileSnapshot, getCachedProfileSnapshot } from '@/lib/profileSnapshot';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { Home, User, Mail, MapPin, Camera, X, Facebook, Twitter, Linkedin, Instagram, Youtube, ChevronRight, Phone, Lock, Info, Users, Calendar, Settings, ArrowLeft, Shield } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -155,44 +156,46 @@ export default function Profile() {
     }
 
     try {
-      // Fetch only the fields we need, excluding large base64 avatar initially
-      const { data, error } = await supabase
-        .from('app_user_profiles')
-        .select('full_name, email, phone_number, location, About, facebook_url, linkedin_url, instagram_url, twitter_url, youtube_url')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading profile:', error);
-        Alert.alert('Error', 'Failed to load profile data');
+      const warm = await getCachedProfileSnapshot(user.id);
+      if (warm) {
+        setProfileData({
+          full_name: warm.full_name || '',
+          email: warm.email || '',
+          phone_number: warm.phone_number || '',
+          location: warm.location || '',
+          About: warm.About || '',
+          avatar_url: warm.avatar_url,
+          facebook_url: warm.facebook_url || '',
+          linkedin_url: warm.linkedin_url || '',
+          instagram_url: warm.instagram_url || '',
+          twitter_url: warm.twitter_url || '',
+          youtube_url: warm.youtube_url || '',
+        });
         setIsLoading(false);
-        return;
       }
 
-      if (data) {
+      const fresh = await fetchProfileSnapshot(user.id, { bypassCache: !!warm });
+      if (fresh) {
         setProfileData({
-          full_name: data.full_name || '',
-          email: data.email || '',
-          phone_number: data.phone_number || '',
-          location: data.location || '',
-          'About': data['About'] || '',
-          avatar_url: null, // Load separately
-          facebook_url: data.facebook_url || '',
-          linkedin_url: data.linkedin_url || '',
-          instagram_url: data.instagram_url || '',
-          twitter_url: data.twitter_url || '',
-          youtube_url: data.youtube_url || '',
+          full_name: fresh.full_name || '',
+          email: fresh.email || '',
+          phone_number: fresh.phone_number || '',
+          location: fresh.location || '',
+          About: fresh.About || '',
+          avatar_url: fresh.avatar_url,
+          facebook_url: fresh.facebook_url || '',
+          linkedin_url: fresh.linkedin_url || '',
+          instagram_url: fresh.instagram_url || '',
+          twitter_url: fresh.twitter_url || '',
+          youtube_url: fresh.youtube_url || '',
         });
-
-        // Load avatar separately to avoid blocking the initial load
-        loadAvatar();
-      } else {
+      } else if (!warm) {
         setProfileData({
           full_name: user.fullName || '',
           email: user.email || '',
           phone_number: '',
           location: '',
-          'About': '',
+          About: '',
           avatar_url: null,
           facebook_url: '',
           linkedin_url: '',
@@ -203,27 +206,11 @@ export default function Profile() {
       }
     } catch (error) {
       console.error('Error loading profile:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      if (!profileData.full_name && !profileData.email) {
+        Alert.alert('Error', 'An unexpected error occurred');
+      }
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const loadAvatar = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_user_profiles')
-        .select('avatar_url')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (!error && data?.avatar_url) {
-        setProfileData(prev => ({ ...prev, avatar_url: data.avatar_url }));
-      }
-    } catch (error) {
-      console.error('Error loading avatar:', error);
     }
   };
 

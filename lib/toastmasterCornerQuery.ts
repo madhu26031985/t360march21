@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type ToastmasterCornerMeeting = {
   id: string;
@@ -53,11 +54,70 @@ export type ToastmasterCornerBundle = {
   isVPEClub: boolean;
 };
 
+const CACHE_TTL_MS = 90_000;
+const PERSIST_TTL_MS = 12 * 60 * 60 * 1000;
+const CACHE_PREFIX = 'toastmasterCorner:v1:';
+let bundleCache:
+  | { key: string; at: number; data: ToastmasterCornerBundle }
+  | null = null;
+
 export const toastmasterCornerQueryKeys = {
   all: ['toastmaster-corner'] as const,
   detail: (meetingId: string, clubId: string, userId: string) =>
     [...toastmasterCornerQueryKeys.all, 'detail', meetingId, clubId, userId] as const,
 };
+
+function bundleCacheKey(meetingId: string, clubId: string, userId: string) {
+  return `${meetingId}:${clubId}:${userId || 'anon'}`;
+}
+
+async function readPersisted(
+  meetingId: string,
+  clubId: string,
+  userId: string
+): Promise<{ at: number; data: ToastmasterCornerBundle } | null> {
+  try {
+    const raw = await AsyncStorage.getItem(`${CACHE_PREFIX}${bundleCacheKey(meetingId, clubId, userId)}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { at?: number; data?: ToastmasterCornerBundle };
+    if (!parsed?.at || !parsed?.data) return null;
+    if (Date.now() - parsed.at > PERSIST_TTL_MS) return null;
+    return { at: parsed.at, data: parsed.data };
+  } catch {
+    return null;
+  }
+}
+
+async function writePersisted(
+  meetingId: string,
+  clubId: string,
+  userId: string,
+  data: ToastmasterCornerBundle
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(
+      `${CACHE_PREFIX}${bundleCacheKey(meetingId, clubId, userId)}`,
+      JSON.stringify({ at: Date.now(), data })
+    );
+  } catch {
+    // ignore cache write failures
+  }
+}
+
+export async function getCachedToastmasterCornerBundle(
+  meetingId: string,
+  clubId: string,
+  userId: string
+): Promise<ToastmasterCornerBundle | null> {
+  const key = bundleCacheKey(meetingId, clubId, userId);
+  if (bundleCache?.key === key && Date.now() - bundleCache.at < PERSIST_TTL_MS) {
+    return bundleCache.data;
+  }
+  const persisted = await readPersisted(meetingId, clubId, userId);
+  if (!persisted) return null;
+  bundleCache = { key, at: persisted.at, data: persisted.data };
+  return persisted.data;
+}
 
 type RpcToastmasterSnapshot = {
   meeting_id: string;
@@ -180,6 +240,16 @@ export async function fetchToastmasterCornerBundle(
   clubId: string,
   userId: string
 ): Promise<ToastmasterCornerBundle> {
+  const key = bundleCacheKey(meetingId, clubId, userId);
+  if (bundleCache?.key === key && Date.now() - bundleCache.at < CACHE_TTL_MS) {
+    return bundleCache.data;
+  }
+  const persisted = await readPersisted(meetingId, clubId, userId);
+  if (persisted && Date.now() - persisted.at < CACHE_TTL_MS) {
+    bundleCache = { key, at: persisted.at, data: persisted.data };
+    return persisted.data;
+  }
+
   const { data, error } = await supabase.rpc('get_toastmaster_corner_snapshot', {
     p_meeting_id: meetingId,
   });
@@ -191,7 +261,10 @@ export async function fetchToastmasterCornerBundle(
   if (!error && data != null && typeof data === 'object' && !Array.isArray(data)) {
     const row = data as RpcToastmasterSnapshot;
     if (row.club_id === clubId) {
-      return mapRpcToBundle(row);
+      const mapped = mapRpcToBundle(row);
+      bundleCache = { key, at: Date.now(), data: mapped };
+      void writePersisted(meetingId, clubId, userId, mapped);
+      return mapped;
     }
   }
 
@@ -199,5 +272,8 @@ export async function fetchToastmasterCornerBundle(
     console.warn('get_toastmaster_corner_snapshot failed, using legacy parallel queries:', error.message);
   }
 
-  return fetchToastmasterCornerBundleLegacy(meetingId, clubId, userId);
+  const legacy = await fetchToastmasterCornerBundleLegacy(meetingId, clubId, userId);
+  bundleCache = { key, at: Date.now(), data: legacy };
+  void writePersisted(meetingId, clubId, userId, legacy);
+  return legacy;
 }
