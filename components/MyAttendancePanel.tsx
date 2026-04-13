@@ -26,6 +26,28 @@ type MonthStat = {
 const CACHE_TTL_MS = 2 * 60 * 1000;
 let attendanceCache: { key: string; at: number; rows: AttendanceRow[] } | null = null;
 
+export async function prefetchMyAttendancePanel(userId?: string | null, clubId?: string | null) {
+  if (!userId || !clubId) return;
+  const cacheKey = `${clubId}:${userId}`;
+  const isFresh =
+    attendanceCache && attendanceCache.key === cacheKey && Date.now() - attendanceCache.at < CACHE_TTL_MS;
+  if (isFresh) return;
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const { data, error } = await supabase
+      .from('app_meeting_attendance')
+      .select('meeting_date, attendance_status')
+      .eq('user_id', userId)
+      .eq('club_id', clubId)
+      .lte('meeting_date', today)
+      .order('meeting_date', { ascending: false });
+    if (error) return;
+    attendanceCache = { key: cacheKey, at: Date.now(), rows: (data || []) as AttendanceRow[] };
+  } catch {
+    // best-effort warmup only
+  }
+}
+
 function monthKey(dateStr: string): string {
   const d = new Date(dateStr);
   const y = d.getFullYear();

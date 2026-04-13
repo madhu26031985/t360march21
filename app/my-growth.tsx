@@ -82,15 +82,9 @@ export default function MyGrowthScreen() {
       </View>
 
       <View style={styles.body}>
-        <View style={tab === 'role_insights' ? styles.panelVisible : styles.panelHidden}>
-          <MyRoleInsightsPanel />
-        </View>
-        <View style={tab === 'attendance' ? styles.panelVisible : styles.panelHidden}>
-          <MyAttendancePanel />
-        </View>
-        <View style={tab === 'awards' ? styles.panelVisible : styles.panelHidden}>
-          <MyAwardsPanel />
-        </View>
+        {tab === 'role_insights' ? <MyRoleInsightsPanel /> : null}
+        {tab === 'attendance' ? <MyAttendancePanel /> : null}
+        {tab === 'awards' ? <MyAwardsPanel /> : null}
       </View>
       <View
         style={[
@@ -230,12 +224,6 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     minHeight: 0,
-  },
-  panelVisible: {
-    flex: 1,
-  },
-  panelHidden: {
-    display: 'none',
   },
   geBottomDock: {
     borderTopWidth: StyleSheet.hairlineWidth,

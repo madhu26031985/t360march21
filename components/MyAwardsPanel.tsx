@@ -31,6 +31,88 @@ type MonthAwards = {
 const CACHE_TTL_MS = 2 * 60 * 1000;
 let awardsCache: { key: string; at: number; awards: AwardRow[] } | null = null;
 
+export async function prefetchMyAwardsPanel(
+  userId?: string | null,
+  clubId?: string | null,
+  fullName?: string | null
+) {
+  if (!userId || !clubId) return;
+  const cacheKey = `${clubId}:${userId}`;
+  const isFresh = awardsCache && awardsCache.key === cacheKey && Date.now() - awardsCache.at < CACHE_TTL_MS;
+  if (isFresh) return;
+  try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_my_awards_snapshot', {
+      p_club_id: clubId,
+    });
+    if (!rpcError && Array.isArray(rpcData)) {
+      const rpcAwards = (rpcData as AwardRow[]).map((r) => ({
+        award_name: r.award_name ?? null,
+        question_text: r.question_text ?? null,
+        poll_title: r.poll_title ?? null,
+        meeting_date: r.meeting_date ?? null,
+      }));
+      awardsCache = { key: cacheKey, at: Date.now(), awards: rpcAwards };
+      return;
+    }
+
+    const normalizedFull = (fullName || '').trim().toLowerCase();
+    const normalizedFirst = normalizedFull.split(/\s+/).filter(Boolean)[0] || normalizedFull;
+    const { data: polls, error: pollsError } = await supabase
+      .from('polls')
+      .select('id, title, created_at')
+      .eq('club_id', clubId)
+      .order('created_at', { ascending: false })
+      .limit(120);
+    if (pollsError || !polls?.length) return;
+
+    const pollIds = polls.map((p) => p.id);
+    const pollDateById = new Map<string, string | null>(polls.map((p) => [p.id, p.created_at || null]));
+    const pollTitleById = new Map<string, string | null>(polls.map((p) => [p.id, p.title || null]));
+    const { data: results, error: resultsError } = await supabase
+      .from('poll_results_repository')
+      .select('poll_id, question_order, question_text, option_text, votes')
+      .in('poll_id', pollIds);
+    if (resultsError || !results?.length) return;
+
+    type ResultRow = {
+      poll_id: string;
+      question_order: number;
+      question_text: string | null;
+      option_text: string | null;
+      votes: number | null;
+    };
+    const grouped = new Map<string, ResultRow[]>();
+    (results as ResultRow[]).forEach((r) => {
+      const key = `${r.poll_id}::${r.question_order}`;
+      const arr = grouped.get(key) || [];
+      arr.push(r);
+      grouped.set(key, arr);
+    });
+
+    const fallbackAwards: AwardRow[] = [];
+    grouped.forEach((rowsForQuestion) => {
+      const maxVotes = Math.max(...rowsForQuestion.map((r) => r.votes || 0));
+      if (maxVotes <= 0) return;
+      const winners = rowsForQuestion.filter((r) => (r.votes || 0) === maxVotes);
+      const matchedWinner = winners.find((w) => {
+        const opt = (w.option_text || '').toLowerCase().trim();
+        if (!opt) return false;
+        return opt.includes(normalizedFull) || normalizedFull.includes(opt) || opt.includes(normalizedFirst);
+      });
+      if (!matchedWinner) return;
+      fallbackAwards.push({
+        award_name: matchedWinner.question_text || 'Award',
+        question_text: matchedWinner.question_text,
+        poll_title: pollTitleById.get(matchedWinner.poll_id) || null,
+        meeting_date: pollDateById.get(matchedWinner.poll_id) || null,
+      });
+    });
+    awardsCache = { key: cacheKey, at: Date.now(), awards: fallbackAwards };
+  } catch {
+    // best-effort warmup only
+  }
+}
+
 /** Space-separated trophy emojis (one per win). */
 function trophyRun(count: number): string {
   if (count <= 0) return '';

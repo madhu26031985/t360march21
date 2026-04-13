@@ -73,6 +73,9 @@ import { computeVpeSmartDailyHomeReminder } from '@/lib/vpeSmartDailyHomeReminde
 import { prefetchVpeNudges } from '@/lib/prefetchVpeNudges';
 import { prefetchClubLandingCritical } from '@/lib/clubTabLandingData';
 import { prefetchProfileSnapshot } from '@/lib/profileSnapshot';
+import { prefetchMyRoleInsightsPanel } from '@/components/MyRoleInsightsPanel';
+import { prefetchMyAttendancePanel } from '@/components/MyAttendancePanel';
+import { prefetchMyAwardsPanel } from '@/components/MyAwardsPanel';
 
 const N = {
   page: '#FBFBFA',
@@ -1448,11 +1451,23 @@ export default function MyJourney() {
   const showMyProfilePending =
     profileFieldsLoaded && (!userAvatar || !profileHasAbout);
   const showHeaderAvatarPending = profileFieldsLoaded && !userAvatar;
+  const [backgroundPrefetchReady, setBackgroundPrefetchReady] = useState(false);
 
   const handleMyProfilePress = useCallback(() => {
     prefetchProfileSnapshot(user?.id);
     router.push('/profile');
   }, [user?.id]);
+
+  const handleMyGrowthPress = useCallback(() => {
+    void prefetchMyRoleInsightsPanel(user?.currentClubId, user?.id);
+    setTimeout(() => {
+      void prefetchMyAttendancePanel(user?.id, user?.currentClubId);
+    }, 120);
+    setTimeout(() => {
+      void prefetchMyAwardsPanel(user?.id, user?.currentClubId, user?.fullName);
+    }, 260);
+    router.push('/my-growth');
+  }, [user?.currentClubId, user?.id, user?.fullName]);
 
   const goToReportsSection = useCallback(() => {
     router.push({ pathname: '/(tabs)/meetings', params: { section: 'reports' } });
@@ -1468,54 +1483,82 @@ export default function MyJourney() {
   }, [currentOpenMeetingId]);
 
   useEffect(() => {
-    if (!currentOpenMeetingId) return;
-    prefetchEvaluationCornerSnapshot(currentOpenMeetingId);
-  }, [currentOpenMeetingId]);
+    const timer = setTimeout(() => setBackgroundPrefetchReady(true), 3500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
+    if (!backgroundPrefetchReady) return;
+    if (!currentOpenMeetingId) return;
+    prefetchEvaluationCornerSnapshot(currentOpenMeetingId);
+  }, [backgroundPrefetchReady, currentOpenMeetingId]);
+
+  useEffect(() => {
+    if (!backgroundPrefetchReady) return;
     if (!currentOpenMeetingId) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // Warm all Meeting Actions role screens progressively so taps are instant on slow networks.
+    // Delay heavy warmups until Home has already painted on slow networks.
     timers.push(
-      setTimeout(() => prefetchEvaluationCornerSnapshot(currentOpenMeetingId), 50),
+      setTimeout(() => prefetchEvaluationCornerSnapshot(currentOpenMeetingId), 150),
       setTimeout(
         () => prefetchToastmasterCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
-        250
+        900
       ),
       setTimeout(
         () => prefetchEducationalCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
-        450
+        1650
       ),
       setTimeout(
         () => prefetchGeneralEvaluatorReport(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
-        650
+        2300
       ),
       setTimeout(
         () => prefetchTableTopicCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
-        850
+        3000
       ),
-      setTimeout(() => prefetchTimerReport(queryClient, currentOpenMeetingId, user?.id), 1050),
-      setTimeout(() => prefetchAhCounter(queryClient, currentOpenMeetingId, user?.currentClubId, user?.id), 1250),
-      setTimeout(() => prefetchGrammarianCorner(currentOpenMeetingId, user?.id, user?.currentClubId), 1450)
+      setTimeout(() => prefetchTimerReport(queryClient, currentOpenMeetingId, user?.id), 3700),
+      setTimeout(() => prefetchAhCounter(queryClient, currentOpenMeetingId, user?.currentClubId, user?.id), 4300),
+      setTimeout(() => prefetchGrammarianCorner(currentOpenMeetingId, user?.id, user?.currentClubId), 4900)
     );
 
     return () => {
       timers.forEach((t) => clearTimeout(t));
     };
-  }, [currentOpenMeetingId, queryClient, user?.currentClubId, user?.id]);
+  }, [backgroundPrefetchReady, currentOpenMeetingId, queryClient, user?.currentClubId, user?.id]);
 
   useEffect(() => {
+    if (!backgroundPrefetchReady) return;
     prefetchMyMentorSnapshot(user?.currentClubId);
-  }, [user?.currentClubId]);
+  }, [backgroundPrefetchReady, user?.currentClubId]);
 
   useEffect(() => {
+    if (!backgroundPrefetchReady) return;
     prefetchClubLandingCritical(user?.currentClubId ?? null);
-  }, [user?.currentClubId]);
+  }, [backgroundPrefetchReady, user?.currentClubId]);
 
   useEffect(() => {
+    if (!backgroundPrefetchReady) return;
     prefetchProfileSnapshot(user?.id);
-  }, [user?.id]);
+  }, [backgroundPrefetchReady, user?.id]);
+
+  useEffect(() => {
+    if (!backgroundPrefetchReady) return;
+    if (!user?.id || !user?.currentClubId) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    timers.push(
+      setTimeout(() => {
+        void prefetchMyRoleInsightsPanel(user.currentClubId, user.id);
+      }, 1400),
+      setTimeout(() => {
+        void prefetchMyAttendancePanel(user.id, user.currentClubId);
+      }, 2200),
+      setTimeout(() => {
+        void prefetchMyAwardsPanel(user.id, user.currentClubId, user.fullName);
+      }, 3000)
+    );
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, [backgroundPrefetchReady, user?.id, user?.currentClubId, user?.fullName]);
 
   const handleGrammarianPress = useCallback(() => {
     if (!currentOpenMeetingId) {
@@ -1801,7 +1844,7 @@ export default function MyJourney() {
                       icon={<Trophy size={18} color="#D97706" />}
                       color="#D97706"
                       iconBackgroundColor="#FEF3C7"
-                      onPress={() => router.push('/my-growth')}
+                      onPress={handleMyGrowthPress}
                       inline
                     />
                     {!isOpenMeetingLiveNow ? (

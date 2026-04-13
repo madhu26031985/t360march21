@@ -25,6 +25,20 @@ let roleInsightsCache:
     }
   | null = null;
 
+export async function prefetchMyRoleInsightsPanel(clubId?: string | null, userId?: string | null) {
+  if (!clubId || !userId) return;
+  const cacheKey = `${clubId}:${userId}`;
+  const isFresh =
+    roleInsightsCache && roleInsightsCache.key === cacheKey && Date.now() - roleInsightsCache.at < CACHE_TTL_MS;
+  if (isFresh) return;
+  try {
+    const payload = await fetchMyRoleInsights(clubId, userId);
+    roleInsightsCache = { key: cacheKey, at: Date.now(), payload };
+  } catch {
+    // best-effort warmup only
+  }
+}
+
 function TrackRoleRow({
   categoryKey,
   insights,

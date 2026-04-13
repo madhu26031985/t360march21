@@ -6,6 +6,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, User, Mail, Phone, MapPin, Copy, Linkedin, Twitter, Instagram, Youtube } from 'lucide-react-native';
+
+const NOTION_BORDER = 'rgba(55, 53, 47, 0.09)';
+const COPY_RAIL_W = 44;
 import { Image } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
@@ -148,15 +151,6 @@ export default function MemberProfile() {
     }
   };
 
-  const handleCall = () => {
-    if (member?.phone_number) {
-      const phoneUrl = `tel:${member.phone_number}`;
-      Linking.openURL(phoneUrl).catch(() => {
-        Alert.alert('Error', 'Unable to make phone call');
-      });
-    }
-  };
-
   const handleOpenSocialMedia = (url: string) => {
     if (url) {
       Linking.openURL(url).catch(() => {
@@ -167,9 +161,11 @@ export default function MemberProfile() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.mode === 'dark' ? theme.colors.background : '#FFFFFF' }]}>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText} maxFontSizeMultiplier={1.3}>Loading member profile...</Text>
+          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Loading member profile...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -177,9 +173,11 @@ export default function MemberProfile() {
 
   if (!member) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.mode === 'dark' ? theme.colors.background : '#FFFFFF' }]}>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText} maxFontSizeMultiplier={1.3}>Member not found</Text>
+          <Text style={[styles.loadingText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+            Member not found
+          </Text>
           <TouchableOpacity
             style={styles.goBackButton}
             onPress={() => router.back()}
@@ -191,152 +189,175 @@ export default function MemberProfile() {
     );
   }
 
+  const pageBg = theme.mode === 'dark' ? theme.colors.background : '#FFFFFF';
+  const textMain = theme.colors.text;
+  const textMuted = theme.colors.textSecondary;
+  const borderColor = theme.mode === 'light' ? NOTION_BORDER : theme.colors.border;
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: pageBg }]} edges={['top', 'left', 'right']}>
+      <View style={[styles.header, { backgroundColor: pageBg, borderBottomColor: borderColor }]}>
         <TouchableOpacity style={styles.headerBackButton} onPress={() => router.back()}>
-          <ArrowLeft size={24} color="#111827" />
+          <ArrowLeft size={24} color={textMain} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} maxFontSizeMultiplier={1.3}>Member Profile</Text>
+        <Text style={[styles.headerTitle, { color: textMain }]} maxFontSizeMultiplier={1.3}>
+          Member Profile
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.contentCard}>
-          {/* Profile Header */}
-          <View style={styles.profileHeader}>
-            <View style={styles.avatarContainer}>
-              {member.avatar_url ? (
-                <Image
-                  source={{ uri: member.avatar_url }}
-                  style={styles.avatar}
-                  resizeMode="contain"
-                />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <User size={48} color="#6B7280" />
-                </View>
-              )}
-            </View>
-            <Text style={styles.memberName} maxFontSizeMultiplier={1.3}>{member.full_name}</Text>
-            {member.location && (
-              <View style={styles.locationRow}>
-                <MapPin size={14} color="#6B7280" />
-                <Text style={styles.locationText} maxFontSizeMultiplier={1.3}>{member.location}</Text>
+      <ScrollView
+        style={[styles.scrollContent, { backgroundColor: pageBg }]}
+        contentContainerStyle={styles.scrollInner}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.profileHeader}>
+          <View style={styles.avatarContainer}>
+            {member.avatar_url ? (
+              <Image
+                source={{ uri: member.avatar_url }}
+                style={[styles.avatar, { borderColor: borderColor }]}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { borderColor: borderColor }]}>
+                <User size={48} color={textMuted} />
               </View>
             )}
           </View>
+          <Text style={[styles.memberName, { color: textMain }]} maxFontSizeMultiplier={1.3}>
+            {member.full_name}
+          </Text>
+          {member.location ? (
+            <View style={styles.locationRow}>
+              <MapPin size={14} color={textMuted} />
+              <Text style={[styles.locationText, { color: textMuted }]} maxFontSizeMultiplier={1.3}>
+                {member.location}
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
-          {/* Contact Information Section */}
-          <View style={styles.contactSection}>
-            {/* Email Row */}
-            <View style={styles.contactRow}>
-              <View style={styles.contactLeft}>
-                <View style={styles.iconContainer}>
-                  <Mail size={18} color="#3B82F6" />
-                </View>
-                <View style={styles.contactInfo}>
-                  <Text style={styles.contactLabel} maxFontSizeMultiplier={1.3}>Email</Text>
-                  <Text style={styles.contactValue} maxFontSizeMultiplier={1.3}>{member.email}</Text>
-                </View>
+        <View style={[styles.hairline, { backgroundColor: borderColor }]} />
+
+        <View style={styles.contactBlock}>
+          <View style={styles.contactRow}>
+            <View style={styles.contactLeft}>
+              <View style={[styles.iconContainer, { backgroundColor: theme.mode === 'dark' ? theme.colors.surface : '#F3F4F6' }]}>
+                <Mail size={18} color="#3B82F6" />
               </View>
-              <TouchableOpacity style={styles.actionButton} onPress={handleCopyEmail}>
-                <Copy size={16} color="#6B7280" />
+              <View style={styles.contactInfo}>
+                <Text style={[styles.contactLabel, { color: textMuted }]} maxFontSizeMultiplier={1.3}>
+                  Email
+                </Text>
+                <Text style={[styles.contactValue, { color: textMain }]} maxFontSizeMultiplier={1.3}>
+                  {member.email}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.copyRail}>
+              <TouchableOpacity style={styles.copyHit} onPress={handleCopyEmail} accessibilityLabel="Copy email">
+                <Copy size={16} color={textMuted} />
               </TouchableOpacity>
             </View>
-
-            {/* Phone Row */}
-            {member.phone_number && (
-              <>
-                <View style={styles.divider} />
-                <View style={styles.contactRow}>
-                  <View style={styles.contactLeft}>
-                    <View style={styles.iconContainer}>
-                      <Phone size={18} color="#10B981" />
-                    </View>
-                    <View style={styles.contactInfo}>
-                      <Text style={styles.contactLabel} maxFontSizeMultiplier={1.3}>Phone</Text>
-                      <Text style={styles.contactValue} maxFontSizeMultiplier={1.3}>{member.phone_number}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.actionButtons}>
-                    <TouchableOpacity style={styles.actionButton} onPress={handleCopyPhone}>
-                      <Copy size={16} color="#6B7280" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.actionButton, styles.callButton]} onPress={handleCall}>
-                      <Phone size={16} color="#6B7280" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </>
-            )}
           </View>
 
-          {/* About Section */}
-          {member.About && (
-            <View style={styles.aboutSection}>
-              <View style={styles.aboutHeaderRow}>
-                <Text style={styles.aboutTitle} maxFontSizeMultiplier={1.3}>
+          {member.phone_number ? (
+            <>
+              <View style={[styles.hairlineInset, { backgroundColor: borderColor }]} />
+              <View style={styles.contactRow}>
+                <View style={styles.contactLeft}>
+                  <View style={[styles.iconContainer, { backgroundColor: theme.mode === 'dark' ? theme.colors.surface : '#F3F4F6' }]}>
+                    <Phone size={18} color="#10B981" />
+                  </View>
+                  <View style={styles.contactInfo}>
+                    <Text style={[styles.contactLabel, { color: textMuted }]} maxFontSizeMultiplier={1.3}>
+                      Phone
+                    </Text>
+                    <Text style={[styles.contactValue, { color: textMain }]} maxFontSizeMultiplier={1.3}>
+                      {member.phone_number}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.copyRail}>
+                  <TouchableOpacity style={styles.copyHit} onPress={handleCopyPhone} accessibilityLabel="Copy phone">
+                    <Copy size={16} color={textMuted} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </>
+          ) : null}
+        </View>
+
+        {member.About ? (
+          <>
+            <View style={[styles.hairline, { backgroundColor: borderColor }]} />
+            <View style={styles.aboutBlock}>
+              <View style={styles.aboutTitleRow}>
+                <Text style={[styles.aboutTitle, { color: textMain }]} maxFontSizeMultiplier={1.3}>
                   About Me
                 </Text>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={handleCopyAbout}
-                  accessibilityRole="button"
-                  accessibilityLabel="Copy About Me"
-                >
-                  <Copy size={16} color="#6B7280" />
-                </TouchableOpacity>
+                <View style={styles.copyRail}>
+                  <TouchableOpacity
+                    style={styles.copyHit}
+                    onPress={handleCopyAbout}
+                    accessibilityRole="button"
+                    accessibilityLabel="Copy About Me"
+                  >
+                    <Copy size={16} color={textMuted} />
+                  </TouchableOpacity>
+                </View>
               </View>
-              <Text style={styles.aboutText} maxFontSizeMultiplier={1.3}>
+              <Text style={[styles.aboutText, { color: textMuted }]} maxFontSizeMultiplier={1.3}>
                 {member.About}
               </Text>
             </View>
-          )}
+          </>
+        ) : null}
 
-          {/* Social Media Section */}
-          {(member.linkedin_url || member.twitter_url || member.instagram_url || member.youtube_url) && (
+        {(member.linkedin_url || member.twitter_url || member.instagram_url || member.youtube_url) ? (
+          <>
+            <View style={[styles.hairline, { backgroundColor: borderColor, marginTop: 8 }]} />
             <View style={styles.socialMediaSection}>
-              {member.linkedin_url && (
+              {member.linkedin_url ? (
                 <TouchableOpacity
                   style={[styles.socialIcon, { backgroundColor: '#0A66C2' }]}
                   onPress={() => handleOpenSocialMedia(member.linkedin_url!)}
                   activeOpacity={0.8}
                 >
-                  <Linkedin size={24} color="#FFFFFF" />
+                  <Linkedin size={22} color="#FFFFFF" />
                 </TouchableOpacity>
-              )}
-              {member.twitter_url && (
+              ) : null}
+              {member.twitter_url ? (
                 <TouchableOpacity
                   style={[styles.socialIcon, { backgroundColor: '#1DA1F2' }]}
                   onPress={() => handleOpenSocialMedia(member.twitter_url!)}
                   activeOpacity={0.8}
                 >
-                  <Twitter size={24} color="#FFFFFF" />
+                  <Twitter size={22} color="#FFFFFF" />
                 </TouchableOpacity>
-              )}
-              {member.instagram_url && (
+              ) : null}
+              {member.instagram_url ? (
                 <TouchableOpacity
                   style={[styles.socialIcon, { backgroundColor: '#E4405F' }]}
                   onPress={() => handleOpenSocialMedia(member.instagram_url!)}
                   activeOpacity={0.8}
                 >
-                  <Instagram size={24} color="#FFFFFF" />
+                  <Instagram size={22} color="#FFFFFF" />
                 </TouchableOpacity>
-              )}
-              {member.youtube_url && (
+              ) : null}
+              {member.youtube_url ? (
                 <TouchableOpacity
                   style={[styles.socialIcon, { backgroundColor: '#FF0000' }]}
                   onPress={() => handleOpenSocialMedia(member.youtube_url!)}
                   activeOpacity={0.8}
                 >
-                  <Youtube size={24} color="#FFFFFF" />
+                  <Youtube size={22} color="#FFFFFF" />
                 </TouchableOpacity>
-              )}
+              ) : null}
             </View>
-          )}
-        </View>
+          </>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -345,7 +366,6 @@ export default function MemberProfile() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
   },
   loadingContainer: {
     flex: 1,
@@ -356,7 +376,6 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#111827',
   },
   goBackButton: {
     marginTop: 16,
@@ -374,20 +393,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerBackButton: {
     padding: 8,
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: '700',
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: 16,
+    marginHorizontal: 8,
   },
   headerSpacer: {
     width: 40,
@@ -395,51 +413,49 @@ const styles = StyleSheet.create({
   scrollContent: {
     flex: 1,
   },
-  contentCard: {
-    marginHorizontal: 20,
-    marginVertical: 24,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 8,
+  scrollInner: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 32,
+  },
+  hairline: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+    marginVertical: 16,
+  },
+  hairlineInset: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+    marginLeft: 48,
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 0,
   },
   avatarContainer: {
     marginBottom: 16,
   },
   avatar: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    borderWidth: 3,
-    borderColor: '#3b82f6',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   avatarPlaceholder: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#3b82f6',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   memberName: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 20,
+    fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 8,
+    marginTop: 14,
+    marginBottom: 6,
   },
   locationRow: {
     flexDirection: 'row',
@@ -449,19 +465,14 @@ const styles = StyleSheet.create({
   locationText: {
     fontSize: 13,
     fontWeight: '400',
-    color: '#6B7280',
   },
-  contactSection: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+  contactBlock: {
+    marginBottom: 0,
   },
   contactRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 56,
+    minHeight: 52,
   },
   contactLeft: {
     flexDirection: 'row',
@@ -483,77 +494,55 @@ const styles = StyleSheet.create({
   contactLabel: {
     fontSize: 12,
     fontWeight: '400',
-    color: '#6B7280',
     marginBottom: 2,
   },
   contactValue: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#111827',
   },
-  actionButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
+  copyRail: {
+    width: COPY_RAIL_W,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 8,
+  copyHit: {
+    width: COPY_RAIL_W,
+    height: COPY_RAIL_W,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  callButton: {
-    marginLeft: 0,
+  aboutBlock: {
+    paddingBottom: 4,
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#EAEAEA',
-    marginVertical: 0,
-  },
-  aboutSection: {
-    backgroundColor: '#F5F7FA',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
-  },
-  aboutHeaderRow: {
+  aboutTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    minHeight: COPY_RAIL_W,
+    marginBottom: 10,
   },
   aboutTitle: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
     flex: 1,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   aboutText: {
-    fontSize: 14,
-    lineHeight: 22.4,
-    color: '#374151',
+    fontSize: 15,
+    lineHeight: 24,
   },
   socialMediaSection: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
-    marginTop: 8,
+    gap: 14,
+    paddingVertical: 12,
   },
   socialIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
 });
