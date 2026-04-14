@@ -1249,7 +1249,18 @@ function ClubFaqHeroCard({ items, variant = 'card' }: { items: ClubFaqHeroRow[];
     };
   }, [items.length, opacity, translateY]);
 
-  if (!items.length) return null;
+  if (!items.length) {
+    return (
+      <View style={variant === 'notion' ? styles.faqHeroNotion : [styles.card, styles.faqHeroCard]}>
+        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+          Questions
+        </Text>
+        <Text style={styles.smallMuted} maxFontSizeMultiplier={1.15}>
+          No questions published yet.
+        </Text>
+      </View>
+    );
+  }
 
   const safeIndex = Math.min(index, items.length - 1);
   const row = items[safeIndex];
@@ -1301,7 +1312,18 @@ function GrammarianPublishedCarousel({
     setIndex(0);
   }, [rows]);
 
-  if (!rows.length) return null;
+  if (!rows.length) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+          {title}
+        </Text>
+        <Text style={styles.smallMuted} maxFontSizeMultiplier={1.15}>
+          No entries published yet.
+        </Text>
+      </View>
+    );
+  }
 
   const safeIndex = Math.min(index, rows.length - 1);
   const row = rows[safeIndex];
@@ -1377,7 +1399,18 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
     setIndex(0);
   }, [rows]);
 
-  if (!rows.length) return null;
+  if (!rows.length) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+          Word of the day
+        </Text>
+        <Text style={styles.smallMuted} maxFontSizeMultiplier={1.15}>
+          No words published yet.
+        </Text>
+      </View>
+    );
+  }
 
   const safeIndex = Math.min(index, rows.length - 1);
   const row = rows[safeIndex];
@@ -1453,7 +1486,18 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
 
 /** Prepared speeches: two-column layout; transition = scale + crossfade (distinct from Toastmaster / Educational). */
 function PreparedSpeechesHighlightCarousel({ rows }: { rows: PreparedSpeechDeliveredRow[] }) {
-  if (!rows.length) return null;
+  if (!rows.length) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+          Prepared speeches — last 6 months
+        </Text>
+        <Text style={styles.smallMuted} maxFontSizeMultiplier={1.15}>
+          No prepared speeches available yet.
+        </Text>
+      </View>
+    );
+  }
   const sortedRows = [...rows].sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw));
 
   const pathwayMetaLabel = (row: PreparedSpeechDeliveredRow): string | null => {
@@ -1536,7 +1580,23 @@ function DeliveredHighlightCarousel({
     setIndex(0);
   }, [rows]);
 
-  if (!rows.length) return null;
+  if (!rows.length) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+          {sectionTitle}
+        </Text>
+        {subtitle ? (
+          <Text style={styles.clubStatsPeriod} maxFontSizeMultiplier={1.15}>
+            {subtitle}
+          </Text>
+        ) : null}
+        <Text style={styles.smallMuted} maxFontSizeMultiplier={1.15}>
+          No records available yet.
+        </Text>
+      </View>
+    );
+  }
 
   const safeIndex = Math.min(index, rows.length - 1);
   const row = rows[safeIndex];
@@ -2180,41 +2240,31 @@ export default function MyClub() {
                   </View>
                 </View>
 
-                {toastmasterHighlightRows.length > 0 ? (
-                  <DeliveredHighlightCarousel
-                    sectionTitle="Toastmaster & theme — last 6 months"
-                    rows={toastmasterHighlightRows}
-                    variant="toastmaster"
-                  />
-                ) : null}
+                <DeliveredHighlightCarousel
+                  sectionTitle="Toastmaster & theme — last 6 months"
+                  rows={toastmasterHighlightRows}
+                  variant="toastmaster"
+                />
 
-                {preparedSpeechesDelivered.length > 0 ? (
-                  <PreparedSpeechesHighlightCarousel rows={preparedSpeechesDelivered} />
-                ) : null}
+                <PreparedSpeechesHighlightCarousel rows={preparedSpeechesDelivered} />
 
-                {educationalHighlightRows.length > 0 ? (
-                  <DeliveredHighlightCarousel
-                    sectionTitle="Educational speeches — last 6 months"
-                    rows={educationalHighlightRows}
-                    variant="educational"
-                  />
-                ) : null}
+                <DeliveredHighlightCarousel
+                  sectionTitle="Educational speeches — last 6 months"
+                  rows={educationalHighlightRows}
+                  variant="educational"
+                />
 
-                {clubWotdRows.length > 0 ? <ClubWordOfTheDayCarousel rows={clubWotdRows} /> : null}
+                <ClubWordOfTheDayCarousel rows={clubWotdRows} />
 
-                {clubQuoteRows.length > 0 ? (
-                  <GrammarianPublishedCarousel
-                    title="Quote of the day"
-                    rows={clubQuoteRows}
-                  />
-                ) : null}
+                <GrammarianPublishedCarousel
+                  title="Quote of the day"
+                  rows={clubQuoteRows}
+                />
 
-                {clubIdiomRows.length > 0 ? (
-                  <GrammarianPublishedCarousel
-                    title="Idiom of the day"
-                    rows={clubIdiomRows}
-                  />
-                ) : null}
+                <GrammarianPublishedCarousel
+                  title="Idiom of the day"
+                  rows={clubIdiomRows}
+                />
 
                 {/* Connect */}
                 <View style={styles.card}>
