@@ -29,6 +29,7 @@ import {
   ChevronRight,
   Facebook,
   Twitter,
+  Star,
   Users,
   Youtube,
 } from 'lucide-react-native';
@@ -601,6 +602,7 @@ type GrammarianPublishedCarouselRow = {
   meaning: string | null;
   usage: string | null;
   meetingDateLabel: string;
+  addedBy: string | null;
 };
 
 /** Published quotes for meetings in the rolling last N calendar days (newest first). */
@@ -612,7 +614,7 @@ async function fetchPublishedClubQuotesRollingDays(
     const { from, to } = meetingDateRangeRollingDays(daysBack);
     const { data, error } = await supabase
       .from('grammarian_quote_of_the_day')
-      .select('id, quote, meaning, usage, app_club_meeting(meeting_date)')
+      .select('*, app_club_meeting(meeting_date)')
       .eq('club_id', clubId)
       .eq('is_published', true)
       .limit(120);
@@ -620,12 +622,14 @@ async function fetchPublishedClubQuotesRollingDays(
       if (error) console.warn('Club quotes of the day:', error.message);
       return [];
     }
-    const meetingDateOf = (r: (typeof data)[number]) => {
+    const rows = ((data as Array<Record<string, any>> | null) ?? []);
+    const meetingDateOf = (r: Record<string, any>) => {
       const m = r.app_club_meeting as { meeting_date?: string } | { meeting_date?: string }[] | null;
       if (Array.isArray(m)) return m[0]?.meeting_date ?? '';
       return m?.meeting_date ?? '';
     };
-    const mapped = data
+    const authorById = await mapRowAuthorsById(rows);
+    const mapped = rows
       .map((r) => {
         const md = meetingDateOf(r);
         if (md < from || md > to) return null;
@@ -638,6 +642,7 @@ async function fetchPublishedClubQuotesRollingDays(
           lead,
           meaning: ((r.meaning ?? '').trim()) || null,
           usage: usageStr || null,
+          addedBy: authorById.get(String(r.id)) ?? null,
           meetingDateRaw: md,
           meetingDateLabel: formatCharterDateShort(md) || md || '—',
         };
@@ -660,7 +665,7 @@ async function fetchPublishedClubIdiomsRollingDays(
     const { from, to } = meetingDateRangeRollingDays(daysBack);
     const { data, error } = await supabase
       .from('grammarian_idiom_of_the_day')
-      .select('id, idiom, meaning, usage, app_club_meeting(meeting_date)')
+      .select('*, app_club_meeting(meeting_date)')
       .eq('club_id', clubId)
       .eq('is_published', true)
       .limit(120);
@@ -668,12 +673,14 @@ async function fetchPublishedClubIdiomsRollingDays(
       if (error) console.warn('Club idioms of the day:', error.message);
       return [];
     }
-    const meetingDateOf = (r: (typeof data)[number]) => {
+    const rows = ((data as Array<Record<string, any>> | null) ?? []);
+    const meetingDateOf = (r: Record<string, any>) => {
       const m = r.app_club_meeting as { meeting_date?: string } | { meeting_date?: string }[] | null;
       if (Array.isArray(m)) return m[0]?.meeting_date ?? '';
       return m?.meeting_date ?? '';
     };
-    const mapped = data
+    const authorById = await mapRowAuthorsById(rows);
+    const mapped = rows
       .map((r) => {
         const md = meetingDateOf(r);
         if (md < from || md > to) return null;
@@ -686,6 +693,7 @@ async function fetchPublishedClubIdiomsRollingDays(
           lead,
           meaning: ((r.meaning ?? '').trim()) || null,
           usage: usageStr || null,
+          addedBy: authorById.get(String(r.id)) ?? null,
           meetingDateRaw: md,
           meetingDateLabel: formatCharterDateShort(md) || md || '—',
         };
@@ -706,7 +714,104 @@ type ClubWotdCarouselRow = {
   partOfSpeech: string | null;
   usage: string | null;
   meetingDateLabel: string;
+  addedBy: string | null;
 };
+
+type ClubTableTopicQuestionRow = {
+  id: string;
+  question: string;
+  createdAt: string;
+  meetingDateLabel: string;
+  addedBy: string | null;
+};
+
+type GeneralEvaluatorScoringRow = {
+  key: string;
+  evaluatorName: string;
+  evaluatorAvatarUrl: string | null;
+  meetingDateRaw: string;
+  meetingDateLabel: string;
+  meetingNumber: string | null;
+  score: number | null;
+  overallScoreTotal: number | null;
+  overallScoreMax: number | null;
+};
+
+type TimerMeetingWiseRow = {
+  key: string;
+  meetingDateRaw: string;
+  meetingDateLabel: string;
+  meetingNumber: string | null;
+  timerName: string;
+  timerAvatarUrl: string | null;
+  categoryStats: Array<{
+    key: 'prepared_speeches' | 'evaluation' | 'table_topic_speakers' | 'educational_speech';
+    label: string;
+    qualified: number;
+    total: number;
+  }>;
+};
+
+type AhCounterMeetingWiseRow = {
+  key: string;
+  meetingDateRaw: string;
+  meetingDateLabel: string;
+  meetingNumber: string | null;
+  ahCounterName: string;
+  ahCounterAvatarUrl: string | null;
+  words: Array<{ label: string; count: number }>;
+};
+
+async function mapRowAuthorsById(
+  rows: Array<Record<string, any>>,
+  idKeys: string[] = ['grammarian_user_id', 'created_by', 'user_id', 'added_by', 'asked_by'],
+  nameKeys: string[] = ['added_by_name', 'asked_by_name', 'created_by_name']
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const userIds = new Set<string>();
+
+  for (const row of rows) {
+    for (const key of nameKeys) {
+      const value = row?.[key];
+      if (typeof value === 'string' && value.trim()) {
+        result.set(String(row.id), value.trim());
+        break;
+      }
+    }
+    if (!result.has(String(row.id))) {
+      for (const key of idKeys) {
+        const id = row?.[key];
+        if (typeof id === 'string' && id.trim()) {
+          userIds.add(id.trim());
+          break;
+        }
+      }
+    }
+  }
+
+  if (userIds.size) {
+    const { data } = await supabase
+      .from('app_user_profiles')
+      .select('id, full_name')
+      .in('id', Array.from(userIds));
+    const profileNameById = new Map(((data as Array<{ id: string; full_name: string | null }> | null) ?? [])
+      .map((p) => [p.id, (p.full_name ?? '').trim()]));
+
+    for (const row of rows) {
+      if (result.has(String(row.id))) continue;
+      for (const key of idKeys) {
+        const id = row?.[key];
+        if (typeof id === 'string' && id.trim()) {
+          const name = profileNameById.get(id.trim());
+          if (name) result.set(String(row.id), name);
+          break;
+        }
+      }
+    }
+  }
+
+  return result;
+}
 
 /** Published words of the day for meetings in the rolling last 6 calendar months (newest meeting first). */
 async function fetchPublishedClubWordsLast6Months(clubId: string): Promise<ClubWotdCarouselRow[]> {
@@ -719,7 +824,7 @@ async function fetchPublishedClubWordsLast6Months(clubId: string): Promise<ClubW
 
     const { data, error } = await supabase
       .from('grammarian_word_of_the_day')
-      .select('id, word, meaning, part_of_speech, usage, app_club_meeting(meeting_date)')
+      .select('*, app_club_meeting(meeting_date)')
       .eq('club_id', clubId)
       .eq('is_published', true)
       .limit(120);
@@ -729,13 +834,15 @@ async function fetchPublishedClubWordsLast6Months(clubId: string): Promise<ClubW
       return [];
     }
 
-    const meetingDateOf = (r: (typeof data)[number]) => {
+    const rows = ((data as Array<Record<string, any>> | null) ?? []);
+    const meetingDateOf = (r: Record<string, any>) => {
       const m = r.app_club_meeting as { meeting_date?: string } | { meeting_date?: string }[] | null;
       if (Array.isArray(m)) return m[0]?.meeting_date ?? '';
       return m?.meeting_date ?? '';
     };
 
-    const mapped = data
+    const authorById = await mapRowAuthorsById(rows);
+    const mapped = rows
       .map((r) => {
         const md = meetingDateOf(r);
         if (md < meetingDateStart || md > meetingDateEnd) return null;
@@ -749,6 +856,7 @@ async function fetchPublishedClubWordsLast6Months(clubId: string): Promise<ClubW
           meaning: ((r.meaning ?? '').trim()) || null,
           partOfSpeech: ((r.part_of_speech ?? '').trim()) || null,
           usage: usageStr || null,
+          addedBy: authorById.get(String(r.id)) ?? null,
           meetingDateRaw: md,
           meetingDateLabel: formatCharterDateShort(md) || md || '—',
         };
@@ -761,6 +869,510 @@ async function fetchPublishedClubWordsLast6Months(clubId: string): Promise<ClubW
     return mapped.map(({ meetingDateRaw: _d, ...rest }) => rest);
   } catch (e) {
     console.warn('Club words of the day load error:', e);
+    return [];
+  }
+}
+
+async function fetchClubTableTopicQuestions(clubId: string): Promise<ClubTableTopicQuestionRow[]> {
+  try {
+    const { data, error } = await supabase
+      .from('app_meeting_tabletopicscorner')
+      .select('*')
+      .eq('club_id', clubId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error || !data?.length) {
+      if (error) console.warn('Club table topic questions:', error.message);
+      return [];
+    }
+
+    const rows = (data as Array<{
+      id: string;
+      question_text: string | null;
+      created_at: string | null;
+      created_by?: string | null;
+      user_id?: string | null;
+      added_by?: string | null;
+      asked_by?: string | null;
+      asked_by_name?: string | null;
+    }> | null) ?? [];
+    const authorById = await mapRowAuthorsById(rows as Array<Record<string, any>>);
+
+    return rows
+      .map((r) => {
+        const question = (r.question_text ?? '').trim();
+        if (!question) return null;
+        const createdAt = r.created_at ?? '';
+        return {
+          id: r.id,
+          question,
+          createdAt,
+          meetingDateLabel: formatCharterDateShort(createdAt) || '—',
+          addedBy: authorById.get(String(r.id)) ?? null,
+        };
+      })
+      .filter(Boolean) as ClubTableTopicQuestionRow[];
+  } catch (e) {
+    console.warn('Club table topic questions load error:', e);
+    return [];
+  }
+}
+
+function normalizeGeTenPoint(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  const rounded = Math.round(raw);
+  if (rounded >= 1 && rounded <= 10) return rounded;
+  if (rounded >= 0 && rounded <= 9) return rounded + 1;
+  return null;
+}
+
+function geTenPointToStars(score: number | null | undefined): number {
+  if (score == null || typeof score !== 'number' || !Number.isFinite(score)) return 0;
+  const s = Math.max(1, Math.min(10, score));
+  return s / 2;
+}
+
+function GeFiveStarRow({ rating, size = 16 }: { rating: number; size?: number }) {
+  const clamped = Math.min(5, Math.max(0, rating));
+  return (
+    <View style={styles.geStarRow}>
+      {[0, 1, 2, 3, 4].map((i) => {
+        const fill = Math.min(1, Math.max(0, clamped - i));
+        return (
+          <View key={i} style={{ width: size, height: size }} collapsable={false}>
+            <View style={{ position: 'absolute', left: 0, top: 0, width: size, height: size }}>
+              <Star
+                size={size}
+                color="#D1D5DB"
+                fill="none"
+                stroke="#D1D5DB"
+                strokeWidth={1.2}
+              />
+            </View>
+            {fill > 0 ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  width: size * fill,
+                  height: size,
+                  overflow: 'hidden',
+                }}
+              >
+                <Star
+                  size={size}
+                  color="#F59E0B"
+                  fill="#FBBF24"
+                  stroke="#F59E0B"
+                  strokeWidth={1}
+                />
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+async function fetchGeneralEvaluatorScoringLast6Months(
+  clubId: string
+): Promise<GeneralEvaluatorScoringRow[]> {
+  try {
+    const end = new Date();
+    const start = new Date();
+    start.setMonth(start.getMonth() - 6);
+    const meetingDateStart = formatLocalYmd(start);
+    const meetingDateEnd = formatLocalYmd(end);
+
+    const { data, error } = await supabase
+      .from('app_meeting_ge')
+      .select('id, meeting_id, evaluator_user_id, evaluation_data, submitted_at, created_at, is_completed')
+      .eq('club_id', clubId)
+      .eq('booking_status', 'booked')
+      .eq('is_completed', true)
+      .limit(200);
+
+    if (error || !data?.length) {
+      if (error) console.warn('GE scoring load:', error.message);
+      return [];
+    }
+
+    const geRows = (data as Array<{
+      id: string;
+      meeting_id: string;
+      evaluator_user_id: string;
+      evaluation_data: Record<string, unknown> | null;
+      submitted_at: string | null;
+      created_at: string | null;
+      is_completed: boolean | null;
+    }> | null) ?? [];
+    if (!geRows.length) return [];
+
+    const meetingIds = [...new Set(geRows.map((r) => r.meeting_id).filter(Boolean))];
+    const evaluatorIds = [...new Set(geRows.map((r) => r.evaluator_user_id).filter(Boolean))];
+
+    const [meetingsRes, profilesRes] = await Promise.all([
+      supabase
+        .from('app_club_meeting')
+        .select('id, meeting_date, meeting_number')
+        .in('id', meetingIds),
+      supabase
+        .from('app_user_profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', evaluatorIds),
+    ]);
+
+    if (meetingsRes.error) {
+      console.warn('GE scoring meetings load:', meetingsRes.error.message);
+      return [];
+    }
+    if (profilesRes.error) {
+      console.warn('GE scoring profiles load:', profilesRes.error.message);
+    }
+
+    const meetings = (meetingsRes.data as Array<{
+      id: string;
+      meeting_date: string;
+      meeting_number: string | null;
+    }> | null) ?? [];
+    const profiles = (profilesRes.data as Array<{
+      id: string;
+      full_name: string;
+      avatar_url: string | null;
+    }> | null) ?? [];
+
+    const meetingById = new Map(meetings.map((m) => [m.id, m]));
+    const profileById = new Map(profiles.map((p) => [p.id, p]));
+
+    const rows: GeneralEvaluatorScoringRow[] = [];
+    for (const ge of geRows) {
+      const meeting = meetingById.get(ge.meeting_id);
+      if (!meeting) continue;
+      if (meeting.meeting_date < meetingDateStart || meeting.meeting_date > meetingDateEnd) continue;
+
+      const evalData =
+        ge.evaluation_data && typeof ge.evaluation_data === 'object'
+          ? (ge.evaluation_data as Record<string, unknown>)
+          : {};
+      const normalizedValues = Object.values(evalData)
+        .map((v) => normalizeGeTenPoint(v))
+        .filter((v): v is number => typeof v === 'number');
+      const total = normalizedValues.reduce((sum, n) => sum + n, 0);
+      const max = normalizedValues.length * 10;
+      const score = normalizeGeTenPoint(evalData.q10_overall_experience);
+
+      const prof = profileById.get(ge.evaluator_user_id);
+      rows.push({
+        key: ge.id,
+        evaluatorName: prof?.full_name?.trim() || 'General Evaluator',
+        evaluatorAvatarUrl: prof?.avatar_url ?? null,
+        meetingDateRaw: meeting.meeting_date,
+        meetingDateLabel: formatCharterDateShort(meeting.meeting_date) || meeting.meeting_date || '—',
+        meetingNumber: meeting.meeting_number ?? null,
+        score,
+        overallScoreTotal: max > 0 ? total : null,
+        overallScoreMax: max > 0 ? max : null,
+      });
+    }
+
+    rows.sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw));
+    return rows.slice(0, 40);
+  } catch (e) {
+    console.warn('GE scoring load error:', e);
+    return [];
+  }
+}
+
+async function fetchTimerMeetingWiseLast6Months(clubId: string): Promise<TimerMeetingWiseRow[]> {
+  try {
+    const end = new Date();
+    const start = new Date();
+    start.setMonth(start.getMonth() - 6);
+    const meetingDateStart = formatLocalYmd(start);
+    const meetingDateEnd = formatLocalYmd(end);
+
+    const { data, error } = await supabase
+      .from('timer_reports')
+      .select('id, meeting_id, recorded_by, speech_category, time_qualification')
+      .eq('club_id', clubId)
+      .limit(800);
+    if (error || !data?.length) {
+      if (error) console.warn('Timer report load:', error.message);
+      return [];
+    }
+
+    const timerRows = (data as Array<{
+      id: string;
+      meeting_id: string;
+      recorded_by: string;
+      speech_category: string;
+      time_qualification: boolean;
+    }> | null) ?? [];
+    if (!timerRows.length) return [];
+
+    const meetingIds = [...new Set(timerRows.map((r) => r.meeting_id).filter(Boolean))];
+    const timerUserIds = [...new Set(timerRows.map((r) => r.recorded_by).filter(Boolean))];
+
+    const [meetingsRes, profilesRes] = await Promise.all([
+      supabase
+        .from('app_club_meeting')
+        .select('id, meeting_date, meeting_number')
+        .in('id', meetingIds),
+      supabase
+        .from('app_user_profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', timerUserIds),
+    ]);
+    if (meetingsRes.error) {
+      console.warn('Timer meetings load:', meetingsRes.error.message);
+      return [];
+    }
+    if (profilesRes.error) {
+      console.warn('Timer profiles load:', profilesRes.error.message);
+    }
+
+    const meetings = (meetingsRes.data as Array<{
+      id: string;
+      meeting_date: string;
+      meeting_number: string | null;
+    }> | null) ?? [];
+    const profiles = (profilesRes.data as Array<{
+      id: string;
+      full_name: string;
+      avatar_url: string | null;
+    }> | null) ?? [];
+    const meetingById = new Map(meetings.map((m) => [m.id, m]));
+    const profileById = new Map(profiles.map((p) => [p.id, p]));
+
+    const grouped = new Map<
+      string,
+      {
+        meetingDateRaw: string;
+        meetingDateLabel: string;
+        meetingNumber: string | null;
+        timerName: string;
+        timerAvatarUrl: string | null;
+        categoryStats: TimerMeetingWiseRow['categoryStats'];
+      }
+    >();
+
+    const emptyCategoryStats = (): TimerMeetingWiseRow['categoryStats'] => [
+      { key: 'prepared_speeches', label: 'Prepared speeches', qualified: 0, total: 0 },
+      { key: 'evaluation', label: 'Evaluation', qualified: 0, total: 0 },
+      { key: 'table_topic_speakers', label: 'Table topic speakers', qualified: 0, total: 0 },
+      { key: 'educational_speech', label: 'Educational speech', qualified: 0, total: 0 },
+    ];
+    const mapCategoryKey = (
+      raw: string
+    ): 'prepared_speeches' | 'evaluation' | 'table_topic_speakers' | 'educational_speech' | null => {
+      const v = (raw || '').trim().toLowerCase();
+      if (v === 'prepared_speech' || v === 'prepared_speeches' || v === 'prepared speech') {
+        return 'prepared_speeches';
+      }
+      if (v === 'evaluation' || v === 'evaluations') return 'evaluation';
+      if (v === 'table_topic_speaker' || v === 'table_topic_speakers' || v === 'table topic speaker') {
+        return 'table_topic_speakers';
+      }
+      if (v === 'educational_session' || v === 'educational_speech' || v === 'educational speech') {
+        return 'educational_speech';
+      }
+      return null;
+    };
+
+    for (const row of timerRows) {
+      const meeting = meetingById.get(row.meeting_id);
+      if (!meeting) continue;
+      if (meeting.meeting_date < meetingDateStart || meeting.meeting_date > meetingDateEnd) continue;
+      const prof = profileById.get(row.recorded_by);
+      const bucket = grouped.get(row.meeting_id);
+      if (!bucket) {
+        grouped.set(row.meeting_id, {
+          meetingDateRaw: meeting.meeting_date,
+          meetingDateLabel: formatCharterDateShort(meeting.meeting_date) || meeting.meeting_date || '—',
+          meetingNumber: meeting.meeting_number ?? null,
+          timerName: prof?.full_name?.trim() || 'Timer',
+          timerAvatarUrl: prof?.avatar_url ?? null,
+          categoryStats: emptyCategoryStats(),
+        });
+      }
+      const target = grouped.get(row.meeting_id);
+      if (!target) continue;
+      const categoryKey = mapCategoryKey(row.speech_category);
+      if (!categoryKey) continue;
+      const slot = target.categoryStats.find((s) => s.key === categoryKey);
+      if (!slot) continue;
+      slot.total += 1;
+      if (row.time_qualification) slot.qualified += 1;
+    }
+
+    const result: TimerMeetingWiseRow[] = Array.from(grouped.entries()).map(([meetingId, val]) => ({
+      key: meetingId,
+      ...val,
+    }));
+    result.sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw));
+    return result.slice(0, 40);
+  } catch (e) {
+    console.warn('Timer report meeting-wise load error:', e);
+    return [];
+  }
+}
+
+async function fetchAhCounterMeetingWiseLast6Months(clubId: string): Promise<AhCounterMeetingWiseRow[]> {
+  try {
+    const end = new Date();
+    const start = new Date();
+    start.setMonth(start.getMonth() - 6);
+    const meetingDateStart = formatLocalYmd(start);
+    const meetingDateEnd = formatLocalYmd(end);
+
+    const { data: meetingsInRange, error: meetingsErr } = await supabase
+      .from('app_club_meeting')
+      .select('id, meeting_date, meeting_number')
+      .eq('club_id', clubId)
+      .gte('meeting_date', meetingDateStart)
+      .lte('meeting_date', meetingDateEnd)
+      .order('meeting_date', { ascending: false })
+      .limit(200);
+    if (meetingsErr || !meetingsInRange?.length) {
+      if (meetingsErr) console.warn('Ah counter meetings range load:', meetingsErr.message);
+      return [];
+    }
+
+    const meetings = (meetingsInRange as Array<{
+      id: string;
+      meeting_date: string;
+      meeting_number: string | null;
+    }> | null) ?? [];
+    const meetingIds = meetings.map((m) => m.id);
+
+    const { data: publishedRows, error: publishedErr } = await supabase
+      .from('ah_counter_reports')
+      .select(
+        'id, meeting_id, recorded_by, is_published, um_count, uh_count, ah_count, er_count, hmm_count, like_count, so_count, well_count, okay_count, you_know_count, right_count, actually_count, basically_count, literally_count, i_mean_count, you_see_count, custom_filler_counts'
+      )
+      .in('meeting_id', meetingIds)
+      .eq('is_published', true)
+      .limit(1200);
+    if (publishedErr) {
+      console.warn('Ah counter published rows load:', publishedErr.message);
+    }
+
+    let rows = (publishedRows as Array<Record<string, any>> | null) ?? [];
+    if (!rows.length) {
+      // Fallback: some legacy rows may not have is_published set correctly.
+      const { data: fallbackRows, error: fallbackErr } = await supabase
+        .from('ah_counter_reports')
+        .select(
+          'id, meeting_id, recorded_by, is_published, um_count, uh_count, ah_count, er_count, hmm_count, like_count, so_count, well_count, okay_count, you_know_count, right_count, actually_count, basically_count, literally_count, i_mean_count, you_see_count, custom_filler_counts'
+        )
+        .in('meeting_id', meetingIds)
+        .limit(1200);
+      if (fallbackErr) {
+        console.warn('Ah counter fallback rows load:', fallbackErr.message);
+        return [];
+      }
+      rows = (fallbackRows as Array<Record<string, any>> | null) ?? [];
+    }
+    if (!rows.length) return [];
+
+    const userIds = [...new Set(rows.map((r) => String(r.recorded_by || '')).filter(Boolean))];
+    const { data: profilesData, error: profilesErr } = await supabase
+      .from('app_user_profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', userIds);
+    if (profilesErr) {
+      console.warn('Ah counter profiles load:', profilesErr.message);
+    }
+    const profiles = (profilesData as Array<{ id: string; full_name: string; avatar_url: string | null }> | null) ?? [];
+    const meetingById = new Map(meetings.map((m) => [m.id, m]));
+    const profileById = new Map(profiles.map((p) => [p.id, p]));
+
+    const fillerDefs: Array<{ key: string; label: string }> = [
+      { key: 'um_count', label: 'Um' },
+      { key: 'uh_count', label: 'Uh' },
+      { key: 'ah_count', label: 'Ah' },
+      { key: 'er_count', label: 'Er' },
+      { key: 'hmm_count', label: 'Hmm' },
+      { key: 'like_count', label: 'Like' },
+      { key: 'so_count', label: 'So' },
+      { key: 'well_count', label: 'Well' },
+      { key: 'okay_count', label: 'Okay' },
+      { key: 'you_know_count', label: 'You know' },
+      { key: 'right_count', label: 'Right' },
+      { key: 'actually_count', label: 'Actually' },
+      { key: 'basically_count', label: 'Basically' },
+      { key: 'literally_count', label: 'Literally' },
+      { key: 'i_mean_count', label: 'I mean' },
+      { key: 'you_see_count', label: 'You see' },
+    ];
+
+    const grouped = new Map<
+      string,
+      {
+        meetingDateRaw: string;
+        meetingDateLabel: string;
+        meetingNumber: string | null;
+        ahCounterName: string;
+        ahCounterAvatarUrl: string | null;
+        wordsMap: Map<string, number>;
+      }
+    >();
+
+    for (const row of rows) {
+      const meetingId = String(row.meeting_id || '');
+      if (!meetingId) continue;
+      const meeting = meetingById.get(meetingId);
+      if (!meeting) continue;
+
+      const prof = profileById.get(String(row.recorded_by || ''));
+      if (!grouped.has(meetingId)) {
+        grouped.set(meetingId, {
+          meetingDateRaw: meeting.meeting_date,
+          meetingDateLabel: formatCharterDateShort(meeting.meeting_date) || meeting.meeting_date || '—',
+          meetingNumber: meeting.meeting_number ?? null,
+          ahCounterName: prof?.full_name?.trim() || 'Ah Counter',
+          ahCounterAvatarUrl: prof?.avatar_url ?? null,
+          wordsMap: new Map<string, number>(),
+        });
+      }
+      const bucket = grouped.get(meetingId);
+      if (!bucket) continue;
+
+      for (const def of fillerDefs) {
+        const c = typeof row[def.key] === 'number' ? row[def.key] : 0;
+        if (c > 0) bucket.wordsMap.set(def.label, (bucket.wordsMap.get(def.label) ?? 0) + c);
+      }
+      const custom = row.custom_filler_counts;
+      if (custom && typeof custom === 'object') {
+        for (const [k, v] of Object.entries(custom)) {
+          const n = typeof v === 'number' ? v : 0;
+          if (n <= 0) continue;
+          const label = k.replace(/_/g, ' ').replace(/\b\w/g, (x) => x.toUpperCase());
+          bucket.wordsMap.set(label, (bucket.wordsMap.get(label) ?? 0) + n);
+        }
+      }
+    }
+
+    const out: AhCounterMeetingWiseRow[] = Array.from(grouped.entries()).map(([meetingId, g]) => ({
+      key: meetingId,
+      meetingDateRaw: g.meetingDateRaw,
+      meetingDateLabel: g.meetingDateLabel,
+      meetingNumber: g.meetingNumber,
+      ahCounterName: g.ahCounterName,
+      ahCounterAvatarUrl: g.ahCounterAvatarUrl,
+      words: Array.from(g.wordsMap.entries())
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8),
+    }));
+    out.sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw));
+    return out.slice(0, 40);
+  } catch (e) {
+    console.warn('Ah counter meeting-wise load error:', e);
     return [];
   }
 }
@@ -1314,7 +1926,7 @@ function GrammarianPublishedCarousel({
 
   if (!rows.length) {
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, styles.grammarianHighlightCard]}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           {title}
         </Text>
@@ -1338,7 +1950,7 @@ function GrammarianPublishedCarousel({
   };
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, styles.grammarianHighlightCard]}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         {title}
       </Text>
@@ -1363,6 +1975,9 @@ function GrammarianPublishedCarousel({
         ) : null}
         <Text style={styles.wotdMeetingDate} maxFontSizeMultiplier={1.08}>
           {row.meetingDateLabel}
+        </Text>
+        <Text style={styles.addedByText} maxFontSizeMultiplier={1.08}>
+          Added by {row.addedBy?.trim() || '—'}
         </Text>
       </View>
       {canNavigate ? (
@@ -1401,7 +2016,7 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
 
   if (!rows.length) {
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, styles.grammarianHighlightCard]}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           Word of the day
         </Text>
@@ -1425,7 +2040,7 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
   };
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, styles.grammarianHighlightCard]}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         Word of the day
       </Text>
@@ -1455,6 +2070,9 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
         ) : null}
         <Text style={styles.wotdMeetingDate} maxFontSizeMultiplier={1.08}>
           {row.meetingDateLabel}
+        </Text>
+        <Text style={styles.addedByText} maxFontSizeMultiplier={1.08}>
+          Added by {row.addedBy?.trim() || '—'}
         </Text>
       </View>
       {canNavigate ? (
@@ -1786,6 +2404,387 @@ function ClubStatsStaticCard({
   );
 }
 
+function TableTopicQuestionsCarousel({ rows }: { rows: ClubTableTopicQuestionRow[] }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [rows]);
+
+  if (!rows.length) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+          Table topic questions
+        </Text>
+        <Text style={styles.smallMuted} maxFontSizeMultiplier={1.15}>
+          No table topic questions captured yet.
+        </Text>
+      </View>
+    );
+  }
+
+  const safeIndex = Math.min(index, rows.length - 1);
+  const row = rows[safeIndex];
+  const canNavigate = rows.length > 1;
+
+  const goPrev = () => setIndex((prev) => (prev - 1 + rows.length) % rows.length);
+  const goNext = () => setIndex((prev) => (prev + 1) % rows.length);
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+        Table topic questions
+      </Text>
+      <Text style={styles.tableTopicQuestionText} maxFontSizeMultiplier={1.18}>
+        {row.question}
+      </Text>
+      <Text style={styles.tableTopicQuestionDate} maxFontSizeMultiplier={1.1}>
+        {row.meetingDateLabel}
+      </Text>
+      {row.addedBy ? (
+        <Text style={styles.addedByText} maxFontSizeMultiplier={1.08}>
+          Added by {row.addedBy}
+        </Text>
+      ) : null}
+      {canNavigate ? (
+        <View style={styles.highlightControlsRow}>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goPrev}
+            activeOpacity={0.8}
+            accessibilityLabel="Previous table topic question"
+          >
+            <ChevronLeft size={16} color={C.text} />
+          </TouchableOpacity>
+          <Text style={styles.highlightControlsText} maxFontSizeMultiplier={1.08}>
+            {safeIndex + 1} / {rows.length}
+          </Text>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goNext}
+            activeOpacity={0.8}
+            accessibilityLabel="Next table topic question"
+          >
+            <ChevronRight size={16} color={C.text} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function GeneralEvaluatorScoringCarousel({ rows }: { rows: GeneralEvaluatorScoringRow[] }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [rows]);
+
+  if (!rows.length) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+          General evaluator scoring
+        </Text>
+        <Text style={styles.smallMuted} maxFontSizeMultiplier={1.15}>
+          No scoring records published yet.
+        </Text>
+      </View>
+    );
+  }
+
+  const safeIndex = Math.min(index, rows.length - 1);
+  const row = rows[safeIndex];
+  const canNavigate = rows.length > 1;
+  const goPrev = () => setIndex((prev) => (prev - 1 + rows.length) % rows.length);
+  const goNext = () => setIndex((prev) => (prev + 1) % rows.length);
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+        General evaluator scoring
+      </Text>
+      <View style={styles.edSpeechSlide}>
+        <Text style={styles.edSpeechTitle} numberOfLines={2} maxFontSizeMultiplier={1.12}>
+          {row.meetingNumber?.trim()
+            ? `Meeting ${row.meetingNumber} • ${row.meetingDateLabel}`
+            : row.meetingDateLabel}
+        </Text>
+
+        {row.evaluatorAvatarUrl ? (
+          <Image
+            source={{ uri: avatarUrlForDisplay(row.evaluatorAvatarUrl, 144) ?? row.evaluatorAvatarUrl }}
+            style={styles.edSpeechAvatar}
+            resizeMode="cover"
+            {...webImageExtra(true)}
+          />
+        ) : (
+          <View style={[styles.edSpeechAvatar, styles.edSpeechAvatarPh]}>
+            <Text style={styles.edSpeechInitial} maxFontSizeMultiplier={1.2}>
+              {(row.evaluatorName || '?').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        <Text style={styles.edSpeechName} maxFontSizeMultiplier={1.15}>
+          {row.evaluatorName}
+        </Text>
+        <Text style={styles.geScoreLine} maxFontSizeMultiplier={1.1}>
+          Score
+        </Text>
+        <GeFiveStarRow rating={geTenPointToStars(row.score)} size={20} />
+        <Text style={styles.geOverallScoreLine} maxFontSizeMultiplier={1.1}>
+          Overall score:{' '}
+          {row.overallScoreTotal != null && row.overallScoreMax != null
+            ? `${row.overallScoreTotal}/${row.overallScoreMax}`
+            : '—'}
+        </Text>
+      </View>
+      {canNavigate ? (
+        <View style={styles.highlightControlsRow}>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goPrev}
+            activeOpacity={0.8}
+            accessibilityLabel="Previous general evaluator score"
+          >
+            <ChevronLeft size={16} color={C.text} />
+          </TouchableOpacity>
+          <Text style={styles.highlightControlsText} maxFontSizeMultiplier={1.08}>
+            {safeIndex + 1} / {rows.length}
+          </Text>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goNext}
+            activeOpacity={0.8}
+            accessibilityLabel="Next general evaluator score"
+          >
+            <ChevronRight size={16} color={C.text} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function TimerMeetingWiseCarousel({ rows }: { rows: TimerMeetingWiseRow[] }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [rows]);
+
+  if (!rows.length) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+          Timer report - meeting wise
+        </Text>
+        <Text style={styles.smallMuted} maxFontSizeMultiplier={1.15}>
+          No timer reports published yet.
+        </Text>
+      </View>
+    );
+  }
+
+  const safeIndex = Math.min(index, rows.length - 1);
+  const row = rows[safeIndex];
+  const canNavigate = rows.length > 1;
+  const goPrev = () => setIndex((prev) => (prev - 1 + rows.length) % rows.length);
+  const goNext = () => setIndex((prev) => (prev + 1) % rows.length);
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+        Timer report - meeting wise
+      </Text>
+      <View style={styles.edSpeechSlide}>
+        <Text style={styles.edSpeechTitle} numberOfLines={2} maxFontSizeMultiplier={1.12}>
+          {row.meetingNumber?.trim()
+            ? `Meeting ${row.meetingNumber} • ${row.meetingDateLabel}`
+            : row.meetingDateLabel}
+        </Text>
+        {row.timerAvatarUrl ? (
+          <Image
+            source={{ uri: avatarUrlForDisplay(row.timerAvatarUrl, 144) ?? row.timerAvatarUrl }}
+            style={styles.edSpeechAvatar}
+            resizeMode="cover"
+            {...webImageExtra(true)}
+          />
+        ) : (
+          <View style={[styles.edSpeechAvatar, styles.edSpeechAvatarPh]}>
+            <Text style={styles.edSpeechInitial} maxFontSizeMultiplier={1.2}>
+              {(row.timerName || '?').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        <Text style={styles.edSpeechName} maxFontSizeMultiplier={1.15}>
+          {row.timerName}
+        </Text>
+        <View style={styles.timerTableWrap}>
+          <View style={styles.timerTableHeadRow}>
+            <Text style={[styles.timerTableHeadCell, styles.timerTableColCategory]} maxFontSizeMultiplier={1.05}>
+              Category
+            </Text>
+            <Text style={[styles.timerTableHeadCell, styles.timerTableColCount]} maxFontSizeMultiplier={1.05}>
+              Qualified
+            </Text>
+            <Text style={[styles.timerTableHeadCell, styles.timerTableColCount]} maxFontSizeMultiplier={1.05}>
+              Total
+            </Text>
+          </View>
+          {row.categoryStats.map((s, idx) => (
+            <View
+              key={`${row.key}:${s.key}`}
+              style={[styles.timerTableBodyRow, idx !== row.categoryStats.length - 1 && styles.timerTableRowDivider]}
+            >
+              <Text style={[styles.timerTableBodyCell, styles.timerTableColCategory]} numberOfLines={2} maxFontSizeMultiplier={1.08}>
+                {s.label}
+              </Text>
+              <Text style={[styles.timerTableBodyCell, styles.timerTableColCount]} maxFontSizeMultiplier={1.08}>
+                {s.qualified}
+              </Text>
+              <Text style={[styles.timerTableBodyCell, styles.timerTableColCount]} maxFontSizeMultiplier={1.08}>
+                {s.total}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+      {canNavigate ? (
+        <View style={styles.highlightControlsRow}>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goPrev}
+            activeOpacity={0.8}
+            accessibilityLabel="Previous timer report"
+          >
+            <ChevronLeft size={16} color={C.text} />
+          </TouchableOpacity>
+          <Text style={styles.highlightControlsText} maxFontSizeMultiplier={1.08}>
+            {safeIndex + 1} / {rows.length}
+          </Text>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goNext}
+            activeOpacity={0.8}
+            accessibilityLabel="Next timer report"
+          >
+            <ChevronRight size={16} color={C.text} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function AhCounterMeetingWiseCarousel({ rows }: { rows: AhCounterMeetingWiseRow[] }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [rows]);
+
+  if (!rows.length) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+          Ah counter report
+        </Text>
+        <Text style={styles.smallMuted} maxFontSizeMultiplier={1.15}>
+          No Ah counter reports published yet.
+        </Text>
+      </View>
+    );
+  }
+
+  const safeIndex = Math.min(index, rows.length - 1);
+  const row = rows[safeIndex];
+  const canNavigate = rows.length > 1;
+  const maxWordCount = Math.max(1, ...row.words.map((w) => w.count));
+  const goPrev = () => setIndex((prev) => (prev - 1 + rows.length) % rows.length);
+  const goNext = () => setIndex((prev) => (prev + 1) % rows.length);
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
+        Ah counter report
+      </Text>
+      <View style={styles.edSpeechSlide}>
+        <Text style={styles.edSpeechTitle} numberOfLines={2} maxFontSizeMultiplier={1.12}>
+          {row.meetingNumber?.trim()
+            ? `Meeting ${row.meetingNumber} • ${row.meetingDateLabel}`
+            : row.meetingDateLabel}
+        </Text>
+        {row.ahCounterAvatarUrl ? (
+          <Image
+            source={{ uri: avatarUrlForDisplay(row.ahCounterAvatarUrl, 144) ?? row.ahCounterAvatarUrl }}
+            style={styles.edSpeechAvatar}
+            resizeMode="cover"
+            {...webImageExtra(true)}
+          />
+        ) : (
+          <View style={[styles.edSpeechAvatar, styles.edSpeechAvatarPh]}>
+            <Text style={styles.edSpeechInitial} maxFontSizeMultiplier={1.2}>
+              {(row.ahCounterName || '?').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        <Text style={styles.edSpeechName} maxFontSizeMultiplier={1.15}>
+          {row.ahCounterName}
+        </Text>
+
+        <View style={styles.ahWordsWrap}>
+          {row.words.length ? (
+            row.words.map((w) => (
+              <View key={`${row.key}:${w.label}`} style={styles.ahWordRow}>
+                <View style={styles.ahWordLabelWrap}>
+                  <Text style={styles.ahWordLabel} maxFontSizeMultiplier={1.05}>
+                    {w.label}
+                  </Text>
+                </View>
+                <View style={styles.ahWordBarTrack}>
+                  <View style={[styles.ahWordBarFill, { width: `${(w.count / maxWordCount) * 100}%` }]} />
+                </View>
+                <Text style={styles.ahWordCount} maxFontSizeMultiplier={1.05}>
+                  {w.count}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.smallMuted} maxFontSizeMultiplier={1.1}>
+              No filler words recorded.
+            </Text>
+          )}
+        </View>
+      </View>
+      {canNavigate ? (
+        <View style={styles.highlightControlsRow}>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goPrev}
+            activeOpacity={0.8}
+            accessibilityLabel="Previous Ah counter report"
+          >
+            <ChevronLeft size={16} color={C.text} />
+          </TouchableOpacity>
+          <Text style={styles.highlightControlsText} maxFontSizeMultiplier={1.08}>
+            {safeIndex + 1} / {rows.length}
+          </Text>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goNext}
+            activeOpacity={0.8}
+            accessibilityLabel="Next Ah counter report"
+          >
+            <ChevronRight size={16} color={C.text} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function MyClub() {
   const { user, isAuthenticated } = useAuth();
   const [bundle, setBundle] = useState<ClubInfoManagementBundle | null>(null);
@@ -1808,6 +2807,12 @@ export default function MyClub() {
   const [clubQuoteRows, setClubQuoteRows] = useState<GrammarianPublishedCarouselRow[]>([]);
   const [clubIdiomRows, setClubIdiomRows] = useState<GrammarianPublishedCarouselRow[]>([]);
   const [clubWotdRows, setClubWotdRows] = useState<ClubWotdCarouselRow[]>([]);
+  const [timerMeetingWiseRows, setTimerMeetingWiseRows] = useState<TimerMeetingWiseRow[]>([]);
+  const [ahCounterMeetingWiseRows, setAhCounterMeetingWiseRows] = useState<AhCounterMeetingWiseRow[]>([]);
+  const [tableTopicQuestionRows, setTableTopicQuestionRows] = useState<ClubTableTopicQuestionRow[]>([]);
+  const [generalEvaluatorScoringRows, setGeneralEvaluatorScoringRows] = useState<
+    GeneralEvaluatorScoringRow[]
+  >([]);
   const [landingLoading, setLandingLoading] = useState(false);
 
   useEffect(() => {
@@ -1825,6 +2830,10 @@ export default function MyClub() {
       setClubQuoteRows([]);
       setClubIdiomRows([]);
       setClubWotdRows([]);
+      setTimerMeetingWiseRows([]);
+      setAhCounterMeetingWiseRows([]);
+      setTableTopicQuestionRows([]);
+      setGeneralEvaluatorScoringRows([]);
       return;
     }
 
@@ -1837,6 +2846,10 @@ export default function MyClub() {
     setClubQuoteRows([]);
     setClubIdiomRows([]);
     setClubWotdRows([]);
+    setTimerMeetingWiseRows([]);
+    setAhCounterMeetingWiseRows([]);
+    setTableTopicQuestionRows([]);
+    setGeneralEvaluatorScoringRows([]);
 
     const runCritical = async () => {
       setLandingLoading(true);
@@ -1874,7 +2887,19 @@ export default function MyClub() {
 
     const runSecondary = async () => {
       try {
-        const [edSpeeches, tmThemes, prepSpeeches, faqRes, quoteRows, idiomRows, wotdRows] =
+        const [
+          edSpeeches,
+          tmThemes,
+          prepSpeeches,
+          faqRes,
+          quoteRows,
+          idiomRows,
+          wotdRows,
+          timerRows,
+          ahRows,
+          tableTopicRows,
+          geScoringRows,
+        ] =
           await Promise.all([
             fetchEducationalSpeechesDeliveredLast6Months(clubId),
             fetchToastmasterThemesDeliveredLast6Months(clubId),
@@ -1887,6 +2912,10 @@ export default function MyClub() {
             fetchPublishedClubQuotesRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
             fetchPublishedClubIdiomsRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
             fetchPublishedClubWordsLast6Months(clubId),
+            fetchTimerMeetingWiseLast6Months(clubId),
+            fetchAhCounterMeetingWiseLast6Months(clubId),
+            fetchClubTableTopicQuestions(clubId),
+            fetchGeneralEvaluatorScoringLast6Months(clubId),
           ]);
         if (cancelled) return;
         setEducationalSpeechesDelivered(edSpeeches);
@@ -1909,6 +2938,10 @@ export default function MyClub() {
         setClubQuoteRows(quoteRows);
         setClubIdiomRows(idiomRows);
         setClubWotdRows(wotdRows);
+        setTimerMeetingWiseRows(timerRows);
+        setAhCounterMeetingWiseRows(ahRows);
+        setTableTopicQuestionRows(tableTopicRows);
+        setGeneralEvaluatorScoringRows(geScoringRows);
       } catch (e) {
         console.error('Club landing secondary load error:', e);
         if (!cancelled) {
@@ -1919,6 +2952,10 @@ export default function MyClub() {
           setClubQuoteRows([]);
           setClubIdiomRows([]);
           setClubWotdRows([]);
+          setTimerMeetingWiseRows([]);
+          setAhCounterMeetingWiseRows([]);
+          setTableTopicQuestionRows([]);
+          setGeneralEvaluatorScoringRows([]);
         }
       }
     };
@@ -2256,15 +3293,25 @@ export default function MyClub() {
 
                 <ClubWordOfTheDayCarousel rows={clubWotdRows} />
 
-                <GrammarianPublishedCarousel
-                  title="Quote of the day"
-                  rows={clubQuoteRows}
-                />
+                <View style={styles.grammarianDualRow}>
+                  <View style={styles.grammarianDualCol}>
+                    <GrammarianPublishedCarousel
+                      title="Quote of the day"
+                      rows={clubQuoteRows}
+                    />
+                  </View>
+                  <View style={styles.grammarianDualCol}>
+                    <GrammarianPublishedCarousel
+                      title="Idiom of the day"
+                      rows={clubIdiomRows}
+                    />
+                  </View>
+                </View>
 
-                <GrammarianPublishedCarousel
-                  title="Idiom of the day"
-                  rows={clubIdiomRows}
-                />
+                <TimerMeetingWiseCarousel rows={timerMeetingWiseRows} />
+                <AhCounterMeetingWiseCarousel rows={ahCounterMeetingWiseRows} />
+                <TableTopicQuestionsCarousel rows={tableTopicQuestionRows} />
+                <GeneralEvaluatorScoringCarousel rows={generalEvaluatorScoringRows} />
 
                 {/* Connect */}
                 <View style={styles.card}>
@@ -2455,6 +3502,10 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: SECTION_GAP,
   },
+  grammarianHighlightCard: {
+    padding: 18,
+    minHeight: 220,
+  },
   notionPeopleCard: {
     backgroundColor: C.card,
     borderRadius: 0,
@@ -2568,7 +3619,7 @@ const styles = StyleSheet.create({
   },
   wotdCarouselSlide: {
     overflow: 'hidden',
-    minHeight: 88,
+    minHeight: 98,
     paddingVertical: 6,
     justifyContent: 'flex-start',
     alignSelf: 'stretch',
@@ -2881,6 +3932,125 @@ const styles = StyleSheet.create({
     minWidth: 52,
     textAlign: 'center',
   },
+  tableTopicQuestionText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: C.text,
+    lineHeight: 26,
+    marginTop: 4,
+  },
+  tableTopicQuestionDate: {
+    marginTop: 12,
+    fontSize: 13,
+    color: C.textSecondary,
+    fontWeight: '500',
+  },
+  addedByText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: C.textSecondary,
+    fontWeight: '500',
+  },
+  geScoreLine: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.textSecondary,
+    textAlign: 'center',
+  },
+  geStarRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  geOverallScoreLine: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '500',
+    color: C.textSecondary,
+    textAlign: 'center',
+  },
+  timerTableWrap: {
+    marginTop: 10,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  timerTableHeadRow: {
+    flexDirection: 'row',
+    backgroundColor: C.chipBg,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  timerTableHeadCell: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: C.textSecondary,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  timerTableBodyRow: {
+    flexDirection: 'row',
+  },
+  timerTableRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  timerTableBodyCell: {
+    fontSize: 13,
+    color: C.text,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  timerTableColCategory: {
+    flex: 2.2,
+  },
+  timerTableColCount: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  ahWordsWrap: {
+    marginTop: 10,
+    width: '100%',
+    gap: 8,
+  },
+  ahWordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ahWordLabelWrap: {
+    width: 90,
+  },
+  ahWordLabel: {
+    fontSize: 12,
+    color: C.textSecondary,
+    fontWeight: '500',
+  },
+  ahWordBarTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: C.chipBg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  ahWordBarFill: {
+    height: '100%',
+    backgroundColor: '#2563EB',
+  },
+  ahWordCount: {
+    width: 28,
+    textAlign: 'right',
+    fontSize: 12,
+    color: C.text,
+    fontWeight: '600',
+  },
   sectionTitleInRow: {
     marginBottom: 0,
     flex: 1,
@@ -2924,6 +4094,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: C.textSecondary,
+  },
+  grammarianDualRow: {
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  grammarianDualCol: {
+    flex: 1,
+    minWidth: 280,
   },
   excommSlide: {
     alignItems: 'center',
