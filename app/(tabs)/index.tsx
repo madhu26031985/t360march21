@@ -1451,7 +1451,7 @@ export default function MyJourney() {
   const showMyProfilePending =
     profileFieldsLoaded && (!userAvatar || !profileHasAbout);
   const showHeaderAvatarPending = profileFieldsLoaded && !userAvatar;
-  const [backgroundPrefetchReady, setBackgroundPrefetchReady] = useState(false);
+  const [backgroundPrefetchReady] = useState(true);
 
   const handleMyProfilePress = useCallback(() => {
     prefetchProfileSnapshot(user?.id);
@@ -1481,11 +1481,6 @@ export default function MyJourney() {
     prefetchEvaluationCornerSnapshot(currentOpenMeetingId);
     router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
   }, [currentOpenMeetingId]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setBackgroundPrefetchReady(true), 3500);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (!backgroundPrefetchReady) return;

@@ -33,7 +33,7 @@ import {
   Users,
   Youtube,
 } from 'lucide-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { ClubInfoManagementBundle, ClubSocialUrlsRow } from '@/lib/clubInfoManagementQuery';
 import {
@@ -1377,6 +1377,46 @@ async function fetchAhCounterMeetingWiseLast6Months(clubId: string): Promise<AhC
   }
 }
 
+async function fetchClubSecondarySnapshotLast6Months(clubId: string): Promise<{
+  educationalSpeeches: EducationalSpeechDeliveredRow[];
+  toastmasterThemes: ToastmasterThemeDeliveredRow[];
+  preparedSpeeches: PreparedSpeechDeliveredRow[];
+  quoteRows: GrammarianPublishedCarouselRow[];
+  idiomRows: GrammarianPublishedCarouselRow[];
+  wotdRows: ClubWotdCarouselRow[];
+  timerMeetingWiseRows: TimerMeetingWiseRow[];
+  ahCounterMeetingWiseRows: AhCounterMeetingWiseRow[];
+  tableTopicQuestionRows: ClubTableTopicQuestionRow[];
+  generalEvaluatorScoringRows: GeneralEvaluatorScoringRow[];
+} | null> {
+  try {
+    const { data, error } = await (supabase as any).rpc('get_club_tab_secondary_snapshot', {
+      p_club_id: clubId,
+      p_months: 6,
+    });
+    if (error || !data || typeof data !== 'object') {
+      if (error) console.warn('Club secondary snapshot RPC:', error.message);
+      return null;
+    }
+    const root = data as Record<string, unknown>;
+    return {
+      educationalSpeeches: ((root.educationalSpeeches as EducationalSpeechDeliveredRow[] | null) ?? []),
+      toastmasterThemes: ((root.toastmasterThemes as ToastmasterThemeDeliveredRow[] | null) ?? []),
+      preparedSpeeches: ((root.preparedSpeeches as PreparedSpeechDeliveredRow[] | null) ?? []),
+      quoteRows: ((root.quoteRows as GrammarianPublishedCarouselRow[] | null) ?? []),
+      idiomRows: ((root.idiomRows as GrammarianPublishedCarouselRow[] | null) ?? []),
+      wotdRows: ((root.wotdRows as ClubWotdCarouselRow[] | null) ?? []),
+      timerMeetingWiseRows: ((root.timerMeetingWiseRows as TimerMeetingWiseRow[] | null) ?? []),
+      ahCounterMeetingWiseRows: ((root.ahCounterMeetingWiseRows as AhCounterMeetingWiseRow[] | null) ?? []),
+      tableTopicQuestionRows: ((root.tableTopicQuestionRows as ClubTableTopicQuestionRow[] | null) ?? []),
+      generalEvaluatorScoringRows: ((root.generalEvaluatorScoringRows as GeneralEvaluatorScoringRow[] | null) ?? []),
+    };
+  } catch (e) {
+    console.warn('Club secondary snapshot RPC load error:', e);
+    return null;
+  }
+}
+
 type EducationalSpeechDeliveredRow = {
   key: string;
   speechTitle: string;
@@ -2116,7 +2156,10 @@ function PreparedSpeechesHighlightCarousel({ rows }: { rows: PreparedSpeechDeliv
       </View>
     );
   }
-  const sortedRows = [...rows].sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw));
+  const sortedRows = useMemo(
+    () => [...rows].sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw)),
+    [rows]
+  );
 
   const pathwayMetaLabel = (row: PreparedSpeechDeliveredRow): string | null => {
     const levelText = typeof row.level === 'number' ? `L${row.level}` : null;
@@ -2180,6 +2223,15 @@ function PreparedSpeechesHighlightCarousel({ rows }: { rows: PreparedSpeechDeliv
     </View>
   );
 }
+
+const MemoDeliveredHighlightCarousel = memo(DeliveredHighlightCarousel);
+const MemoPreparedSpeechesHighlightCarousel = memo(PreparedSpeechesHighlightCarousel);
+const MemoClubWordOfTheDayCarousel = memo(ClubWordOfTheDayCarousel);
+const MemoGrammarianPublishedCarousel = memo(GrammarianPublishedCarousel);
+const MemoTimerMeetingWiseCarousel = memo(TimerMeetingWiseCarousel);
+const MemoAhCounterMeetingWiseCarousel = memo(AhCounterMeetingWiseCarousel);
+const MemoTableTopicQuestionsCarousel = memo(TableTopicQuestionsCarousel);
+const MemoGeneralEvaluatorScoringCarousel = memo(GeneralEvaluatorScoringCarousel);
 
 function DeliveredHighlightCarousel({
   sectionTitle,
@@ -2787,6 +2839,7 @@ function AhCounterMeetingWiseCarousel({ rows }: { rows: AhCounterMeetingWiseRow[
 
 export default function MyClub() {
   const { user, isAuthenticated } = useAuth();
+  const firstContentLoggedRef = useRef(false);
   const [bundle, setBundle] = useState<ClubInfoManagementBundle | null>(null);
   const [social, setSocial] = useState<ClubSocialUrlsRow | null>(null);
   const [excommPreview, setExcommPreview] = useState<ExcommPreviewRow[]>([]);
@@ -2852,6 +2905,7 @@ export default function MyClub() {
     setGeneralEvaluatorScoringRows([]);
 
     const runCritical = async () => {
+      const criticalStartMs = Date.now();
       setLandingLoading(true);
       try {
         const warm = await getCachedClubLandingCritical(clubId);
@@ -2872,6 +2926,10 @@ export default function MyClub() {
         setSocial(b.social);
         setExcommPreview(excomm);
         setMembersPreview(membersP);
+        console.log(
+          '[club-perf] critical-loaded',
+          JSON.stringify({ clubId, elapsedMs: Date.now() - criticalStartMs, fromWarmCache: !!warm })
+        );
       } catch (e) {
         console.error('Club landing critical load error:', e);
         if (!cancelled) {
@@ -2886,7 +2944,54 @@ export default function MyClub() {
     };
 
     const runSecondary = async () => {
+      const secondaryStartMs = Date.now();
       try {
+        const rpcSnapshot = await fetchClubSecondarySnapshotLast6Months(clubId);
+        if (rpcSnapshot) {
+          if (cancelled) return;
+          const faqRes = await supabase
+            .from('club_faq_items')
+            .select('id, question, answer')
+            .eq('club_id', clubId)
+            .order('sort_order', { ascending: true });
+          if (cancelled) return;
+
+          setEducationalSpeechesDelivered(rpcSnapshot.educationalSpeeches);
+          setToastmasterThemesDelivered(rpcSnapshot.toastmasterThemes);
+          setPreparedSpeechesDelivered(rpcSnapshot.preparedSpeeches);
+          if (faqRes.error) {
+            console.warn('Club FAQ load:', faqRes.error.message);
+            setClubFaqItems([]);
+          } else {
+            const faqRows = (faqRes.data as Array<{
+              id: string;
+              question: string | null;
+              answer: string | null;
+            }> | null) ?? [];
+            setClubFaqItems(
+              faqRows
+                .filter((r) => (r.question?.trim() || r.answer?.trim()))
+                .map((r) => ({
+                  id: r.id,
+                  question: (r.question ?? '').trim(),
+                  answer: (r.answer ?? '').trim(),
+                }))
+            );
+          }
+          setClubQuoteRows(rpcSnapshot.quoteRows);
+          setClubIdiomRows(rpcSnapshot.idiomRows);
+          setClubWotdRows(rpcSnapshot.wotdRows);
+          setTimerMeetingWiseRows(rpcSnapshot.timerMeetingWiseRows);
+          setAhCounterMeetingWiseRows(rpcSnapshot.ahCounterMeetingWiseRows);
+          setTableTopicQuestionRows(rpcSnapshot.tableTopicQuestionRows);
+          setGeneralEvaluatorScoringRows(rpcSnapshot.generalEvaluatorScoringRows);
+          console.log(
+            '[club-perf] secondary-loaded',
+            JSON.stringify({ clubId, elapsedMs: Date.now() - secondaryStartMs, source: 'rpc' })
+          );
+          return;
+        }
+
         const [
           edSpeeches,
           tmThemes,
@@ -2925,8 +3030,13 @@ export default function MyClub() {
           console.warn('Club FAQ load:', faqRes.error.message);
           setClubFaqItems([]);
         } else {
+          const faqRows = (faqRes.data as Array<{
+            id: string;
+            question: string | null;
+            answer: string | null;
+          }> | null) ?? [];
           setClubFaqItems(
-            (faqRes.data ?? [])
+            faqRows
               .filter((r) => (r.question?.trim() || r.answer?.trim()))
               .map((r) => ({
                 id: r.id,
@@ -2942,6 +3052,10 @@ export default function MyClub() {
         setAhCounterMeetingWiseRows(ahRows);
         setTableTopicQuestionRows(tableTopicRows);
         setGeneralEvaluatorScoringRows(geScoringRows);
+        console.log(
+          '[club-perf] secondary-loaded',
+          JSON.stringify({ clubId, elapsedMs: Date.now() - secondaryStartMs, source: 'legacy-fallback' })
+        );
       } catch (e) {
         console.error('Club landing secondary load error:', e);
         if (!cancelled) {
@@ -2961,13 +3075,10 @@ export default function MyClub() {
     };
 
     void runCritical();
-    const secondaryTimer = setTimeout(() => {
-      void runSecondary();
-    }, 1400);
+    void runSecondary();
 
     return () => {
       cancelled = true;
-      clearTimeout(secondaryTimer);
     };
   }, [user?.currentClubId]);
 
@@ -2979,22 +3090,19 @@ export default function MyClub() {
       return;
     }
     let cancelled = false;
-    const statsTimer = setTimeout(() => {
-      (async () => {
-        if (!clubStats) setClubStatsLoading(true);
-        try {
-          const s = await fetchClubStatsRollingDays(clubId, clubStatsPeriodDays);
-          if (!cancelled) setClubStats(s);
-        } catch {
-          if (!cancelled) setClubStats(emptyClubStats());
-        } finally {
-          if (!cancelled) setClubStatsLoading(false);
-        }
-      })();
-    }, 1800);
+    (async () => {
+      if (!clubStats) setClubStatsLoading(true);
+      try {
+        const s = await fetchClubStatsRollingDays(clubId, clubStatsPeriodDays);
+        if (!cancelled) setClubStats(s);
+      } catch {
+        if (!cancelled) setClubStats(emptyClubStats());
+      } finally {
+        if (!cancelled) setClubStatsLoading(false);
+      }
+    })();
     return () => {
       cancelled = true;
-      clearTimeout(statsTimer);
     };
   }, [user?.currentClubId, clubStatsPeriodDays]);
 
@@ -3004,6 +3112,16 @@ export default function MyClub() {
       setClubStatsLoading(false);
     }
   }, [clubStats, clubStatsLoading]);
+
+  useEffect(() => {
+    if (bundle && !firstContentLoggedRef.current) {
+      firstContentLoggedRef.current = true;
+      console.log(
+        '[club-perf] first-content-visible',
+        JSON.stringify({ clubId: user?.currentClubId ?? null, atMs: Date.now() })
+      );
+    }
+  }, [bundle, user?.currentClubId]);
 
   const handleFeaturePress = (featurePath: string) => {
     if (!user?.currentClubId) {
@@ -3020,11 +3138,12 @@ export default function MyClub() {
     router.push(featurePath as any);
   };
 
-  const socialLinks: { key: string; label: string; url: string }[] = [];
-  if (social) {
+  const socialLinks = useMemo(() => {
+    const links: { key: string; label: string; url: string }[] = [];
+    if (!social) return links;
     const add = (key: string, label: string, raw: string | null) => {
       const u = normalizeExternalUrl(raw);
-      if (u) socialLinks.push({ key, label, url: u });
+      if (u) links.push({ key, label, url: u });
     };
     add('web', 'Website', social.website_url);
     add('wa', 'WhatsApp', social.whatsapp_url);
@@ -3033,7 +3152,8 @@ export default function MyClub() {
     add('li', 'LinkedIn', social.linkedin_url);
     add('x', 'X / Twitter', social.twitter_url);
     add('yt', 'YouTube', social.youtube_url);
-  }
+    return links;
+  }, [social]);
 
   const profile = bundle?.clubData;
   const locationLines = [profile?.address, profile?.city, profile?.country]
@@ -3277,41 +3397,41 @@ export default function MyClub() {
                   </View>
                 </View>
 
-                <DeliveredHighlightCarousel
+                <MemoDeliveredHighlightCarousel
                   sectionTitle="Toastmaster & theme — last 6 months"
                   rows={toastmasterHighlightRows}
                   variant="toastmaster"
                 />
 
-                <PreparedSpeechesHighlightCarousel rows={preparedSpeechesDelivered} />
+                <MemoPreparedSpeechesHighlightCarousel rows={preparedSpeechesDelivered} />
 
-                <DeliveredHighlightCarousel
+                <MemoDeliveredHighlightCarousel
                   sectionTitle="Educational speeches — last 6 months"
                   rows={educationalHighlightRows}
                   variant="educational"
                 />
 
-                <ClubWordOfTheDayCarousel rows={clubWotdRows} />
+                <MemoClubWordOfTheDayCarousel rows={clubWotdRows} />
 
                 <View style={styles.grammarianDualRow}>
                   <View style={styles.grammarianDualCol}>
-                    <GrammarianPublishedCarousel
+                    <MemoGrammarianPublishedCarousel
                       title="Quote of the day"
                       rows={clubQuoteRows}
                     />
                   </View>
                   <View style={styles.grammarianDualCol}>
-                    <GrammarianPublishedCarousel
+                    <MemoGrammarianPublishedCarousel
                       title="Idiom of the day"
                       rows={clubIdiomRows}
                     />
                   </View>
                 </View>
 
-                <TimerMeetingWiseCarousel rows={timerMeetingWiseRows} />
-                <AhCounterMeetingWiseCarousel rows={ahCounterMeetingWiseRows} />
-                <TableTopicQuestionsCarousel rows={tableTopicQuestionRows} />
-                <GeneralEvaluatorScoringCarousel rows={generalEvaluatorScoringRows} />
+                <MemoTimerMeetingWiseCarousel rows={timerMeetingWiseRows} />
+                <MemoAhCounterMeetingWiseCarousel rows={ahCounterMeetingWiseRows} />
+                <MemoTableTopicQuestionsCarousel rows={tableTopicQuestionRows} />
+                <MemoGeneralEvaluatorScoringCarousel rows={generalEvaluatorScoringRows} />
 
                 {/* Connect */}
                 <View style={styles.card}>
