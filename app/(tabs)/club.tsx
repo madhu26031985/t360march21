@@ -1954,9 +1954,11 @@ function ClubFaqHeroCard({ items, variant = 'card' }: { items: ClubFaqHeroRow[];
 function GrammarianPublishedCarousel({
   title,
   rows,
+  variant = 'card',
 }: {
   title: string;
   rows: GrammarianPublishedCarouselRow[];
+  variant?: 'card' | 'embedded';
 }) {
   const [index, setIndex] = useState(0);
 
@@ -1966,7 +1968,7 @@ function GrammarianPublishedCarousel({
 
   if (!rows.length) {
     return (
-      <View style={[styles.card, styles.grammarianHighlightCard]}>
+      <View style={[variant === 'embedded' ? styles.embeddedSection : styles.card, styles.grammarianHighlightCard]}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           {title}
         </Text>
@@ -1990,7 +1992,7 @@ function GrammarianPublishedCarousel({
   };
 
   return (
-    <View style={[styles.card, styles.grammarianHighlightCard]}>
+    <View style={[variant === 'embedded' ? styles.embeddedSection : styles.card, styles.grammarianHighlightCard]}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         {title}
       </Text>
@@ -2047,7 +2049,13 @@ function GrammarianPublishedCarousel({
   );
 }
 
-function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
+function ClubWordOfTheDayCarousel({
+  rows,
+  variant = 'card',
+}: {
+  rows: ClubWotdCarouselRow[];
+  variant?: 'card' | 'embedded';
+}) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -2056,7 +2064,7 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
 
   if (!rows.length) {
     return (
-      <View style={[styles.card, styles.grammarianHighlightCard]}>
+      <View style={[variant === 'embedded' ? styles.embeddedSection : styles.card, styles.grammarianHighlightCard]}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           Word of the day
         </Text>
@@ -2080,7 +2088,7 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
   };
 
   return (
-    <View style={[styles.card, styles.grammarianHighlightCard]}>
+    <View style={[variant === 'embedded' ? styles.embeddedSection : styles.card, styles.grammarianHighlightCard]}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         Word of the day
       </Text>
@@ -2143,10 +2151,16 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
 }
 
 /** Prepared speeches: two-column layout; transition = scale + crossfade (distinct from Toastmaster / Educational). */
-function PreparedSpeechesHighlightCarousel({ rows }: { rows: PreparedSpeechDeliveredRow[] }) {
+function PreparedSpeechesHighlightCarousel({
+  rows,
+  variant = 'card',
+}: {
+  rows: PreparedSpeechDeliveredRow[];
+  variant?: 'card' | 'embedded';
+}) {
   if (!rows.length) {
     return (
-      <View style={styles.card}>
+      <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           Prepared speeches — last 6 months
         </Text>
@@ -2171,7 +2185,7 @@ function PreparedSpeechesHighlightCarousel({ rows }: { rows: PreparedSpeechDeliv
   };
 
   return (
-    <View style={styles.card}>
+    <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         Prepared speeches — last 6 months
       </Text>
@@ -2238,11 +2252,13 @@ function DeliveredHighlightCarousel({
   subtitle,
   rows,
   variant,
+  containerVariant = 'card',
 }: {
   sectionTitle: string;
   subtitle?: string;
   rows: DeliveredHighlightRow[];
   variant: 'toastmaster' | 'educational';
+  containerVariant?: 'card' | 'embedded';
 }) {
   const [index, setIndex] = useState(0);
   
@@ -2252,7 +2268,7 @@ function DeliveredHighlightCarousel({
 
   if (!rows.length) {
     return (
-      <View style={styles.card}>
+      <View style={containerVariant === 'embedded' ? styles.embeddedSection : styles.card}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           {sectionTitle}
         </Text>
@@ -2281,7 +2297,7 @@ function DeliveredHighlightCarousel({
   };
 
   return (
-    <View style={styles.card}>
+    <View style={containerVariant === 'embedded' ? styles.embeddedSection : styles.card}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         {sectionTitle}
       </Text>
@@ -2456,7 +2472,13 @@ function ClubStatsStaticCard({
   );
 }
 
-function TableTopicQuestionsCarousel({ rows }: { rows: ClubTableTopicQuestionRow[] }) {
+function TableTopicQuestionsCarousel({
+  rows,
+  variant = 'card',
+}: {
+  rows: ClubTableTopicQuestionRow[];
+  variant?: 'card' | 'embedded';
+}) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -2465,7 +2487,7 @@ function TableTopicQuestionsCarousel({ rows }: { rows: ClubTableTopicQuestionRow
 
   if (!rows.length) {
     return (
-      <View style={styles.card}>
+      <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           Table topic questions
         </Text>
@@ -2484,7 +2506,7 @@ function TableTopicQuestionsCarousel({ rows }: { rows: ClubTableTopicQuestionRow
   const goNext = () => setIndex((prev) => (prev + 1) % rows.length);
 
   return (
-    <View style={styles.card}>
+    <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         Table topic questions
       </Text>
@@ -2526,7 +2548,13 @@ function TableTopicQuestionsCarousel({ rows }: { rows: ClubTableTopicQuestionRow
   );
 }
 
-function GeneralEvaluatorScoringCarousel({ rows }: { rows: GeneralEvaluatorScoringRow[] }) {
+function GeneralEvaluatorScoringCarousel({
+  rows,
+  variant = 'card',
+}: {
+  rows: GeneralEvaluatorScoringRow[];
+  variant?: 'card' | 'embedded';
+}) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -2535,7 +2563,7 @@ function GeneralEvaluatorScoringCarousel({ rows }: { rows: GeneralEvaluatorScori
 
   if (!rows.length) {
     return (
-      <View style={styles.card}>
+      <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           General evaluator scoring
         </Text>
@@ -2553,7 +2581,7 @@ function GeneralEvaluatorScoringCarousel({ rows }: { rows: GeneralEvaluatorScori
   const goNext = () => setIndex((prev) => (prev + 1) % rows.length);
 
   return (
-    <View style={styles.card}>
+    <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         General evaluator scoring
       </Text>
@@ -2619,7 +2647,13 @@ function GeneralEvaluatorScoringCarousel({ rows }: { rows: GeneralEvaluatorScori
   );
 }
 
-function TimerMeetingWiseCarousel({ rows }: { rows: TimerMeetingWiseRow[] }) {
+function TimerMeetingWiseCarousel({
+  rows,
+  variant = 'card',
+}: {
+  rows: TimerMeetingWiseRow[];
+  variant?: 'card' | 'embedded';
+}) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -2628,7 +2662,7 @@ function TimerMeetingWiseCarousel({ rows }: { rows: TimerMeetingWiseRow[] }) {
 
   if (!rows.length) {
     return (
-      <View style={styles.card}>
+      <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           Timer report - meeting wise
         </Text>
@@ -2646,7 +2680,7 @@ function TimerMeetingWiseCarousel({ rows }: { rows: TimerMeetingWiseRow[] }) {
   const goNext = () => setIndex((prev) => (prev + 1) % rows.length);
 
   return (
-    <View style={styles.card}>
+    <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         Timer report - meeting wise
       </Text>
@@ -2730,7 +2764,13 @@ function TimerMeetingWiseCarousel({ rows }: { rows: TimerMeetingWiseRow[] }) {
   );
 }
 
-function AhCounterMeetingWiseCarousel({ rows }: { rows: AhCounterMeetingWiseRow[] }) {
+function AhCounterMeetingWiseCarousel({
+  rows,
+  variant = 'card',
+}: {
+  rows: AhCounterMeetingWiseRow[];
+  variant?: 'card' | 'embedded';
+}) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -2739,7 +2779,7 @@ function AhCounterMeetingWiseCarousel({ rows }: { rows: AhCounterMeetingWiseRow[
 
   if (!rows.length) {
     return (
-      <View style={styles.card}>
+      <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
           Ah counter report
         </Text>
@@ -2758,7 +2798,7 @@ function AhCounterMeetingWiseCarousel({ rows }: { rows: AhCounterMeetingWiseRow[
   const goNext = () => setIndex((prev) => (prev + 1) % rows.length);
 
   return (
-    <View style={styles.card}>
+    <View style={variant === 'embedded' ? styles.embeddedSection : styles.card}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         Ah counter report
       </Text>
@@ -2847,6 +2887,7 @@ export default function MyClub() {
   const [clubStatsPeriodDays, setClubStatsPeriodDays] = useState(180);
   const [clubStats, setClubStats] = useState<ClubStatsCounts | null>(null);
   const [clubStatsLoading, setClubStatsLoading] = useState(false);
+  const [clubStatsByDays, setClubStatsByDays] = useState<Record<number, ClubStatsCounts>>({});
   const [educationalSpeechesDelivered, setEducationalSpeechesDelivered] = useState<
     EducationalSpeechDeliveredRow[]
   >([]);
@@ -2876,6 +2917,7 @@ export default function MyClub() {
       setSocial(null);
       setExcommPreview([]);
       setMembersPreview([]);
+      setClubStatsByDays({});
       setEducationalSpeechesDelivered([]);
       setToastmasterThemesDelivered([]);
       setPreparedSpeechesDelivered([]);
@@ -2903,6 +2945,7 @@ export default function MyClub() {
     setAhCounterMeetingWiseRows([]);
     setTableTopicQuestionRows([]);
     setGeneralEvaluatorScoringRows([]);
+    setClubStatsByDays({});
 
     const runCritical = async () => {
       const criticalStartMs = Date.now();
@@ -3089,14 +3132,32 @@ export default function MyClub() {
       setClubStatsLoading(false);
       return;
     }
+    const warmStats = clubStatsByDays[clubStatsPeriodDays];
+    if (warmStats) {
+      setClubStats(warmStats);
+      setClubStatsLoading(false);
+    }
+  }, [user?.currentClubId, clubStatsPeriodDays, clubStatsByDays]);
+
+  useEffect(() => {
+    const clubId = user?.currentClubId;
+    if (!clubId) return;
+    const warmStats = clubStatsByDays[clubStatsPeriodDays];
     let cancelled = false;
     (async () => {
-      if (!clubStats) setClubStatsLoading(true);
+      if (!warmStats) setClubStatsLoading(true);
       try {
         const s = await fetchClubStatsRollingDays(clubId, clubStatsPeriodDays);
-        if (!cancelled) setClubStats(s);
+        if (!cancelled) {
+          setClubStatsByDays((prev) => ({ ...prev, [clubStatsPeriodDays]: s }));
+          setClubStats(s);
+        }
       } catch {
-        if (!cancelled) setClubStats(emptyClubStats());
+        if (!cancelled) {
+          const fallback = emptyClubStats();
+          setClubStatsByDays((prev) => ({ ...prev, [clubStatsPeriodDays]: fallback }));
+          setClubStats(fallback);
+        }
       } finally {
         if (!cancelled) setClubStatsLoading(false);
       }
@@ -3105,6 +3166,37 @@ export default function MyClub() {
       cancelled = true;
     };
   }, [user?.currentClubId, clubStatsPeriodDays]);
+
+  useEffect(() => {
+    const clubId = user?.currentClubId;
+    if (!clubId) return;
+    let cancelled = false;
+    const missingDays = CLUB_STATS_PERIOD_OPTIONS.map((o) => o.days).filter((d) => !clubStatsByDays[d]);
+    if (!missingDays.length) return;
+
+    (async () => {
+      const results = await Promise.all(
+        missingDays.map(async (days) => {
+          try {
+            const s = await fetchClubStatsRollingDays(clubId, days);
+            return { days, stats: s };
+          } catch {
+            return { days, stats: emptyClubStats() };
+          }
+        })
+      );
+      if (cancelled) return;
+      setClubStatsByDays((prev) => {
+        const next = { ...prev };
+        for (const r of results) next[r.days] = r.stats;
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.currentClubId]);
 
   useEffect(() => {
     // Keep skeleton visible only when we truly have no data.
@@ -3397,44 +3489,71 @@ export default function MyClub() {
                   </View>
                 </View>
 
-                <MemoDeliveredHighlightCarousel
-                  sectionTitle="Toastmaster & theme — last 6 months"
-                  rows={toastmasterHighlightRows}
-                  variant="toastmaster"
-                />
-
-                <MemoPreparedSpeechesHighlightCarousel rows={preparedSpeechesDelivered} />
-
-                <MemoDeliveredHighlightCarousel
-                  sectionTitle="Educational speeches — last 6 months"
-                  rows={educationalHighlightRows}
-                  variant="educational"
-                />
-
-                <MemoClubWordOfTheDayCarousel rows={clubWotdRows} />
-
-                <View style={styles.grammarianDualRow}>
-                  <View style={styles.grammarianDualCol}>
-                    <MemoGrammarianPublishedCarousel
-                      title="Quote of the day"
-                      rows={clubQuoteRows}
+                <View style={styles.clubTopFlatBox}>
+                  <View style={styles.clubTopBlock}>
+                    <MemoDeliveredHighlightCarousel
+                      sectionTitle="Toastmaster & theme — last 6 months"
+                      rows={toastmasterHighlightRows}
+                      variant="toastmaster"
+                      containerVariant="embedded"
                     />
                   </View>
-                  <View style={styles.grammarianDualCol}>
-                    <MemoGrammarianPublishedCarousel
-                      title="Idiom of the day"
-                      rows={clubIdiomRows}
+                  <View style={styles.clubTopDivider} />
+                  <View style={styles.clubTopBlock}>
+                    <MemoPreparedSpeechesHighlightCarousel rows={preparedSpeechesDelivered} variant="embedded" />
+                  </View>
+                  <View style={styles.clubTopDivider} />
+                  <View style={styles.clubTopBlock}>
+                    <MemoDeliveredHighlightCarousel
+                      sectionTitle="Educational speeches — last 6 months"
+                      rows={educationalHighlightRows}
+                      variant="educational"
+                      containerVariant="embedded"
                     />
                   </View>
-                </View>
-
-                <MemoTimerMeetingWiseCarousel rows={timerMeetingWiseRows} />
-                <MemoAhCounterMeetingWiseCarousel rows={ahCounterMeetingWiseRows} />
-                <MemoTableTopicQuestionsCarousel rows={tableTopicQuestionRows} />
-                <MemoGeneralEvaluatorScoringCarousel rows={generalEvaluatorScoringRows} />
-
-                {/* Connect */}
-                <View style={styles.card}>
+                  <View style={styles.clubTopDivider} />
+                  <View style={styles.clubTopBlock}>
+                    <MemoClubWordOfTheDayCarousel rows={clubWotdRows} variant="embedded" />
+                  </View>
+                  <View style={styles.clubTopDivider} />
+                  <View style={styles.clubTopBlock}>
+                    <View style={styles.grammarianDualRow}>
+                      <View style={styles.grammarianDualCol}>
+                        <MemoGrammarianPublishedCarousel
+                          title="Quote of the day"
+                          rows={clubQuoteRows}
+                          variant="embedded"
+                        />
+                      </View>
+                      <View style={styles.grammarianDualCol}>
+                        <MemoGrammarianPublishedCarousel
+                          title="Idiom of the day"
+                          rows={clubIdiomRows}
+                          variant="embedded"
+                        />
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.clubTopDivider} />
+                  <View style={styles.clubTopBlock}>
+                    <MemoTimerMeetingWiseCarousel rows={timerMeetingWiseRows} variant="embedded" />
+                  </View>
+                  <View style={styles.clubTopDivider} />
+                  <View style={styles.clubTopBlock}>
+                    <MemoAhCounterMeetingWiseCarousel rows={ahCounterMeetingWiseRows} variant="embedded" />
+                  </View>
+                  <View style={styles.clubTopDivider} />
+                  <View style={styles.clubTopBlock}>
+                    <MemoTableTopicQuestionsCarousel rows={tableTopicQuestionRows} variant="embedded" />
+                  </View>
+                  <View style={styles.clubTopDivider} />
+                  <View style={styles.clubTopBlock}>
+                    <MemoGeneralEvaluatorScoringCarousel rows={generalEvaluatorScoringRows} variant="embedded" />
+                  </View>
+                  <View style={styles.clubTopDivider} />
+                  <View style={styles.clubTopBlock}>
+                  {/* Connect */}
+                  <View style={styles.embeddedSection}>
                   <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
                     Connect
                   </Text>
@@ -3461,6 +3580,8 @@ export default function MyClub() {
                       No social links on file.
                     </Text>
                   )}
+                </View>
+                  </View>
                 </View>
               </>
             ) : (
@@ -3621,6 +3742,13 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     padding: 16,
     marginBottom: SECTION_GAP,
+  },
+  embeddedSection: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
+    padding: 0,
+    marginBottom: 0,
   },
   grammarianHighlightCard: {
     padding: 18,
