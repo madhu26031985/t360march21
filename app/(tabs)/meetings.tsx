@@ -2357,201 +2357,30 @@ export default function ClubMeetings() {
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
               Meeting History
             </Text>
-            {isLoading ? (
-              <Text style={[styles.noMeetingsSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Loading…
-              </Text>
-            ) : meetingHistory.length === 0 ? (
-              <View
-                style={[
-                  styles.historyPlaceholderCard,
-                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                ]}
-              >
-                <View style={[styles.comingSoonIcon, { backgroundColor: theme.colors.textSecondary + '15' }]}>
-                  <Clock size={22} color={theme.colors.textSecondary} />
-                </View>
-                <View style={styles.comingSoonContent}>
-                  <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                    No completed meetings yet
-                  </Text>
-                  <Text style={[styles.comingSoonSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                    Past meetings appear here after they are closed.
-                  </Text>
-                </View>
+            <TouchableOpacity
+              style={[
+                styles.meetingHistoryEntryCard,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              ]}
+              onPress={() => router.push('/meeting-history')}
+              activeOpacity={0.8}
+              accessibilityLabel="Open meeting history page"
+            >
+              <View style={[styles.comingSoonIcon, { backgroundColor: theme.colors.textSecondary + '15' }]}>
+                <Clock size={22} color={theme.colors.textSecondary} />
               </View>
-            ) : (
-              <View style={styles.nextMeetingsList}>
-                {meetingHistory.map((meeting) => {
-                  const meetingDate = new Date(meeting.meeting_date);
-                  const dayNum = meetingDate.getDate();
-                  const month = meetingDate.toLocaleString('default', { month: 'short' }).toUpperCase();
-                  const historyExpanded = expandedHistoryMeetingId === meeting.id;
-
-                  return (
-                    <View key={meeting.id}>
-                      {historyExpanded ? (
-                        <View
-                          style={[
-                            styles.unifiedExpandedMeetingCard,
-                            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                          ]}
-                        >
-                          <View style={styles.unifiedMeetingBar}>
-                            <View style={styles.heroCardContent}>
-                              <View style={[styles.dateBadge, { backgroundColor: theme.colors.textSecondary + '15' }]}>
-                                <Text style={[styles.dateBadgeDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                                  {dayNum}
-                                </Text>
-                                <Text
-                                  style={[styles.dateBadgeMonth, { color: theme.colors.textSecondary }]}
-                                  maxFontSizeMultiplier={1.3}
-                                >
-                                  {month}
-                                </Text>
-                              </View>
-                              <View style={styles.heroMeetingInfo}>
-                                <Text style={[styles.heroMeetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                                  {meeting.meeting_title}
-                                </Text>
-                                <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                                  Day: {meetingDate.toLocaleDateString('default', { weekday: 'long' })}
-                                </Text>
-                                {meeting.meeting_start_time && (
-                                  <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                                    Time: {formatTime(meeting.meeting_start_time)}
-                                    {meeting.meeting_end_time && ` - ${formatTime(meeting.meeting_end_time)}`}
-                                  </Text>
-                                )}
-                                <Text style={[styles.heroMeetingMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                                  Mode: {formatMeetingMode(meeting.meeting_mode)}
-                                </Text>
-                              </View>
-                              <TouchableOpacity
-                                style={[styles.enterMeetingButton, { backgroundColor: theme.colors.primary }]}
-                                onPress={() => setExpandedHistoryMeetingId(null)}
-                                activeOpacity={0.8}
-                                accessibilityLabel="Close meeting history details"
-                              >
-                                <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>
-                                  Close
-                                </Text>
-                                <ChevronUp size={16} color="#ffffff" />
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                          <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
-                          <View style={[styles.openMeetingTabs, { backgroundColor: theme.colors.textSecondary + '08', borderColor: theme.colors.border }]}>
-                            {(['actions', 'roles', 'evaluation'] as const).map((tab) => (
-                              <TouchableOpacity
-                                key={tab}
-                                style={[
-                                  styles.openMeetingTab,
-                                  openMeetingTab === tab && styles.openMeetingTabActive,
-                                  openMeetingTab === tab && { backgroundColor: theme.colors.textSecondary + '15' },
-                                ]}
-                                onPress={() => setOpenMeetingTab(tab)}
-                                activeOpacity={0.7}
-                              >
-                                <Text
-                                  style={[
-                                    styles.openMeetingTabText,
-                                    { color: openMeetingTab === tab ? theme.colors.text : theme.colors.textSecondary },
-                                    openMeetingTab === tab ? styles.openMeetingTabTextActive : undefined,
-                                  ]}
-                                  maxFontSizeMultiplier={1.3}
-                                >
-                                  {tab === 'actions' ? 'Actions' : tab === 'roles' ? 'Roles' : 'Evaluation'}
-                                </Text>
-                                {openMeetingTab === tab && (
-                                  <View style={[styles.openMeetingTabIndicator, { backgroundColor: theme.colors.primary }]} />
-                                )}
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                          <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
-                          <View style={styles.unifiedMeetingContent}>
-                            {openMeetingTab === 'actions' && renderActionsTabContent(meeting.id)}
-                            {openMeetingTab === 'roles' && renderRolesTabContent(meeting.id)}
-                            {openMeetingTab === 'evaluation' && renderEvaluationTabContent(meeting.id)}
-                          </View>
-                        </View>
-                      ) : (
-                        <View
-                          style={[
-                            styles.heroMeetingCard,
-                            { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
-                          ]}
-                        >
-                          <View style={styles.heroCardContent}>
-                            <View style={[styles.dateBadge, { backgroundColor: theme.colors.textSecondary + '15' }]}>
-                              <Text style={[styles.dateBadgeDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                                {dayNum}
-                              </Text>
-                              <Text
-                                style={[styles.dateBadgeMonth, { color: theme.colors.textSecondary }]}
-                                maxFontSizeMultiplier={1.3}
-                              >
-                                {month}
-                              </Text>
-                            </View>
-                            <View style={styles.heroMeetingInfo}>
-                              <Text style={[styles.heroMeetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                                {meeting.meeting_title}
-                              </Text>
-                              <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                                Day: {meetingDate.toLocaleDateString('default', { weekday: 'long' })}
-                              </Text>
-                              {meeting.meeting_start_time && (
-                                <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                                  Time: {formatTime(meeting.meeting_start_time)}
-                                  {meeting.meeting_end_time && ` - ${formatTime(meeting.meeting_end_time)}`}
-                                </Text>
-                              )}
-                              <Text style={[styles.heroMeetingMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                                Mode: {formatMeetingMode(meeting.meeting_mode)}
-                              </Text>
-                            </View>
-                            <View style={styles.historyDualButtonColumn}>
-                              <TouchableOpacity
-                                style={[styles.enterMeetingButton, styles.historyCompactBtn, { backgroundColor: theme.colors.primary }]}
-                                onPress={() => {
-                                  setExpandedHistoryMeetingId(meeting.id);
-                                  setOpenMeetingTab('actions');
-                                }}
-                                activeOpacity={0.8}
-                                accessibilityLabel="Open meeting details"
-                              >
-                                <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.2}>
-                                  Open
-                                </Text>
-                                <ChevronDown size={14} color="#ffffff" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={[
-                                  styles.historyCloseSecondaryBtn,
-                                  { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-                                ]}
-                                onPress={() => {
-                                  if (expandedHistoryMeetingId === meeting.id) setExpandedHistoryMeetingId(null);
-                                }}
-                                activeOpacity={0.8}
-                                accessibilityLabel="Close meeting details"
-                              >
-                                <Text style={[styles.historyCloseSecondaryBtnText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                                  Close
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                          <View style={styles.heroCardDecoration} />
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
+              <View style={styles.comingSoonContent}>
+                <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {isLoading ? 'Loading meeting history…' : 'View meeting history'}
+                </Text>
+                <Text style={[styles.comingSoonSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                  {isLoading
+                    ? 'Preparing completed meetings.'
+                    : `${meetingHistory.length} completed meeting${meetingHistory.length === 1 ? '' : 's'} available`}
+                </Text>
               </View>
-            )}
+              <ChevronRight size={18} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
           </View>
 
           <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
@@ -3136,39 +2965,16 @@ const styles = StyleSheet.create({
   meetingHistorySection: {
     paddingBottom: 0,
   },
-  historyPlaceholderCard: {
+  meetingHistoryEntryCard: {
+    marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 14,
     minHeight: 84,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 0,
     overflow: 'hidden',
-  },
-  historyDualButtonColumn: {
-    flexDirection: 'column',
-    gap: 8,
-    alignItems: 'stretch',
-    justifyContent: 'center',
-    minWidth: 86,
-    flexShrink: 0,
-  },
-  historyCompactBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    gap: 3,
-  },
-  historyCloseSecondaryBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 0,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  historyCloseSecondaryBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
   },
   lockedHeroMeetingCard: {
     borderRadius: 0,

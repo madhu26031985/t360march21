@@ -3,14 +3,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
 import * as WebBrowser from 'expo-web-browser';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { GoogleGLogo } from '@/components/auth/GoogleGLogo';
 import { AppleMark } from '@/components/auth/AppleMark';
 
 export default function Login() {
-  const { theme } = useTheme();
   const { signIn, signInWithGoogle, signInWithApple, isAuthenticated } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -151,7 +149,7 @@ export default function Login() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -172,20 +170,20 @@ export default function Login() {
               resizeMode="contain"
             />
           </View>
-          <Text style={[styles.title, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Sign in to T360</Text>
+          <Text style={styles.title} maxFontSizeMultiplier={1.3}>Sign in to T360</Text>
         </View>
 
         {/* Form Section */}
+        <View style={styles.formCard}>
         <View style={styles.formSection}>
           {/* Email Field */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Email Address</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Mail size={16} color={theme.colors.textSecondary} style={styles.inputIcon} />
+            <Text style={styles.inputLabel} maxFontSizeMultiplier={1.3}>Email address</Text>
+            <View style={styles.inputContainer}>
               <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
+                style={styles.textInput}
                 placeholder="Enter your email"
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor="#8b949e"
                 value={email}
                 onChangeText={(v) => {
                   if (signInError) setSignInError('');
@@ -200,13 +198,12 @@ export default function Login() {
 
           {/* Password Field */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Password</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Lock size={16} color={theme.colors.textSecondary} style={styles.inputIcon} />
+            <Text style={styles.inputLabel} maxFontSizeMultiplier={1.3}>Password</Text>
+            <View style={styles.inputContainer}>
               <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
+                style={styles.textInput}
                 placeholder="Enter your password"
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor="#8b949e"
                 value={password}
                 onChangeText={(v) => {
                   if (signInError) setSignInError('');
@@ -221,9 +218,9 @@ export default function Login() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {showPassword ? (
-                  <EyeOff size={16} color={theme.colors.textSecondary} />
+                  <EyeOff size={16} color="#6e7781" />
                 ) : (
-                  <Eye size={16} color={theme.colors.textSecondary} />
+                  <Eye size={16} color="#6e7781" />
                 )}
               </TouchableOpacity>
             </View>
@@ -236,7 +233,7 @@ export default function Login() {
             disabled={isLoading || oauthBusy}
           >
             <Text style={styles.signInButtonText} maxFontSizeMultiplier={1.3}>
-              {isLoading ? 'Signing In...' : 'Sign In'}
+              {isLoading ? 'Signing in...' : 'Sign in'}
             </Text>
           </TouchableOpacity>
           {signInError ? (
@@ -246,11 +243,11 @@ export default function Login() {
           ) : null}
 
           <View style={styles.orRow}>
-            <View style={[styles.orLine, { backgroundColor: theme.colors.border }]} />
-            <Text style={[styles.orText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            <View style={[styles.orLine, { backgroundColor: '#d0d7de' }]} />
+            <Text style={styles.orText} maxFontSizeMultiplier={1.2}>
               or
             </Text>
-            <View style={[styles.orLine, { backgroundColor: theme.colors.border }]} />
+            <View style={[styles.orLine, { backgroundColor: '#d0d7de' }]} />
           </View>
 
           <TouchableOpacity
@@ -261,7 +258,7 @@ export default function Login() {
           >
             <View style={styles.googleIconSlot} pointerEvents="none">
               {googleLoading ? (
-                <ActivityIndicator color="#f0f6fc" size="small" />
+                <ActivityIndicator color="#24292f" size="small" />
               ) : (
                 <GoogleGLogo size={18} />
               )}
@@ -279,9 +276,9 @@ export default function Login() {
           >
             <View style={styles.appleIconSlot} pointerEvents="none">
               {appleLoading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
+                <ActivityIndicator color="#24292f" size="small" />
               ) : (
-                <AppleMark size={18} color="#FFFFFF" />
+                <AppleMark size={18} color="#24292f" />
               )}
             </View>
             <Text style={styles.appleButtonText} maxFontSizeMultiplier={1.2}>
@@ -291,18 +288,18 @@ export default function Login() {
 
           {/* Forgot Password Link */}
           <TouchableOpacity style={styles.forgotPasswordButton} onPress={() => router.push('/forgot-password')}>
-            <Text style={[styles.forgotPasswordText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+            <Text style={styles.forgotPasswordText} maxFontSizeMultiplier={1.3}>
               Forgot Password?
             </Text>
           </TouchableOpacity>
         </View>
+        </View>
 
         {/* Bottom Section */}
         <View style={styles.bottomSection}>
-          <Text style={[styles.registerPrompt, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Don't have an account?</Text>
-          
-          <TouchableOpacity style={[styles.registerButton, { borderColor: theme.colors.primary }]} onPress={handleSignUp}>
-            <Text style={[styles.registerButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>Sign Up</Text>
+          <Text style={styles.registerPrompt} maxFontSizeMultiplier={1.3}>New to T360? </Text>
+          <TouchableOpacity onPress={handleSignUp}>
+            <Text style={styles.registerLink} maxFontSizeMultiplier={1.3}>Create an account</Text>
           </TouchableOpacity>
         </View>
         </ScrollView>
@@ -314,6 +311,7 @@ export default function Login() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f6f8fa',
   },
   keyboardAvoidingView: {
     flex: 1,
@@ -323,142 +321,130 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 26,
-    paddingTop: 13,
-    paddingBottom: 19,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 24,
   },
   logoSection: {
     alignItems: 'center',
-    marginBottom: 19,
-  },
-  logoContainer: {
-    marginBottom: 13,
-  },
-  logoImage: {
-    width: 83,
-    height: 83,
-    borderRadius: 42,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-    letterSpacing: -0.4,
-  },
-  formSection: {
     marginBottom: 16,
   },
+  logoContainer: {
+    marginBottom: 12,
+  },
+  logoImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+    color: '#24292f',
+  },
+  formCard: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d0d7de',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 14,
+  },
+  formSection: {
+    marginBottom: 2,
+  },
   inputGroup: {
-    marginBottom: 13,
+    marginBottom: 12,
   },
   inputLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 6,
-    letterSpacing: -0.2,
+    marginBottom: 7,
+    color: '#24292f',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 13,
-    borderWidth: 1.5,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  inputIcon: {
-    marginRight: 13,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#d0d7de',
+    paddingHorizontal: 12,
+    minHeight: 42,
+    backgroundColor: '#ffffff',
   },
   textInput: {
     flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#24292f',
   },
   eyeButton: {
     padding: 6,
   },
   signInButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 13,
-    paddingVertical: 11,
+    backgroundColor: '#1f883d',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#1a7f37',
+    minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 13,
+    marginTop: 4,
     width: '100%',
-    shadowColor: '#3b82f6',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 13,
-    elevation: 6,
   },
   signInButtonDisabled: {
-    backgroundColor: '#9ca3af',
-    shadowOpacity: 0,
-    elevation: 0,
+    opacity: 0.7,
   },
   errorBanner: {
     marginTop: 10,
-    borderRadius: 10,
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
+    borderColor: '#ff818266',
+    backgroundColor: '#ffebe9',
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   errorBannerText: {
-    color: '#b91c1c',
-    fontSize: 13,
-    fontWeight: '600',
+    color: '#cf222e',
+    fontSize: 12,
+    fontWeight: '500',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 16,
   },
   signInButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
-    letterSpacing: 0.4,
   },
   orRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 18,
-    marginBottom: 4,
+    marginTop: 16,
+    marginBottom: 6,
     width: '100%',
   },
   orLine: {
     flex: 1,
-    height: StyleSheet.hairlineWidth * 2,
+    height: 1,
     minHeight: 1,
-    opacity: 0.9,
   },
   orText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#57606a',
     paddingHorizontal: 14,
-    textTransform: 'lowercase',
   },
   googleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    marginTop: 12,
-    paddingVertical: 11,
+    marginTop: 10,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 6,
-    backgroundColor: '#21262d',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#30363d',
+    borderColor: '#d0d7de',
     minHeight: 44,
   },
   googleButtonDisabled: {
@@ -476,8 +462,8 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 14,
-    fontWeight: '600',
-    color: '#f0f6fc',
+    fontWeight: '500',
+    color: '#24292f',
     letterSpacing: -0.2,
   },
   appleButton: {
@@ -486,12 +472,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
     marginTop: 10,
-    paddingVertical: 11,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 6,
-    backgroundColor: '#000000',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#d0d7de',
     minHeight: 44,
   },
   appleButtonDisabled: {
@@ -509,40 +495,33 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: '500',
+    color: '#24292f',
     letterSpacing: -0.2,
   },
   bottomSection: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: -11,
+    marginTop: 2,
   },
   registerPrompt: {
-    fontSize: 12,
-    marginBottom: 10,
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#57606a',
   },
-  registerButton: {
-    alignItems: 'center',
-    borderWidth: 2,
-    borderRadius: 13,
-    paddingVertical: 11,
-    width: '100%',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  registerButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+  registerLink: {
+    fontSize: 14,
+    color: '#0969da',
+    fontWeight: '600',
   },
   forgotPasswordButton: {
     alignItems: 'center',
-    paddingVertical: 8,
-    marginTop: 10,
+    paddingVertical: 6,
+    marginTop: 8,
   },
   forgotPasswordText: {
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '600',
+    color: '#0969da',
   },
 });

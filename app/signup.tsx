@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useState, useRef, useEffect } from 'react';
 import * as WebBrowser from 'expo-web-browser';
-import { User, Mail, Eye, EyeOff, Lock } from 'lucide-react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { GoogleGLogo } from '@/components/auth/GoogleGLogo';
@@ -319,7 +319,7 @@ export default function SignUp() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -341,20 +341,20 @@ export default function SignUp() {
               resizeMode="contain"
             />
           </View>
-          <Text style={[styles.title, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Create Your Account</Text>
+          <Text style={styles.title} maxFontSizeMultiplier={1.3}>Sign up to continue</Text>
         </View>
 
         {/* Form Section */}
+        <View style={styles.formCard}>
         <View style={styles.formSection}>
           {/* Name Field */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Full Name</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <User size={16} color={theme.colors.textSecondary} style={styles.inputIcon} />
+            <Text style={styles.inputLabel} maxFontSizeMultiplier={1.3}>Full name</Text>
+            <View style={styles.inputContainer}>
               <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
+                style={styles.textInput}
                 placeholder="Enter your full name"
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor="#8b949e"
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
@@ -365,13 +365,12 @@ export default function SignUp() {
 
           {/* Email Field */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Email Address</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Mail size={16} color={theme.colors.textSecondary} style={styles.inputIcon} />
+            <Text style={styles.inputLabel} maxFontSizeMultiplier={1.3}>Email address</Text>
+            <View style={styles.inputContainer}>
               <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
+                style={styles.textInput}
                 placeholder="Enter your email"
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor="#8b949e"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -383,13 +382,12 @@ export default function SignUp() {
 
           {/* Create Password Field */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Password</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Lock size={16} color={theme.colors.textSecondary} style={styles.inputIcon} />
+            <Text style={styles.inputLabel} maxFontSizeMultiplier={1.3}>Password</Text>
+            <View style={styles.inputContainer}>
               <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
+                style={styles.textInput}
                 placeholder="Create a password"
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor="#8b949e"
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -401,9 +399,9 @@ export default function SignUp() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {showPassword ? (
-                  <EyeOff size={16} color={theme.colors.textSecondary} />
+                  <EyeOff size={16} color="#6e7781" />
                 ) : (
-                  <Eye size={16} color={theme.colors.textSecondary} />
+                  <Eye size={16} color="#6e7781" />
                 )}
               </TouchableOpacity>
             </View>
@@ -411,13 +409,12 @@ export default function SignUp() {
 
           {/* Confirm Password Field */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Confirm Password</Text>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Lock size={16} color={theme.colors.textSecondary} style={styles.inputIcon} />
+            <Text style={styles.inputLabel} maxFontSizeMultiplier={1.3}>Confirm password</Text>
+            <View style={styles.inputContainer}>
               <TextInput
-                style={[styles.textInput, { color: theme.colors.text }]}
+                style={styles.textInput}
                 placeholder="Confirm your password"
-                placeholderTextColor={theme.colors.textSecondary}
+                placeholderTextColor="#8b949e"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirmPassword}
@@ -429,9 +426,9 @@ export default function SignUp() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 {showConfirmPassword ? (
-                  <EyeOff size={16} color={theme.colors.textSecondary} />
+                  <EyeOff size={16} color="#6e7781" />
                 ) : (
-                  <Eye size={16} color={theme.colors.textSecondary} />
+                  <Eye size={16} color="#6e7781" />
                 )}
               </TouchableOpacity>
             </View>
@@ -444,16 +441,16 @@ export default function SignUp() {
             disabled={isLoading || oauthBusy}
           >
             <Text style={styles.signUpButtonText} maxFontSizeMultiplier={1.3}>
-              {isLoading ? 'Creating Account...' : 'Sign Up'}
+              {isLoading ? 'Creating account...' : 'Create account'}
             </Text>
           </TouchableOpacity>
 
           <View style={styles.orRow}>
-            <View style={[styles.orLine, { backgroundColor: theme.colors.border }]} />
-            <Text style={[styles.orText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            <View style={[styles.orLine, { backgroundColor: '#d0d7de' }]} />
+            <Text style={styles.orText} maxFontSizeMultiplier={1.2}>
               or
             </Text>
-            <View style={[styles.orLine, { backgroundColor: theme.colors.border }]} />
+            <View style={[styles.orLine, { backgroundColor: '#d0d7de' }]} />
           </View>
 
           <TouchableOpacity
@@ -464,7 +461,7 @@ export default function SignUp() {
           >
             <View style={styles.googleIconSlot} pointerEvents="none">
               {googleLoading ? (
-                <ActivityIndicator color="#f0f6fc" size="small" />
+                <ActivityIndicator color="#24292f" size="small" />
               ) : (
                 <GoogleGLogo size={18} />
               )}
@@ -482,9 +479,9 @@ export default function SignUp() {
           >
             <View style={styles.appleIconSlot} pointerEvents="none">
               {appleLoading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
+                <ActivityIndicator color="#24292f" size="small" />
               ) : (
-                <AppleMark size={18} color="#FFFFFF" />
+                <AppleMark size={18} color="#24292f" />
               )}
             </View>
             <Text style={styles.appleButtonText} maxFontSizeMultiplier={1.2}>
@@ -492,13 +489,13 @@ export default function SignUp() {
             </Text>
           </TouchableOpacity>
         </View>
+        </View>
 
         {/* Bottom Section */}
         <View style={styles.bottomSection}>
-          <Text style={[styles.signInPrompt, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Already have an account?</Text>
-          
-          <TouchableOpacity style={[styles.signInButton, { backgroundColor: theme.colors.surface }]} onPress={handleSignIn}>
-            <Text style={styles.signInButtonText} maxFontSizeMultiplier={1.3}>Sign In</Text>
+          <Text style={styles.signInPrompt} maxFontSizeMultiplier={1.3}>Already have an account? </Text>
+          <TouchableOpacity onPress={handleSignIn}>
+            <Text style={styles.signInLink} maxFontSizeMultiplier={1.3}>Sign in</Text>
           </TouchableOpacity>
         </View>
         </ScrollView>
@@ -510,6 +507,7 @@ export default function SignUp() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f6f8fa',
   },
   keyboardAvoidingView: {
     flex: 1,
@@ -519,98 +517,84 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 26,
-    paddingTop: 8,
-    paddingBottom: 19,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 24,
   },
   logoSection: {
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   logoContainer: {
-    marginBottom: 8,
+    marginBottom: 12,
   },
   logoImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
   },
   title: {
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: '700',
     textAlign: 'center',
-    letterSpacing: -0.4,
+    color: '#24292f',
   },
-  subtitle: {
-    fontSize: 12,
-    textAlign: 'center',
+  formCard: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d0d7de',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 14,
   },
   formSection: {
-    marginBottom: 10,
+    marginBottom: 2,
   },
   inputGroup: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   inputLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 5,
-    letterSpacing: -0.2,
+    marginBottom: 7,
+    color: '#24292f',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 13,
-    borderWidth: 1.5,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  inputIcon: {
-    marginRight: 13,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#d0d7de',
+    paddingHorizontal: 12,
+    minHeight: 42,
+    backgroundColor: '#ffffff',
   },
   textInput: {
     flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#24292f',
   },
   eyeButton: {
     padding: 6,
   },
   signUpButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 13,
-    paddingVertical: 10,
+    backgroundColor: '#1f883d',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#1a7f37',
+    minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 4,
     width: '100%',
-    shadowColor: '#3b82f6',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 13,
-    elevation: 6,
   },
   signUpButtonDisabled: {
-    backgroundColor: '#9ca3af',
-    shadowOpacity: 0,
-    elevation: 0,
+    opacity: 0.7,
   },
   signUpButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
-    letterSpacing: 0.4,
   },
   orRow: {
     flexDirection: 'row',
@@ -621,28 +605,26 @@ const styles = StyleSheet.create({
   },
   orLine: {
     flex: 1,
-    height: StyleSheet.hairlineWidth * 2,
+    height: 1,
     minHeight: 1,
-    opacity: 0.9,
   },
   orText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#57606a',
     paddingHorizontal: 14,
-    textTransform: 'lowercase',
   },
   googleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    marginTop: 12,
-    paddingVertical: 11,
+    marginTop: 10,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 6,
-    backgroundColor: '#21262d',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#30363d',
+    borderColor: '#d0d7de',
     minHeight: 44,
   },
   googleButtonDisabled: {
@@ -660,8 +642,8 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 14,
-    fontWeight: '600',
-    color: '#f0f6fc',
+    fontWeight: '500',
+    color: '#24292f',
     letterSpacing: -0.2,
   },
   appleButton: {
@@ -670,12 +652,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
     marginTop: 10,
-    paddingVertical: 11,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 6,
-    backgroundColor: '#000000',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#000000',
+    borderColor: '#d0d7de',
     minHeight: 44,
   },
   appleButtonDisabled: {
@@ -693,34 +675,24 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: '500',
+    color: '#24292f',
     letterSpacing: -0.2,
   },
   bottomSection: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 2,
   },
   signInPrompt: {
-    fontSize: 12,
-    marginBottom: 8,
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#57606a',
   },
-  signInButton: {
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#3b82f6',
-    borderRadius: 13,
-    paddingVertical: 10,
-    width: '100%',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  signInButtonText: {
-    fontSize: 13,
-    color: '#3b82f6',
-    fontWeight: '700',
-    letterSpacing: 0.2,
+  signInLink: {
+    fontSize: 14,
+    color: '#0969da',
+    fontWeight: '600',
   },
   verificationScrollContent: {
     flexGrow: 1,

@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -19,6 +19,7 @@ const N = {
   textSecondary: '#787774',
   iconMuted: 'rgba(55, 53, 47, 0.45)',
 };
+const BOOK_ROLE_DOCK_ICON_SIZE = 15;
 
 interface Meeting {
   id: string;
@@ -43,6 +44,11 @@ interface ClubInfo {
 export default function MeetingRecords() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const isExComm =
+    user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
+  const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
   
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
@@ -52,7 +58,7 @@ export default function MeetingRecords() {
   const [expandedTab, setExpandedTab] = useState<'actions' | 'roles' | 'evaluation'>('actions');
   const [searchQuery, setSearchQuery] = useState('');
   const [showDateFilter, setShowDateFilter] = useState(false);
-  const [dateFilter, setDateFilter] = useState<'upcoming' | 'last_30' | 'last_90' | 'last_6_months' | 'last_1_year' | 'all_time'>('last_30');
+  const [dateFilter, setDateFilter] = useState<'last_30' | 'last_90' | 'last_6_months' | 'last_1_year' | 'all_time'>('last_30');
   const [customStartDate, setCustomStartDate] = useState<Date>(new Date());
   const [customEndDate, setCustomEndDate] = useState<Date>(new Date());
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
@@ -130,12 +136,8 @@ export default function MeetingRecords() {
     
     // Apply date filter
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
     switch (dateFilter) {
-      case 'upcoming':
-        filtered = filtered.filter(meeting => new Date(meeting.meeting_date) >= today);
-        break;
       case 'last_30':
         const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
         filtered = filtered.filter(meeting => new Date(meeting.meeting_date) >= thirtyDaysAgo);
@@ -166,7 +168,6 @@ export default function MeetingRecords() {
 
   const getDateFilterLabel = () => {
     switch (dateFilter) {
-      case 'upcoming': return 'Upcoming';
       case 'last_30': return 'Last 30 days';
       case 'last_90': return 'Last 90 days';
       case 'last_6_months': return 'Last 6 months';
@@ -544,6 +545,7 @@ export default function MeetingRecords() {
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={[styles.masterContentBox, { backgroundColor: N.surface, borderColor: N.border }]}>
         {/* Club Card */}
         {clubInfo && (
           <View style={[styles.clubCard, { backgroundColor: N.surface, borderColor: N.border }]}>
@@ -629,64 +631,81 @@ export default function MeetingRecords() {
           )}
         </View>
 
-        {/* Navigation Icons - inside scroll, pushes to bottom when content is short */}
         <View style={styles.navSpacer} />
-        <View style={[styles.navigationSection, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.navigationBar}>
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#E8F4FD' }]}>
-                <Home size={16} color="#3b82f6" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Journey</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/club')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#FEF3E7' }]}>
-                <Users size={16} color="#f59e0b" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Club</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/meetings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#E0F2FE' }]}>
-                <Calendar size={16} color="#0ea5e9" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Meetings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.navItem}
-              onPress={() => router.push('/(tabs)/settings')}
-            >
-              <View style={[styles.navIcon, { backgroundColor: '#F3E8FF' }]}>
-                <Settings size={16} color="#8b5cf6" />
-              </View>
-              <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Settings</Text>
-            </TouchableOpacity>
-
-            {user?.clubRole === 'excomm' && (
-              <TouchableOpacity
-                style={styles.navItem}
-                onPress={() => router.push('/(tabs)/admin')}
-              >
-                <View style={[styles.navIcon, { backgroundColor: EXCOMM_UI.pillBg }]}>
-                  <Settings size={16} color={EXCOMM_UI.pillFg} />
-                </View>
-                <Text style={[styles.navLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Admin</Text>
-              </TouchableOpacity>
-            )}
-          </View>
         </View>
       </ScrollView>
+
+      <View
+        style={[
+          styles.geBottomDock,
+          {
+            borderTopColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            width: windowWidth,
+            paddingBottom:
+              Platform.OS === 'web'
+                ? Math.min(Math.max(insets.bottom, 8), 14)
+                : Math.max(insets.bottom, 10),
+          },
+        ]}
+      >
+        <View style={styles.tabBarRow}>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Home size={BOOK_ROLE_DOCK_ICON_SIZE} color="#0a66c2" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Home
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Users size={BOOK_ROLE_DOCK_ICON_SIZE} color="#d97706" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Club
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push('/(tabs)/meetings')}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Calendar size={BOOK_ROLE_DOCK_ICON_SIZE} color="#0ea5e9" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Meeting
+            </Text>
+          </TouchableOpacity>
+          {isExComm ? (
+            <TouchableOpacity
+              style={styles.footerNavItem}
+              onPress={() => router.push('/(tabs)/admin')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+                <Shield size={BOOK_ROLE_DOCK_ICON_SIZE} color={EXCOMM_UI.adminTabIcon} />
+              </View>
+              <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Admin
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={styles.footerNavItem}
+            onPress={() => router.push('/(tabs)/settings')}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.footerNavIcon, footerIconTileStyle]}>
+              <Settings size={BOOK_ROLE_DOCK_ICON_SIZE} color="#6b7280" />
+            </View>
+            <Text style={[styles.footerNavLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Settings
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Date Filter Modal */}
       <Modal
@@ -699,26 +718,8 @@ export default function MeetingRecords() {
           style={styles.dateFilterOverlay}
           onPress={() => setShowDateFilter(false)}
         >
-          <View style={[styles.dateFilterModal, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.dateFilterModal, { backgroundColor: theme.colors.surface, borderColor: N.border }]}>
             <Text style={[styles.dateFilterTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Filter by Date</Text>
-            
-            <TouchableOpacity
-              style={[
-                styles.dateFilterOption,
-                dateFilter === 'upcoming' && { backgroundColor: theme.colors.primary + '20' }
-              ]}
-              onPress={() => {
-                setDateFilter('upcoming');
-                setShowDateFilter(false);
-              }}
-            >
-              <Text style={[
-                styles.dateFilterOptionText,
-                { color: dateFilter === 'upcoming' ? theme.colors.primary : theme.colors.text }
-              ]} maxFontSizeMultiplier={1.3}>
-                Upcoming
-              </Text>
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={[
@@ -884,6 +885,14 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  masterContentBox: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
   infoCard: {
     marginHorizontal: 16,
     marginTop: 16,
@@ -902,12 +911,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: N.border,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -923,7 +934,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 10,
     alignSelf: 'flex-start',
@@ -940,18 +951,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dateFilterModal: {
-    borderRadius: 16,
+    borderRadius: 0,
+    borderWidth: 1,
     padding: 20,
     margin: 20,
     minWidth: 300,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
   },
   dateFilterTitle: {
     fontSize: 18,
@@ -962,7 +966,9 @@ const styles = StyleSheet.create({
   dateFilterOption: {
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: 'transparent',
     marginBottom: 8,
   },
   dateFilterOptionText: {
@@ -1014,6 +1020,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 24,
     paddingBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: N.border,
   },
   scrollContent: {
     flexGrow: 1,
@@ -1036,7 +1044,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   meetingCard: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 16,
   },
@@ -1047,7 +1055,7 @@ const styles = StyleSheet.create({
   meetingIcon: {
     width: 50,
     height: 50,
-    borderRadius: 25,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -1112,7 +1120,7 @@ const styles = StyleSheet.create({
     minWidth: 82,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: 0,
     backgroundColor: '#2874F0',
     flexDirection: 'row',
     alignItems: 'center',
@@ -1132,7 +1140,7 @@ const styles = StyleSheet.create({
   },
   expandedTabs: {
     flexDirection: 'row',
-    borderRadius: 10,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 4,
     gap: 4,
@@ -1142,7 +1150,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 0,
   },
   expandedTabActive: {
     borderWidth: 1,
@@ -1173,7 +1181,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   expandedRowCard: {
-    borderRadius: 10,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 12,
     flexDirection: 'row',
@@ -1185,7 +1193,7 @@ const styles = StyleSheet.create({
   },
   expandedGridCard: {
     flex: 1,
-    borderRadius: 10,
+    borderRadius: 0,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1196,7 +1204,7 @@ const styles = StyleSheet.create({
   expandedGridIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
@@ -1209,7 +1217,7 @@ const styles = StyleSheet.create({
   expandedRowIcon: {
     width: 34,
     height: 34,
-    borderRadius: 8,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
@@ -1246,10 +1254,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   clubCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    borderWidth: 1,
+    marginHorizontal: 0,
+    marginTop: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: 1,
     padding: 16,
   },
   clubHeader: {
@@ -1259,7 +1268,7 @@ const styles = StyleSheet.create({
   clubIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1285,7 +1294,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 12,
+    borderRadius: 0,
   },
   roleText: {
     fontSize: 10,
@@ -1293,38 +1302,37 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     marginLeft: 4,
   },
-  navigationSection: {
-    padding: 12,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  geBottomDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    paddingHorizontal: 4,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  navigationBar: {
+  tabBarRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  navItem: {
-    alignItems: 'center',
+  footerNavItem: {
     flex: 1,
-  },
-  navIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
+    flexBasis: 0,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 2,
   },
-  navLabel: {
+  footerNavIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  footerNavLabel: {
     fontSize: 9,
     fontWeight: '500',
     textAlign: 'center',

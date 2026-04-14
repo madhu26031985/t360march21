@@ -25,6 +25,8 @@ import {
   Linkedin,
   MessageCircle,
   Mic2,
+  ChevronLeft,
+  ChevronRight,
   Facebook,
   Twitter,
   Users,
@@ -53,9 +55,6 @@ const EXCOMM_CAROUSEL_MS = 3000;
 const MEMBERS_CAROUSEL_MS = 2000;
 const ED_SPEECH_CAROUSEL_MS = 3500;
 /** Word of the day: cycle published entries from last 6 months */
-const CLUB_WOTD_CAROUSEL_MS = 4000;
-/** Quote / idiom carousels on Club tab */
-const CLUB_GRAMMARIAN_CAROUSEL_MS = 4000;
 /** Club FAQ: one Q&A visible, advance every 3s */
 const CLUB_FAQ_CAROUSEL_MS = 3000;
 /** Rolling window for published quote & idiom carousels (calendar days) */
@@ -73,6 +72,15 @@ const C = {
   chipBg: '#F3F4F6',
   tileBg: '#FAFAFA',
 };
+
+const WHY_JOIN_ITEMS = [
+  { icon: '🎤', title: 'Public Speaking', desc: 'Master confident and effective communication.' },
+  { icon: '👥', title: 'Leadership Skills', desc: 'Learn to lead, inspire and influence others.' },
+  { icon: '🚀', title: 'Maximise Your Potential', desc: 'Unlock your full capabilities.' },
+  { icon: '🤝', title: 'Networking', desc: 'Build meaningful connections.' },
+  { icon: '🏆', title: 'Competitive Advantage', desc: 'Stand out professionally.' },
+  { icon: '💪', title: 'Self-Confidence', desc: 'Grow your confidence and self-awareness.' },
+];
 
 type ClubFaqHeroRow = {
   id: string;
@@ -959,6 +967,8 @@ type PreparedSpeechDeliveredRow = {
   speechTitle: string;
   /** Pathway name only (e.g. Presentation Mastery). */
   pathwayName: string;
+  projectName: string | null;
+  level: number | null;
   speakerName: string;
   avatarUrl: string | null;
   meetingDateRaw: string;
@@ -1147,6 +1157,8 @@ async function fetchPreparedSpeechesDeliveredLast6Months(
         key: r.key,
         speechTitle: r.speechTitle,
         pathwayName,
+        projectName: r.project_name?.trim() || null,
+        level: r.level ?? null,
         speakerName: prof?.full_name?.trim() || 'Speaker',
         avatarUrl: prof?.avatar_url ?? null,
         meetingDateRaw,
@@ -1181,7 +1193,7 @@ const FAQ_ROW_ICONS: { Icon: typeof Lightbulb; color: string }[] = [
   { Icon: CircleHelp, color: '#6b7280' },
 ];
 
-function ClubFaqHeroCard({ items }: { items: ClubFaqHeroRow[] }) {
+function ClubFaqHeroCard({ items, variant = 'card' }: { items: ClubFaqHeroRow[]; variant?: 'card' | 'notion' }) {
   const [index, setIndex] = useState(0);
   const opacity = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
@@ -1244,7 +1256,7 @@ function ClubFaqHeroCard({ items }: { items: ClubFaqHeroRow[] }) {
   const { Icon, color } = FAQ_ROW_ICONS[safeIndex % FAQ_ROW_ICONS.length];
 
   return (
-    <View style={[styles.card, styles.faqHeroCard]}>
+    <View style={variant === 'notion' ? styles.faqHeroNotion : [styles.card, styles.faqHeroCard]}>
       <Animated.View
         style={[
           styles.faqHeroCarouselInner,
@@ -1279,71 +1291,29 @@ function ClubFaqHeroCard({ items }: { items: ClubFaqHeroRow[] }) {
 function GrammarianPublishedCarousel({
   title,
   rows,
-  intervalMs,
 }: {
   title: string;
   rows: GrammarianPublishedCarouselRow[];
-  intervalMs: number;
 }) {
   const [index, setIndex] = useState(0);
-  const opacity = useRef(new Animated.Value(1)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const nRef = useRef(rows.length);
-  nRef.current = rows.length;
 
   useEffect(() => {
     setIndex(0);
-    opacity.setValue(1);
-    translateY.setValue(0);
-  }, [rows, opacity, translateY]);
-
-  useEffect(() => {
-    if (rows.length <= 1) return;
-
-    const advance = () => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 280,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: -20,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (!finished) return;
-        setIndex((i) => (i + 1) % nRef.current);
-        translateY.setValue(24);
-        Animated.parallel([
-          Animated.timing(opacity, {
-            toValue: 1,
-            duration: 320,
-            useNativeDriver: true,
-          }),
-          Animated.spring(translateY, {
-            toValue: 0,
-            friction: 8,
-            tension: 72,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      });
-    };
-
-    const id = setInterval(advance, intervalMs);
-    return () => {
-      clearInterval(id);
-      opacity.stopAnimation();
-      translateY.stopAnimation();
-    };
-  }, [rows.length, opacity, translateY, intervalMs]);
+  }, [rows]);
 
   if (!rows.length) return null;
 
   const safeIndex = Math.min(index, rows.length - 1);
   const row = rows[safeIndex];
+  const canNavigate = rows.length > 1;
+
+  const goPrev = () => {
+    setIndex((prev) => (prev - 1 + rows.length) % rows.length);
+  };
+
+  const goNext = () => {
+    setIndex((prev) => (prev + 1) % rows.length);
+  };
 
   return (
     <View style={styles.card}>
@@ -1351,14 +1321,8 @@ function GrammarianPublishedCarousel({
         {title}
       </Text>
 
-      <Animated.View
-        style={[
-          styles.wotdCarouselSlide,
-          {
-            opacity,
-            transform: [{ translateY }],
-          },
-        ]}
+      <View
+        style={styles.wotdCarouselSlide}
         accessibilityRole="summary"
         accessibilityLabel={`${row.lead}. ${row.meaning ?? ''}. ${row.meetingDateLabel}`}
       >
@@ -1378,71 +1342,54 @@ function GrammarianPublishedCarousel({
         <Text style={styles.wotdMeetingDate} maxFontSizeMultiplier={1.08}>
           {row.meetingDateLabel}
         </Text>
-      </Animated.View>
+      </View>
+      {canNavigate ? (
+        <View style={styles.highlightControlsRow}>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goPrev}
+            activeOpacity={0.8}
+            accessibilityLabel={`Previous ${title}`}
+          >
+            <ChevronLeft size={16} color={C.text} />
+          </TouchableOpacity>
+          <Text style={styles.highlightControlsText} maxFontSizeMultiplier={1.08}>
+            {safeIndex + 1} / {rows.length}
+          </Text>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goNext}
+            activeOpacity={0.8}
+            accessibilityLabel={`Next ${title}`}
+          >
+            <ChevronRight size={16} color={C.text} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
   const [index, setIndex] = useState(0);
-  const opacity = useRef(new Animated.Value(1)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const nRef = useRef(rows.length);
-  nRef.current = rows.length;
 
   useEffect(() => {
     setIndex(0);
-    opacity.setValue(1);
-    translateY.setValue(0);
-  }, [rows, opacity, translateY]);
-
-  useEffect(() => {
-    if (rows.length <= 1) return;
-
-    const advance = () => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 280,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: -20,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (!finished) return;
-        setIndex((i) => (i + 1) % nRef.current);
-        translateY.setValue(24);
-        Animated.parallel([
-          Animated.timing(opacity, {
-            toValue: 1,
-            duration: 320,
-            useNativeDriver: true,
-          }),
-          Animated.spring(translateY, {
-            toValue: 0,
-            friction: 8,
-            tension: 72,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      });
-    };
-
-    const id = setInterval(advance, CLUB_WOTD_CAROUSEL_MS);
-    return () => {
-      clearInterval(id);
-      opacity.stopAnimation();
-      translateY.stopAnimation();
-    };
-  }, [rows.length, opacity, translateY]);
+  }, [rows]);
 
   if (!rows.length) return null;
 
   const safeIndex = Math.min(index, rows.length - 1);
   const row = rows[safeIndex];
+  const canNavigate = rows.length > 1;
+
+  const goPrev = () => {
+    setIndex((prev) => (prev - 1 + rows.length) % rows.length);
+  };
+
+  const goNext = () => {
+    setIndex((prev) => (prev + 1) % rows.length);
+  };
 
   return (
     <View style={styles.card}>
@@ -1450,14 +1397,8 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
         Word of the day
       </Text>
 
-      <Animated.View
-        style={[
-          styles.wotdCarouselSlide,
-          {
-            opacity,
-            transform: [{ translateY }],
-          },
-        ]}
+      <View
+        style={styles.wotdCarouselSlide}
         accessibilityRole="summary"
         accessibilityLabel={`${row.word}. ${row.meaning ?? ''}. ${row.meetingDateLabel}`}
       >
@@ -1482,131 +1423,98 @@ function ClubWordOfTheDayCarousel({ rows }: { rows: ClubWotdCarouselRow[] }) {
         <Text style={styles.wotdMeetingDate} maxFontSizeMultiplier={1.08}>
           {row.meetingDateLabel}
         </Text>
-      </Animated.View>
+      </View>
+      {canNavigate ? (
+        <View style={styles.highlightControlsRow}>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goPrev}
+            activeOpacity={0.8}
+            accessibilityLabel="Previous word of the day"
+          >
+            <ChevronLeft size={16} color={C.text} />
+          </TouchableOpacity>
+          <Text style={styles.highlightControlsText} maxFontSizeMultiplier={1.08}>
+            {safeIndex + 1} / {rows.length}
+          </Text>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goNext}
+            activeOpacity={0.8}
+            accessibilityLabel="Next word of the day"
+          >
+            <ChevronRight size={16} color={C.text} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 /** Prepared speeches: two-column layout; transition = scale + crossfade (distinct from Toastmaster / Educational). */
 function PreparedSpeechesHighlightCarousel({ rows }: { rows: PreparedSpeechDeliveredRow[] }) {
-  const [index, setIndex] = useState(0);
-  const opacity = useRef(new Animated.Value(1)).current;
-  const scale = useRef(new Animated.Value(1)).current;
-  const rowsLenRef = useRef(rows.length);
-  rowsLenRef.current = rows.length;
-
-  useEffect(() => {
-    setIndex(0);
-    opacity.setValue(1);
-    scale.setValue(1);
-  }, [rows, opacity, scale]);
-
-  useEffect(() => {
-    if (rows.length <= 1) return;
-
-    const advance = () => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scale, {
-          toValue: 0.9,
-          duration: 240,
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (!finished) return;
-        setIndex((i) => (i + 1) % rowsLenRef.current);
-        scale.setValue(1.05);
-        Animated.parallel([
-          Animated.timing(opacity, {
-            toValue: 1,
-            duration: 280,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scale, {
-            toValue: 1,
-            friction: 7,
-            tension: 78,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      });
-    };
-
-    const id = setInterval(advance, ED_SPEECH_CAROUSEL_MS);
-    return () => {
-      clearInterval(id);
-      opacity.stopAnimation();
-      scale.stopAnimation();
-    };
-  }, [rows.length, opacity, scale]);
-
   if (!rows.length) return null;
+  const sortedRows = [...rows].sort((a, b) => b.meetingDateRaw.localeCompare(a.meetingDateRaw));
 
-  const safeIndex = Math.min(index, rows.length - 1);
-  const row = rows[safeIndex];
-  const pathwayNameT = row.pathwayName.trim();
-  const hasPathway = pathwayNameT.length > 0;
+  const pathwayMetaLabel = (row: PreparedSpeechDeliveredRow): string | null => {
+    const levelText = typeof row.level === 'number' ? `L${row.level}` : null;
+    const projectNum = row.projectName?.match(/\d+/)?.[0] ?? null;
+    const projectText = projectNum ? `P${projectNum}` : null;
+    if (!levelText && !projectText) return null;
+    if (levelText && projectText) return `${levelText}, ${projectText}`;
+    return levelText ?? projectText;
+  };
 
   return (
     <View style={styles.card}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         Prepared speeches — last 6 months
       </Text>
-
-      <Animated.View
-        style={[styles.preparedSpeechSlide, { opacity, transform: [{ scale }] }]}
-        accessibilityRole="summary"
-        accessibilityLabel={`${row.speechTitle}${
-          hasPathway ? `. Pathway: ${pathwayNameT}` : ''
-        }. ${row.speakerName}. ${row.meetingDateLabel}`}
-      >
-        <View style={styles.preparedSpeechColumns}>
-          <View style={styles.preparedSpeechLeft}>
-            {row.avatarUrl ? (
-              <Image
-                source={{ uri: avatarUrlForDisplay(row.avatarUrl, 128) ?? row.avatarUrl }}
-                style={styles.preparedSpeechAvatar}
-                resizeMode="cover"
-                {...webImageExtra(true)}
-              />
-            ) : (
-              <View style={[styles.preparedSpeechAvatar, styles.preparedSpeechAvatarPh]}>
-                <Text style={styles.preparedSpeechInitial} maxFontSizeMultiplier={1.15}>
-                  {(row.speakerName || '?').charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
-            <Text style={styles.preparedSpeechSpeakerName} numberOfLines={2} maxFontSizeMultiplier={1.12}>
-              {row.speakerName}
-            </Text>
-            <Text style={styles.preparedSpeechDate} maxFontSizeMultiplier={1.08}>
-              {row.meetingDateLabel}
-            </Text>
-          </View>
-
-          <View style={styles.preparedSpeechRight}>
-            <Text style={styles.preparedSpeechTitle} numberOfLines={4} maxFontSizeMultiplier={1.12}>
-              {row.speechTitle}
-            </Text>
-            <Text style={styles.preparedSpeechPathwayLabel} maxFontSizeMultiplier={1.05}>
-              Pathway
-            </Text>
-            {hasPathway ? (
-              <Text style={styles.preparedSpeechPathwayLine} numberOfLines={3} maxFontSizeMultiplier={1.1}>
-                {pathwayNameT}
-              </Text>
-            ) : (
-              <Text style={styles.preparedSpeechPathwayLineMuted} maxFontSizeMultiplier={1.08}>
-                —
-              </Text>
-            )}
-          </View>
+      <View style={styles.preparedTableHeader}>
+        <View style={[styles.preparedCell, styles.preparedColName, styles.preparedCellDivider]}>
+          <Text style={styles.preparedTableHeadText}>Name</Text>
         </View>
-      </Animated.View>
+        <View style={[styles.preparedCell, styles.preparedColSpeech, styles.preparedCellDivider]}>
+          <Text style={styles.preparedTableHeadText}>Speech title</Text>
+        </View>
+        <View style={[styles.preparedCell, styles.preparedColPathway]}>
+          <Text style={styles.preparedTableHeadText}>Pathway</Text>
+        </View>
+      </View>
+      <ScrollView
+        style={styles.preparedTableScroll}
+        contentContainerStyle={styles.preparedTableScrollContent}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator
+      >
+      {sortedRows.map((row) => {
+        const pathwayMeta = pathwayMetaLabel(row);
+        return (
+          <View key={row.key} style={styles.preparedTableRow}>
+            <View style={[styles.preparedCell, styles.preparedColName, styles.preparedCellDivider]}>
+              <Text style={styles.preparedTableCellText} numberOfLines={2}>
+                {row.speakerName}
+              </Text>
+            </View>
+            <View style={[styles.preparedCell, styles.preparedColSpeech, styles.preparedCellDivider]}>
+              <Text style={styles.preparedTableCellText} numberOfLines={3}>
+                {row.speechTitle}
+              </Text>
+            </View>
+            <View style={[styles.preparedCell, styles.preparedColPathway]}>
+              <Text style={styles.preparedTableCellText} numberOfLines={2}>
+                {row.pathwayName.trim() || '—'}
+              </Text>
+              {pathwayMeta ? (
+                <Text style={styles.preparedPathwayMeta} numberOfLines={1}>
+                  {pathwayMeta}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+      </ScrollView>
     </View>
   );
 }
@@ -1620,104 +1528,27 @@ function DeliveredHighlightCarousel({
   sectionTitle: string;
   subtitle?: string;
   rows: DeliveredHighlightRow[];
-  /** Toastmaster: horizontal slide; Educational: vertical slide. */
   variant: 'toastmaster' | 'educational';
 }) {
   const [index, setIndex] = useState(0);
-  const opacity = useRef(new Animated.Value(1)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const rowsLenRef = useRef(rows.length);
-  rowsLenRef.current = rows.length;
-
+  
   useEffect(() => {
     setIndex(0);
-    opacity.setValue(1);
-    translateX.setValue(0);
-    translateY.setValue(0);
-  }, [rows, opacity, translateX, translateY]);
-
-  useEffect(() => {
-    if (rows.length <= 1) return;
-
-    const advanceToastmaster = () => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 240,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateX, {
-          toValue: -36,
-          duration: 260,
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (!finished) return;
-        setIndex((i) => (i + 1) % rowsLenRef.current);
-        translateX.setValue(36);
-        Animated.parallel([
-          Animated.timing(opacity, {
-            toValue: 1,
-            duration: 280,
-            useNativeDriver: true,
-          }),
-          Animated.spring(translateX, {
-            toValue: 0,
-            friction: 7,
-            tension: 76,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      });
-    };
-
-    const advanceEducational = () => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: -22,
-          duration: 240,
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (!finished) return;
-        setIndex((i) => (i + 1) % rowsLenRef.current);
-        translateY.setValue(26);
-        Animated.parallel([
-          Animated.timing(opacity, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.spring(translateY, {
-            toValue: 0,
-            friction: 8,
-            tension: 72,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      });
-    };
-
-    const advance = variant === 'toastmaster' ? advanceToastmaster : advanceEducational;
-    const id = setInterval(advance, ED_SPEECH_CAROUSEL_MS);
-    return () => {
-      clearInterval(id);
-      opacity.stopAnimation();
-      translateX.stopAnimation();
-      translateY.stopAnimation();
-    };
-  }, [rows.length, opacity, translateX, translateY, variant]);
+  }, [rows]);
 
   if (!rows.length) return null;
 
   const safeIndex = Math.min(index, rows.length - 1);
   const row = rows[safeIndex];
+  const canNavigate = rows.length > 1;
+
+  const goPrev = () => {
+    setIndex((prev) => (prev - 1 + rows.length) % rows.length);
+  };
+
+  const goNext = () => {
+    setIndex((prev) => (prev + 1) % rows.length);
+  };
 
   return (
     <View style={styles.card}>
@@ -1730,15 +1561,8 @@ function DeliveredHighlightCarousel({
         </Text>
       ) : null}
 
-      <Animated.View
-        style={[
-          styles.edSpeechSlide,
-          {
-            opacity,
-            transform:
-              variant === 'toastmaster' ? [{ translateX }] : [{ translateY }],
-          },
-        ]}
+      <View
+        style={styles.edSpeechSlide}
         accessibilityRole="summary"
         accessibilityLabel={`${row.headline}${
           row.pathwayDisplay !== undefined ? `. Pathway: ${row.pathwayDisplay || '—'}` : ''
@@ -1777,7 +1601,30 @@ function DeliveredHighlightCarousel({
         <Text style={styles.edSpeechDate} maxFontSizeMultiplier={1.1}>
           {row.meetingDateLabel}
         </Text>
-      </Animated.View>
+      </View>
+      {canNavigate ? (
+        <View style={styles.highlightControlsRow}>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goPrev}
+            activeOpacity={0.8}
+            accessibilityLabel={`Previous ${variant === 'toastmaster' ? 'toastmaster theme' : 'educational speech'}`}
+          >
+            <ChevronLeft size={16} color={C.text} />
+          </TouchableOpacity>
+          <Text style={styles.highlightControlsText} maxFontSizeMultiplier={1.08}>
+            {safeIndex + 1} / {rows.length}
+          </Text>
+          <TouchableOpacity
+            style={styles.highlightArrowButton}
+            onPress={goNext}
+            activeOpacity={0.8}
+            accessibilityLabel={`Next ${variant === 'toastmaster' ? 'toastmaster theme' : 'educational speech'}`}
+          >
+            <ChevronRight size={16} color={C.text} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1809,16 +1656,18 @@ function ClubStatsStaticCard({
   selectedDays,
   onSelectDays,
   loading,
+  variant = 'card',
 }: {
   stats: ClubStatsCounts | null;
   selectedDays: number;
   onSelectDays: (days: number) => void;
   loading: boolean;
+  variant?: 'card' | 'notion';
 }) {
   const slides = stats ? clubStatsSlides(stats) : clubStatsSlides(emptyClubStats());
 
   return (
-    <View style={styles.card}>
+    <View style={variant === 'notion' ? undefined : styles.card}>
       <Text style={styles.sectionTitle} maxFontSizeMultiplier={1.2}>
         Club stats
       </Text>
@@ -2191,132 +2040,145 @@ export default function MyClub() {
             ) : bundle ? (
               <>
                 {/* Notion-style single top card: club, about, meeting grid, location */}
-                <View style={styles.notionTopCard}>
-                  <View style={styles.notionTitleWrap}>
-                    <Text
-                      style={styles.notionTitle}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.38}
-                      maxFontSizeMultiplier={1.12}
-                      {...(Platform.OS === 'android' ? { includeFontPadding: false } : {})}
-                    >
+                <View style={styles.clubTopSegment}>
+                  <View style={styles.clubTopFlatBox}>
+                    <View style={styles.clubTopBlock}>
+                    <Text style={styles.clubTopTitle} maxFontSizeMultiplier={1.15}>
                       {bundle.clubInfo.name}
                     </Text>
-                  </View>
-                  {clubNumberCharterLine ? (
-                    <Text style={styles.notionMetaLine} maxFontSizeMultiplier={1.2}>
-                      {clubNumberCharterLine}
+                    {clubNumberCharterLine ? (
+                      <Text style={styles.clubTopMeta} maxFontSizeMultiplier={1.1}>
+                        {clubNumberCharterLine}
+                      </Text>
+                    ) : null}
+                    {orgMetaLine ? (
+                      <Text style={styles.clubTopMeta} maxFontSizeMultiplier={1.1}>
+                        {orgMetaLine}
+                      </Text>
+                    ) : null}
+                    </View>
+
+                    <View style={styles.clubTopDivider} />
+
+                    <View style={styles.clubTopBlock}>
+                    <Text style={styles.clubTopSectionTitle} maxFontSizeMultiplier={1.12}>Our Mission</Text>
+                    <Text style={styles.clubTopBody} maxFontSizeMultiplier={1.15}>
+                      {(bundle.clubData.club_mission ?? '').trim() || DEFAULT_TOASTMASTERS_CLUB_MISSION}
                     </Text>
-                  ) : null}
-                  {orgMetaLine ? (
-                    <Text style={[styles.notionMetaLine, styles.notionMetaLineTight]} maxFontSizeMultiplier={1.2}>
-                      {orgMetaLine}
+                    </View>
+
+                    <View style={styles.clubTopDivider} />
+
+                    <View style={styles.clubTopBlock}>
+                    <Text style={styles.clubTopSectionTitle} maxFontSizeMultiplier={1.12}>Meetings</Text>
+                    <Text style={styles.clubTopBody} maxFontSizeMultiplier={1.15}>
+                      Every {meetingDayLabel} between {timeRange}. Sessions include Prepared Speeches, Table Topics, and Evaluations. Members can also take up leadership roles to grow as leaders.
                     </Text>
-                  ) : null}
+                    </View>
 
-                  <View style={styles.notionDivider} />
+                    <View style={styles.clubTopDivider} />
 
-                  <Text style={styles.notionSectionLabel} maxFontSizeMultiplier={1.15}>
-                    About
-                  </Text>
-                  <Text style={styles.notionAboutBody} maxFontSizeMultiplier={1.25}>
-                    {(bundle.clubData.club_mission ?? '').trim() ||
-                      DEFAULT_TOASTMASTERS_CLUB_MISSION}
-                  </Text>
+                    <View style={styles.clubTopBlock}>
+                    <Text style={styles.clubTopSectionTitle} maxFontSizeMultiplier={1.12}>Why Join?</Text>
+                    {WHY_JOIN_ITEMS.map((item) => (
+                      <View key={item.title} style={styles.whyJoinRow}>
+                        <View style={styles.whyJoinIconBox}>
+                          <Text style={styles.whyJoinIcon}>{item.icon}</Text>
+                        </View>
+                        <View style={styles.whyJoinTextCol}>
+                          <Text style={styles.whyJoinTitle} maxFontSizeMultiplier={1.1}>{item.title}</Text>
+                          <Text style={styles.whyJoinDesc} maxFontSizeMultiplier={1.1}>{item.desc}</Text>
+                        </View>
+                      </View>
+                    ))}
+                    </View>
 
-                  <View style={styles.notionDivider} />
+                    <View style={styles.clubTopDivider} />
 
-                  <View
-                    accessible
-                    accessibilityRole="text"
-                    accessibilityLabel={meetingA11yLabel}
-                  >
-                    <Text style={styles.notionMeetingBlockLabel} maxFontSizeMultiplier={1.15}>
-                      Meeting
-                    </Text>
-                    <Text style={styles.notionMeetingPrimaryLine} maxFontSizeMultiplier={1.2}>
-                      <Text style={styles.notionMeetingDay}>{meetingDayLabel}</Text>
-                      <Text style={styles.notionMeetingPrimarySep}> • </Text>
-                      <Text style={styles.notionMeetingTime}>{timeRange}</Text>
-                    </Text>
-                    <Text style={styles.notionMeetingSecondaryLine} maxFontSizeMultiplier={1.18}>
-                      {meetingSecondaryDisplay}
-                    </Text>
-                  </View>
-
-                  <View style={styles.notionDivider} />
-
-                  <Text style={styles.notionSectionLabel} maxFontSizeMultiplier={1.15}>
-                    Location
-                  </Text>
-                  <View style={styles.notionLocationShell}>
-                    <View style={styles.notionLocationBody}>
-                      <Text style={styles.notionAddress} maxFontSizeMultiplier={1.2}>
+                    <View style={styles.clubTopBlock}>
+                    <Text style={styles.clubTopSectionTitle} maxFontSizeMultiplier={1.12}>Location</Text>
+                    <View style={styles.locationInnerBox}>
+                      <Text style={styles.clubTopBody} maxFontSizeMultiplier={1.15}>
                         {locationText || '—'}
                       </Text>
                       {mapsUrl ? (
                         <TouchableOpacity
-                          style={styles.notionMapsButton}
+                          style={styles.locationMapsButton}
                           onPress={() => openUrl(mapsUrl)}
                           activeOpacity={0.85}
                         >
-                          <Text style={styles.notionMapsButtonText} maxFontSizeMultiplier={1.12}>
+                          <Text style={styles.locationMapsButtonText} maxFontSizeMultiplier={1.12}>
                             Open in Maps
                           </Text>
                         </TouchableOpacity>
                       ) : null}
                     </View>
-                  </View>
+                    {onlineMeetingUrl ? (
+                      <TouchableOpacity
+                        style={[styles.locationMapsButton, styles.notionOnlineButton]}
+                        onPress={() => openUrl(onlineMeetingUrl)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.locationMapsButtonText} maxFontSizeMultiplier={1.12}>
+                          Open online meeting link
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    </View>
 
-                  {onlineMeetingUrl ? (
-                    <TouchableOpacity
-                      style={[styles.notionMapsButton, styles.notionOnlineButton]}
-                      onPress={() => openUrl(onlineMeetingUrl)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.notionMapsButtonText} maxFontSizeMultiplier={1.12}>
-                        Open online meeting link
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
+                    {(excommPreview.length > 0 || membersPreview.length > 0) ? (
+                      <>
+                        <View style={styles.clubTopDivider} />
+                        <View style={styles.clubTopBlock}>
+                          {excommPreview.length > 0 ? (
+                            <ExcommCarouselCard
+                              variant="notion"
+                              rows={excommPreview}
+                              onSeeAll={() => handleFeaturePress('/executive-committee')}
+                            />
+                          ) : null}
+                          {excommPreview.length > 0 && membersPreview.length > 0 ? (
+                            <View style={styles.notionPeopleDivider} />
+                          ) : null}
+                          {membersPreview.length > 0 ? (
+                            <MembersCarouselCard
+                              variant="notion"
+                              rows={membersPreview}
+                              onViewAll={() => handleFeaturePress('/club-members')}
+                              onViewMember={(id) =>
+                                handleFeaturePress(`/member-profile?memberId=${encodeURIComponent(id)}` as any)
+                              }
+                            />
+                          ) : null}
+                        </View>
+                      </>
+                    ) : null}
+
+                    {bundle ? (
+                      <>
+                        <View style={styles.clubTopDivider} />
+                        <View style={styles.clubTopBlock}>
+                          <ClubStatsStaticCard
+                            variant="notion"
+                            stats={clubStats}
+                            selectedDays={clubStatsPeriodDays}
+                            onSelectDays={setClubStatsPeriodDays}
+                            loading={clubStatsLoading}
+                          />
+                        </View>
+                      </>
+                    ) : null}
+
+                    {clubFaqItems.length > 0 ? (
+                      <>
+                        <View style={styles.clubTopDivider} />
+                        <View style={styles.clubTopBlock}>
+                          <ClubFaqHeroCard variant="notion" items={clubFaqItems} />
+                        </View>
+                      </>
+                    ) : null}
+                  </View>
                 </View>
-
-                {excommPreview.length > 0 || membersPreview.length > 0 ? (
-                  <View style={styles.notionPeopleCard}>
-                    {excommPreview.length > 0 ? (
-                      <ExcommCarouselCard
-                        variant="notion"
-                        rows={excommPreview}
-                        onSeeAll={() => handleFeaturePress('/executive-committee')}
-                      />
-                    ) : null}
-                    {excommPreview.length > 0 && membersPreview.length > 0 ? (
-                      <View style={styles.notionPeopleDivider} />
-                    ) : null}
-                    {membersPreview.length > 0 ? (
-                      <MembersCarouselCard
-                        variant="notion"
-                        rows={membersPreview}
-                        onViewAll={() => handleFeaturePress('/club-members')}
-                        onViewMember={(id) =>
-                          handleFeaturePress(`/member-profile?memberId=${encodeURIComponent(id)}` as any)
-                        }
-                      />
-                    ) : null}
-                  </View>
-                ) : null}
-
-                {bundle ? (
-                  <ClubStatsStaticCard
-                    stats={clubStats}
-                    selectedDays={clubStatsPeriodDays}
-                    onSelectDays={setClubStatsPeriodDays}
-                    loading={clubStatsLoading}
-                  />
-                ) : null}
-
-                {clubFaqItems.length > 0 ? <ClubFaqHeroCard items={clubFaqItems} /> : null}
 
                 {toastmasterHighlightRows.length > 0 ? (
                   <DeliveredHighlightCarousel
@@ -2344,7 +2206,6 @@ export default function MyClub() {
                   <GrammarianPublishedCarousel
                     title="Quote of the day"
                     rows={clubQuoteRows}
-                    intervalMs={CLUB_GRAMMARIAN_CAROUSEL_MS}
                   />
                 ) : null}
 
@@ -2352,7 +2213,6 @@ export default function MyClub() {
                   <GrammarianPublishedCarousel
                     title="Idiom of the day"
                     rows={clubIdiomRows}
-                    intervalMs={CLUB_GRAMMARIAN_CAROUSEL_MS}
                   />
                 ) : null}
 
@@ -2435,117 +2295,101 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  notionTopCard: {
-    backgroundColor: C.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 20,
+  clubTopSegment: {
     marginBottom: SECTION_GAP,
   },
-  notionTitleWrap: {
-    width: '100%',
-    minHeight: 26,
+  clubTopFlatBox: {
+    backgroundColor: C.card,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: 'hidden',
   },
-  notionTitle: {
-    width: '100%',
-    fontSize: 21,
-    fontWeight: '600',
+  clubTopBlock: {
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+  },
+  clubTopDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+  },
+  clubTopTitle: {
+    fontSize: 24,
+    fontWeight: '700',
     color: C.text,
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
+    lineHeight: 30,
   },
-  notionMetaLine: {
+  clubTopMeta: {
     fontSize: 14,
     fontWeight: '400',
     color: C.textSecondary,
-    marginTop: 10,
+    marginTop: 4,
     lineHeight: 20,
   },
-  notionMetaLineTight: {
-    marginTop: 6,
-  },
-  notionDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
-    marginVertical: 20,
-  },
-  notionSectionLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 12,
-  },
-  notionAboutBody: {
-    fontSize: 15,
-    fontWeight: '400',
+  clubTopSectionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
     color: C.text,
+    marginBottom: 8,
+    letterSpacing: -0.5,
     lineHeight: 24,
   },
-  notionMeetingBlockLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: C.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 4,
-  },
-  notionMeetingPrimaryLine: {
-    fontSize: 18,
-    fontWeight: '600',
-    lineHeight: 24,
-  },
-  notionMeetingDay: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#4F46E5',
-  },
-  notionMeetingPrimarySep: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: C.text,
-  },
-  notionMeetingTime: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: C.text,
-  },
-  notionMeetingSecondaryLine: {
-    marginTop: 4,
-    fontSize: 13,
+  clubTopBody: {
+    fontSize: 16,
     fontWeight: '400',
     color: C.textSecondary,
-    lineHeight: 18,
+    lineHeight: 24,
   },
-  notionLocationShell: {
+  whyJoinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  whyJoinIconBox: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
+    backgroundColor: '#0D4D7A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  whyJoinIcon: {
+    fontSize: 18,
+  },
+  whyJoinTextCol: {
+    flex: 1,
+  },
+  whyJoinTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: C.text,
+    lineHeight: 24,
+  },
+  whyJoinDesc: {
+    marginTop: 2,
+    fontSize: 15,
+    color: C.textSecondary,
+    lineHeight: 21,
+  },
+  locationInnerBox: {
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: C.border,
     backgroundColor: C.card,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  notionLocationBody: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 16,
-  },
-  notionAddress: {
-    fontSize: 15,
-    fontWeight: '400',
-    color: C.text,
-    lineHeight: 22,
-  },
-  notionMapsButton: {
+  locationMapsButton: {
     backgroundColor: C.cta,
-    borderRadius: 12,
+    borderRadius: 0,
     paddingVertical: 14,
     paddingHorizontal: 16,
     alignItems: 'center',
     marginTop: 16,
   },
-  notionMapsButtonText: {
+  locationMapsButtonText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
@@ -2600,7 +2444,7 @@ const styles = StyleSheet.create({
   clubStatsChip: {
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: C.border,
     backgroundColor: C.chipBg,
@@ -2630,7 +2474,7 @@ const styles = StyleSheet.create({
     minHeight: 104,
     borderWidth: 1,
     borderColor: C.border,
-    borderRadius: 12,
+    borderRadius: 0,
     backgroundColor: C.tileBg,
     paddingVertical: 12,
     paddingHorizontal: 8,
@@ -2703,6 +2547,9 @@ const styles = StyleSheet.create({
   faqHeroCard: {
     paddingVertical: 4,
   },
+  faqHeroNotion: {
+    paddingVertical: 4,
+  },
   faqHeroCarouselInner: {
     alignSelf: 'stretch',
     overflow: 'hidden',
@@ -2749,6 +2596,70 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     minHeight: 140,
     overflow: 'hidden',
+  },
+  preparedTableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.chipBg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  preparedTableHeadText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  preparedTableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    minHeight: 56,
+  },
+  preparedTableScroll: {
+    maxHeight: 448,
+  },
+  preparedTableScrollContent: {
+    paddingBottom: 2,
+  },
+  preparedTableCellText: {
+    fontSize: 13,
+    color: C.text,
+    lineHeight: 18,
+  },
+  preparedPathwayMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    color: C.textSecondary,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+  preparedCell: {
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  preparedCellDivider: {
+    borderRightWidth: 1,
+    borderRightColor: C.border,
+  },
+  preparedColName: {
+    flex: 1.1,
+    paddingRight: 8,
+  },
+  preparedColSpeech: {
+    flex: 1.4,
+    paddingRight: 8,
+  },
+  preparedColPathway: {
+    flex: 1.5,
   },
   preparedSpeechColumns: {
     flexDirection: 'row',
@@ -2894,6 +2805,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '400',
     color: C.textSecondary,
+    textAlign: 'center',
+  },
+  highlightControlsRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  highlightArrowButton: {
+    width: 28,
+    height: 28,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.chipBg,
+  },
+  highlightControlsText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: C.textSecondary,
+    minWidth: 52,
     textAlign: 'center',
   },
   sectionTitleInRow: {
