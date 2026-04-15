@@ -1,12 +1,16 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
-import { ArrowLeft, Calendar, Clock, MapPin, ChevronRight, ChevronDown, ChevronUp, Building2, Crown, User, Shield, Eye, UserCheck, Lock, Home, Users, Settings, RefreshCw, FileText, Vote, ClipboardCheck } from 'lucide-react-native';
+import { MeetingRolesTabPanel } from '@/components/MeetingRolesTabPanel';
+import { MeetingActionsTabPanel } from '@/components/MeetingActionsTabPanel';
+import { MeetingEvaluationTabPanel } from '@/components/MeetingEvaluationTabPanel';
+import type { MeetingFlowTab } from '@/lib/meetingTabsCatalog';
+import { ArrowLeft, Calendar, Clock, MapPin, ChevronRight, ChevronDown, ChevronUp, Building2, Crown, User, Shield, Eye, UserCheck, Lock, Home, Users, Settings } from 'lucide-react-native';
 import { Search, Filter } from 'lucide-react-native';
 import { TextInput, Modal } from 'react-native';
 
@@ -197,6 +201,29 @@ export default function MeetingRecords() {
     }
   };
 
+  const handleHistoryMeetingTabPress = (tab: MeetingFlowTab, meetingId: string) => {
+    if (tab.route) {
+      const routeWithId = tab.route.replace('meetingId=undefined', `meetingId=${meetingId}`);
+      router.push(routeWithId as Href);
+      return;
+    }
+    if (tab.comingSoon) {
+      Alert.alert('Coming Soon', `${tab.title} will be available in a future update.`);
+      return;
+    }
+    if (tab.id === 'overview') {
+      router.push(`/quick-overview?meetingId=${meetingId}` as Href);
+      return;
+    }
+    if (tab.id === 'book_role') {
+      router.push(`/book-a-role?meetingId=${meetingId}` as Href);
+      return;
+    }
+    if (tab.id === 'live_voting') {
+      router.push(`/live-voting?meetingId=${meetingId}` as Href);
+    }
+  };
+
   const getRoleIcon = (role: string) => {
     switch (role.toLowerCase()) {
       case 'excomm': return <Crown size={12} color="#ffffff" />;
@@ -317,184 +344,31 @@ export default function MeetingRecords() {
 
           {expandedTab === 'actions' && (
             <View style={styles.expandedSection}>
-              <Text style={[styles.expandedSectionLabel, { color: N.text }]} maxFontSizeMultiplier={1.2}>Core</Text>
-              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/book-a-role?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <Calendar size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Book a Role</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Book roles for this meeting</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/quick-overview?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <RefreshCw size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Quick Overview</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View meeting overview and status</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-agenda-view?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <FileText size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Meeting Agenda</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View and manage meeting agenda</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-
-              <Text style={[styles.expandedSectionLabel, { color: N.text, marginTop: 8 }]} maxFontSizeMultiplier={1.2}>Operations</Text>
-              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
-              <View style={styles.expandedGrid}>
-                <TouchableOpacity style={[styles.expandedGridCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-details?meetingId=${meeting.id}`)}>
-                  <View style={[styles.expandedGridIcon, { backgroundColor: N.surfaceSoft }]}>
-                    <ClipboardCheck size={18} color={N.textSecondary} />
-                  </View>
-                  <Text style={[styles.expandedGridTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Role Completion</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.expandedGridCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/attendance-report?meetingId=${meeting.id}`)}>
-                  <View style={[styles.expandedGridIcon, { backgroundColor: N.surfaceSoft }]}>
-                    <UserCheck size={18} color={N.textSecondary} />
-                  </View>
-                  <Text style={[styles.expandedGridTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Attendance</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={[styles.expandedSectionLabel, { color: N.text, marginTop: 8 }]} maxFontSizeMultiplier={1.2}>Closing and Reports</Text>
-              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-minutes?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <FileText size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Meeting Minutes</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Read and manage minutes for this meeting</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push({ pathname: '/(tabs)/meetings', params: { section: 'reports' } })}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <Eye size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Club Reports</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View member and meeting reports</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
+              <MeetingActionsTabPanel
+                meetingId={meeting.id}
+                bookRoleShowAttention={false}
+                disableBookRole={true}
+                onTabPress={(tab) => handleHistoryMeetingTabPress(tab, meeting.id)}
+                onOpenClubReports={() => router.push({ pathname: '/(tabs)/meetings', params: { section: 'reports' } } as Href)}
+              />
             </View>
           )}
 
           {expandedTab === 'roles' && (
             <View style={styles.expandedSection}>
-              <Text style={[styles.expandedSectionLabel, { color: N.text }]} maxFontSizeMultiplier={1.2}>Key Roles</Text>
-              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-details?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <ClipboardCheck size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Roles Overview</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View all booked and completed roles</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/toastmaster-corner?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <Crown size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Toastmaster Corner</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Toastmaster role details and readiness</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/table-topic-corner?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <Users size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Table Topic Corner</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Manage topics and participant flow</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/general-evaluator-report?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <Shield size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>General Evaluator</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Review GE corner and summary status</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
+              <MeetingRolesTabPanel
+                meetingId={meeting.id}
+                onTabPress={(tab) => handleHistoryMeetingTabPress(tab, meeting.id)}
+              />
             </View>
           )}
 
           {expandedTab === 'evaluation' && (
             <View style={styles.expandedSection}>
-              <Text style={[styles.expandedSectionLabel, { color: N.text }]} maxFontSizeMultiplier={1.2}>Evaluations</Text>
-              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/evaluation-corner?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <Vote size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Evaluation Corner</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Open speech evaluation workflows</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/prepared-speech-evaluations?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <ClipboardCheck size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Prepared Speech Evaluations</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Track and review prepared speech scores</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/educational-corner?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <User size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Educational Corner</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>View educational speaker details and notes</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/keynote-speaker-corner?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <Crown size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Keynote Speaker</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Review keynote speaker preparation and output</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
-              <Text style={[styles.expandedSectionLabel, { color: N.text, marginTop: 8 }]} maxFontSizeMultiplier={1.2}>Reports</Text>
-              <View style={[styles.expandedSectionDivider, { backgroundColor: N.border }]} />
-              <TouchableOpacity style={[styles.expandedRowCard, { borderColor: N.border, backgroundColor: N.surface }]} onPress={() => router.push(`/meeting-details?meetingId=${meeting.id}`)}>
-                <View style={[styles.expandedRowIcon, { backgroundColor: N.surfaceSoft }]}>
-                  <Eye size={16} color={N.textSecondary} />
-                </View>
-                <View style={styles.expandedRowTextWrap}>
-                  <Text style={[styles.expandedRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.2}>Evaluation Reports</Text>
-                  <Text style={[styles.expandedRowSub, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>Open all evaluation reports for this meeting</Text>
-                </View>
-                <ChevronRight size={16} color={N.textSecondary} />
-              </TouchableOpacity>
+              <MeetingEvaluationTabPanel
+                meetingId={meeting.id}
+                onTabPress={(tab) => handleHistoryMeetingTabPress(tab, meeting.id)}
+              />
             </View>
           )}
         </View>

@@ -80,6 +80,7 @@ interface MeetingRoleAssignment {
   meeting_id: string;
   role_id: string;
   role_name: string;
+  order_index?: number | null;
   role_metric: string;
   assigned_user_id: string | null;
   booking_status: string;
@@ -121,6 +122,11 @@ function isHiddenIceBreakerAdminRole(role: MeetingRoleAssignment): boolean {
   }
   return false;
 }
+
+const roleNameCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base',
+});
 
 export default function ManageMeetingRoles() {
   const { theme } = useTheme();
@@ -228,8 +234,19 @@ export default function ManageMeetingRoles() {
   }, [classificationTabs, selectedClassification]);
 
   const filteredRoles = useMemo(() => {
-    if (selectedClassification === 'all' || !selectedClassification) return rolesByTab;
-    return rolesByTab.filter((role) => (role.role_classification || 'Others') === selectedClassification);
+    const scopedRoles =
+      selectedClassification === 'all' || !selectedClassification
+        ? rolesByTab
+        : rolesByTab.filter((role) => (role.role_classification || 'Others') === selectedClassification);
+
+    return [...scopedRoles].sort((a, b) => {
+      const byName = roleNameCollator.compare(a.role_name || '', b.role_name || '');
+      if (byName !== 0) return byName;
+
+      const aOrder = a.order_index ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = b.order_index ?? Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder;
+    });
   }, [rolesByTab, selectedClassification]);
 
   const availableVisibleCount = useMemo(

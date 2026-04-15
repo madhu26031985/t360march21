@@ -68,6 +68,8 @@ export default function TableTopicsPublishedReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
+  const [tableTopicSummaryVisibleToMembers, setTableTopicSummaryVisibleToMembers] = useState<boolean>(true);
+  const [isVPEClub, setIsVPEClub] = useState<boolean>(false);
 
   useEffect(() => {
     if (meetingId && user?.currentClubId) {
@@ -85,6 +87,7 @@ export default function TableTopicsPublishedReport() {
         loadMeeting(),
         loadClubInfo(),
         loadTableTopicMaster(),
+        loadTableTopicSummaryVisibility(),
         loadPublishedQuestions(),
       ]);
     } catch (error) {
@@ -108,10 +111,41 @@ export default function TableTopicsPublishedReport() {
     if (!user?.currentClubId) return;
     const { data } = await supabase
       .from('club_profiles')
-      .select('id, club_name, club_number, district, division, area')
+      .select('id, club_name, club_number, district, division, area, vpe_id')
       .eq('club_id', user.currentClubId)
       .single();
-    if (data) setClubInfo({ ...data, id: data.id || user.currentClubId });
+    if (data) {
+      setClubInfo({
+        id: data.id || user.currentClubId,
+        club_name: data.club_name,
+        club_number: data.club_number,
+        district: data.district,
+        division: data.division,
+        area: data.area,
+      });
+      setIsVPEClub(Boolean(user?.id && data.vpe_id === user.id));
+    }
+  };
+
+  const loadTableTopicSummaryVisibility = async () => {
+    if (!meetingId) return;
+    const { data, error } = await supabase
+      .from('table_topic_corner_visibility')
+      .select('summary_visible_to_members')
+      .eq('meeting_id', meetingId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error loading Table Topic Summary visibility:', error);
+      setTableTopicSummaryVisibleToMembers(true);
+      return;
+    }
+
+    if (data && typeof (data as any).summary_visible_to_members === 'boolean') {
+      setTableTopicSummaryVisibleToMembers(Boolean((data as any).summary_visible_to_members));
+    } else {
+      setTableTopicSummaryVisibleToMembers(true);
+    }
   };
 
   const loadTableTopicMaster = async () => {
@@ -187,6 +221,11 @@ export default function TableTopicsPublishedReport() {
   };
 
   const handleExportPDF = async () => {
+    const canViewSummary = tableTopicSummaryVisibleToMembers || isVPEClub || tableTopicMaster?.id === user?.id;
+    if (!canViewSummary) {
+      Alert.alert('Not available', 'Table Topic Summary is hidden for members for this meeting.');
+      return;
+    }
     if (Platform.OS !== 'web') {
       Alert.alert('PDF Export', 'PDF export is available on the web version of this app.');
       return;
@@ -247,6 +286,7 @@ export default function TableTopicsPublishedReport() {
 
   const bannerColor1 = meeting.club_info_banner_color || '#0f172a';
   const bannerColor2 = meeting.datetime_banner_color || '#e11d48';
+  const canViewSummary = tableTopicSummaryVisibleToMembers || isVPEClub || tableTopicMaster?.id === user?.id;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -260,9 +300,9 @@ export default function TableTopicsPublishedReport() {
         </Text>
         {Platform.OS === 'web' ? (
           <TouchableOpacity
-            style={[styles.downloadBtn, { backgroundColor: theme.colors.primary, opacity: isExporting ? 0.6 : 1 }]}
+            style={[styles.downloadBtn, { backgroundColor: theme.colors.primary, opacity: isExporting || !canViewSummary ? 0.6 : 1 }]}
             onPress={handleExportPDF}
-            disabled={isExporting}
+            disabled={isExporting || !canViewSummary}
           >
             <Download size={16} color="#ffffff" />
             <Text style={styles.downloadBtnText} maxFontSizeMultiplier={1.2}>
@@ -335,7 +375,12 @@ export default function TableTopicsPublishedReport() {
                 </View>
               </View>
 
-              {publishedQuestions.length > 0 ? (
+              {!canViewSummary ? (
+                <View style={styles.emptyBox}>
+                  <Mic size={28} color="#d1d5db" />
+                  <Text style={styles.emptyBoxText}>Table Topic Summary is hidden from members</Text>
+                </View>
+              ) : publishedQuestions.length > 0 ? (
                 <View style={styles.questionsList}>
                   {publishedQuestions.map((question, index) => {
                     const accent = ACCENT_COLORS[index % ACCENT_COLORS.length];

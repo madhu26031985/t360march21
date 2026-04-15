@@ -377,127 +377,133 @@ export default function FeedbackForm() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Meeting Information Card */}
-        <View style={[styles.meetingCard, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.meetingHeader}>
-            <View style={[styles.meetingIcon, { backgroundColor: '#a855f7' + '20' }]}>
-              <Star size={20} color="#a855f7" />
-            </View>
-            <View style={styles.meetingInfo}>
-              <Text style={[styles.meetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {meeting.meeting_title}
-              </Text>
-              <View style={styles.meetingMeta}>
-                <View style={styles.meetingDate}>
-                  <Calendar size={12} color={theme.colors.textSecondary} />
-                  <Text style={[styles.meetingDateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {new Date(meeting.meeting_date).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </Text>
-                </View>
-                {meeting.meeting_number && (
-                  <Text style={[styles.meetingNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    #{meeting.meeting_number}
-                  </Text>
-                )}
+        <View style={[styles.formBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          {/* Meeting Information */}
+          <View style={styles.meetingCard}>
+            <View style={styles.meetingHeader}>
+              <View style={[styles.meetingIcon, { backgroundColor: '#a855f7' + '20' }]}>
+                <Star size={20} color="#a855f7" />
               </View>
-              {meeting.meeting_start_time && (
-                <View style={styles.meetingTime}>
-                  <Clock size={12} color={theme.colors.textSecondary} />
-                  <Text style={[styles.meetingTimeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {meeting.meeting_start_time}
-                    {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.meetingMode}>
-                <MapPin size={12} color={theme.colors.textSecondary} />
-                <Text style={[styles.meetingModeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  {formatMeetingMode(meeting.meeting_mode)}
+              <View style={styles.meetingInfo}>
+                <Text style={[styles.meetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {meeting.meeting_title}
                 </Text>
+                <View style={styles.meetingMeta}>
+                  <View style={styles.meetingDate}>
+                    <Calendar size={12} color={theme.colors.textSecondary} />
+                    <Text style={[styles.meetingDateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      {new Date(meeting.meeting_date).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </Text>
+                  </View>
+                  {meeting.meeting_number && (
+                    <Text style={[styles.meetingNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      #{meeting.meeting_number}
+                    </Text>
+                  )}
+                </View>
+                {meeting.meeting_start_time && (
+                  <View style={styles.meetingTime}>
+                    <Clock size={12} color={theme.colors.textSecondary} />
+                    <Text style={[styles.meetingTimeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      {meeting.meeting_start_time}
+                      {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.meetingMode}>
+                  <MapPin size={12} color={theme.colors.textSecondary} />
+                  <Text style={[styles.meetingModeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    {formatMeetingMode(meeting.meeting_mode)}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
-        </View>
 
-        {/* Rating Questions */}
-        <View style={[styles.ratingsSection, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Rate Your Experience
-          </Text>
-          
-          {ratingQuestions.map((question, index) => (
-            <View key={question.key} style={styles.questionSection}>
-              <Text style={[styles.questionText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {index + 1}. {question.question}
+          <View style={[styles.sectionDivider, { backgroundColor: theme.colors.border }]} />
+
+          {/* Rating Questions */}
+          <View style={styles.ratingsSection}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Rate Your Experience
+            </Text>
+            
+            {ratingQuestions.map((question, index) => (
+              <View key={question.key} style={styles.questionSection}>
+                <Text style={[styles.questionText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {index + 1}. {question.question}
+                </Text>
+                
+                <View style={styles.ratingOptions}>
+                  {[1, 2, 3, 4, 5].map((rating) => (
+                    <TouchableOpacity
+                      key={rating}
+                      style={[
+                        styles.ratingOption,
+                        {
+                          backgroundColor: feedbackForm[question.key] === rating ? '#f59e0b' + '20' : theme.colors.background,
+                          borderColor: feedbackForm[question.key] === rating ? '#f59e0b' : theme.colors.border,
+                        }
+                      ]}
+                      onPress={() => updateRating(question.key, rating)}
+                    >
+                      <Star 
+                        size={20} 
+                        color={feedbackForm[question.key] === rating ? '#f59e0b' : '#e5e7eb'} 
+                        fill={feedbackForm[question.key] === rating ? '#f59e0b' : 'transparent'}
+                      />
+                      <Text style={[
+                        styles.ratingNumber,
+                        { color: feedbackForm[question.key] === rating ? '#f59e0b' : theme.colors.text }
+                      ]} maxFontSizeMultiplier={1.3}>
+                        {rating}
+                      </Text>
+                      <Text style={[
+                        styles.ratingLabel,
+                        { color: feedbackForm[question.key] === rating ? '#f59e0b' : theme.colors.textSecondary }
+                      ]} maxFontSizeMultiplier={1.3}>
+                        {question.labels[rating - 1]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <View style={[styles.sectionDivider, { backgroundColor: theme.colors.border }]} />
+
+          {/* Comments Section */}
+          <View style={styles.commentsSection}>
+            <View style={styles.commentsHeader}>
+              <Text style={[styles.commentsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                Additional Comments (Optional)
               </Text>
-              
-              <View style={styles.ratingOptions}>
-                {[1, 2, 3, 4, 5].map((rating) => (
-                  <TouchableOpacity
-                    key={rating}
-                    style={[
-                      styles.ratingOption,
-                      {
-                        backgroundColor: feedbackForm[question.key] === rating ? '#f59e0b' + '20' : theme.colors.background,
-                        borderColor: feedbackForm[question.key] === rating ? '#f59e0b' : theme.colors.border,
-                      }
-                    ]}
-                    onPress={() => updateRating(question.key, rating)}
-                  >
-                    <Star 
-                      size={20} 
-                      color={feedbackForm[question.key] === rating ? '#f59e0b' : '#e5e7eb'} 
-                      fill={feedbackForm[question.key] === rating ? '#f59e0b' : 'transparent'}
-                    />
-                    <Text style={[
-                      styles.ratingNumber,
-                      { color: feedbackForm[question.key] === rating ? '#f59e0b' : theme.colors.text }
-                    ]} maxFontSizeMultiplier={1.3}>
-                      {rating}
-                    </Text>
-                    <Text style={[
-                      styles.ratingLabel,
-                      { color: feedbackForm[question.key] === rating ? '#f59e0b' : theme.colors.textSecondary }
-                    ]} maxFontSizeMultiplier={1.3}>
-                      {question.labels[rating - 1]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                {feedbackForm.comments.length}/1000
+              </Text>
             </View>
-          ))}
-        </View>
-
-        {/* Comments Section */}
-        <View style={[styles.commentsSection, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.commentsHeader}>
-            <Text style={[styles.commentsTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Additional Comments (Optional)
-            </Text>
-            <Text style={[styles.characterCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              {feedbackForm.comments.length}/1000
-            </Text>
+            <TextInput
+              style={[styles.commentsInput, { 
+                backgroundColor: theme.colors.background, 
+                borderColor: theme.colors.border,
+                color: theme.colors.text 
+              }]}
+              placeholder="Share any additional thoughts, suggestions, or specific feedback about the meeting..."
+              placeholderTextColor={theme.colors.textSecondary}
+              value={feedbackForm.comments}
+              onChangeText={updateComments}
+              multiline
+              numberOfLines={6}
+              textAlignVertical="top"
+              maxLength={1000}
+            />
           </View>
-          <TextInput
-            style={[styles.commentsInput, { 
-              backgroundColor: theme.colors.background, 
-              borderColor: theme.colors.border,
-              color: theme.colors.text 
-            }]}
-            placeholder="Share any additional thoughts, suggestions, or specific feedback about the meeting..."
-            placeholderTextColor={theme.colors.textSecondary}
-            value={feedbackForm.comments}
-            onChangeText={updateComments}
-            multiline
-            numberOfLines={6}
-            textAlignVertical="top"
-            maxLength={1000}
-          />
         </View>
 
         {/* Bottom spacing */}
@@ -542,24 +548,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 0,
   },
   content: {
     flex: 1,
   },
-  meetingCard: {
+  formBox: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 16,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  sectionDivider: {
+    height: 1,
+  },
+  meetingCard: {
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   meetingHeader: {
     flexDirection: 'row',
@@ -568,7 +573,7 @@ const styles = StyleSheet.create({
   meetingIcon: {
     width: 50,
     height: 50,
-    borderRadius: 25,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -619,18 +624,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   ratingsSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   sectionTitle: {
     fontSize: 18,
@@ -654,7 +648,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 2,
-    borderRadius: 8,
+    borderRadius: 0,
     padding: 12,
     gap: 12,
   },
@@ -676,18 +670,7 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   commentsSection: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 16,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   commentsHeader: {
     flexDirection: 'row',
@@ -706,7 +689,7 @@ const styles = StyleSheet.create({
   },
   commentsInput: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 0,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 15,

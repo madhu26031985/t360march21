@@ -195,7 +195,7 @@ export default function FeedbackCorner() {
   );
 
   const FeedbackCard = ({ feedback }: { feedback: MeetingFeedback }) => (
-    <View style={[styles.feedbackCard, { backgroundColor: theme.colors.surface }]}>
+    <View style={[styles.feedbackCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
       <View style={styles.feedbackHeader}>
         <View style={styles.feedbackUser}>
           <View style={styles.userAvatar}>
@@ -308,85 +308,89 @@ export default function FeedbackCorner() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Meeting Card */}
-        <View style={[styles.meetingCard, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.meetingHeader}>
-            <View style={[styles.meetingIcon, { backgroundColor: '#a855f7' + '20' }]}>
-              <MessageSquare size={20} color="#a855f7" />
-            </View>
-            <View style={styles.meetingInfo}>
-              <Text style={[styles.meetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {meeting.meeting_title}
-              </Text>
-              <View style={styles.meetingMeta}>
-                <View style={styles.meetingDate}>
-                  <Calendar size={12} color={theme.colors.textSecondary} />
-                  <Text style={[styles.meetingDateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {new Date(meeting.meeting_date).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </Text>
-                </View>
-                {meeting.meeting_number && (
-                  <Text style={[styles.meetingNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    #{meeting.meeting_number}
-                  </Text>
-                )}
+        <View style={[styles.masterBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          {/* Meeting */}
+          <View style={styles.meetingCard}>
+            <View style={styles.meetingHeader}>
+              <View style={[styles.meetingIcon, { backgroundColor: '#a855f7' + '20' }]}>
+                <MessageSquare size={20} color="#a855f7" />
               </View>
-              {meeting.meeting_start_time && (
-                <View style={styles.meetingTime}>
-                  <Clock size={12} color={theme.colors.textSecondary} />
-                  <Text style={[styles.meetingTimeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {meeting.meeting_start_time}
-                    {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
+              <View style={styles.meetingInfo}>
+                <Text style={[styles.meetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {meeting.meeting_title}
+                </Text>
+                <View style={styles.meetingMeta}>
+                  <View style={styles.meetingDate}>
+                    <Calendar size={12} color={theme.colors.textSecondary} />
+                    <Text style={[styles.meetingDateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      {new Date(meeting.meeting_date).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </Text>
+                  </View>
+                  {meeting.meeting_number && (
+                    <Text style={[styles.meetingNumber, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      #{meeting.meeting_number}
+                    </Text>
+                  )}
+                </View>
+                {meeting.meeting_start_time && (
+                  <View style={styles.meetingTime}>
+                    <Clock size={12} color={theme.colors.textSecondary} />
+                    <Text style={[styles.meetingTimeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                      {meeting.meeting_start_time}
+                      {meeting.meeting_end_time && ` - ${meeting.meeting_end_time}`}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.meetingMode}>
+                  <MapPin size={12} color={theme.colors.textSecondary} />
+                  <Text style={[styles.meetingModeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                    {formatMeetingMode(meeting.meeting_mode)}
                   </Text>
                 </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.sectionDivider, { backgroundColor: theme.colors.border }]} />
+
+          {/* All Feedback */}
+          <View style={styles.allFeedbackSection}>
+            <View style={styles.allFeedbackHeader}>
+              <Text style={[styles.allFeedbackTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                All Feedback ({allFeedback.length})
+              </Text>
+              {!userFeedback && (
+                <TouchableOpacity
+                  style={[styles.giveFeedbackButton, { backgroundColor: theme.colors.primary }]}
+                  onPress={handleGiveFeedback}
+                >
+                  <Star size={16} color="#ffffff" />
+                  <Text style={styles.giveFeedbackButtonText} maxFontSizeMultiplier={1.3}>Give Feedback</Text>
+                </TouchableOpacity>
               )}
-              <View style={styles.meetingMode}>
-                <MapPin size={12} color={theme.colors.textSecondary} />
-                <Text style={[styles.meetingModeText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  {formatMeetingMode(meeting.meeting_mode)}
+            </View>
+
+            {allFeedback.length > 0 ? (
+              allFeedback.map((feedback) => (
+                <FeedbackCard key={feedback.id} feedback={feedback} />
+              ))
+            ) : (
+              <View style={styles.noFeedbackState}>
+                <MessageSquare size={48} color={theme.colors.textSecondary} />
+                <Text style={[styles.noFeedbackStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  No feedback yet
+                </Text>
+                <Text style={[styles.noFeedbackStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                  Be the first to share your thoughts about this meeting
                 </Text>
               </View>
-            </View>
-          </View>
-        </View>
-
-        {/* All Feedback Section */}
-        <View style={styles.allFeedbackSection}>
-          <View style={styles.allFeedbackHeader}>
-            <Text style={[styles.allFeedbackTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              All Feedback ({allFeedback.length})
-            </Text>
-            {!userFeedback && (
-              <TouchableOpacity
-                style={[styles.giveFeedbackButton, { backgroundColor: theme.colors.primary }]}
-                onPress={handleGiveFeedback}
-              >
-                <Star size={16} color="#ffffff" />
-                <Text style={styles.giveFeedbackButtonText} maxFontSizeMultiplier={1.3}>Give Feedback</Text>
-              </TouchableOpacity>
             )}
           </View>
-          
-          {allFeedback.length > 0 ? (
-            allFeedback.map((feedback) => (
-              <FeedbackCard key={feedback.id} feedback={feedback} />
-            ))
-          ) : (
-            <View style={styles.noFeedbackState}>
-              <MessageSquare size={48} color={theme.colors.textSecondary} />
-              <Text style={[styles.noFeedbackStateText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                No feedback yet
-              </Text>
-              <Text style={[styles.noFeedbackStateSubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                Be the first to share your thoughts about this meeting
-              </Text>
-            </View>
-          )}
         </View>
 
         {/* Bottom padding */}
@@ -431,19 +435,18 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  meetingCard: {
+  masterBox: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 16,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  sectionDivider: {
+    height: 1,
+  },
+  meetingCard: {
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   meetingHeader: {
     flexDirection: 'row',
@@ -452,7 +455,7 @@ const styles = StyleSheet.create({
   meetingIcon: {
     width: 50,
     height: 50,
-    borderRadius: 25,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -503,9 +506,9 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   allFeedbackSection: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
   },
   allFeedbackHeader: {
     flexDirection: 'row',
@@ -523,15 +526,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+    borderRadius: 0,
   },
   giveFeedbackButtonText: {
     fontSize: 14,
@@ -541,17 +536,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   feedbackCard: {
-    borderRadius: 12,
+    borderRadius: 0,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   feedbackHeader: {
     flexDirection: 'row',
@@ -567,7 +555,7 @@ const styles = StyleSheet.create({
   userAvatar: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     backgroundColor: '#3b82f6',
     alignItems: 'center',
     justifyContent: 'center',
@@ -577,7 +565,7 @@ const styles = StyleSheet.create({
   userAvatarImage: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
   },
   userInitials: {
     fontSize: 14,
@@ -599,17 +587,9 @@ const styles = StyleSheet.create({
   editFeedbackButton: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   ratingsGrid: {
     flexDirection: 'row',
@@ -632,7 +612,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   commentsSection: {
-    borderRadius: 8,
+    borderRadius: 0,
     padding: 12,
     marginTop: 8,
   },
