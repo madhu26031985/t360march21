@@ -18,6 +18,7 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
   const [signInError, setSignInError] = useState('');
+  const [oauthFinishing, setOauthFinishing] = useState(false);
 
   useEffect(() => {
     void WebBrowser.maybeCompleteAuthSession();
@@ -44,6 +45,7 @@ export default function Login() {
 
   useEffect(() => {
     if (isAuthenticated) {
+      setOauthFinishing(false);
       router.replace('/(tabs)');
     }
   }, [isAuthenticated]);
@@ -115,13 +117,20 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     setSignInError('');
     setGoogleLoading(true);
+    setOauthFinishing(false);
     try {
       const result = await signInWithGoogle();
+      if (result.success) {
+        // Browser auth is done; app is applying session/profile.
+        setOauthFinishing(true);
+      }
       if (!result.success && result.error) {
+        setOauthFinishing(false);
         setSignInError(result.error);
         Alert.alert('Google Sign In', result.error);
       }
     } catch (e) {
+      setOauthFinishing(false);
       const msg = e instanceof Error ? e.message : 'Google sign in failed';
       setSignInError(msg);
       Alert.alert('Error', msg);
@@ -133,13 +142,19 @@ export default function Login() {
   const handleAppleSignIn = async () => {
     setSignInError('');
     setAppleLoading(true);
+    setOauthFinishing(false);
     try {
       const result = await signInWithApple();
+      if (result.success) {
+        setOauthFinishing(true);
+      }
       if (!result.success && result.error) {
+        setOauthFinishing(false);
         setSignInError(result.error);
         Alert.alert('Sign in with Apple', result.error);
       }
     } catch (e) {
+      setOauthFinishing(false);
       const msg = e instanceof Error ? e.message : 'Apple sign in failed';
       setSignInError(msg);
       Alert.alert('Error', msg);
@@ -147,6 +162,12 @@ export default function Login() {
       setAppleLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!oauthFinishing) return;
+    const timer = setTimeout(() => setOauthFinishing(false), 12000);
+    return () => clearTimeout(timer);
+  }, [oauthFinishing]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -239,6 +260,14 @@ export default function Login() {
           {signInError ? (
             <View style={styles.errorBanner}>
               <Text style={styles.errorBannerText} maxFontSizeMultiplier={1.3}>{signInError}</Text>
+            </View>
+          ) : null}
+          {oauthFinishing ? (
+            <View style={styles.oauthInfoBanner}>
+              <ActivityIndicator color="#0969da" size="small" />
+              <Text style={styles.oauthInfoBannerText} maxFontSizeMultiplier={1.2}>
+                Sign in successful. Finishing setup...
+              </Text>
             </View>
           ) : null}
 
@@ -408,6 +437,26 @@ const styles = StyleSheet.create({
     color: '#cf222e',
     fontSize: 12,
     fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  oauthInfoBanner: {
+    marginTop: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#0969da33',
+    backgroundColor: '#ddf4ff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  oauthInfoBannerText: {
+    color: '#0550ae',
+    fontSize: 12,
+    fontWeight: '600',
     textAlign: 'center',
     lineHeight: 16,
   },

@@ -49,8 +49,7 @@ import {
   Vote,
   Eye,
   EyeOff,
-  Check,
-  Pencil,
+  Save,
 } from 'lucide-react-native';
 
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -248,6 +247,7 @@ export default function TableTopicCorner(): JSX.Element {
     Array.from({ length: CORNER_QUESTION_SLOT_COUNT }, () => '')
   );
   const [cornerSavingSlotIndex, setCornerSavingSlotIndex] = useState<number | null>(null);
+  const [cornerSaveBlinkOn, setCornerSaveBlinkOn] = useState<boolean>(true);
   const cornerSlotInputRefs = useRef<(TextInput | null)[]>([]);
   const cornerSlotTextsRef = useRef<string[]>(cornerSlotTexts);
   const cornerSlotIdsRef = useRef<(string | null)[]>(cornerSlotIds);
@@ -263,6 +263,16 @@ export default function TableTopicCorner(): JSX.Element {
   useEffect(() => {
     questionsRef.current = questions;
   }, [questions]);
+  useEffect(() => {
+    if (cornerSavingSlotIndex === null) {
+      setCornerSaveBlinkOn(true);
+      return;
+    }
+    const timer = setInterval(() => {
+      setCornerSaveBlinkOn((prev) => !prev);
+    }, 420);
+    return () => clearInterval(timer);
+  }, [cornerSavingSlotIndex]);
 
   const [questionForm, setQuestionForm] = useState<QuestionForm>({
     question: '',
@@ -288,6 +298,7 @@ export default function TableTopicCorner(): JSX.Element {
   const [assignSearch, setAssignSearch] = useState<string>('');
   const [assignMode, setAssignMode] = useState<'member' | 'guest'>('member');
   const [guestName, setGuestName] = useState<string>('');
+  const [failedAvatarUris, setFailedAvatarUris] = useState<Record<string, boolean>>({});
   /** Inline book-a-role: loading state per participant row */
   const [bookingRoleId, setBookingRoleId] = useState<string | null>(null);
   const [bookingTableTopicMaster, setBookingTableTopicMaster] = useState<boolean>(false);
@@ -304,6 +315,19 @@ export default function TableTopicCorner(): JSX.Element {
       void loadTableTopicCornerData();
     }
   }, [meetingId, user?.currentClubId]);
+
+  const getSafeAvatarUri = useCallback((url: string | null | undefined): string | null => {
+    const trimmed = (url || '').trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('data:')) return null;
+    if (trimmed.length > 2048) return null;
+    return trimmed;
+  }, []);
+
+  const markAvatarFailed = useCallback((uri: string | null) => {
+    if (!uri) return;
+    setFailedAvatarUris((prev) => (prev[uri] ? prev : { ...prev, [uri]: true }));
+  }, []);
 
   /**
    * Load all table topic corner data
@@ -950,10 +974,6 @@ export default function TableTopicCorner(): JSX.Element {
     ]
   );
 
-  const focusCornerSlot = useCallback((index: number) => {
-    cornerSlotInputRefs.current[index]?.focus();
-  }, []);
-
   const handleCornerSlotSave = useCallback(
     (index: number) => {
       void persistCornerSlotAtIndex(index);
@@ -976,7 +996,7 @@ export default function TableTopicCorner(): JSX.Element {
 
   useEffect(() => {
     if (activeTab === 'table_topic_corner' && !canManageTableTopicCorner()) {
-      setActiveTab('participants');
+      setActiveTab('table_topic_summary');
     }
   }, [activeTab, isVPEClub, tableTopicMaster?.assigned_user_id, user?.id]);
 
@@ -1521,16 +1541,19 @@ export default function TableTopicCorner(): JSX.Element {
    */
   const ParticipantCard = ({ participant }: { participant: TableTopicParticipant }): JSX.Element => {
     const isBooked = participant.booking_status === 'booked' && participant.assigned_user_id;
+    const participantAvatarUri = getSafeAvatarUri(participant.app_user_profiles?.avatar_url);
+    const showParticipantAvatar = !!participantAvatarUri && !failedAvatarUris[participantAvatarUri];
 
     return (
       <View style={[styles.participantCard, { backgroundColor: theme.colors.surface }]}>
         {isBooked ? (
           <View style={styles.bookedParticipant}>
             <View style={styles.participantAvatar}>
-              {participant.app_user_profiles?.avatar_url ? (
+              {showParticipantAvatar ? (
                 <Image
-                  source={{ uri: participant.app_user_profiles.avatar_url }}
+                  source={{ uri: participantAvatarUri as string }}
                   style={styles.participantAvatarImage}
+                  onError={() => markAvatarFailed(participantAvatarUri)}
                 />
               ) : (
                 <Text style={styles.participantInitials} maxFontSizeMultiplier={1.3}>
@@ -1574,7 +1597,7 @@ export default function TableTopicCorner(): JSX.Element {
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
                 <Text style={styles.bookRoleButtonText} maxFontSizeMultiplier={1.3}>
-                  Book a Role
+                  Book
                 </Text>
               )}
             </TouchableOpacity>
@@ -1583,6 +1606,15 @@ export default function TableTopicCorner(): JSX.Element {
       </View>
     );
   };
+
+  const isTtmBooked = Boolean(tableTopicMaster?.assigned_user_id && tableTopicMaster.app_user_profiles);
+  const showParticipantsTab = !isTtmBooked;
+
+  useEffect(() => {
+    if (showParticipantsTab) return;
+    if (activeTab !== 'participants') return;
+    setActiveTab(canManageTableTopicCorner() ? 'table_topic_corner' : 'table_topic_summary');
+  }, [showParticipantsTab, activeTab, isVPEClub, tableTopicMaster?.assigned_user_id, user?.id]);
 
   // Loading state
   if (isLoading) {
@@ -1616,7 +1648,8 @@ export default function TableTopicCorner(): JSX.Element {
     );
   }
 
-  const isTtmBooked = Boolean(tableTopicMaster?.assigned_user_id && tableTopicMaster.app_user_profiles);
+  const ttmAvatarUri = getSafeAvatarUri(tableTopicMaster?.app_user_profiles?.avatar_url);
+  const showTtmAvatar = !!ttmAvatarUri && !failedAvatarUris[ttmAvatarUri];
   const summaryDraftQuestions = cornerCommittedTexts
     .map((text, index) => ({ order: index + 1, text: (text || '').trim() }))
     .filter((q) => q.text.length > 0);
@@ -1683,10 +1716,11 @@ export default function TableTopicCorner(): JSX.Element {
                   },
                 ]}
               >
-                {tableTopicMaster.app_user_profiles.avatar_url ? (
+                {showTtmAvatar ? (
                   <Image
-                    source={{ uri: tableTopicMaster.app_user_profiles.avatar_url }}
+                    source={{ uri: ttmAvatarUri as string }}
                     style={styles.consolidatedAvatarImage}
+                    onError={() => markAvatarFailed(ttmAvatarUri)}
                   />
                 ) : (
                   <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
@@ -1823,28 +1857,30 @@ export default function TableTopicCorner(): JSX.Element {
 
         {/* Tab Switcher — General Evaluator Report pattern */}
         <View style={[styles.tabContainer, { backgroundColor: notion.page, borderBottomColor: notion.divider }]}>
-          <TouchableOpacity
-            style={[
-              styles.ttTab,
-              activeTab === 'participants' && styles.ttTabActive,
-              { borderBottomColor: activeTab === 'participants' ? notion.accent : 'transparent' },
-            ]}
-            onPress={() => setActiveTab('participants')}
-          >
-            <Text
+          {showParticipantsTab ? (
+            <TouchableOpacity
               style={[
-                styles.ttTabText,
-                notionType,
-                { color: activeTab === 'participants' ? notion.accent : notion.muted },
+                styles.ttTab,
+                activeTab === 'participants' && styles.ttTabActive,
+                { borderBottomColor: activeTab === 'participants' ? notion.accent : 'transparent' },
               ]}
-              maxFontSizeMultiplier={1.1}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.7}
+              onPress={() => setActiveTab('participants')}
             >
-              Participants
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.ttTabText,
+                  notionType,
+                  { color: activeTab === 'participants' ? notion.accent : notion.muted },
+                ]}
+                maxFontSizeMultiplier={1.1}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                Participants
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {canManageTableTopicCorner() && (
             <TouchableOpacity
@@ -1905,7 +1941,7 @@ export default function TableTopicCorner(): JSX.Element {
         </View>
 
         {/* Participants Tab */}
-        {activeTab === 'participants' && (
+        {showParticipantsTab && activeTab === 'participants' && (
         <>
         {/* Table Topic Participants Section */}
         <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
@@ -1986,9 +2022,7 @@ export default function TableTopicCorner(): JSX.Element {
                   (cornerSlotTexts[i] ?? '').trim() !== (cornerCommittedTexts[i] ?? '').trim();
                 const savingThis = cornerSavingSlotIndex === i;
                 const savingAny = cornerSavingSlotIndex !== null;
-                const showEdit =
-                  !slotDirty &&
-                  (((cornerCommittedTexts[i] ?? '').trim() !== '') || !!cornerSlotIds[i]);
+                const saveDisabled = savingAny || !slotDirty;
                 return (
                 <View
                   key={`corner-slot-${i}`}
@@ -2037,31 +2071,28 @@ export default function TableTopicCorner(): JSX.Element {
                           maxLength={TABLE_TOPIC_QUESTION_MAX_CHARS}
                         />
                       </View>
-                      {slotDirty ? (
-                        <TouchableOpacity
-                          style={[
-                            styles.cornerRowActionIcon,
-                            { opacity: savingThis || (savingAny && !savingThis) ? 0.55 : 1 },
-                          ]}
-                          onPress={() => handleCornerSlotSave(i)}
-                          disabled={savingAny}
-                          activeOpacity={0.8}
-                        >
-                          {savingThis ? (
-                            <ActivityIndicator color={notion.accent} size="small" />
-                          ) : (
-                            <Check size={18} color={notion.accent} strokeWidth={2.4} />
-                          )}
-                        </TouchableOpacity>
-                      ) : showEdit ? (
-                        <TouchableOpacity
-                          style={styles.cornerRowActionIcon}
-                          onPress={() => focusCornerSlot(i)}
-                          activeOpacity={0.8}
-                        >
-                          <Pencil size={17} color={notion.accent} strokeWidth={2.2} />
-                        </TouchableOpacity>
-                      ) : null}
+                      <TouchableOpacity
+                        style={[
+                          styles.cornerRowActionIcon,
+                          {
+                            opacity: savingThis
+                              ? (cornerSaveBlinkOn ? 1 : 0.25)
+                              : saveDisabled
+                              ? 0.45
+                              : 1,
+                          },
+                        ]}
+                        onPress={() => handleCornerSlotSave(i)}
+                        disabled={saveDisabled}
+                        activeOpacity={0.8}
+                        accessibilityLabel={savingThis ? 'Saving question' : `Save question ${i + 1}`}
+                      >
+                        <Save
+                          size={18}
+                          color={slotDirty || savingThis ? notion.accent : notion.muted}
+                          strokeWidth={2.2}
+                        />
+                      </TouchableOpacity>
                     </View>
                   </View>
                 </View>
@@ -2314,13 +2345,18 @@ export default function TableTopicCorner(): JSX.Element {
 
             {/* Participant Info */}
             {selectedParticipant && (
+              (() => {
+                const selectedAvatarUri = getSafeAvatarUri(selectedParticipant.app_user_profiles?.avatar_url);
+                const showSelectedAvatar = !!selectedAvatarUri && !failedAvatarUris[selectedAvatarUri];
+                return (
               <View style={[styles.participantInfoCard, { backgroundColor: theme.colors.surface }]}>
                 <View style={styles.participantInfoHeader}>
                   <View style={styles.participantInfoAvatar}>
-                    {selectedParticipant.app_user_profiles?.avatar_url ? (
+                    {showSelectedAvatar ? (
                       <Image 
-                        source={{ uri: selectedParticipant.app_user_profiles.avatar_url }} 
+                        source={{ uri: selectedAvatarUri as string }} 
                         style={styles.participantInfoAvatarImage}
+                        onError={() => markAvatarFailed(selectedAvatarUri)}
                       />
                     ) : (
                       <MessageSquare size={20} color="#ffffff" />
@@ -2336,6 +2372,8 @@ export default function TableTopicCorner(): JSX.Element {
                   </View>
                 </View>
               </View>
+                );
+              })()
             )}
 
             {/* Questions List */}

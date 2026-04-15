@@ -29,6 +29,7 @@ function AppContent() {
         <Stack.Screen name="splash" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="signup" options={{ headerShown: false }} />
         <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
         <Stack.Screen name="profile" options={{ headerShown: false }} />
@@ -103,25 +104,50 @@ export default function RootLayout() {
     const handleDeepLink = (url: string) => {
       console.log('Deep link received:', url);
 
-      // Handle Supabase auth callback
-      if (url.includes('access_token') || url.includes('refresh_token')) {
-        // Extract tokens from URL and set session
+      // Handle Supabase auth callback for both code flow and token flow.
+      try {
         const urlObj = new URL(url);
+        const code = urlObj.searchParams.get('code');
         const accessToken = urlObj.searchParams.get('access_token');
         const refreshToken = urlObj.searchParams.get('refresh_token');
 
-        if (accessToken && refreshToken) {
-          supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          }).then(({ data, error }) => {
+        let hashAccessToken: string | null = null;
+        let hashRefreshToken: string | null = null;
+        if (urlObj.hash?.length > 1) {
+          const hashParams = new URLSearchParams(urlObj.hash.slice(1));
+          hashAccessToken = hashParams.get('access_token');
+          hashRefreshToken = hashParams.get('refresh_token');
+        }
+
+        if (code) {
+          supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
             if (error) {
-              console.error('Error setting session from deep link:', error);
+              console.error('Error exchanging code from deep link:', error);
             } else {
-              console.log('Session set successfully from deep link');
+              console.log('Session established from OAuth code callback');
             }
           });
+          return;
         }
+
+        const finalAccessToken = accessToken || hashAccessToken;
+        const finalRefreshToken = refreshToken || hashRefreshToken;
+        if (finalAccessToken && finalRefreshToken) {
+          supabase.auth
+            .setSession({
+              access_token: finalAccessToken,
+              refresh_token: finalRefreshToken,
+            })
+            .then(({ error }) => {
+              if (error) {
+                console.error('Error setting session from deep link:', error);
+              } else {
+                console.log('Session set successfully from deep link');
+              }
+            });
+        }
+      } catch (error) {
+        console.error('Failed to parse deep link URL:', error);
       }
     };
 

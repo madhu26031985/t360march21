@@ -6,7 +6,6 @@ import { Platform } from 'react-native';
 import { Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
 import { invalidateClubLandingCriticalCache } from '@/lib/clubTabLandingData';
 
 // Conditional logging - only logs in development mode
@@ -136,6 +135,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // Mark auth as ready as soon as we have a valid session.
+      // Profile hydration can continue in background and update user details after.
+      setSession(session);
+      setIsAuthenticated(true);
+      setHasInitialized(true);
+      setIsLoading(false);
+
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
         const runAppVersionPing = () => {
           void (async () => {
@@ -185,7 +191,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const shouldLoadProfile = ['SIGNED_IN', 'USER_UPDATED', 'INITIAL_SESSION'].includes(event);
       if (!shouldLoadProfile) {
-        setSession(session);
         return;
       }
 
@@ -198,7 +203,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const controller = new AbortController();
       profileAbortController = controller;
 
-      setSession(session);
       loadingUserId = session.user.id;
       isLoadingProfileRef.current = true;
 
@@ -721,7 +725,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
       return `${window.location.origin}/weblogin/`;
     }
-    return Linking.createURL('/login');
+    const configuredScheme =
+      (Constants.expoConfig?.scheme as string | undefined) ||
+      (Constants.manifest2 as any)?.extra?.expoClient?.scheme ||
+      'toastmaster360';
+    // Native OAuth must round-trip back to the app scheme (not /weblogin web URL).
+    // Use explicit format to avoid triple-slash mismatches in provider allowlists.
+    return `${configuredScheme}://auth/callback`;
   };
 
   const signInWithOAuthProvider = async (
@@ -764,7 +774,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const authResult = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
 
       if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
-        return { success: false, error: 'Sign in was cancelled' };
+        return {
+          success: false,
+          error:
+            `Sign in was cancelled or callback was not configured. In Supabase Auth > URL Configuration add: ${redirectTo}`,
+        };
       }
 
       if (authResult.type !== 'success' || !authResult.url) {
@@ -772,6 +786,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const incoming = authResult.url;
+      if (/^https?:\/\//i.test(incoming)) {
+        return {
+          success: false,
+          error:
+            `Sign in completed in browser but did not return to the app. Add this Redirect URL in Supabase Auth settings: ${redirectTo}`,
+        };
+      }
       let code: string | null = null;
       let hashParams = new URLSearchParams();
       try {
