@@ -1,6 +1,14 @@
 import { Platform } from 'react-native';
 import { useEffect, useState } from 'react';
 
+const NATIVE_AVATAR_PROBE_URL = 'https://t360.in/favicon.ico';
+const NATIVE_AVATAR_PROBE_MAX_MS = 700;
+const NATIVE_AVATAR_PROBE_TTL_MS = 30_000;
+
+let nativeAvatarProbeValue: boolean | null = null;
+let nativeAvatarProbeAt = 0;
+let nativeAvatarProbeInFlight: Promise<boolean> | null = null;
+
 type NavigatorConnectionLike = {
   effectiveType?: string;
   saveData?: boolean;
@@ -45,16 +53,60 @@ async function runWebSpeedProbe(): Promise<boolean> {
   }
 }
 
+async function runNativeSpeedProbe(): Promise<boolean> {
+  if (Platform.OS === 'web' || typeof fetch === 'undefined') return true;
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(`${NATIVE_AVATAR_PROBE_URL}?avatar_probe=${startedAt}`, {
+      cache: 'no-store',
+    });
+    const elapsedMs = Date.now() - startedAt;
+    if (!response.ok) return elapsedMs < NATIVE_AVATAR_PROBE_MAX_MS;
+    return elapsedMs < NATIVE_AVATAR_PROBE_MAX_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function getNativeProbeDecision(): Promise<boolean> {
+  const now = Date.now();
+  if (nativeAvatarProbeValue !== null && now - nativeAvatarProbeAt < NATIVE_AVATAR_PROBE_TTL_MS) {
+    return nativeAvatarProbeValue;
+  }
+  if (!nativeAvatarProbeInFlight) {
+    nativeAvatarProbeInFlight = runNativeSpeedProbe()
+      .then((decision) => {
+        nativeAvatarProbeValue = decision;
+        nativeAvatarProbeAt = Date.now();
+        return decision;
+      })
+      .finally(() => {
+        nativeAvatarProbeInFlight = null;
+      });
+  }
+  return nativeAvatarProbeInFlight;
+}
+
 export function useShouldLoadNetworkAvatars(): boolean {
   const getCurrent = (): boolean => {
-    if (Platform.OS !== 'web') return true;
+    if (Platform.OS !== 'web') {
+      return nativeAvatarProbeValue ?? false;
+    }
     return !shouldBlockAvatarDownloads(getNavigatorConnection());
   };
 
-  const [shouldLoadAvatars, setShouldLoadAvatars] = useState<boolean>(Platform.OS !== 'web' ? true : false);
+  const [shouldLoadAvatars, setShouldLoadAvatars] = useState<boolean>(getCurrent);
 
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
+    if (Platform.OS !== 'web') {
+      let cancelled = false;
+      void getNativeProbeDecision().then((decision) => {
+        if (!cancelled) setShouldLoadAvatars(decision);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
     let cancelled = false;
     const connection = getNavigatorConnection();
     const recompute = async () => {

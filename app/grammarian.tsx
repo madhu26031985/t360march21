@@ -302,6 +302,7 @@ export default function GrammarianReport() {
 
     const run = async () => {
       let isVpeForMeeting = false;
+      let shouldRefreshLiveObservationPresence = true;
       try {
         if (opts?.force) {
           invalidateGrammarianCornerSnapshotCache(meetingId, user.id, user.currentClubId);
@@ -322,6 +323,9 @@ export default function GrammarianReport() {
             await loadGrammarianSummaryVisibility();
           }
           setHasPublishedLiveObservations(Boolean(snap.has_published_live_observations));
+          if (typeof snap.has_published_live_observations === 'boolean') {
+            shouldRefreshLiveObservationPresence = false;
+          }
           assigned = snap.assigned_grammarian;
           setAssignedGrammarian(assigned);
 
@@ -417,7 +421,9 @@ export default function GrammarianReport() {
         console.error('Error loading data:', error);
         Alert.alert('Error', 'Failed to load Grammarian data');
       } finally {
-        void loadLiveObservationPresence();
+        if (shouldRefreshLiveObservationPresence) {
+          void loadLiveObservationPresence();
+        }
         lastLoadAtRef.current = Date.now();
         setIsLoading(false);
         loadInFlightRef.current = null;

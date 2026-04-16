@@ -3421,7 +3421,7 @@ export default function MyClub() {
 
                     <View style={styles.clubTopBlock}>
                     <Text style={styles.clubTopSectionTitle} maxFontSizeMultiplier={1.12}>Our Mission</Text>
-                    <Text style={styles.clubTopBody} maxFontSizeMultiplier={1.15}>
+                    <Text style={[styles.clubTopBody, styles.clubTopMissionBody]} maxFontSizeMultiplier={1.15}>
                       {(bundle.clubData.club_mission ?? '').trim() || DEFAULT_TOASTMASTERS_CLUB_MISSION}
                     </Text>
                     </View>
@@ -3781,6 +3781,10 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: C.textSecondary,
     lineHeight: 24,
+  },
+  clubTopMissionBody: {
+    fontStyle: 'italic',
+    fontSize: 14.4,
   },
   scheduleList: {
     marginTop: 2,

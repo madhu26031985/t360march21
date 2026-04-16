@@ -21,7 +21,7 @@ export default function MyGrowthScreen() {
   const isExComm =
     user?.clubs?.find((c) => c.id === user?.currentClubId)?.role?.toLowerCase() === 'excomm';
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
-  const [tab, setTab] = useState<GrowthTab>('role_insights');
+  const [tab, setTab] = useState<GrowthTab>('attendance');
 
   const tabButton = (
     key: GrowthTab,
@@ -73,11 +73,11 @@ export default function MyGrowthScreen() {
           contentContainerStyle={styles.segmentScrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {tabButton('role_insights', 'My Role Insights', Sparkles, tab === 'role_insights')}
-          <View style={[styles.segmentDivider, { backgroundColor: '#BFDBFE' }]} />
           {tabButton('attendance', 'My Attendance', UserCheck, tab === 'attendance')}
           <View style={[styles.segmentDivider, { backgroundColor: '#BFDBFE' }]} />
           {tabButton('awards', 'My Awards', Award, tab === 'awards')}
+          <View style={[styles.segmentDivider, { backgroundColor: '#BFDBFE' }]} />
+          {tabButton('role_insights', 'My Role Insights', Sparkles, tab === 'role_insights')}
         </ScrollView>
       </View>
 
