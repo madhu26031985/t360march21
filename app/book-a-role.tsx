@@ -82,6 +82,18 @@ interface ClassificationTab {
   color: string;
 }
 
+const BOOK_ROLE_CACHE_TTL_MS = 2 * 60 * 1000;
+type BookRoleMeetingCacheEntry = {
+  at: number;
+  meetings: Meeting[];
+};
+type BookRoleRolesCacheEntry = {
+  at: number;
+  roles: MeetingRole[];
+};
+const bookRoleMeetingsCacheByClub = new Map<string, BookRoleMeetingCacheEntry>();
+const bookRoleRolesCacheByMeeting = new Map<string, BookRoleRolesCacheEntry>();
+
 /** Front-end only: hide Ice Breaker category and named slots 1–5 on Book a Role */
 function isHiddenIceBreakerBookRole(role: MeetingRole): boolean {
   const cls = (role.role_classification || '').trim().toLowerCase();
@@ -182,6 +194,20 @@ export default function BookARole() {
     }
 
     try {
+      const cachedMeetingsEntry = bookRoleMeetingsCacheByClub.get(user.currentClubId);
+      if (cachedMeetingsEntry && Date.now() - cachedMeetingsEntry.at < BOOK_ROLE_CACHE_TTL_MS) {
+        setMeetings(cachedMeetingsEntry.meetings);
+        if (cachedMeetingsEntry.meetings.length > 0) {
+          if (meetingIdParam) {
+            const targetMeeting = cachedMeetingsEntry.meetings.find((m) => m.id === meetingIdParam);
+            setSelectedMeeting(targetMeeting || cachedMeetingsEntry.meetings[0]);
+          } else {
+            setSelectedMeeting(cachedMeetingsEntry.meetings[0]);
+          }
+        }
+        setIsLoading(false);
+      }
+
       const fourHoursAgo = new Date();
       fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
       const cutoffDate = fourHoursAgo.toISOString().split('T')[0];
@@ -207,6 +233,7 @@ export default function BookARole() {
         return hoursSinceMeetingEnd < 4;
       });
 
+      bookRoleMeetingsCacheByClub.set(user.currentClubId, { at: Date.now(), meetings: filteredMeetings });
       setMeetings(filteredMeetings);
 
       // Auto-select meeting based on URL parameter or default to first
@@ -230,6 +257,23 @@ export default function BookARole() {
     if (!selectedMeeting || !user) return;
 
     try {
+      const cachedRolesEntry = bookRoleRolesCacheByMeeting.get(selectedMeeting.id);
+      if (cachedRolesEntry && Date.now() - cachedRolesEntry.at < BOOK_ROLE_CACHE_TTL_MS) {
+        const cachedRoles = cachedRolesEntry.roles;
+        const availableFromCache = cachedRoles.filter((role) => !role.assigned_user_id && !isHiddenIceBreakerBookRole(role));
+        const myRolesFromCache = cachedRoles.filter(
+          (role) => role.assigned_user_id === user.id && !isHiddenIceBreakerBookRole(role)
+        );
+        const othersRolesFromCache = cachedRoles.filter(
+          (role) =>
+            role.assigned_user_id && role.assigned_user_id !== user.id && !isHiddenIceBreakerBookRole(role)
+        );
+        setAvailableRoles(availableFromCache);
+        setMyBookings(myRolesFromCache);
+        setBookedByOthers(othersRolesFromCache);
+        setIsLoading(false);
+      }
+
       const { data, error } = await supabase
         .from('app_meeting_roles_management')
         .select(`
@@ -251,6 +295,7 @@ export default function BookARole() {
       // Some environments have `role_status` NULL for normal roles.
       // Treat NULL as "Available" and only exclude explicit "Deleted".
       const roles = (data || []).filter((r: any) => (r?.role_status ?? 'Available') !== 'Deleted');
+      bookRoleRolesCacheByMeeting.set(selectedMeeting.id, { at: Date.now(), roles });
       
       // Separate roles into categories
       const available = roles.filter(role => !role.assigned_user_id && !isHiddenIceBreakerBookRole(role));
@@ -265,9 +310,11 @@ export default function BookARole() {
       setAvailableRoles(available);
       setMyBookings(myRoles);
       setBookedByOthers(othersRoles);
+      setIsLoading(false);
     } catch (error) {
       console.error('Error loading meeting roles:', error);
       Alert.alert('Error', 'An unexpected error occurred');
+      setIsLoading(false);
     }
   };
 

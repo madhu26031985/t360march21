@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Pressable, useWindowDimensions } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -9,7 +9,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
-import { fetchGeneralEvaluatorReportBundle, generalEvaluatorReportQueryKeys } from '@/lib/generalEvaluatorReportQuery';
+import {
+  fetchGeneralEvaluatorReportBundle,
+  generalEvaluatorReportQueryKeys,
+  type GeneralEvaluatorReportBundle,
+} from '@/lib/generalEvaluatorReportQuery';
+import { GENERAL_EVALUATOR_REPORT_SNAPSHOT_STALE_MS } from '@/lib/prefetchGeneralEvaluatorReport';
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
 import { ArrowLeft, Calendar, Star, X, NotebookPen, FileText, Users, RotateCcw, ClipboardCheck, Search, Vote } from 'lucide-react-native';
 import { Crown, User, Shield, Eye, EyeOff, UserCheck } from 'lucide-react-native';
@@ -224,6 +229,60 @@ interface FeedbackForm {
   whatWentWell: string;
   whatNeedsImprovement: string;
 }
+
+const EVALUATION_QUESTIONS: EvaluationQuestion[] = [
+  {
+    id: 'q1_preparation_setup',
+    title: '1. Meeting Prep & Setup',
+    description: 'Was the meeting well-prepared (venue, agenda, and roles assigned in advance)?',
+  },
+  {
+    id: 'q2_opening_quality',
+    title: '2. Meeting Opening',
+    description: 'Did the meeting start on time with an engaging and confident opening?',
+  },
+  {
+    id: 'q3_guest_experience',
+    title: '3. Guest Experience',
+    description: 'Were guests warmly welcomed, introduced, and made comfortable?',
+  },
+  {
+    id: 'q4_meeting_leadership',
+    title: '4. Meeting Leadership',
+    description: 'Did the Toastmaster clearly manage the theme, flow, and transitions?',
+  },
+  {
+    id: 'q5_role_execution',
+    title: '5. Role Execution',
+    description: 'Did supporting roles (Timer, Ah-Counter, Grammarian, Table Topics Master) perform effectively?',
+  },
+  {
+    id: 'q6_speaker_intro_support',
+    title: '6. Speaker Effectiveness',
+    description: 'How effectively were speakers prepared, introduced, and supported?',
+  },
+  {
+    id: 'q7_time_discipline',
+    title: '7. Time Management',
+    description: 'Did speakers and segments stay within the allotted time?',
+  },
+  {
+    id: 'q8_evaluation_quality',
+    title: '8. Evaluation Quality',
+    description: 'Were evaluations constructive, specific, and helpful (with examples)?',
+  },
+  {
+    id: 'q9_flow_feedback_collection',
+    title: '9. Feedback collection',
+    description: 'Was the meeting well-paced, and were feedback/comments gathered from guests and visiting Toastmasters?',
+  },
+  {
+    id: 'q10_overall_experience',
+    title: '10. Overall Experience',
+    description: 'Was the meeting engaging, well-organized, and valuable for members and guests?',
+  },
+];
+
 export default function GeneralEvaluatorReport() {
   const { theme } = useTheme();
   const notion =
@@ -280,58 +339,56 @@ export default function GeneralEvaluatorReport() {
   /** Always call latest loader from focus effect (withdraw/book flows update DB without remounting this screen). */
   const loadGeneralEvaluatorDataRef = useRef<() => Promise<void>>(async () => {});
 
-  const evaluationQuestions: EvaluationQuestion[] = [
-    {
-      id: 'q1_preparation_setup',
-      title: '1. Meeting Prep & Setup',
-      description: 'Was the meeting well-prepared (venue, agenda, and roles assigned in advance)?',
-    },
-    {
-      id: 'q2_opening_quality',
-      title: '2. Meeting Opening',
-      description: 'Did the meeting start on time with an engaging and confident opening?',
-    },
-    {
-      id: 'q3_guest_experience',
-      title: '3. Guest Experience',
-      description: 'Were guests warmly welcomed, introduced, and made comfortable?',
-    },
-    {
-      id: 'q4_meeting_leadership',
-      title: '4. Meeting Leadership',
-      description: 'Did the Toastmaster clearly manage the theme, flow, and transitions?',
-    },
-    {
-      id: 'q5_role_execution',
-      title: '5. Role Execution',
-      description: 'Did supporting roles (Timer, Ah-Counter, Grammarian, Table Topics Master) perform effectively?',
-    },
-    {
-      id: 'q6_speaker_intro_support',
-      title: '6. Speaker Effectiveness',
-      description: 'How effectively were speakers prepared, introduced, and supported?',
-    },
-    {
-      id: 'q7_time_discipline',
-      title: '7. Time Management',
-      description: 'Did speakers and segments stay within the allotted time?',
-    },
-    {
-      id: 'q8_evaluation_quality',
-      title: '8. Evaluation Quality',
-      description: 'Were evaluations constructive, specific, and helpful (with examples)?',
-    },
-    {
-      id: 'q9_flow_feedback_collection',
-      title: '9. Feedback collection',
-      description: 'Was the meeting well-paced, and were feedback/comments gathered from guests and visiting Toastmasters?',
-    },
-    {
-      id: 'q10_overall_experience',
-      title: '10. Overall Experience',
-      description: 'Was the meeting engaging, well-organized, and valuable for members and guests?',
-    },
-  ];
+  const applySnapshotBundle = useCallback((bundle: GeneralEvaluatorReportBundle) => {
+    setMeeting(bundle.meeting as Meeting | null);
+    setClubInfo(bundle.clubInfo);
+    setIsVPEClub(bundle.isVPEClub);
+    setGeneralEvaluator(bundle.generalEvaluator as GeneralEvaluator | null);
+
+    if (bundle.geReport) {
+      const data = bundle.geReport as GeneralEvaluatorData;
+      setExistingEvaluation(data);
+      setSummaryVisibleToMembers(data.summary_visible_to_members !== false);
+      setFeedbackForm({
+        summary: data.evaluation_summary || '',
+        whatWentWell: data.what_went_well || '',
+        whatNeedsImprovement: data.what_needs_improvement || '',
+      });
+      if (data.evaluation_data && typeof data.evaluation_data === 'object') {
+        const incoming = data.evaluation_data as Record<string, unknown>;
+        const normalized: Record<string, number | null> = {};
+        for (const q of EVALUATION_QUESTIONS) {
+          normalized[q.id] = normalizeStoredGeRating(incoming?.[q.id]);
+        }
+        setResponses(normalized);
+      } else {
+        setResponses({});
+      }
+    } else {
+      setExistingEvaluation(null);
+      setSummaryVisibleToMembers(true);
+      setFeedbackForm({
+        summary: '',
+        whatWentWell: '',
+        whatNeedsImprovement: '',
+      });
+      setResponses({});
+    }
+  }, []);
+
+  /** Paint from prefetch immediately when present (avoids a loading flash on warm cache). */
+  useLayoutEffect(() => {
+    if (!meetingId || !user?.currentClubId) {
+      setIsLoading(false);
+      return;
+    }
+    const key = generalEvaluatorReportQueryKeys.snapshot(meetingId, user.currentClubId, user?.id ?? 'anon');
+    const cached = queryClient.getQueryData<GeneralEvaluatorReportBundle>(key);
+    if (cached) {
+      applySnapshotBundle(cached);
+      setIsLoading(false);
+    }
+  }, [meetingId, user?.currentClubId, user?.id, queryClient, applySnapshotBundle]);
 
   useFocusEffect(
     useCallback(() => {
@@ -339,11 +396,7 @@ export default function GeneralEvaluatorReport() {
         setIsLoading(false);
         return;
       }
-      const uid = user?.id ?? 'anon';
-      /** Drop cached snapshot so Book a Role / visibility changes show current data. */
-      queryClient.removeQueries({
-        queryKey: generalEvaluatorReportQueryKeys.snapshot(meetingId, user.currentClubId, uid),
-      });
+      /** Keep React Query cache so `prefetchGeneralEvaluatorReport` from home stays warm; invalidate after book/assign/save instead. */
       void loadGeneralEvaluatorDataRef.current();
     }, [meetingId, user?.currentClubId, user?.id, queryClient])
   );
@@ -378,42 +431,9 @@ export default function GeneralEvaluatorReport() {
             effectiveUserId || 'anon'
           ),
           queryFn: () => fetchGeneralEvaluatorReportBundle(meetingId, user.currentClubId, effectiveUserId),
-          staleTime: 0,
+          staleTime: GENERAL_EVALUATOR_REPORT_SNAPSHOT_STALE_MS,
         });
-        setMeeting(bundle.meeting as Meeting | null);
-        setClubInfo(bundle.clubInfo);
-        setIsVPEClub(bundle.isVPEClub);
-        setGeneralEvaluator(bundle.generalEvaluator as GeneralEvaluator | null);
-
-        if (bundle.geReport) {
-          const data = bundle.geReport as GeneralEvaluatorData;
-          setExistingEvaluation(data);
-          setSummaryVisibleToMembers(data.summary_visible_to_members !== false);
-          setFeedbackForm({
-            summary: data.evaluation_summary || '',
-            whatWentWell: data.what_went_well || '',
-            whatNeedsImprovement: data.what_needs_improvement || '',
-          });
-          if (data.evaluation_data && typeof data.evaluation_data === 'object') {
-            const incoming = data.evaluation_data as Record<string, unknown>;
-            const normalized: Record<string, number | null> = {};
-            for (const q of evaluationQuestions) {
-              normalized[q.id] = normalizeStoredGeRating(incoming?.[q.id]);
-            }
-            setResponses(normalized);
-          } else {
-            setResponses({});
-          }
-        } else {
-          setExistingEvaluation(null);
-          setSummaryVisibleToMembers(true);
-          setFeedbackForm({
-            summary: '',
-            whatWentWell: '',
-            whatNeedsImprovement: '',
-          });
-          setResponses({});
-        }
+        applySnapshotBundle(bundle);
       } catch (error) {
         console.error('Error loading general evaluator data:', error);
         Alert.alert('Error', 'Failed to load general evaluator data');
@@ -441,6 +461,10 @@ export default function GeneralEvaluatorReport() {
         'General Evaluator is already booked or not set up for this meeting.'
       );
       if (result.ok) {
+        loadInFlightRef.current = null;
+        await queryClient.invalidateQueries({
+          queryKey: generalEvaluatorReportQueryKeys.snapshot(meetingId, user.currentClubId, user?.id ?? 'anon'),
+        });
         await loadGeneralEvaluatorData();
         setBookingSuccessRole('General Evaluator');
       } else {
@@ -527,6 +551,10 @@ export default function GeneralEvaluatorReport() {
       if (result.ok) {
         setShowAssignGeModal(false);
         setAssignGeSearch('');
+        loadInFlightRef.current = null;
+        await queryClient.invalidateQueries({
+          queryKey: generalEvaluatorReportQueryKeys.snapshot(meetingId, user.currentClubId, user?.id ?? 'anon'),
+        });
         await loadGeneralEvaluatorData();
         Alert.alert('Assigned', `${member.full_name} is now the General Evaluator for this meeting.`);
       } else {
@@ -574,7 +602,7 @@ export default function GeneralEvaluatorReport() {
         if (data.evaluation_data && typeof data.evaluation_data === 'object') {
           const incoming = data.evaluation_data as Record<string, unknown>;
           const normalized: Record<string, number | null> = {};
-          for (const q of evaluationQuestions) {
+          for (const q of EVALUATION_QUESTIONS) {
             normalized[q.id] = normalizeStoredGeRating(incoming?.[q.id]);
           }
           setResponses(normalized);
@@ -715,8 +743,8 @@ export default function GeneralEvaluatorReport() {
   };
 
   const getCompletionStats = () => {
-    const totalQuestions = evaluationQuestions.length;
-    const answeredQuestions = evaluationQuestions.filter((q) => typeof responses[q.id] === 'number').length;
+    const totalQuestions = EVALUATION_QUESTIONS.length;
+    const answeredQuestions = EVALUATION_QUESTIONS.filter((q) => typeof responses[q.id] === 'number').length;
     // Ensure hasFeedback is true if any of the text fields have content after trimming
     const hasFeedback = 
       (feedbackForm.summary && feedbackForm.summary.trim().length > 0) || 
@@ -935,13 +963,13 @@ export default function GeneralEvaluatorReport() {
     }
   };
 
-  const geTotalMax = evaluationQuestions.length * GE_RATING_MAX;
+  const geTotalMax = EVALUATION_QUESTIONS.length * GE_RATING_MAX;
   /** Icons sit inside the single bottom dock — no per-tile boxes. */
   const footerIconTileStyle = {
     borderWidth: 0,
     backgroundColor: 'transparent',
   } as const;
-  const totalScore = evaluationQuestions.reduce((sum, q) => sum + (typeof responses[q.id] === 'number' ? (responses[q.id] as number) : 0), 0);
+  const totalScore = EVALUATION_QUESTIONS.reduce((sum, q) => sum + (typeof responses[q.id] === 'number' ? (responses[q.id] as number) : 0), 0);
   const overallScoreOutOfFive = geTotalToStars(totalScore, geTotalMax);
   const getOverallRating = (score: number): 'Excellent' | 'Good' | 'Needs Improvement' => {
     if (score >= Math.round((56 / 72) * geTotalMax)) return 'Excellent';
@@ -1355,7 +1383,7 @@ export default function GeneralEvaluatorReport() {
 
                   {renderGeTotalScoreCard()}
 
-                  {evaluationQuestions.map((question) => (
+                  {EVALUATION_QUESTIONS.map((question) => (
                     <RatingCard key={question.id} question={question} />
                   ))}
                 </View>
@@ -1384,7 +1412,7 @@ export default function GeneralEvaluatorReport() {
                       </Text>
                     </View>
                     <View style={[styles.scoreListCard, { backgroundColor: notion.surface, borderColor: notion.divider }]}>
-                      {evaluationQuestions.map((question, index) => {
+                      {EVALUATION_QUESTIONS.map((question, index) => {
                         const score = responses[question.id];
                         const cleanTitle = question.title.replace(/^\d+\.\s*/, '');
                         return (
@@ -1393,7 +1421,7 @@ export default function GeneralEvaluatorReport() {
                             style={[
                               styles.scoreListRow,
                               { borderBottomColor: notion.divider },
-                              index === evaluationQuestions.length - 1 && styles.scoreListRowLast,
+                              index === EVALUATION_QUESTIONS.length - 1 && styles.scoreListRowLast,
                             ]}
                           >
                             <View style={styles.scoreQuestionWrap}>

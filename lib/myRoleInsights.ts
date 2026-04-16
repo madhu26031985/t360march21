@@ -194,6 +194,55 @@ export type MyRoleInsightsPayload = {
   occurrencesByCategory: OccurrencesByCategory;
 };
 
+const ROLE_INSIGHTS_CACHE_TTL_MS = 2 * 60 * 1000;
+type RoleInsightsCacheEntry = {
+  key: string;
+  at: number;
+  payload: MyRoleInsightsPayload;
+};
+let roleInsightsCacheEntry: RoleInsightsCacheEntry | null = null;
+
+function roleInsightsCacheKey(clubId: string, userId: string): string {
+  return `${clubId}:${userId}`;
+}
+
+export function getCachedMyRoleInsights(
+  clubId: string,
+  userId: string,
+  maxAgeMs: number = ROLE_INSIGHTS_CACHE_TTL_MS
+): MyRoleInsightsPayload | null {
+  const key = roleInsightsCacheKey(clubId, userId);
+  if (!roleInsightsCacheEntry || roleInsightsCacheEntry.key !== key) return null;
+  if (Date.now() - roleInsightsCacheEntry.at > maxAgeMs) return null;
+  return roleInsightsCacheEntry.payload;
+}
+
+export function setCachedMyRoleInsights(clubId: string, userId: string, payload: MyRoleInsightsPayload): void {
+  roleInsightsCacheEntry = {
+    key: roleInsightsCacheKey(clubId, userId),
+    at: Date.now(),
+    payload,
+  };
+}
+
+export async function fetchMyRoleInsightsCached(
+  clubId: string,
+  userId: string,
+  options?: {
+    maxAgeMs?: number;
+    forceRefresh?: boolean;
+  }
+): Promise<MyRoleInsightsPayload> {
+  const maxAgeMs = options?.maxAgeMs ?? ROLE_INSIGHTS_CACHE_TTL_MS;
+  if (!options?.forceRefresh) {
+    const cached = getCachedMyRoleInsights(clubId, userId, maxAgeMs);
+    if (cached) return cached;
+  }
+  const payload = await fetchMyRoleInsights(clubId, userId);
+  setCachedMyRoleInsights(clubId, userId, payload);
+  return payload;
+}
+
 export function emptyMyRoleInsightsMap(): MyRoleInsightsMap {
   const out = {} as MyRoleInsightsMap;
   for (const key of ALL_TRACK_CATEGORIES) {

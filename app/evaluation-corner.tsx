@@ -376,16 +376,42 @@ export default function EvaluationCorner() {
       if (error) {
         console.error('Error booking slot:', error);
         Alert.alert('Error', 'Failed to book this slot. It may have been booked by someone else.');
+        setBookingRoleId(null);
         return;
       }
 
-      await transferSpeechDetailsForSlotMove(role.role_name, meetingId, user.id);
-      await refreshRolesPathwaysAndProfiles();
+      // Optimistic UI: reflect booking immediately so the user gets sub-second feedback.
+      setAvailableRoles((prev) => prev.filter((item) => item.id !== role.id));
+      setRoleBookings((prev) => {
+        const currentUserProfile =
+          userProfiles[user.id] ??
+          role.app_user_profiles ??
+          ({
+            id: user.id,
+            full_name: 'Booked',
+            email: '',
+            avatar_url: null,
+          } as RoleBooking['app_user_profiles']);
+        const bookedRole: RoleBooking = {
+          ...role,
+          user_id: user.id,
+          booking_status: 'booked',
+          app_user_profiles: currentUserProfile,
+        };
+        return [...prev.filter((item) => item.id !== role.id), bookedRole];
+      });
+
       Alert.alert('Booked', `${role.role_name} booked successfully.`);
+
+      setBookingRoleId(null);
+      // Heavy sync work is intentionally deferred to keep confirmation instant.
+      void (async () => {
+        await transferSpeechDetailsForSlotMove(role.role_name, meetingId, user.id);
+        await refreshRolesPathwaysAndProfiles();
+      })();
     } catch (e) {
       console.error('Error booking slot:', e);
       Alert.alert('Error', 'An unexpected error occurred while booking.');
-    } finally {
       setBookingRoleId(null);
     }
   };

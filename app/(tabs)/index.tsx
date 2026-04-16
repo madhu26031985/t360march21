@@ -9,6 +9,8 @@ import {
   Modal,
   AppState,
   AppStateStatus,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -429,7 +431,7 @@ function JourneyListCard({
 export default function MyJourney() {
   const { theme } = useTheme();
   const queryClient = useQueryClient();
-  const { user, isAuthenticated, refreshUserProfile, hasInitialized } = useAuth();
+  const { user, session, isAuthenticated, isLoading, refreshUserProfile, hasInitialized } = useAuth();
   const profileFieldsLoaded = hasInitialized && !!user;
   const userAvatar = (user?.avatarUrl || '').trim() || null;
   const profileHasAbout =
@@ -816,6 +818,7 @@ export default function MyJourney() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
+      let deferredStart: ReturnType<typeof setTimeout> | null = null;
 
       const pathwayHasSpeechDetails = (p: {
         speech_title?: string | null;
@@ -835,7 +838,7 @@ export default function MyJourney() {
             p.comments_for_evaluator?.trim())
         );
 
-      (async () => {
+      const runJourneyLoad = async () => {
         if (!currentOpenMeetingId || !user?.id) {
           resetJourneyMeetingDerivedState();
           return;
@@ -1041,10 +1044,20 @@ export default function MyJourney() {
         }
 
         await Promise.all(parallel);
-      })();
+      };
+
+      if (Platform.OS === 'web') {
+        // Let critical home snapshot/UI settle before non-critical badge/avatar work.
+        deferredStart = setTimeout(() => {
+          if (!cancelled) void runJourneyLoad();
+        }, 1200);
+      } else {
+        void runJourneyLoad();
+      }
 
       return () => {
         cancelled = true;
+        if (deferredStart) clearTimeout(deferredStart);
       };
     }, [
       currentOpenMeetingId,
@@ -1452,6 +1465,7 @@ export default function MyJourney() {
     profileFieldsLoaded && (!userAvatar || !profileHasAbout);
   const showHeaderAvatarPending = profileFieldsLoaded && !userAvatar;
   const [backgroundPrefetchReady] = useState(true);
+  const allowBackgroundPrefetch = backgroundPrefetchReady && Platform.OS !== 'web';
 
   const handleMyProfilePress = useCallback(() => {
     prefetchProfileSnapshot(user?.id);
@@ -1483,13 +1497,13 @@ export default function MyJourney() {
   }, [currentOpenMeetingId]);
 
   useEffect(() => {
-    if (!backgroundPrefetchReady) return;
+    if (!allowBackgroundPrefetch) return;
     if (!currentOpenMeetingId) return;
     prefetchEvaluationCornerSnapshot(currentOpenMeetingId);
-  }, [backgroundPrefetchReady, currentOpenMeetingId]);
+  }, [allowBackgroundPrefetch, currentOpenMeetingId]);
 
   useEffect(() => {
-    if (!backgroundPrefetchReady) return;
+    if (!allowBackgroundPrefetch) return;
     if (!currentOpenMeetingId) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
@@ -1520,25 +1534,25 @@ export default function MyJourney() {
     return () => {
       timers.forEach((t) => clearTimeout(t));
     };
-  }, [backgroundPrefetchReady, currentOpenMeetingId, queryClient, user?.currentClubId, user?.id]);
+  }, [allowBackgroundPrefetch, currentOpenMeetingId, queryClient, user?.currentClubId, user?.id]);
 
   useEffect(() => {
-    if (!backgroundPrefetchReady) return;
+    if (!allowBackgroundPrefetch) return;
     prefetchMyMentorSnapshot(user?.currentClubId);
-  }, [backgroundPrefetchReady, user?.currentClubId]);
+  }, [allowBackgroundPrefetch, user?.currentClubId]);
 
   useEffect(() => {
-    if (!backgroundPrefetchReady) return;
+    if (!allowBackgroundPrefetch) return;
     prefetchClubLandingCritical(user?.currentClubId ?? null);
-  }, [backgroundPrefetchReady, user?.currentClubId]);
+  }, [allowBackgroundPrefetch, user?.currentClubId]);
 
   useEffect(() => {
-    if (!backgroundPrefetchReady) return;
+    if (!allowBackgroundPrefetch) return;
     prefetchProfileSnapshot(user?.id);
-  }, [backgroundPrefetchReady, user?.id]);
+  }, [allowBackgroundPrefetch, user?.id]);
 
   useEffect(() => {
-    if (!backgroundPrefetchReady) return;
+    if (!allowBackgroundPrefetch) return;
     if (!user?.id || !user?.currentClubId) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
     timers.push(
@@ -1553,7 +1567,7 @@ export default function MyJourney() {
       }, 3000)
     );
     return () => timers.forEach((t) => clearTimeout(t));
-  }, [backgroundPrefetchReady, user?.id, user?.currentClubId, user?.fullName]);
+  }, [allowBackgroundPrefetch, user?.id, user?.currentClubId, user?.fullName]);
 
   const handleGrammarianPress = useCallback(() => {
     if (!currentOpenMeetingId) {
@@ -1632,6 +1646,20 @@ export default function MyJourney() {
       true
     );
   }, [showHeaderAvatarPending]);
+
+  /** Avoid flashing “sign in” on web refresh: session restores before `loadUserProfile` sets `user`. */
+  const authSessionPending =
+    isLoading || !hasInitialized || (!!session?.user && !user);
+
+  if (authSessionPending) {
+    return (
+      <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: N.page }]}>
+        <View style={styles.authCheckContainer} accessibilityLabel="Loading session">
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!isAuthenticated || !user) {
     return (

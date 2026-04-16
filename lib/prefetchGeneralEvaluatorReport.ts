@@ -4,7 +4,8 @@ import {
   generalEvaluatorReportQueryKeys,
 } from '@/lib/generalEvaluatorReportQuery';
 
-const STALE_MS = 60 * 1000;
+/** Must match `fetchQuery` / `prefetchQuery` for this snapshot so home prefetch stays warm after navigation. */
+export const GENERAL_EVALUATOR_REPORT_SNAPSHOT_STALE_MS = 60 * 1000;
 
 /** Call before navigating to General Evaluator Report so native often reads warm cache. */
 export function prefetchGeneralEvaluatorReport(
@@ -18,6 +19,6 @@ export function prefetchGeneralEvaluatorReport(
   void queryClient.prefetchQuery({
     queryKey: generalEvaluatorReportQueryKeys.snapshot(meetingId, clubId, effectiveUserId || 'anon'),
     queryFn: () => fetchGeneralEvaluatorReportBundle(meetingId, clubId, effectiveUserId),
-    staleTime: STALE_MS,
+    staleTime: GENERAL_EVALUATOR_REPORT_SNAPSHOT_STALE_MS,
   });
 }

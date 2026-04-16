@@ -8,7 +8,7 @@ import {
   INSIGHT_TRACKS,
   INSIGHT_ROW_LABELS,
   emptyMyRoleInsightsPayload,
-  fetchMyRoleInsights,
+  fetchMyRoleInsightsCached,
   insightDaysSinceMeeting,
   computeSmartInsight,
   type InsightCategory,
@@ -16,24 +16,10 @@ import {
   type OccurrencesByCategory,
 } from '@/lib/myRoleInsights';
 
-const CACHE_TTL_MS = 2 * 60 * 1000;
-let roleInsightsCache:
-  | {
-      key: string;
-      at: number;
-      payload: ReturnType<typeof emptyMyRoleInsightsPayload>;
-    }
-  | null = null;
-
 export async function prefetchMyRoleInsightsPanel(clubId?: string | null, userId?: string | null) {
   if (!clubId || !userId) return;
-  const cacheKey = `${clubId}:${userId}`;
-  const isFresh =
-    roleInsightsCache && roleInsightsCache.key === cacheKey && Date.now() - roleInsightsCache.at < CACHE_TTL_MS;
-  if (isFresh) return;
   try {
-    const payload = await fetchMyRoleInsights(clubId, userId);
-    roleInsightsCache = { key: cacheKey, at: Date.now(), payload };
+    await fetchMyRoleInsightsCached(clubId, userId);
   } catch {
     // best-effort warmup only
   }
@@ -138,22 +124,10 @@ export default function MyRoleInsightsPanel() {
       setError(null);
       return;
     }
-    const cacheKey = `${user.currentClubId}:${user.id}`;
-    const isFresh =
-      roleInsightsCache && roleInsightsCache.key === cacheKey && Date.now() - roleInsightsCache.at < CACHE_TTL_MS;
-    if (isFresh && roleInsightsCache) {
-      setInsights(roleInsightsCache.payload.map);
-      setOccurrencesByCategory(roleInsightsCache.payload.occurrencesByCategory);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
-      const payload = await fetchMyRoleInsights(user.currentClubId, user.id);
-      roleInsightsCache = { key: cacheKey, at: Date.now(), payload };
+      const payload = await fetchMyRoleInsightsCached(user.currentClubId, user.id);
       setInsights(payload.map);
       setOccurrencesByCategory(payload.occurrencesByCategory);
     } catch (e) {

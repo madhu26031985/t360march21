@@ -14,7 +14,8 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   INSIGHT_ROW_LABELS,
-  fetchMyRoleInsights,
+  fetchMyRoleInsightsCached,
+  getCachedMyRoleInsights,
   insightDaysSinceMeeting,
   isInsightCategory,
   type InsightCategory,
@@ -267,9 +268,18 @@ export default function RoleDetailScreen() {
       setLoading(false);
       return;
     }
+    const cached = getCachedMyRoleInsights(user.currentClubId, user.id);
+    if (cached) {
+      const roleItems = cached.occurrencesByCategory[category] ?? [];
+      const ordered = [...roleItems].sort((a, b) => (a.meetingDate < b.meetingDate ? 1 : -1));
+      setItems(ordered);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const payload = await fetchMyRoleInsights(user.currentClubId, user.id);
+      const payload = await fetchMyRoleInsightsCached(user.currentClubId, user.id);
       const roleItems = payload.occurrencesByCategory[category] ?? [];
       const ordered = [...roleItems].sort((a, b) => (a.meetingDate < b.meetingDate ? 1 : -1));
       setItems(ordered);
