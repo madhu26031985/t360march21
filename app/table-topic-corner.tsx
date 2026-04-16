@@ -21,6 +21,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { avatarUrlForDisplay } from '@/lib/avatarDisplayUrl';
 import { fetchTableTopicCornerBundle, tableTopicCornerQueryKeys } from '@/lib/tableTopicCornerQuery';
 import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import {
@@ -317,7 +318,7 @@ export default function TableTopicCorner(): JSX.Element {
   }, [meetingId, user?.currentClubId]);
 
   const getSafeAvatarUri = useCallback((url: string | null | undefined): string | null => {
-    const trimmed = (url || '').trim();
+    const trimmed = avatarUrlForDisplay(url, 160)?.trim() || '';
     if (!trimmed) return null;
     if (trimmed.startsWith('data:')) return null;
     if (trimmed.length > 2048) return null;

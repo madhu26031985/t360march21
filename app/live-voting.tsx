@@ -15,6 +15,10 @@ import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
+import {
+  fetchLiveVotingSnapshot,
+  getCachedLiveVotingSnapshot,
+} from '@/lib/liveVotingSnapshot';
 import { ArrowLeft, Vote, CircleCheck as CheckCircle, User, Home, Users, Calendar, Settings, Shield } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
 
@@ -72,14 +76,21 @@ export default function LiveVoting() {
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
   const FOOTER_NAV_ICON_SIZE = 16;
   
-  const [activePolls, setActivePolls] = useState<Poll[]>([]);
-  const [selectedPoll, setSelectedPoll] = useState<Poll | null>(null);
-  const [pollItems, setPollItems] = useState<PollItem[]>([]);
-  const [userVotes, setUserVotes] = useState<UserVote[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cached = user?.currentClubId ? getCachedLiveVotingSnapshot(user.currentClubId) : null;
+  const cachedFirstPoll = cached?.polls?.[0] ?? null;
+  const [activePolls, setActivePolls] = useState<Poll[]>((cached?.polls as Poll[]) || []);
+  const [selectedPoll, setSelectedPoll] = useState<Poll | null>((cachedFirstPoll as Poll) || null);
+  const [pollItems, setPollItems] = useState<PollItem[]>((cached?.firstPollBundle?.poll_items as PollItem[]) || []);
+  const [userVotes, setUserVotes] = useState<UserVote[]>((cached?.firstPollBundle?.user_votes as UserVote[]) || []);
+  const [isLoading, setIsLoading] = useState(!cached);
   const [isVoting, setIsVoting] = useState(false);
-  const [hasVoted, setHasVoted] = useState(false);
-  const [votedPolls, setVotedPolls] = useState<Set<string>>(new Set());
+  const [hasVoted, setHasVoted] = useState(!!cached?.firstPollBundle?.has_voted);
+  const [votedPolls, setVotedPolls] = useState<Set<string>>(
+    () =>
+      cached?.firstPollBundle?.has_voted && cachedFirstPoll?.id
+        ? new Set([cachedFirstPoll.id])
+        : new Set()
+  );
 
   useEffect(() => {
     loadActivePolls();
@@ -153,23 +164,26 @@ export default function LiveVoting() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('polls')
-        .select('id, title, description, status, created_at')
-        .eq('club_id', user.currentClubId)
-        .eq('status', 'published')
-        .order('created_at', { ascending: false });
+      const snapshot = await fetchLiveVotingSnapshot(user.currentClubId);
+      setActivePolls(snapshot.polls as Poll[]);
 
-      if (error) {
-        console.error('Error loading active polls:', error);
-        return;
-      }
-
-      setActivePolls(data || []);
-      
-      // Auto-select first poll if available
-      if (data && data.length > 0) {
-        setSelectedPoll(data[0]);
+      if (snapshot.polls.length > 0) {
+        setSelectedPoll((prev) =>
+          prev && snapshot.polls.some((poll) => poll.id === prev.id) ? prev : (snapshot.polls[0] as Poll)
+        );
+        if ((!selectedPoll || selectedPoll.id === snapshot.polls[0].id) && snapshot.firstPollBundle) {
+          setPollItems(snapshot.firstPollBundle.poll_items as PollItem[]);
+          setUserVotes(snapshot.firstPollBundle.user_votes as UserVote[]);
+          setHasVoted(snapshot.firstPollBundle.has_voted);
+          if (snapshot.firstPollBundle.has_voted) {
+            setVotedPolls((prev) => new Set([...prev, snapshot.polls[0].id]));
+          }
+        }
+      } else {
+        setSelectedPoll(null);
+        setPollItems([]);
+        setUserVotes([]);
+        setHasVoted(false);
       }
     } catch (error) {
       console.error('Error loading active polls:', error);

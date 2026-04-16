@@ -78,6 +78,8 @@ import { prefetchProfileSnapshot } from '@/lib/profileSnapshot';
 import { prefetchMyRoleInsightsPanel } from '@/components/MyRoleInsightsPanel';
 import { prefetchMyAttendancePanel } from '@/components/MyAttendancePanel';
 import { prefetchMyAwardsPanel } from '@/components/MyAwardsPanel';
+import { prefetchLiveVotingSnapshot } from '@/lib/liveVotingSnapshot';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 
 const N = {
   page: '#FBFBFA',
@@ -177,12 +179,14 @@ function MeetingActionButton({
   avatarRotateIntervalMs = 3000,
 }: MeetingActionButtonProps) {
   const { theme } = useTheme();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const sourceList = useMemo(() => {
+    if (!shouldLoadAvatars) return [];
     const multi = (avatarUrls ?? []).map((u) => u.trim()).filter(Boolean);
     if (multi.length > 0) return multi;
     const one = avatarUrl?.trim();
     return one ? [one] : [];
-  }, [avatarUrl, avatarUrls]);
+  }, [avatarUrl, avatarUrls, shouldLoadAvatars]);
 
   const sourceKey = sourceList.join('\u0000');
   const [activeUrls, setActiveUrls] = useState<string[]>([]);
@@ -221,6 +225,7 @@ function MeetingActionButton({
 
   const currentUri = visibleUrls.length > 0 ? visibleUrls[rotateIndex % visibleUrls.length] : null;
   const showAvatar = !!currentUri;
+  const fallbackInitials = useMemo(() => initialsFromName(title, 2), [title]);
 
   const alertScale = useSharedValue(1);
   const iconPulse = useSharedValue(1);
@@ -288,7 +293,11 @@ function MeetingActionButton({
             onError={handleAvatarError}
           />
         ) : (
-          icon
+          shouldLoadAvatars ? icon : (
+            <Text style={styles.meetingActionButtonInitials} maxFontSizeMultiplier={1.1}>
+              {fallbackInitials}
+            </Text>
+          )
         )}
       </Animated.View>
       <Text style={[styles.meetingActionButtonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2} numberOfLines={2}>
@@ -433,6 +442,7 @@ export default function MyJourney() {
   const queryClient = useQueryClient();
   const { user, session, isAuthenticated, isLoading, refreshUserProfile, hasInitialized } = useAuth();
   const profileFieldsLoaded = hasInitialized && !!user;
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const userAvatar = (user?.avatarUrl || '').trim() || null;
   const profileHasAbout =
     typeof user?.profileAbout === 'string' && user.profileAbout.trim().length > 0;
@@ -1496,11 +1506,72 @@ export default function MyJourney() {
     router.push(`/evaluation-corner?meetingId=${currentOpenMeetingId}`);
   }, [currentOpenMeetingId]);
 
+  const handleBookARolePress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting to book a role.');
+      return;
+    }
+    router.push(`/book-a-role?meetingId=${currentOpenMeetingId}`);
+  }, [currentOpenMeetingId]);
+
+  const handleMeetingAgendaPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting to view agenda.');
+      return;
+    }
+    prefetchMeetingAgendaView(currentOpenMeetingId);
+    router.push(`/meeting-agenda-view?meetingId=${currentOpenMeetingId}`);
+  }, [currentOpenMeetingId]);
+
+  const handleLiveVotingPress = useCallback(() => {
+    if (!currentOpenMeetingId) {
+      Alert.alert('No open meeting', 'There is no current open meeting to view live voting.');
+      return;
+    }
+    prefetchLiveVotingSnapshot(user?.currentClubId);
+    router.push(`/live-voting?meetingId=${currentOpenMeetingId}`);
+  }, [currentOpenMeetingId, user?.currentClubId]);
+
   useEffect(() => {
     if (!allowBackgroundPrefetch) return;
     if (!currentOpenMeetingId) return;
     prefetchEvaluationCornerSnapshot(currentOpenMeetingId);
   }, [allowBackgroundPrefetch, currentOpenMeetingId]);
+
+  /**
+   * 3G web optimization: warm only meeting-action routes (not profile/growth tabs) after first paint.
+   * This keeps Home responsive while making Home → action tab navigation near-instant.
+   */
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (!currentOpenMeetingId) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    timers.push(
+      setTimeout(() => prefetchEvaluationCornerSnapshot(currentOpenMeetingId), 380),
+      setTimeout(() => prefetchMeetingAgendaView(currentOpenMeetingId), 520),
+      setTimeout(() => prefetchLiveVotingSnapshot(user?.currentClubId), 610),
+      setTimeout(
+        () => prefetchToastmasterCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
+        700
+      ),
+      setTimeout(
+        () => prefetchEducationalCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
+        880
+      ),
+      setTimeout(
+        () => prefetchGeneralEvaluatorReport(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
+        1060
+      ),
+      setTimeout(
+        () => prefetchTableTopicCorner(queryClient, currentOpenMeetingId, user?.id, user?.currentClubId),
+        1240
+      ),
+      setTimeout(() => prefetchTimerReport(queryClient, currentOpenMeetingId, user?.id), 1420),
+      setTimeout(() => prefetchAhCounter(queryClient, currentOpenMeetingId, user?.currentClubId, user?.id), 1600),
+      setTimeout(() => prefetchGrammarianCorner(currentOpenMeetingId, user?.id, user?.currentClubId), 1780)
+    );
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, [currentOpenMeetingId, queryClient, user?.currentClubId, user?.id]);
 
   useEffect(() => {
     if (!allowBackgroundPrefetch) return;
@@ -1707,14 +1778,16 @@ export default function MyJourney() {
                 ]}
               >
                 <View style={styles.profileAvatar}>
-                  {userAvatar && !headerAvatarLoadFailed ? (
+                  {shouldLoadAvatars && userAvatar && !headerAvatarLoadFailed ? (
                     <Image
                       source={{ uri: userAvatar }}
                       style={styles.profileAvatarImage}
                       onError={() => setHeaderAvatarLoadFailed(true)}
                     />
                   ) : (
-                    <User size={20} color="#ffffff" />
+                    <Text style={styles.profileAvatarInitials} maxFontSizeMultiplier={1.1}>
+                      {initialsFromName(user.fullName, 2)}
+                    </Text>
                   )}
                 </View>
               </Animated.View>
@@ -2047,13 +2120,7 @@ export default function MyJourney() {
                   icon={<Calendar size={16} color="#D97706" />}
                   color="#FEF3C7"
                   showAlert={showBookRoleAttention}
-                  onPress={() => {
-                    if (!currentOpenMeetingId) {
-                      Alert.alert('No open meeting', 'There is no current open meeting to book a role.');
-                      return;
-                    }
-                    router.push(`/book-a-role?meetingId=${currentOpenMeetingId}`);
-                  }}
+                  onPress={handleBookARolePress}
                 />
                 <MeetingActionButton
                   title="Toastmaster of the day"
@@ -2126,14 +2193,7 @@ export default function MyJourney() {
 
               <TouchableOpacity
                 style={[styles.liveVotingHeroCard, { backgroundColor: N.surface, borderColor: N.border }]}
-                onPress={() => {
-                  if (!currentOpenMeetingId) {
-                    Alert.alert('No open meeting', 'There is no current open meeting to view agenda.');
-                    return;
-                  }
-                  prefetchMeetingAgendaView(currentOpenMeetingId);
-                  router.push(`/meeting-agenda-view?meetingId=${currentOpenMeetingId}`);
-                }}
+                onPress={handleMeetingAgendaPress}
                 activeOpacity={0.85}
               >
                 <View style={styles.liveVotingHeroContent}>
@@ -2157,13 +2217,7 @@ export default function MyJourney() {
 
               <TouchableOpacity
                 style={[styles.liveVotingHeroCard, { backgroundColor: N.surface, borderColor: N.border }]}
-                onPress={() => {
-                  if (!currentOpenMeetingId) {
-                    Alert.alert('No open meeting', 'There is no current open meeting to view live voting.');
-                    return;
-                  }
-                  router.push(`/live-voting?meetingId=${currentOpenMeetingId}`);
-                }}
+                onPress={handleLiveVotingPress}
                 activeOpacity={0.85}
               >
                 <View style={styles.liveVotingHeroContent}>
@@ -2458,6 +2512,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
+  },
+  profileAvatarInitials: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   profileInfo: {
     flex: 1,
@@ -3017,6 +3076,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 0,
+  },
+  meetingActionButtonInitials: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   meetingActionButtonTitle: {
     flex: 1,

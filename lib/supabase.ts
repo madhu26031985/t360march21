@@ -8,6 +8,7 @@ import Constants from 'expo-constants';
 type SupabaseExtra = {
   supabaseUrl?: string;
   supabaseAnonKey?: string;
+  supabaseAuthUrl?: string;
 };
 
 const supabaseExtra = Constants.expoConfig?.extra as SupabaseExtra | undefined;
@@ -34,9 +35,23 @@ function resolveSupabaseUrl(): string {
   return base;
 }
 
+function resolveSupabaseAuthUrl(): string {
+  const directAuthEnv = process.env.EXPO_PUBLIC_SUPABASE_AUTH_URL?.replace(/\/$/, '').trim() || '';
+  const directAuthExtra = supabaseExtra?.supabaseAuthUrl?.replace(/\/$/, '').trim() || '';
+  const webOverride = process.env.EXPO_PUBLIC_SUPABASE_WEB_URL?.replace(/\/$/, '').trim() || '';
+  const base = resolveSupabaseUrl();
+
+  if (directAuthEnv) return directAuthEnv;
+  if (directAuthExtra) return directAuthExtra;
+  if (/\.supabase\.co$/i.test(new URL(base).host)) return base;
+  if (webOverride && /\.supabase\.co$/i.test(new URL(webOverride).host)) return webOverride;
+  return base;
+}
+
 // Configuration
 /** Resolved API base (same host the client uses — important for Edge Functions on web with EXPO_PUBLIC_SUPABASE_WEB_URL). */
 export const supabaseUrl = resolveSupabaseUrl();
+export const supabaseAuthUrl = resolveSupabaseAuthUrl();
 const SUPABASE_ANON_KEY =
   (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
     supabaseExtra?.supabaseAnonKey?.trim() ||
@@ -62,6 +77,28 @@ export const supabase = createClient<Database>(
     global: {
       headers: {
         'X-Client-Info': 'toastmaster360-mobile',
+      },
+    },
+  }
+);
+
+/**
+ * Auth-only client used to generate OAuth URLs against the canonical Supabase auth host.
+ * This avoids mobile sign-in prompts showing proxy domains like `workers.dev`.
+ */
+export const supabaseAuth = createClient<Database>(
+  supabaseAuthUrl,
+  SUPABASE_ANON_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+      storage: AsyncStorage,
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'toastmaster360-mobile-auth',
       },
     },
   }

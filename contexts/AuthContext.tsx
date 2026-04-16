@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAuth, supabaseAuthUrl } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { Alert } from 'react-native';
@@ -745,8 +745,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const redirectTo = getOAuthRedirectUrl();
       devLog(`🔐 AuthContext: ${providerLabel} OAuth redirectTo:`, redirectTo);
+      devLog(`🔐 AuthContext: ${providerLabel} OAuth auth host:`, supabaseAuthUrl);
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabaseAuth.auth.signInWithOAuth({
         provider,
         options: {
           redirectTo,
@@ -814,9 +815,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (code) {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        const { data: exchangeData, error: exchangeError } = await supabaseAuth.auth.exchangeCodeForSession(code);
         if (exchangeError) {
           return { success: false, error: exchangeError.message };
+        }
+        const exchangedSession = exchangeData?.session;
+        if (!exchangedSession?.access_token || !exchangedSession?.refresh_token) {
+          return { success: false, error: `${providerLabel} sign in did not return a valid session` };
+        }
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: exchangedSession.access_token,
+          refresh_token: exchangedSession.refresh_token,
+        });
+        if (sessionError) {
+          return { success: false, error: sessionError.message };
         }
         return { success: true };
       }

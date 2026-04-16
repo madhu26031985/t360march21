@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   View,
   Text,
@@ -25,10 +25,12 @@ import {
   educationalCornerQueryKeys,
   fetchEducationalCornerBundle,
   fetchClubMembersForEducationalAssign,
+  type EducationalCornerBundle,
   type EducationalCornerMeeting as Meeting,
   type EducationalCornerSpeaker as EducationalSpeaker,
   type EducationalCornerClubMember as ClubMember,
 } from '@/lib/educationalCornerQuery';
+import { EDUCATIONAL_CORNER_SNAPSHOT_STALE_MS } from '@/lib/prefetchEducationalCorner';
 import {
   ArrowLeft,
   Calendar,
@@ -94,6 +96,7 @@ interface UserProfile {
  */
 export default function EducationalCorner(): JSX.Element {
   const { theme } = useTheme();
+  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
@@ -113,8 +116,18 @@ export default function EducationalCorner(): JSX.Element {
   } = useQuery({
     queryKey: educationalCornerQueryKeys.snapshot(meetingId ?? '', user?.id ?? 'anon'),
     queryFn: () => fetchEducationalCornerBundle(meetingId!, user?.id ?? '', user!.currentClubId!),
+    initialData: () => {
+      if (!meetingId) return undefined;
+      const userKey = educationalCornerQueryKeys.snapshot(meetingId, user?.id ?? 'anon');
+      const warmUser = queryClient.getQueryData<EducationalCornerBundle | null>(userKey);
+      if (warmUser !== undefined) return warmUser;
+      const warmAnon = queryClient.getQueryData<EducationalCornerBundle | null>(
+        educationalCornerQueryKeys.snapshot(meetingId, 'anon')
+      );
+      return warmAnon;
+    },
     enabled: Boolean(meetingId && user?.currentClubId),
-    staleTime: 60 * 1000,
+    staleTime: EDUCATIONAL_CORNER_SNAPSHOT_STALE_MS,
     gcTime: 15 * 60 * 1000,
     refetchOnWindowFocus: false,
   });

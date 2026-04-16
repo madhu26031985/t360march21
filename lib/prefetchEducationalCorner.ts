@@ -1,7 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { educationalCornerQueryKeys, fetchEducationalCornerBundle } from '@/lib/educationalCornerQuery';
 
-const STALE_MS = 60 * 1000;
+/** Keep in sync with educational-corner query staleTime. */
+export const EDUCATIONAL_CORNER_SNAPSHOT_STALE_MS = 60 * 1000;
 
 /** Call before navigating to Educational Corner so the screen often reads from cache. */
 export function prefetchEducationalCorner(
@@ -15,6 +16,6 @@ export function prefetchEducationalCorner(
   void queryClient.prefetchQuery({
     queryKey: educationalCornerQueryKeys.snapshot(meetingId, effectiveUserId || 'anon'),
     queryFn: () => fetchEducationalCornerBundle(meetingId, effectiveUserId, clubId),
-    staleTime: STALE_MS,
+    staleTime: EDUCATIONAL_CORNER_SNAPSHOT_STALE_MS,
   });
 }

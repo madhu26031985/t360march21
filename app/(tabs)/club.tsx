@@ -45,6 +45,7 @@ import {
 } from '@/lib/clubTabLandingData';
 import { DEFAULT_TOASTMASTERS_CLUB_MISSION } from '@/lib/defaultClubMission';
 import { avatarUrlForDisplay } from '@/lib/avatarDisplayUrl';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 
 /** Web: defer offscreen images; async decode. Native: no-op spread. */
 function webImageExtra(lazy: boolean): Record<string, string> {
@@ -189,6 +190,7 @@ function ExcommCarouselCard({
   onSeeAll: () => void;
   variant?: 'card' | 'notion';
 }) {
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const [index, setIndex] = useState(0);
   const opacity = useRef(new Animated.Value(1)).current;
   const slideX = useRef(new Animated.Value(0)).current;
@@ -273,7 +275,7 @@ function ExcommCarouselCard({
         <Text style={styles.excommRole} maxFontSizeMultiplier={1.1}>
           {row.title}
         </Text>
-        {row.member.avatar_url ? (
+        {shouldLoadAvatars && row.member.avatar_url ? (
           <Image
             source={{
               uri: avatarUrlForDisplay(row.member.avatar_url, 160) ?? row.member.avatar_url,
@@ -319,6 +321,7 @@ function MembersCarouselCard({
   onViewMember: (memberId: string) => void;
   variant?: 'card' | 'notion';
 }) {
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const pageCount = Math.ceil(rows.length / 2);
   const [pairIndex, setPairIndex] = useState(0);
   const opacity = useRef(new Animated.Value(1)).current;
@@ -409,7 +412,7 @@ function MembersCarouselCard({
           { backgroundColor: C.tileBg },
         ]}
       >
-        {m.avatar_url ? (
+        {shouldLoadAvatars && m.avatar_url ? (
           <Image
             source={{ uri: avatarUrlForDisplay(m.avatar_url, 112) ?? m.avatar_url }}
             style={styles.memberAvatar}
@@ -2260,6 +2263,7 @@ function DeliveredHighlightCarousel({
   variant: 'toastmaster' | 'educational';
   containerVariant?: 'card' | 'embedded';
 }) {
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const [index, setIndex] = useState(0);
   
   useEffect(() => {
@@ -2327,7 +2331,7 @@ function DeliveredHighlightCarousel({
             </Text>
           </View>
         ) : null}
-        {row.avatarUrl ? (
+        {shouldLoadAvatars && row.avatarUrl ? (
           <Image
             source={{ uri: avatarUrlForDisplay(row.avatarUrl, 144) ?? row.avatarUrl }}
             style={styles.edSpeechAvatar}
@@ -2337,7 +2341,7 @@ function DeliveredHighlightCarousel({
         ) : (
           <View style={[styles.edSpeechAvatar, styles.edSpeechAvatarPh]}>
             <Text style={styles.edSpeechInitial} maxFontSizeMultiplier={1.2}>
-              {(row.personName || '?').charAt(0).toUpperCase()}
+              {initialsFromName(row.personName, 2)}
             </Text>
           </View>
         )}
@@ -2555,6 +2559,7 @@ function GeneralEvaluatorScoringCarousel({
   rows: GeneralEvaluatorScoringRow[];
   variant?: 'card' | 'embedded';
 }) {
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -2592,7 +2597,7 @@ function GeneralEvaluatorScoringCarousel({
             : row.meetingDateLabel}
         </Text>
 
-        {row.evaluatorAvatarUrl ? (
+        {shouldLoadAvatars && row.evaluatorAvatarUrl ? (
           <Image
             source={{ uri: avatarUrlForDisplay(row.evaluatorAvatarUrl, 144) ?? row.evaluatorAvatarUrl }}
             style={styles.edSpeechAvatar}
@@ -2602,7 +2607,7 @@ function GeneralEvaluatorScoringCarousel({
         ) : (
           <View style={[styles.edSpeechAvatar, styles.edSpeechAvatarPh]}>
             <Text style={styles.edSpeechInitial} maxFontSizeMultiplier={1.2}>
-              {(row.evaluatorName || '?').charAt(0).toUpperCase()}
+              {initialsFromName(row.evaluatorName, 2)}
             </Text>
           </View>
         )}
@@ -2654,6 +2659,7 @@ function TimerMeetingWiseCarousel({
   rows: TimerMeetingWiseRow[];
   variant?: 'card' | 'embedded';
 }) {
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -2690,7 +2696,7 @@ function TimerMeetingWiseCarousel({
             ? `Meeting ${row.meetingNumber} • ${row.meetingDateLabel}`
             : row.meetingDateLabel}
         </Text>
-        {row.timerAvatarUrl ? (
+        {shouldLoadAvatars && row.timerAvatarUrl ? (
           <Image
             source={{ uri: avatarUrlForDisplay(row.timerAvatarUrl, 144) ?? row.timerAvatarUrl }}
             style={styles.edSpeechAvatar}
@@ -2700,7 +2706,7 @@ function TimerMeetingWiseCarousel({
         ) : (
           <View style={[styles.edSpeechAvatar, styles.edSpeechAvatarPh]}>
             <Text style={styles.edSpeechInitial} maxFontSizeMultiplier={1.2}>
-              {(row.timerName || '?').charAt(0).toUpperCase()}
+              {initialsFromName(row.timerName, 2)}
             </Text>
           </View>
         )}
@@ -2771,6 +2777,7 @@ function AhCounterMeetingWiseCarousel({
   rows: AhCounterMeetingWiseRow[];
   variant?: 'card' | 'embedded';
 }) {
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -2808,7 +2815,7 @@ function AhCounterMeetingWiseCarousel({
             ? `Meeting ${row.meetingNumber} • ${row.meetingDateLabel}`
             : row.meetingDateLabel}
         </Text>
-        {row.ahCounterAvatarUrl ? (
+        {shouldLoadAvatars && row.ahCounterAvatarUrl ? (
           <Image
             source={{ uri: avatarUrlForDisplay(row.ahCounterAvatarUrl, 144) ?? row.ahCounterAvatarUrl }}
             style={styles.edSpeechAvatar}
@@ -2818,7 +2825,7 @@ function AhCounterMeetingWiseCarousel({
         ) : (
           <View style={[styles.edSpeechAvatar, styles.edSpeechAvatarPh]}>
             <Text style={styles.edSpeechInitial} maxFontSizeMultiplier={1.2}>
-              {(row.ahCounterName || '?').charAt(0).toUpperCase()}
+              {initialsFromName(row.ahCounterName, 2)}
             </Text>
           </View>
         )}

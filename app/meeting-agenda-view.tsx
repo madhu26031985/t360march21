@@ -26,6 +26,7 @@ import { exportAgendaToPDF, generatePDFFilename } from '@/lib/pdfExportUtils';
 import { parseMemberPreparedAgenda } from '@/lib/preparedSpeechesAgendaParse';
 import {
   fetchMeetingAgendaSnapshot,
+  getCachedMeetingAgendaSnapshot,
   evaluationsArrayToRecord,
 } from '@/lib/meetingAgendaSnapshot';
 
@@ -645,7 +646,10 @@ export function MeetingAgendaViewContent({
   const loadData = async (forceRefresh = false) => {
     if (!meetingId) return;
     try {
-      setLoading(true);
+      const warm = !forceRefresh ? getCachedMeetingAgendaSnapshot(meetingId) : null;
+      if (!warm) {
+        setLoading(true);
+      }
       const snap = await fetchMeetingAgendaSnapshot(meetingId, {
         bypassCache: forceRefresh,
       });

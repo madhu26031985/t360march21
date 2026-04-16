@@ -17,16 +17,17 @@ import {
 } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import type { MeetingFlowTab } from '@/lib/meetingTabsCatalog';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 
 const ROLE_AVATAR_ROTATE_MS = 3000;
 
 /** @deprecated Use MeetingFlowTab; kept for existing imports */
 export type MeetingRoleTab = MeetingFlowTab;
 
-function useRotatingRoleAvatars(avatarUrls: string[] | undefined) {
+function useRotatingRoleAvatars(avatarUrls: string[] | undefined, enabled: boolean) {
   const sourceList = useMemo(
-    () => (avatarUrls ?? []).map((u) => u.trim()).filter(Boolean),
-    [avatarUrls]
+    () => (enabled ? (avatarUrls ?? []).map((u) => u.trim()).filter(Boolean) : []),
+    [avatarUrls, enabled]
   );
   const sourceKey = sourceList.join('\u0000');
   const [activeUrls, setActiveUrls] = useState<string[]>([]);
@@ -173,7 +174,9 @@ function SpeakingRoleCardWithAlert({
   avatarUrls?: string[];
 }) {
   const { theme } = useTheme();
-  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls);
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
+  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls, shouldLoadAvatars);
+  const fallbackInitials = useMemo(() => initialsFromName(title, 2), [title]);
   const alertScale = useSharedValue(1);
   const iconPulse = useSharedValue(1);
   useEffect(() => {
@@ -234,9 +237,17 @@ function SpeakingRoleCardWithAlert({
         </Animated.View>
       ) : (
         <Animated.View style={[styles.speakingRoleIcon, { backgroundColor: tab.color + '25' }, iconPulseStyle]}>
-          {tab.id === 'evaluation_corner' && <Mic size={22} color={tab.color} />}
-          {tab.id === 'educational_corner' && <Lightbulb size={22} color={tab.color} />}
-          {tab.id === 'keynote_speaker' && <Mic size={22} color={tab.color} />}
+          {shouldLoadAvatars ? (
+            <>
+              {tab.id === 'evaluation_corner' && <Mic size={22} color={tab.color} />}
+              {tab.id === 'educational_corner' && <Lightbulb size={22} color={tab.color} />}
+              {tab.id === 'keynote_speaker' && <Mic size={22} color={tab.color} />}
+            </>
+          ) : (
+            <Text style={[styles.roleInitialsText, { color: tab.color }]} maxFontSizeMultiplier={1.1}>
+              {fallbackInitials}
+            </Text>
+          )}
         </Animated.View>
       )}
       <Text style={[styles.speakingRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
@@ -271,7 +282,9 @@ function SupportFullWidthRoleCardWithAlert({
   avatarUrls?: string[];
 }) {
   const { theme } = useTheme();
-  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls);
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
+  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls, shouldLoadAvatars);
+  const fallbackInitials = useMemo(() => initialsFromName(title, 2), [title]);
   const alertScale = useSharedValue(1);
   const iconPulse = useSharedValue(1);
   useEffect(() => {
@@ -322,7 +335,13 @@ function SupportFullWidthRoleCardWithAlert({
         </Animated.View>
       ) : (
         <Animated.View style={[styles.keyRoleIcon, { backgroundColor: iconColor + '25' }, iconPulseStyle]}>
-          <SupportIcon size={20} color={iconColor} />
+          {shouldLoadAvatars ? (
+            <SupportIcon size={20} color={iconColor} />
+          ) : (
+            <Text style={[styles.roleInitialsText, { color: iconColor }]} maxFontSizeMultiplier={1.1}>
+              {fallbackInitials}
+            </Text>
+          )}
         </Animated.View>
       )}
       <View style={styles.keyRoleContent}>
@@ -368,7 +387,8 @@ function SupportHalfRoleCardWithAvatar({
   comingSoon?: boolean;
 }) {
   const { theme } = useTheme();
-  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls);
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
+  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls, shouldLoadAvatars);
   return (
     <TouchableOpacity
       style={[styles.supportRoleCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
@@ -388,7 +408,13 @@ function SupportHalfRoleCardWithAvatar({
         </View>
       ) : (
         <View style={[styles.supportRoleIcon, { backgroundColor: iconColor + '25' }]}>
-          <SupportIcon size={20} color={iconColor} />
+          {shouldLoadAvatars ? (
+            <SupportIcon size={20} color={iconColor} />
+          ) : (
+            <Text style={[styles.roleInitialsText, { color: iconColor }]} maxFontSizeMultiplier={1.1}>
+              {initialsFromName(tab.title, 2)}
+            </Text>
+          )}
         </View>
       )}
       <Text style={[styles.supportRoleTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
@@ -418,7 +444,8 @@ function KeyRoleCardWithTmodAlert({
   avatarUrls?: string[];
 }) {
   const { theme } = useTheme();
-  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls);
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
+  const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls, shouldLoadAvatars);
   const alertScale = useSharedValue(1);
   useEffect(() => {
     if (!showAlert) {
@@ -468,9 +495,17 @@ function KeyRoleCardWithTmodAlert({
         </View>
       ) : (
         <View style={[styles.keyRoleIcon, { backgroundColor: tab.color + '25' }]}>
-          {tab.id === 'toastmaster_corner' && <MessageSquare size={20} color={tab.color} />}
-          {tab.id === 'general_evaluator' && <Star size={20} color={tab.color} />}
-          {tab.id === 'table_topic_corner' && <MessageSquare size={20} color={tab.color} />}
+          {shouldLoadAvatars ? (
+            <>
+              {tab.id === 'toastmaster_corner' && <MessageSquare size={20} color={tab.color} />}
+              {tab.id === 'general_evaluator' && <Star size={20} color={tab.color} />}
+              {tab.id === 'table_topic_corner' && <MessageSquare size={20} color={tab.color} />}
+            </>
+          ) : (
+            <Text style={[styles.roleInitialsText, { color: tab.color }]} maxFontSizeMultiplier={1.1}>
+              {initialsFromName(title, 2)}
+            </Text>
+          )}
         </View>
       )}
       <View style={styles.keyRoleContent}>
@@ -809,5 +844,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
     textAlign: 'center',
+  },
+  roleInitialsText: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });

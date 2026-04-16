@@ -32,6 +32,13 @@ const inflight = new Map<string, Promise<MeetingAgendaSnapshot | null>>();
 const recent = new Map<string, { value: MeetingAgendaSnapshot | null; at: number }>();
 const RECENT_MS = 15_000;
 
+export function getCachedMeetingAgendaSnapshot(meetingId: string): MeetingAgendaSnapshot | null {
+  const hit = recent.get(meetingId);
+  if (!hit) return null;
+  if (Date.now() - hit.at >= RECENT_MS) return null;
+  return hit.value;
+}
+
 /** Drop memoized snapshot (in-flight RPC continues; next fetch may still await it). */
 export function invalidateMeetingAgendaSnapshot(meetingId: string | null | undefined): void {
   if (!meetingId) return;
