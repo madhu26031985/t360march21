@@ -668,10 +668,21 @@ export default function TableTopicCorner(): JSX.Element {
   const isTableTopicMaster = (): boolean => {
     return tableTopicMaster?.assigned_user_id === user?.id;
   };
+  const canViewParticipantsTab = (): boolean => {
+    return !isTableTopicMaster() || isVPEClub;
+  };
   const canManageTableTopicCorner = (): boolean => {
     return isTableTopicMaster() || isVPEClub;
   };
+  const canViewTableTopicCornerTab = (): boolean => {
+    return canManageTableTopicCorner();
+  };
+  const canViewTableTopicSummaryTab = (): boolean => {
+    if (isVPEClub) return true;
+    return !isTableTopicMaster();
+  };
   const canViewTableTopicSummaryContent = (): boolean => {
+    if (!canViewTableTopicSummaryTab()) return false;
     return tableTopicSummaryVisibleToMembers || canManageTableTopicCorner();
   };
   const tableTopicQuestionOwnerId = tableTopicMaster?.assigned_user_id || user?.id || '';
@@ -989,8 +1000,16 @@ export default function TableTopicCorner(): JSX.Element {
   );
 
   useEffect(() => {
-    if (activeTab === 'table_topic_corner' && !canManageTableTopicCorner()) {
-      setActiveTab('table_topic_summary');
+    if (activeTab === 'participants' && !canViewParticipantsTab()) {
+      setActiveTab(canViewTableTopicCornerTab() ? 'table_topic_corner' : 'table_topic_summary');
+      return;
+    }
+    if (activeTab === 'table_topic_corner' && !canViewTableTopicCornerTab()) {
+      setActiveTab(canViewTableTopicSummaryTab() ? 'table_topic_summary' : 'participants');
+      return;
+    }
+    if (activeTab === 'table_topic_summary' && !canViewTableTopicSummaryTab()) {
+      setActiveTab(canViewTableTopicCornerTab() ? 'table_topic_corner' : 'participants');
     }
   }, [activeTab, isVPEClub, tableTopicMaster?.assigned_user_id, user?.id]);
 
@@ -1603,13 +1622,14 @@ export default function TableTopicCorner(): JSX.Element {
     );
   };
 
-  const isTtmBooked = Boolean(tableTopicMaster?.assigned_user_id && tableTopicMaster.app_user_profiles);
-  const showParticipantsTab = !isTtmBooked;
+  const showParticipantsTab = canViewParticipantsTab();
+  const showTableTopicCornerTab = canViewTableTopicCornerTab();
+  const showTableTopicSummaryTab = canViewTableTopicSummaryTab();
 
   useEffect(() => {
     if (showParticipantsTab) return;
     if (activeTab !== 'participants') return;
-    setActiveTab(canManageTableTopicCorner() ? 'table_topic_corner' : 'table_topic_summary');
+    setActiveTab(showTableTopicCornerTab ? 'table_topic_corner' : 'table_topic_summary');
   }, [showParticipantsTab, activeTab, isVPEClub, tableTopicMaster?.assigned_user_id, user?.id]);
 
   // Loading state
@@ -1678,7 +1698,7 @@ export default function TableTopicCorner(): JSX.Element {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.contentContainer, styles.contentContainerPadded, { paddingBottom: 8 }]}
       >
-        {isTtmBooked && tableTopicMaster?.app_user_profiles ? (
+        {Boolean(tableTopicMaster?.assigned_user_id && tableTopicMaster?.app_user_profiles) ? (
           <View
             style={[
               styles.consolidatedCornerCard,
@@ -1886,7 +1906,7 @@ export default function TableTopicCorner(): JSX.Element {
             </TouchableOpacity>
           ) : null}
 
-          {canManageTableTopicCorner() && (
+          {showTableTopicCornerTab && (
             <TouchableOpacity
               style={[
                 styles.ttTab,
@@ -1911,37 +1931,39 @@ export default function TableTopicCorner(): JSX.Element {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity
-            style={[
-              styles.ttTab,
-              activeTab === 'table_topic_summary' && styles.ttTabActive,
-              { borderBottomColor: activeTab === 'table_topic_summary' ? notion.accent : 'transparent' },
-            ]}
-            onPress={() => setActiveTab('table_topic_summary')}
-          >
-            <View style={styles.ttTabInnerRow}>
-              <Text
-                style={[
-                  styles.ttTabText,
-                  notionType,
-                  { color: activeTab === 'table_topic_summary' ? notion.accent : notion.muted, flexShrink: 1 },
-                ]}
-                maxFontSizeMultiplier={1.1}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
-              >
-                Table Topic Summary
-              </Text>
-              {publishedQuestions.length > 0 ? (
-                <View style={[styles.tabBadge, { backgroundColor: notion.accent }]}>
-                  <Text style={styles.tabBadgeText} maxFontSizeMultiplier={1.3}>
-                    {publishedQuestions.length}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </TouchableOpacity>
+          {showTableTopicSummaryTab ? (
+            <TouchableOpacity
+              style={[
+                styles.ttTab,
+                activeTab === 'table_topic_summary' && styles.ttTabActive,
+                { borderBottomColor: activeTab === 'table_topic_summary' ? notion.accent : 'transparent' },
+              ]}
+              onPress={() => setActiveTab('table_topic_summary')}
+            >
+              <View style={styles.ttTabInnerRow}>
+                <Text
+                  style={[
+                    styles.ttTabText,
+                    notionType,
+                    { color: activeTab === 'table_topic_summary' ? notion.accent : notion.muted, flexShrink: 1 },
+                  ]}
+                  maxFontSizeMultiplier={1.1}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  Table Topic Summary
+                </Text>
+                {publishedQuestions.length > 0 ? (
+                  <View style={[styles.tabBadge, { backgroundColor: notion.accent }]}>
+                    <Text style={styles.tabBadgeText} maxFontSizeMultiplier={1.3}>
+                      {publishedQuestions.length}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Participants Tab */}
