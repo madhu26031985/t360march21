@@ -28,8 +28,10 @@ import {
   normalizeTimerGuestSpeakerKey,
   parseTimerGuestCompletionNotes,
 } from '@/lib/timerGuestDisplayName';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 
 const FOOTER_NAV_ICON_SIZE = 15;
+const TIMER_REPORT_SNAPSHOT_STALE_MS = 60 * 1000;
 
 const CATEGORY_ROLE_SELECT_EMBED = `
           app_user_profiles (
@@ -228,6 +230,7 @@ function canTimerCornerManageAssignment(role: CategoryRole, canEditTimerCorner: 
 export default function TimerReportDetails() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const queryClient = useQueryClient();
@@ -622,6 +625,64 @@ export default function TimerReportDetails() {
     });
   };
 
+  const applySnapshotToState = useCallback(
+    async (snap: Awaited<ReturnType<typeof fetchTimerReportSnapshot>>) => {
+      if (!(snap?.meeting && Object.keys(snap.meeting).length > 0 && snap.club_id)) return false;
+
+      setMeeting(snap.meeting as unknown as Meeting);
+      if (snap.club_name) setClubName(snap.club_name);
+
+      const roleByUser: Record<string, string> = {};
+      const allMembers: ClubMember[] = snap.member_directory.map((m) => {
+        const id = m.user_id;
+        const rawRole = m.club_role?.trim();
+        if (id && rawRole) {
+          roleByUser[id] = rawRole.toLowerCase();
+        }
+        return {
+          id,
+          full_name: m.full_name || '',
+          email: m.email || '',
+          avatar_url: m.avatar_url ?? null,
+          club_role: rawRole ? rawRole.toLowerCase() : null,
+        };
+      });
+      setMemberClubRoleByUserId(roleByUser);
+      let membersToShow = allMembers;
+      if (snap.selected_member_ids.length > 0) {
+        const selectedSet = new Set(snap.selected_member_ids);
+        membersToShow = allMembers.filter((m) => selectedSet.has(m.id));
+      }
+      membersToShow.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      setClubMembers(membersToShow);
+
+      if (snap.assigned_timer) {
+        setAssignedTimer({
+          id: snap.assigned_timer.id,
+          full_name: snap.assigned_timer.full_name,
+          email: snap.assigned_timer.email,
+          avatar_url: snap.assigned_timer.avatar_url,
+        });
+      } else {
+        setAssignedTimer(null);
+      }
+
+      setIsVPEClub(snap.is_vpe);
+      const snapReports = (snap.timer_reports || []) as TimerReport[];
+      setSavedReports(snapReports);
+      setTimerSummaryVisibleToMembers(snap.summary_visible_to_members !== false);
+      const snapVisible = snapReports.find((r) => typeof r.summary_visible_to_members === 'boolean')?.summary_visible_to_members;
+      if (typeof snapVisible === 'boolean') {
+        setTimerSummaryVisibleToMembers(snapVisible);
+      }
+      setMeetingVisitingGuests(snap.visiting_guests);
+      setVisitingGuestInputs(visitingGuestInputsFromRows(snap.visiting_guests));
+      applyCategoryBundleToState(snap.category_roles as CategoryRole[], snap.booked_speakers);
+      return true;
+    },
+    [applyCategoryBundleToState]
+  );
+
   const loadData = async () => {
     if (!meetingId || !user?.currentClubId) {
       setIsLoading(false);
@@ -634,69 +695,25 @@ export default function TimerReportDetails() {
 
     const run = async () => {
       try {
-        setIsLoading(true);
         const effectiveUserId = user?.id ?? '';
-        const snap = await queryClient.fetchQuery({
-          queryKey: timerReportQueryKeys.snapshot(
-            meetingId,
-            reportData.speech_category,
-            effectiveUserId || 'anon'
-          ),
-          queryFn: () => fetchTimerReportSnapshot(meetingId, reportData.speech_category),
-          staleTime: 60 * 1000,
-        });
-        if (snap?.meeting && Object.keys(snap.meeting).length > 0 && snap.club_id) {
-          setMeeting(snap.meeting as unknown as Meeting);
-          void loadClubName();
-
-          const roleByUser: Record<string, string> = {};
-          const allMembers: ClubMember[] = snap.member_directory.map((m) => {
-            const id = m.user_id;
-            const rawRole = m.club_role?.trim();
-            if (id && rawRole) {
-              roleByUser[id] = rawRole.toLowerCase();
-            }
-            return {
-              id,
-              full_name: m.full_name || '',
-              email: m.email || '',
-              avatar_url: m.avatar_url ?? null,
-              club_role: rawRole ? rawRole.toLowerCase() : null,
-            };
-          });
-          setMemberClubRoleByUserId(roleByUser);
-          let membersToShow = allMembers;
-          if (snap.selected_member_ids.length > 0) {
-            const selectedSet = new Set(snap.selected_member_ids);
-            membersToShow = allMembers.filter((m) => selectedSet.has(m.id));
-          }
-          membersToShow.sort((a, b) => a.full_name.localeCompare(b.full_name));
-          setClubMembers(membersToShow);
-
-          if (snap.assigned_timer) {
-            setAssignedTimer({
-              id: snap.assigned_timer.id,
-              full_name: snap.assigned_timer.full_name,
-              email: snap.assigned_timer.email,
-              avatar_url: snap.assigned_timer.avatar_url,
-            });
-          } else {
-            setAssignedTimer(null);
-          }
-
-          setIsVPEClub(snap.is_vpe);
-          const snapReports = (snap.timer_reports || []) as TimerReport[];
-          setSavedReports(snapReports);
-          const snapVisible = snapReports.find((r) => typeof r.summary_visible_to_members === 'boolean')?.summary_visible_to_members;
-          if (typeof snapVisible === 'boolean') {
-            setTimerSummaryVisibleToMembers(snapVisible);
-          } else {
-            await loadTimerSummaryVisibility();
-          }
-          setMeetingVisitingGuests(snap.visiting_guests);
-          setVisitingGuestInputs(visitingGuestInputsFromRows(snap.visiting_guests));
-          applyCategoryBundleToState(snap.category_roles as CategoryRole[], snap.booked_speakers);
+        const snapshotKey = timerReportQueryKeys.snapshot(
+          meetingId,
+          reportData.speech_category,
+          effectiveUserId || 'anon'
+        );
+        const warmSnap = queryClient.getQueryData<Awaited<ReturnType<typeof fetchTimerReportSnapshot>>>(snapshotKey);
+        const hadWarmSnapshot = await applySnapshotToState(warmSnap ?? null);
+        if (!hadWarmSnapshot) {
+          setIsLoading(true);
         } else {
+          setIsLoading(false);
+        }
+        const snap = await queryClient.fetchQuery({
+          queryKey: snapshotKey,
+          queryFn: () => fetchTimerReportSnapshot(meetingId, reportData.speech_category),
+          staleTime: TIMER_REPORT_SNAPSHOT_STALE_MS,
+        });
+        if (!(await applySnapshotToState(snap))) {
           await Promise.all([
             loadMeeting(),
             loadClubMembers(),
@@ -2036,10 +2053,12 @@ export default function TimerReportDetails() {
                     }}
                   >
                     <View style={styles.speakerOptionAvatar}>
-                      {member.avatar_url ? (
+                      {shouldLoadAvatars && member.avatar_url ? (
                         <Image source={{ uri: member.avatar_url }} style={styles.speakerOptionAvatarImage} />
                       ) : (
-                        <User size={20} color="#ffffff" />
+                        <Text style={styles.speakerOptionAvatarInitial} maxFontSizeMultiplier={1.1}>
+                          {initialsFromName(member.full_name, 1)}
+                        </Text>
                       )}
                     </View>
                     <View style={styles.speakerOptionInfo}>
@@ -2083,10 +2102,12 @@ export default function TimerReportDetails() {
     >
       <View style={styles.speakerSelectorContent}>
         <View style={styles.speakerAvatar}>
-          {selectedSpeaker?.avatar_url ? (
+          {shouldLoadAvatars && selectedSpeaker?.avatar_url ? (
             <Image source={{ uri: selectedSpeaker.avatar_url }} style={styles.speakerAvatarImage} />
           ) : (
-            <User size={16} color="#ffffff" />
+            <Text style={styles.speakerAvatarInitial} maxFontSizeMultiplier={1.1}>
+              {initialsFromName(selectedSpeaker?.full_name || manualNameText || 'Speaker', 1)}
+            </Text>
           )}
         </View>
         <View style={styles.speakerInfo}>
@@ -2299,7 +2320,7 @@ export default function TimerReportDetails() {
           ]}
         >
           <View style={styles.timerLoggerSpeakerRow}>
-            {selectedSpeaker?.avatar_url ? (
+            {shouldLoadAvatars && selectedSpeaker?.avatar_url ? (
               <Image
                 source={{ uri: selectedSpeaker.avatar_url }}
                 style={[styles.timerLoggerSpeakerAvatar, { borderColor: NOTION_TIMER.border }]}
@@ -2312,7 +2333,9 @@ export default function TimerReportDetails() {
                   { borderColor: NOTION_TIMER.border, backgroundColor: NOTION_TIMER.pageBg },
                 ]}
               >
-                <User size={22} color={NOTION_TIMER.textSecondary} />
+                <Text style={[styles.timerLoggerSpeakerAvatarInitial, { color: NOTION_TIMER.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                  {initialsFromName(selectedSpeaker?.full_name || manualNameText || 'Speaker', 1)}
+                </Text>
               </View>
             )}
             <View style={styles.timerLoggerSpeakerTextCol}>
@@ -2638,14 +2661,22 @@ export default function TimerReportDetails() {
                   },
                 ]}
               >
-                {timerHeaderAvatarUrl ? (
+                {shouldLoadAvatars && timerHeaderAvatarUrl ? (
                   <Image
                     source={{ uri: timerHeaderAvatarUrl }}
                     style={styles.consolidatedAvatarImage}
                     resizeMode="cover"
                   />
                 ) : (
-                  <Timer size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
+                  <Text
+                    style={[
+                      styles.consolidatedAvatarInitial,
+                      { color: theme.mode === 'dark' ? '#E5E7EB' : '#4B5563' },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {initialsFromName(assignedTimer.full_name, 1)}
+                  </Text>
                 )}
               </View>
               <Text
@@ -3837,6 +3868,11 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
   },
+  speakerAvatarInitial: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '900',
+  },
   speakerInfo: {
     flex: 1,
   },
@@ -4353,6 +4389,11 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
   },
+  speakerOptionAvatarInitial: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
+  },
   speakerOptionInfo: {
     flex: 1,
   },
@@ -4632,6 +4673,11 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
+  },
+  consolidatedAvatarInitial: {
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: 0.4,
   },
   consolidatedPersonName: {
     fontSize: 19,
@@ -5688,6 +5734,11 @@ const styles = StyleSheet.create({
   timerLoggerSpeakerAvatarPlaceholder: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  timerLoggerSpeakerAvatarInitial: {
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 0.3,
   },
   timerLoggerSpeakerTextCol: {
     flex: 1,

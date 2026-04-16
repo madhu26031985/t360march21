@@ -28,6 +28,7 @@ import { ArrowLeft, BookOpen, Calendar, MapPin, Building2, User, Save, Sparkles,
 /** Match Toastmaster / corner bottom dock icon size */
 const FOOTER_NAV_ICON_SIZE = 15;
 import { Image } from 'react-native';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 
 interface Meeting {
   id: string;
@@ -140,6 +141,7 @@ interface UsageTracking {
 
 export default function GrammarianReport() {
   const { theme } = useTheme();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -313,6 +315,12 @@ export default function GrammarianReport() {
           setMeeting(snap.meeting as Meeting);
           if (snap.club_name) setClubName(snap.club_name);
           setIsVPEClub(snap.is_vpe_for_club);
+          if (typeof snap.summary_visible_to_members === 'boolean') {
+            setGrammarianSummaryVisibleToMembers(snap.summary_visible_to_members);
+            setGrammarianSummaryVisibilityFetched(true);
+          } else {
+            await loadGrammarianSummaryVisibility();
+          }
           setHasPublishedLiveObservations(Boolean(snap.has_published_live_observations));
           assigned = snap.assigned_grammarian;
           setAssignedGrammarian(assigned);
@@ -367,6 +375,7 @@ export default function GrammarianReport() {
           }
         } else {
           await Promise.all([loadMeeting(), loadClubName(), loadIsVPEClub()]);
+          await loadGrammarianSummaryVisibility();
           assigned = await loadAssignedGrammarian();
           const { data: cp } = await supabase
             .from('club_profiles')
@@ -445,11 +454,6 @@ export default function GrammarianReport() {
       setGrammarianSummaryVisibilityFetched(true);
     }
   }, [meetingId]);
-
-  useEffect(() => {
-    if (!meetingId) return;
-    void loadGrammarianSummaryVisibility();
-  }, [meetingId, loadGrammarianSummaryVisibility]);
 
   useEffect(() => {
     if (cornerPhaseTab !== 'live-meeting') return;
@@ -1476,10 +1480,12 @@ export default function GrammarianReport() {
     >
       <View style={styles.memberSelectorContent}>
         <View style={styles.memberAvatar}>
-          {selectedMember?.avatar_url ? (
+          {shouldLoadAvatars && selectedMember?.avatar_url ? (
             <Image source={{ uri: selectedMember.avatar_url }} style={styles.memberAvatarImage} />
           ) : (
-            <User size={20} color="#ffffff" />
+            <Text style={styles.memberAvatarInitial} maxFontSizeMultiplier={1.1}>
+              {initialsFromName(selectedMember?.full_name || 'Member', 1)}
+            </Text>
           )}
         </View>
         <View style={styles.memberInfo}>
@@ -1834,10 +1840,12 @@ export default function GrammarianReport() {
                       disabled={assigningGrammarianRole}
                     >
                       <View style={styles.memberOptionAvatar}>
-                        {member.avatar_url ? (
+                        {shouldLoadAvatars && member.avatar_url ? (
                           <Image source={{ uri: member.avatar_url }} style={styles.memberOptionAvatarImage} />
                         ) : (
-                          <User size={20} color="#ffffff" />
+                          <Text style={styles.memberOptionAvatarInitial} maxFontSizeMultiplier={1.1}>
+                            {initialsFromName(member.full_name, 1)}
+                          </Text>
                         )}
                       </View>
                       <View style={styles.memberOptionInfo}>
@@ -1927,10 +1935,18 @@ export default function GrammarianReport() {
                   },
                 ]}
               >
-                {assignedGrammarian.avatar_url ? (
+                {shouldLoadAvatars && assignedGrammarian.avatar_url ? (
                   <Image source={{ uri: assignedGrammarian.avatar_url }} style={styles.consolidatedAvatarImage} />
                 ) : (
-                  <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
+                  <Text
+                    style={[
+                      styles.consolidatedAvatarInitial,
+                      { color: theme.mode === 'dark' ? '#E5E7EB' : '#6B7280' },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {initialsFromName(assignedGrammarian.full_name, 1)}
+                  </Text>
                 )}
               </View>
               <Text
@@ -2542,10 +2558,12 @@ export default function GrammarianReport() {
                     disabled={assigningGrammarianRole}
                   >
                     <View style={styles.memberOptionAvatar}>
-                      {member.avatar_url ? (
+                      {shouldLoadAvatars && member.avatar_url ? (
                         <Image source={{ uri: member.avatar_url }} style={styles.memberOptionAvatarImage} />
                       ) : (
-                        <User size={20} color="#ffffff" />
+                        <Text style={styles.memberOptionAvatarInitial} maxFontSizeMultiplier={1.1}>
+                          {initialsFromName(member.full_name, 1)}
+                        </Text>
                       )}
                     </View>
                     <View style={styles.memberOptionInfo}>
@@ -2776,10 +2794,12 @@ export default function GrammarianReport() {
                     }}
                   >
                     <View style={styles.memberOptionAvatar}>
-                      {member.avatar_url ? (
+                      {shouldLoadAvatars && member.avatar_url ? (
                         <Image source={{ uri: member.avatar_url }} style={styles.memberOptionAvatarImage} />
                       ) : (
-                        <User size={20} color="#ffffff" />
+                        <Text style={styles.memberOptionAvatarInitial} maxFontSizeMultiplier={1.1}>
+                          {initialsFromName(member.full_name, 1)}
+                        </Text>
                       )}
                     </View>
                     <View style={styles.memberOptionInfo}>
@@ -2881,10 +2901,12 @@ Finally, don’t forget to share the Grammarian Report with all club members.
             <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
               <View style={styles.modalHeaderLeft}>
                 <View style={[styles.modalIcon, { backgroundColor: '#8b5cf6' }]}>
-                  {selectedMember?.avatar_url ? (
+                  {shouldLoadAvatars && selectedMember?.avatar_url ? (
                     <Image source={{ uri: selectedMember.avatar_url }} style={styles.modalIconImage} />
                   ) : (
-                    <User size={20} color="#ffffff" />
+                    <Text style={styles.modalIconInitial} maxFontSizeMultiplier={1.1}>
+                      {initialsFromName(selectedMember?.full_name || 'Member', 1)}
+                    </Text>
                   )}
                 </View>
                 <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -3199,6 +3221,11 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
+  },
+  consolidatedAvatarInitial: {
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: 0.4,
   },
   consolidatedPersonName: {
     fontSize: 19,
@@ -3715,6 +3742,11 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
   },
+  memberAvatarInitial: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '900',
+  },
   memberInfo: {
     flex: 1,
   },
@@ -4103,6 +4135,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
   },
+  modalIconInitial: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
+  },
   modalTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -4244,6 +4281,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
+  },
+  memberOptionAvatarInitial: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
   },
   memberOptionInfo: {
     flex: 1,

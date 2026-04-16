@@ -46,6 +46,7 @@ export type GrammarianCornerSnapshot = {
   club_id: string;
   meeting: GrammarianCornerMeeting;
   club_name: string | null;
+  summary_visible_to_members?: boolean;
   assigned_grammarian: GrammarianAssignedProfile | null;
   is_vpe_for_club: boolean;
   daily_elements?: {

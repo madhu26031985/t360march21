@@ -175,6 +175,12 @@ function SpeakingRoleCardWithAlert({
 }) {
   const { theme } = useTheme();
   const shouldLoadAvatars = useShouldLoadNetworkAvatars();
+  const title =
+    tab.id === 'evaluation_corner'
+      ? 'Prepared Speeches'
+      : tab.id === 'educational_corner'
+        ? 'Educational Corner'
+        : 'Keynote Speaker';
   const { currentUri, hasPhoto, onImageError } = useRotatingRoleAvatars(avatarUrls, shouldLoadAvatars);
   const fallbackInitials = useMemo(() => initialsFromName(title, 2), [title]);
   const alertScale = useSharedValue(1);
@@ -202,12 +208,6 @@ function SpeakingRoleCardWithAlert({
   const iconPulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: iconPulse.value }],
   }));
-  const title =
-    tab.id === 'evaluation_corner'
-      ? 'Prepared Speeches'
-      : tab.id === 'educational_corner'
-        ? 'Educational Corner'
-        : 'Keynote Speaker';
   return (
     <TouchableOpacity
       style={[
@@ -846,8 +846,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   roleInitialsText: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(255, 255, 255, 0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
 });

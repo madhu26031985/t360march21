@@ -7,6 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ahCounterQueryKeys, fetchAhCounterSnapshot } from '@/lib/ahCounterSnapshot';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import {
   type MeetingVisitingGuest,
@@ -194,6 +195,7 @@ type AhCounterMemberChip = {
 export default function AhCounterCorner() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const queryClient = useQueryClient();
@@ -203,7 +205,7 @@ export default function AhCounterCorner() {
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [assignedAhCounter, setAssignedAhCounter] = useState<AssignedAhCounter | null>(null);
   // Don't block navigation on Slow 4G — render the page immediately and hydrate data in the background.
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('corner');
   const [ahCounterSummaryVisibleToMembers, setAhCounterSummaryVisibleToMembers] = useState(true);
   /** When false, members should not see report rows until visibility is loaded from DB. */
@@ -655,18 +657,40 @@ export default function AhCounterCorner() {
       return;
     }
     const isFirstLoad = !hasLoadedOnce.current;
-    if (isFirstLoad) setIsLoading(true);
+    const effectiveUserId = user?.id ?? '';
+    const snapshotKey = ahCounterQueryKeys.snapshot(
+      meetingId,
+      user.currentClubId,
+      effectiveUserId || 'anon'
+    );
+    const warmSnap = queryClient.getQueryData<Awaited<ReturnType<typeof fetchAhCounterSnapshot>>>(snapshotKey) ?? null;
+    if (isFirstLoad && warmSnap?.meeting && Object.keys(warmSnap.meeting).length > 0) {
+      setMeeting(warmSnap.meeting as unknown as Meeting);
+      setAssignedAhCounter(warmSnap.assigned_ah_counter);
+      setIsExComm(warmSnap.is_excomm);
+      setIsVPEClub(warmSnap.is_vpe_for_club);
+      if (warmSnap.club_name) setClubName(warmSnap.club_name);
+      setAhCounterSummaryVisibleToMembers(warmSnap.summary_visible_to_members !== false);
+      setAhCounterVisibilityFetched(true);
+      setReportStats({
+        totalSpeakers: warmSnap.report_stats.total_speakers,
+        completedReports: warmSnap.report_stats.completed_reports,
+        selectedMembers: warmSnap.report_stats.selected_members,
+      });
+      setPublishedCount(warmSnap.published_count);
+      setIsPublished(warmSnap.total_reports > 0 && warmSnap.published_count === warmSnap.total_reports);
+      setMeetingVisitingGuests(warmSnap.visiting_guests);
+      setVisitingGuestInputs(visitingGuestInputsFromRows(warmSnap.visiting_guests));
+      setIsLoading(false);
+    } else if (isFirstLoad) {
+      setIsLoading(true);
+    }
     if (loadInFlightRef.current) return loadInFlightRef.current;
 
     const run = async () => {
     try {
-      const effectiveUserId = user?.id ?? '';
       const snap = await queryClient.fetchQuery({
-        queryKey: ahCounterQueryKeys.snapshot(
-          meetingId,
-          user.currentClubId,
-          effectiveUserId || 'anon'
-        ),
+        queryKey: snapshotKey,
         queryFn: () => fetchAhCounterSnapshot(meetingId),
         staleTime: 60 * 1000,
       });
@@ -676,6 +700,9 @@ export default function AhCounterCorner() {
         setAssignedAhCounter(snap.assigned_ah_counter);
         setIsExComm(snap.is_excomm);
         setIsVPEClub(snap.is_vpe_for_club);
+        if (snap.club_name) setClubName(snap.club_name);
+        setAhCounterSummaryVisibleToMembers(snap.summary_visible_to_members !== false);
+        setAhCounterVisibilityFetched(true);
         setReportStats({
           totalSpeakers: snap.report_stats.total_speakers,
           completedReports: snap.report_stats.completed_reports,
@@ -685,7 +712,7 @@ export default function AhCounterCorner() {
         setIsPublished(snap.total_reports > 0 && snap.published_count === snap.total_reports);
         setMeetingVisitingGuests(snap.visiting_guests);
         setVisitingGuestInputs(visitingGuestInputsFromRows(snap.visiting_guests));
-        void loadClubName();
+        setAhCounterAvatarLoadFailed(false);
         void loadClubCustomFillerWords();
         // Heavy lists are loaded on-demand per tab (to keep initial load < 1s).
       } else {
@@ -1560,6 +1587,23 @@ export default function AhCounterCorner() {
   // Note: we intentionally do not return a full-screen loading state.
   // The screen should open instantly; sections show their own spinners/placeholders.
 
+  if (isLoading && !meeting) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Ah Counter</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator color={theme.colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!meeting) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -1760,10 +1804,12 @@ export default function AhCounterCorner() {
                       disabled={assigningAhCounterRole}
                     >
                       <View style={styles.assignAhCounterMemberAvatar}>
-                        {member.avatar_url ? (
+                        {shouldLoadAvatars && member.avatar_url ? (
                           <Image source={{ uri: member.avatar_url }} style={styles.assignAhCounterMemberAvatarImg} />
                         ) : (
-                          <User size={20} color="#ffffff" />
+                          <Text style={styles.assignAhCounterMemberAvatarInitial} maxFontSizeMultiplier={1.1}>
+                            {initialsFromName(member.full_name, 1)}
+                          </Text>
                         )}
                       </View>
                       <View style={styles.assignAhCounterMemberInfo}>
@@ -1841,14 +1887,22 @@ export default function AhCounterCorner() {
                   },
                 ]}
               >
-                {ahCounterHeaderAvatarUrl && !ahCounterAvatarLoadFailed ? (
+                {shouldLoadAvatars && ahCounterHeaderAvatarUrl && !ahCounterAvatarLoadFailed ? (
                   <Image
                     source={{ uri: ahCounterHeaderAvatarUrl }}
                     style={styles.consolidatedAvatarImage}
                     onError={() => setAhCounterAvatarLoadFailed(true)}
                   />
                 ) : (
-                  <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
+                  <Text
+                    style={[
+                      styles.consolidatedAvatarInitial,
+                      { color: theme.mode === 'dark' ? '#E5E7EB' : '#4B5563' },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {initialsFromName(assignedAhCounter.full_name, 1)}
+                  </Text>
                 )}
               </View>
               <Text
@@ -2275,7 +2329,7 @@ export default function AhCounterCorner() {
                     >
                       <View style={styles.reportEntryLeft}>
                         <View style={[styles.reportEntryAvatar, { backgroundColor: theme.colors.primary + '20' }]}>
-                          {entry.avatarUrl ? (
+                          {shouldLoadAvatars && entry.avatarUrl ? (
                             <Image source={{ uri: entry.avatarUrl }} style={styles.reportEntryAvatarImg} />
                           ) : (
                             <Text
@@ -2718,10 +2772,12 @@ export default function AhCounterCorner() {
                     disabled={assigningAhCounterRole}
                   >
                     <View style={styles.assignAhCounterMemberAvatar}>
-                      {member.avatar_url ? (
+                      {shouldLoadAvatars && member.avatar_url ? (
                         <Image source={{ uri: member.avatar_url }} style={styles.assignAhCounterMemberAvatarImg} />
                       ) : (
-                        <User size={20} color="#ffffff" />
+                        <Text style={styles.assignAhCounterMemberAvatarInitial} maxFontSizeMultiplier={1.1}>
+                          {initialsFromName(member.full_name, 1)}
+                        </Text>
                       )}
                     </View>
                     <View style={styles.assignAhCounterMemberInfo}>
@@ -3427,6 +3483,11 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
   },
+  consolidatedAvatarInitial: {
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
   consolidatedPersonName: {
     fontSize: 19,
     fontWeight: '700',
@@ -3810,6 +3871,11 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
   },
+  assignAhCounterMemberAvatarInitial: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
+  },
   assignAhCounterMemberInfo: {
     flex: 1,
   },
@@ -4074,7 +4140,7 @@ const styles = StyleSheet.create({
   },
   reportEntryAvatarInitial: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '900',
   },
   reportEntryInfo: {
     flex: 1,

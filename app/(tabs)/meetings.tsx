@@ -1,15 +1,14 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { prefetchToastmasterCorner } from '@/lib/prefetchToastmasterCorner';
-import { Building2, Clock, Lock, FileText, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { Building2, Clock, Lock, FileText, ChevronRight, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
-import { ClubReportsList } from '@/components/ClubReportsList';
 import { MeetingRolesTabPanel } from '@/components/MeetingRolesTabPanel';
 import { MeetingActionsTabPanel } from '@/components/MeetingActionsTabPanel';
 import { MeetingEvaluationTabPanel } from '@/components/MeetingEvaluationTabPanel';
@@ -56,7 +55,6 @@ function FeatureCard({ title, description, icon, onPress }: FeatureCardProps) {
 export default function ClubMeetings() {
   const { theme } = useTheme();
   const { user, isAuthenticated, refreshUserProfile } = useAuth();
-  const params = useLocalSearchParams<{ section?: string }>();
   const queryClient = useQueryClient();
   const [currentMeeting, setCurrentMeeting] = useState<Meeting | null>(null);
   const [nextMeetings, setNextMeetings] = useState<Meeting[]>([]);
@@ -109,13 +107,6 @@ export default function ClubMeetings() {
   const lastRefreshTime = useRef<number>(0);
   const hasLoadedOnce = useRef<boolean>(false);
   const scrollRef = useRef<ScrollView>(null);
-  const [reportsAnchorY, setReportsAnchorY] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (params?.section !== 'reports') return;
-    if (reportsAnchorY === null) return;
-    scrollRef.current?.scrollTo({ y: Math.max(reportsAnchorY - 12, 0), animated: true });
-  }, [params?.section, reportsAnchorY]);
 
   useEffect(() => {
     if (user?.currentClubId) {
@@ -893,7 +884,7 @@ export default function ClubMeetings() {
       meetingId={meetingId}
       bookRoleShowAttention={bookRoleNoRolesByMeeting[meetingId] === true}
       onTabPress={(tab) => handleTabPress(tab, meetingId)}
-      onOpenClubReports={() => router.push({ pathname: '/(tabs)/meetings', params: { section: 'reports' } })}
+      onOpenClubReports={() => router.push('/meeting-reports')}
     />
   );
 
@@ -1069,7 +1060,7 @@ export default function ClubMeetings() {
                                 <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>
                                   Close
                                 </Text>
-                                <ChevronUp size={16} color="#ffffff" />
+                                <ChevronUp size={14} color="#ffffff" />
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -1141,7 +1132,7 @@ export default function ClubMeetings() {
                               accessibilityLabel="Expand meeting details"
                             >
                               <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>Open</Text>
-                              <ChevronDown size={16} color="#ffffff" />
+                              <ChevronDown size={14} color="#ffffff" />
                             </TouchableOpacity>
                           </View>
                           <View style={styles.heroCardDecoration} />
@@ -1191,7 +1182,7 @@ export default function ClubMeetings() {
                       <View style={[styles.lockedHeroMeetingCard, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border }]}>
                         <View style={styles.heroCardContent}>
                           <View style={[styles.comingSoonIcon, { backgroundColor: theme.colors.textSecondary + '15' }]}>
-                            <Lock size={24} color={theme.colors.textSecondary} />
+                            <Lock size={20} color="#F59E0B" />
                           </View>
                           <View style={styles.comingSoonContent}>
                             <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Coming Soon</Text>
@@ -1202,7 +1193,7 @@ export default function ClubMeetings() {
                               <Text style={[styles.comingSoonSubtitle, { color: theme.colors.primary, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
                                 {vpeName}
                               </Text>
-                              <ChevronRight size={16} color={theme.colors.primary} style={{ marginLeft: 2 }} />
+                              <ChevronRight size={12} color={theme.colors.primary} style={{ marginLeft: 2 }} />
                             </View>
                           </View>
                         </View>
@@ -1326,7 +1317,7 @@ export default function ClubMeetings() {
               accessibilityLabel="Open meeting history page"
             >
               <View style={[styles.comingSoonIcon, { backgroundColor: theme.colors.textSecondary + '15' }]}>
-                <Clock size={22} color={theme.colors.textSecondary} />
+                <Clock size={20} color="#6366F1" />
               </View>
               <View style={styles.comingSoonContent}>
                 <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -1338,16 +1329,38 @@ export default function ClubMeetings() {
                     : `${meetingHistory.length} completed meeting${meetingHistory.length === 1 ? '' : 's'} available`}
                 </Text>
               </View>
-              <ChevronRight size={18} color={theme.colors.textSecondary} />
+              <ChevronRight size={14} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
-          <ClubReportsList
-            theme={theme}
-            onReportPress={handleFeaturePress}
-            onSectionLayout={setReportsAnchorY}
-          />
+          <View style={styles.meetingHistorySection}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Meeting Reports
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.meetingHistoryEntryCard,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              ]}
+              onPress={() => router.push('/meeting-reports')}
+              activeOpacity={0.8}
+              accessibilityLabel="Open meeting reports page"
+            >
+              <View style={[styles.comingSoonIcon, { backgroundColor: '#3b82f615' }]}>
+                <ClipboardList size={20} color="#0EA5E9" />
+              </View>
+              <View style={styles.comingSoonContent}>
+                <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  View meeting reports
+                </Text>
+                <Text style={[styles.comingSoonSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                  Historical reports available
+                </Text>
+              </View>
+              <ChevronRight size={14} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
           </View>
         ) : (
@@ -1881,13 +1894,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 17,
     borderRadius: 0,
     gap: 4,
   },
   preplanButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#ffffff',
   },
@@ -1936,24 +1949,25 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   comingSoonIcon: {
-    width: 60,
-    height: 60,
+    width: 40,
+    height: 40,
     borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
   comingSoonContent: {
     flex: 1,
     justifyContent: 'center',
   },
   comingSoonTitle: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '700',
     marginBottom: 6,
   },
   comingSoonSubtitle: {
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 13,
   },
   vpeContactRow: {
     flexDirection: 'row',

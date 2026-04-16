@@ -2515,8 +2515,12 @@ const styles = StyleSheet.create({
   },
   profileAvatarInitials: {
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    textShadowColor: 'rgba(0, 0, 0, 0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
   profileInfo: {
     flex: 1,
@@ -3078,10 +3082,13 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
   meetingActionButtonInitials: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    color: 'rgba(17, 24, 39, 0.92)',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(255, 255, 255, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
   meetingActionButtonTitle: {
     flex: 1,

@@ -4,6 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
+import { useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 
 type AwardRow = {
   award_name?: string | null;
@@ -179,6 +180,7 @@ function monthLabel(key: string): string {
 export default function MyAwardsPanel() {
   const { user } = useAuth();
   const { theme } = useTheme();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [awards, setAwards] = useState<AwardRow[]>([]);
@@ -418,7 +420,7 @@ export default function MyAwardsPanel() {
 
         <View style={styles.heroTopSection}>
           <View style={styles.avatarRing}>
-            {user?.avatarUrl ? (
+            {shouldLoadAvatars && user?.avatarUrl ? (
               <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarFallback}>

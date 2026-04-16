@@ -39,6 +39,7 @@ import {
 } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { avatarUrlForDisplay } from '@/lib/avatarDisplayUrl';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 
 /** Bottom nav: icons + labels scaled to 75% of prior size (25% reduction) */
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -133,6 +134,7 @@ export default function ToastmasterCorner() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
 
@@ -665,7 +667,7 @@ export default function ToastmasterCorner() {
                   },
                 ]}
               >
-                {tmodAvatarUrl ? (
+                {shouldLoadAvatars && tmodAvatarUrl ? (
                   <Image
                     source={{ uri: tmodAvatarUrl }}
                     cachePolicy="memory-disk"
@@ -674,10 +676,15 @@ export default function ToastmasterCorner() {
                     transition={100}
                   />
                 ) : (
-                  <User
-                    size={40}
-                    color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'}
-                  />
+                  <Text
+                    style={[
+                      styles.consolidatedAvatarInitial,
+                      { color: theme.mode === 'dark' ? '#E5E7EB' : '#4B5563' },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {initialsFromName(toastmasterOfDay?.app_user_profiles?.full_name, 1)}
+                  </Text>
                 )}
               </View>
               <Text
@@ -1165,7 +1172,7 @@ export default function ToastmasterCorner() {
                       disabled={assigningToastmasterRole}
                     >
                       <View style={styles.assignAvatar}>
-                        {avatarUrlForDisplay(member.avatar_url, 36) ? (
+                        {shouldLoadAvatars && avatarUrlForDisplay(member.avatar_url, 36) ? (
                           <Image
                             source={{ uri: avatarUrlForDisplay(member.avatar_url, 36)! }}
                             cachePolicy="memory-disk"
@@ -1174,7 +1181,9 @@ export default function ToastmasterCorner() {
                             transition={80}
                           />
                         ) : (
-                          <User size={20} color="#ffffff" />
+                          <Text style={styles.assignAvatarInitial} maxFontSizeMultiplier={1.1}>
+                            {initialsFromName(member.full_name, 1)}
+                          </Text>
                         )}
                       </View>
                       <View style={styles.assignMemberTextWrap}>
@@ -1615,6 +1624,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  assignAvatarInitial: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
+  },
   assignMemberTextWrap: {
     flex: 1,
   },
@@ -1971,6 +1985,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  consolidatedAvatarInitial: {
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: 0.4,
   },
   consolidatedAvatarImage: {
     width: 96,

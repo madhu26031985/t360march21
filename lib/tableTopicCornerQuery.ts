@@ -59,6 +59,7 @@ export type TableTopicCornerBundle = {
   meeting: TableTopicMeeting | null;
   clubInfo: TableTopicClubInfo | null;
   isVpe: boolean;
+  summaryVisibleToMembers: boolean;
   tableTopicMaster: TableTopicMasterRow | null;
   participants: TableTopicParticipantRow[];
   assignedQuestions: TableTopicAssignedQuestionRow[];
@@ -73,6 +74,7 @@ export const tableTopicCornerQueryKeys = {
 type RpcSnapshot = {
   club_id: string;
   is_vpe?: boolean;
+  summary_visible_to_members?: boolean | null;
   meeting: TableTopicMeeting | null;
   club_info: TableTopicClubInfo | null;
   table_topic_master: TableTopicMasterRow | null;
@@ -163,6 +165,7 @@ async function fetchTableTopicCornerBundleLegacy(
         }
       : null,
     isVpe: false,
+    summaryVisibleToMembers: true,
     tableTopicMaster: (masterRes.data as TableTopicMasterRow | null) ?? null,
     participants: ((participantsRes.data as TableTopicParticipantRow[] | null) ?? []).sort(
       (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)
@@ -191,6 +194,7 @@ export async function fetchTableTopicCornerBundle(
         meeting: row.meeting ?? null,
         clubInfo: row.club_info ?? null,
         isVpe: Boolean(row.is_vpe),
+        summaryVisibleToMembers: row.summary_visible_to_members !== false,
         tableTopicMaster: row.table_topic_master ?? null,
         participants: row.participants ?? [],
         assignedQuestions: row.assigned_questions ?? [],

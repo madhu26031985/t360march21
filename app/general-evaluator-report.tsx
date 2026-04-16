@@ -18,6 +18,7 @@ import { GENERAL_EVALUATOR_REPORT_SNAPSHOT_STALE_MS } from '@/lib/prefetchGenera
 import { getRoleColor, formatRole } from '@/lib/roleUtils';
 import { ArrowLeft, Calendar, Star, X, NotebookPen, FileText, Users, RotateCcw, ClipboardCheck, Search, Vote } from 'lucide-react-native';
 import { Crown, User, Shield, Eye, EyeOff, UserCheck } from 'lucide-react-native';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 
 const FOOTER_NAV_ICON_SIZE = 15;
 
@@ -307,6 +308,7 @@ export default function GeneralEvaluatorReport() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { user } = useAuth();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
@@ -1145,13 +1147,21 @@ export default function GeneralEvaluatorReport() {
                   },
                 ]}
               >
-                {generalEvaluator.app_user_profiles.avatar_url ? (
+                {shouldLoadAvatars && generalEvaluator.app_user_profiles.avatar_url ? (
                   <Image
                     source={{ uri: generalEvaluator.app_user_profiles.avatar_url }}
                     style={styles.consolidatedAvatarImage}
                   />
                 ) : (
-                  <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
+                  <Text
+                    style={[
+                      styles.consolidatedAvatarInitial,
+                      { color: theme.mode === 'dark' ? '#E5E7EB' : '#4B5563' },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {initialsFromName(generalEvaluator.app_user_profiles.full_name, 1)}
+                  </Text>
                 )}
               </View>
               <Text
@@ -1635,10 +1645,12 @@ export default function GeneralEvaluatorReport() {
                       disabled={assigningGeRole}
                     >
                       <View style={styles.geAssignAvatar}>
-                        {member.avatar_url ? (
+                        {shouldLoadAvatars && member.avatar_url ? (
                           <Image source={{ uri: member.avatar_url }} style={styles.geAssignAvatarImage} />
                         ) : (
-                          <Star size={20} color="#ffffff" />
+                          <Text style={styles.geAssignAvatarInitial} maxFontSizeMultiplier={1.1}>
+                            {initialsFromName(member.full_name, 1)}
+                          </Text>
                         )}
                       </View>
                       <View style={styles.geAssignMemberTextWrap}>
@@ -1898,6 +1910,11 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
+  },
+  consolidatedAvatarInitial: {
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: 0.4,
   },
   consolidatedPersonName: {
     fontSize: 19,
@@ -2170,6 +2187,11 @@ const styles = StyleSheet.create({
   geAssignAvatarImage: {
     width: '100%',
     height: '100%',
+  },
+  geAssignAvatarInitial: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
   },
   geAssignMemberTextWrap: {
     flex: 1,

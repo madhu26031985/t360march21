@@ -581,7 +581,7 @@ Welcome to a seamless digital experience! 🚀`;
               We Salute Toastmasters
             </Text>
             <Text style={[styles.footerSubtext, { color: N.textTertiary }]} maxFontSizeMultiplier={1.3}>
-              {`Version ${Constants.expoConfig?.version ?? '84'}`}
+              {`Version ${Constants.expoConfig?.version ?? '87'}`}
             </Text>
           </View>
         </ScrollView>

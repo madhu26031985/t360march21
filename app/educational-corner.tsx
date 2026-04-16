@@ -19,6 +19,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 import { bookOpenMeetingRole, fetchOpenMeetingRoleId, bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
 import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import {
@@ -96,6 +97,7 @@ interface UserProfile {
  */
 export default function EducationalCorner(): JSX.Element {
   const { theme } = useTheme();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -208,9 +210,23 @@ export default function EducationalCorner(): JSX.Element {
       }
       const result = await bookMeetingRoleForCurrentUser(member.id, roleId);
       if (result.ok) {
+        setEducationalSpeaker((prev) =>
+          prev
+            ? {
+                ...prev,
+                assigned_user_id: member.id,
+                booking_status: 'booked',
+                app_user_profiles: {
+                  full_name: member.full_name,
+                  email: member.email,
+                  avatar_url: member.avatar_url ?? null,
+                },
+              }
+            : prev
+        );
         setShowAssignEducationalModal(false);
         setAssignEducationalSearch('');
-        await refetch();
+        void refetch();
         Alert.alert('Assigned', `${member.full_name} is now the Educational Speaker for this meeting.`);
       } else {
         Alert.alert('Could not assign', result.message);
@@ -258,7 +274,21 @@ export default function EducationalCorner(): JSX.Element {
         );
       }
       if (result.ok) {
-        await refetch();
+        setEducationalSpeaker((prev) =>
+          prev
+            ? {
+                ...prev,
+                assigned_user_id: user.id,
+                booking_status: 'booked',
+                app_user_profiles: {
+                  full_name: user.fullName || prev.app_user_profiles?.full_name || 'Member',
+                  email: (user as { email?: string | null }).email || prev.app_user_profiles?.email || '',
+                  avatar_url: user.avatarUrl || prev.app_user_profiles?.avatar_url || null,
+                },
+              }
+            : prev
+        );
+        void refetch();
         setBookingSuccessRole('Educational Speaker');
       } else {
         Alert.alert('Could not book', result.message);
@@ -421,8 +451,9 @@ export default function EducationalCorner(): JSX.Element {
   );
 
   const footerIconTileStyle = { borderWidth: 0, backgroundColor: 'transparent' } as const;
+  const waitingForInputs = !meetingId || !user?.currentClubId;
 
-  if (isPending && !isError) {
+  if ((isPending && !isError) || waitingForInputs) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
@@ -536,13 +567,21 @@ export default function EducationalCorner(): JSX.Element {
                     },
                   ]}
                 >
-                  {educationalSpeaker!.app_user_profiles!.avatar_url ? (
+                  {shouldLoadAvatars && educationalSpeaker!.app_user_profiles!.avatar_url ? (
                     <Image
                       source={{ uri: educationalSpeaker!.app_user_profiles!.avatar_url }}
                       style={styles.consolidatedAvatarImage}
                     />
                   ) : (
-                    <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
+                    <Text
+                      style={[
+                        styles.consolidatedAvatarInitial,
+                        { color: theme.mode === 'dark' ? '#E5E7EB' : '#4B5563' },
+                      ]}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      {initialsFromName(educationalSpeaker!.app_user_profiles!.full_name, 1)}
+                    </Text>
                   )}
                 </View>
                 <Text
@@ -1033,10 +1072,12 @@ export default function EducationalCorner(): JSX.Element {
                     disabled={assigningEducationalRole}
                   >
                     <View style={styles.educationalAssignAvatar}>
-                      {member.avatar_url ? (
+                      {shouldLoadAvatars && member.avatar_url ? (
                         <Image source={{ uri: member.avatar_url }} style={styles.educationalAssignAvatarImage} />
                       ) : (
-                        <User size={20} color="#ffffff" />
+                        <Text style={styles.educationalAssignAvatarInitial} maxFontSizeMultiplier={1.1}>
+                          {initialsFromName(member.full_name, 1)}
+                        </Text>
                       )}
                     </View>
                     <View style={styles.educationalAssignMemberTextWrap}>
@@ -1443,6 +1484,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  educationalAssignAvatarInitial: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '900',
+  },
   educationalAssignMemberTextWrap: {
     flex: 1,
   },
@@ -1745,6 +1791,11 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
+  },
+  consolidatedAvatarInitial: {
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: 0.4,
   },
   consolidatedPersonName: {
     fontSize: 19,

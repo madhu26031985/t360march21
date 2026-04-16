@@ -9,6 +9,7 @@ import { fetchProfileSnapshot, getCachedProfileSnapshot } from '@/lib/profileSna
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { Home, User, Mail, MapPin, Camera, X, Facebook, Twitter, Linkedin, Instagram, Youtube, ChevronRight, Phone, Lock, Info, Users, Calendar, Settings, ArrowLeft, Shield } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 
 const FOOTER_NAV_ICON_SIZE = 15;
 
@@ -29,6 +30,7 @@ interface ProfileData {
 export default function Profile() {
   const { theme } = useTheme();
   const { user, refreshUserProfile } = useAuth();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
 
@@ -580,7 +582,7 @@ export default function Profile() {
             {/* Profile Picture */}
             <View style={styles.avatarSection}>
               <View style={styles.avatarWrapper}>
-                {profileData.avatar_url ? (
+                {shouldLoadAvatars && profileData.avatar_url ? (
                   <Image
                     source={{ uri: profileData.avatar_url }}
                     style={styles.avatar}
@@ -588,7 +590,9 @@ export default function Profile() {
                   />
                 ) : (
                   <View style={styles.avatarPlaceholder}>
-                    <User size={48} color="#6B7280" />
+                    <Text style={styles.avatarInitial} maxFontSizeMultiplier={1.2}>
+                      {(profileData.full_name || user?.fullName || '?').trim().charAt(0).toUpperCase() || '?'}
+                    </Text>
                   </View>
                 )}
 
@@ -1231,6 +1235,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 3,
     borderColor: '#3b82f6',
+  },
+  avatarInitial: {
+    fontSize: 44,
+    fontWeight: '900',
+    color: '#374151',
+    letterSpacing: 0.4,
   },
   cameraButton: {
     position: 'absolute',

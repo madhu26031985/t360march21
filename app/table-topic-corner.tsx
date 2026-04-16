@@ -22,6 +22,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { avatarUrlForDisplay } from '@/lib/avatarDisplayUrl';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 import { fetchTableTopicCornerBundle, tableTopicCornerQueryKeys } from '@/lib/tableTopicCornerQuery';
 import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 import {
@@ -192,6 +193,7 @@ interface ClubMemberLite {
  */
 export default function TableTopicCorner(): JSX.Element {
   const { theme } = useTheme();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const notion =
     theme.mode === 'light'
       ? {
@@ -330,9 +332,6 @@ export default function TableTopicCorner(): JSX.Element {
     setFailedAvatarUris((prev) => (prev[uri] ? prev : { ...prev, [uri]: true }));
   }, []);
 
-  /**
-   * Load all table topic corner data
-   */
   const loadTableTopicCornerData = async (): Promise<void> => {
     if (!meetingId || !user?.currentClubId) {
       setIsLoading(false);
@@ -346,23 +345,25 @@ export default function TableTopicCorner(): JSX.Element {
     const run = async () => {
       try {
         const effectiveUserId = user?.id ?? '';
+        const snapshotKey = tableTopicCornerQueryKeys.snapshot(
+          meetingId,
+          user.currentClubId,
+          effectiveUserId || 'anon'
+        );
+        const warmBundle =
+          queryClient.getQueryData<Awaited<ReturnType<typeof fetchTableTopicCornerBundle>>>(snapshotKey) ?? null;
+        const hadWarmBundle = await applyBundleToState(warmBundle);
+        if (!hadWarmBundle) {
+          setIsLoading(true);
+        } else {
+          setIsLoading(false);
+        }
         const bundle = await queryClient.fetchQuery({
-          queryKey: tableTopicCornerQueryKeys.snapshot(
-            meetingId,
-            user.currentClubId,
-            effectiveUserId || 'anon'
-          ),
+          queryKey: snapshotKey,
           queryFn: () => fetchTableTopicCornerBundle(meetingId, user.currentClubId!),
           staleTime: 60 * 1000,
         });
-        setMeeting(bundle.meeting);
-        setClubInfo(bundle.clubInfo);
-        setTableTopicMaster(bundle.tableTopicMaster);
-        setParticipants(sortTableTopicParticipants(bundle.participants));
-        setAssignedQuestions(bundle.assignedQuestions);
-        setPublishedQuestions(bundle.publishedQuestions);
-        setIsVPEClub(bundle.isVpe);
-        await loadTableTopicSummaryVisibility();
+        await applyBundleToState(bundle);
 
         // Note: `participantQuestions` is not used elsewhere in this screen.
         // Keeping bundle fetch lightweight via the optimized snapshot payload.
@@ -377,31 +378,6 @@ export default function TableTopicCorner(): JSX.Element {
 
     loadInFlightRef.current = run();
     return loadInFlightRef.current;
-  };
-
-  const loadPublishedQuestions = async (): Promise<void> => {
-    if (!meetingId || !user?.currentClubId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('app_meeting_tabletopicscorner')
-        .select('id')
-        .eq('meeting_id', meetingId)
-        .eq('club_id', user.currentClubId)
-        .eq('is_active', true)
-        .eq('is_published', true)
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Error loading published questions:', error);
-        return;
-      }
-
-      // On this screen we only need `publishedQuestions.length`.
-      setPublishedQuestions((data || []) as any);
-    } catch (error) {
-      console.error('Error loading published questions:', error);
-    }
   };
 
   /**
@@ -726,6 +702,22 @@ export default function TableTopicCorner(): JSX.Element {
     }
   }, [meetingId]);
 
+  const applyBundleToState = useCallback(
+    async (bundle: Awaited<ReturnType<typeof fetchTableTopicCornerBundle>> | null) => {
+      if (!bundle?.meeting || !bundle?.clubInfo) return false;
+      setMeeting(bundle.meeting);
+      setClubInfo(bundle.clubInfo);
+      setTableTopicMaster(bundle.tableTopicMaster);
+      setParticipants(sortTableTopicParticipants(bundle.participants));
+      setAssignedQuestions(bundle.assignedQuestions);
+      setPublishedQuestions(bundle.publishedQuestions);
+      setIsVPEClub(bundle.isVpe);
+      setTableTopicSummaryVisibleToMembers(bundle.summaryVisibleToMembers !== false);
+      return true;
+    },
+    []
+  );
+
   const handleTableTopicSummaryVisibilityChange = useCallback(
     async (visible: boolean) => {
       if (!meetingId || !canManageTableTopicCorner()) return;
@@ -982,17 +974,18 @@ export default function TableTopicCorner(): JSX.Element {
     [persistCornerSlotAtIndex]
   );
 
-  // Reload question bank whenever this screen is shown.
+  // Refresh the snapshot when returning, but avoid duplicate work on the first open.
   useFocusEffect(
     useCallback(() => {
-      void fetchAndHydrateQuestionBank();
-
       if (!hasLoadedOnceRef.current) {
         hasLoadedOnceRef.current = true;
-      } else if (meetingId && user?.currentClubId) {
-        void loadPublishedQuestions();
+        return;
       }
-    }, [meetingId, user?.currentClubId, fetchAndHydrateQuestionBank])
+
+      if (meetingId && user?.currentClubId) {
+        void loadTableTopicCornerData();
+      }
+    }, [meetingId, user?.currentClubId, user?.id])
   );
 
   useEffect(() => {
@@ -1002,8 +995,10 @@ export default function TableTopicCorner(): JSX.Element {
   }, [activeTab, isVPEClub, tableTopicMaster?.assigned_user_id, user?.id]);
 
   useEffect(() => {
+    if (activeTab !== 'table_topic_corner') return;
+    if (!canManageTableTopicCorner()) return;
     void fetchAndHydrateQuestionBank();
-  }, [fetchAndHydrateQuestionBank]);
+  }, [activeTab, fetchAndHydrateQuestionBank, isVPEClub, tableTopicMaster?.assigned_user_id, user?.id]);
 
   /**
    * Handle adding/editing question for a participant from question bank
@@ -1650,7 +1645,7 @@ export default function TableTopicCorner(): JSX.Element {
   }
 
   const ttmAvatarUri = getSafeAvatarUri(tableTopicMaster?.app_user_profiles?.avatar_url);
-  const showTtmAvatar = !!ttmAvatarUri && !failedAvatarUris[ttmAvatarUri];
+  const showTtmAvatar = shouldLoadAvatars && !!ttmAvatarUri && !failedAvatarUris[ttmAvatarUri];
   const summaryDraftQuestions = cornerCommittedTexts
     .map((text, index) => ({ order: index + 1, text: (text || '').trim() }))
     .filter((q) => q.text.length > 0);
@@ -1724,7 +1719,15 @@ export default function TableTopicCorner(): JSX.Element {
                     onError={() => markAvatarFailed(ttmAvatarUri)}
                   />
                 ) : (
-                  <User size={40} color={theme.mode === 'dark' ? '#737373' : '#9CA3AF'} />
+                  <Text
+                    style={[
+                      styles.consolidatedAvatarInitial,
+                      { color: theme.mode === 'dark' ? '#E5E7EB' : '#6B7280' },
+                    ]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {initialsFromName(tableTopicMaster.app_user_profiles.full_name, 1)}
+                  </Text>
                 )}
               </View>
               <Text
@@ -2890,6 +2893,11 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
+  },
+  consolidatedAvatarInitial: {
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: 0.4,
   },
   consolidatedPersonName: {
     fontSize: 19,

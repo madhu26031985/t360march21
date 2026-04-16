@@ -27,6 +27,7 @@ import {
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { bookMeetingRoleForCurrentUser } from '@/lib/bookMeetingRoleInline';
+import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
 import { Image } from 'react-native';
 import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
 
@@ -80,6 +81,7 @@ interface BookedEvaluatorRole {
 export default function PreparedSpeechEvaluations() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const shouldLoadAvatars = useShouldLoadNetworkAvatars();
   const params = useLocalSearchParams();
   const meetingId = typeof params.meetingId === 'string' ? params.meetingId : params.meetingId?.[0];
   const [loading, setLoading] = useState(true);
@@ -515,11 +517,13 @@ export default function PreparedSpeechEvaluations() {
                 style={[styles.evaluationCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
               >
                 <View style={styles.profileHeader}>
-                  {role.assigned_user_avatar ? (
+                  {shouldLoadAvatars && role.assigned_user_avatar ? (
                     <Image source={{ uri: role.assigned_user_avatar }} style={styles.profileAvatar} />
                   ) : (
                     <View style={[styles.profileAvatarPlaceholder, { backgroundColor: theme.colors.primary + '30' }]}>
-                      <User size={32} color={theme.colors.primary} />
+                      <Text style={[styles.profileAvatarInitial, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                        {initialsFromName(role.assigned_user_name, 1)}
+                      </Text>
                     </View>
                   )}
                   <View style={styles.profileInfo}>
@@ -657,11 +661,13 @@ export default function PreparedSpeechEvaluations() {
               >
                 {/* Speaker Profile */}
                 <View style={styles.profileHeader}>
-                  {userProfile?.avatar_url ? (
+                  {shouldLoadAvatars && userProfile?.avatar_url ? (
                     <Image source={{ uri: userProfile.avatar_url }} style={styles.profileAvatar} />
                   ) : (
                     <View style={[styles.profileAvatarPlaceholder, { backgroundColor: theme.colors.primary + '30' }]}>
-                      <User size={32} color={theme.colors.primary} />
+                      <Text style={[styles.profileAvatarInitial, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                        {initialsFromName(userProfile?.full_name || 'Speaker', 1)}
+                      </Text>
                     </View>
                   )}
                   <View style={styles.profileInfo}>
@@ -759,11 +765,13 @@ export default function PreparedSpeechEvaluations() {
               >
                 {/* Evaluator Profile */}
                 <View style={styles.profileHeader}>
-                  {evaluation.evaluator_avatar ? (
+                  {shouldLoadAvatars && evaluation.evaluator_avatar ? (
                     <Image source={{ uri: evaluation.evaluator_avatar }} style={styles.profileAvatar} />
                   ) : (
                     <View style={[styles.profileAvatarPlaceholder, { backgroundColor: theme.colors.primary + '30' }]}>
-                      <User size={32} color={theme.colors.primary} />
+                      <Text style={[styles.profileAvatarInitial, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                        {initialsFromName(evaluation.evaluator_name, 1)}
+                      </Text>
                     </View>
                   )}
                   <View style={styles.profileInfo}>
@@ -826,11 +834,13 @@ export default function PreparedSpeechEvaluations() {
                 <View style={[styles.sectionDivider, { backgroundColor: theme.colors.border }]} />
 
                 <View style={styles.speakerRow}>
-                  {evaluation.speaker_avatar ? (
+                  {shouldLoadAvatars && evaluation.speaker_avatar ? (
                     <Image source={{ uri: evaluation.speaker_avatar }} style={styles.speakerAvatarSmall} />
                   ) : (
                     <View style={[styles.speakerAvatarPlaceholderSmall, { backgroundColor: theme.colors.primary + '30' }]}>
-                      <User size={20} color={theme.colors.primary} />
+                      <Text style={[styles.speakerAvatarInitialSmall, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+                        {initialsFromName(evaluation.speaker_name, 1)}
+                      </Text>
                     </View>
                   )}
                   <View style={styles.speakerDetails}>
@@ -1185,6 +1195,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  profileAvatarInitial: {
+    fontSize: 30,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
   profileInfo: {
     flex: 1,
     marginLeft: 12,
@@ -1257,6 +1272,11 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  speakerAvatarInitialSmall: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 0.2,
   },
   speakerDetails: {
     flex: 1,

@@ -49,10 +49,12 @@ export type TimerReportSnapshotCategoryRole = {
 export type TimerReportSnapshot = {
   meeting: Record<string, unknown>;
   club_id: string;
+  club_name: string;
   member_directory: TimerReportSnapshotMember[];
   selected_member_ids: string[];
   assigned_timer: TimerReportSnapshotAssignedTimer;
   is_vpe: boolean;
+  summary_visible_to_members: boolean;
   timer_reports: Record<string, unknown>[];
   visiting_guests: MeetingVisitingGuest[];
   category_roles: TimerReportSnapshotCategoryRole[];
@@ -77,6 +79,7 @@ export async function fetchTimerReportSnapshot(
   return {
     meeting: (raw.meeting as Record<string, unknown>) || {},
     club_id: String(raw.club_id || ''),
+    club_name: String(raw.club_name || ''),
     member_directory: Array.isArray(raw.member_directory)
       ? (raw.member_directory as Record<string, unknown>[]).map((row) => ({
           user_id: String(row.user_id || ''),
@@ -94,6 +97,7 @@ export async function fetchTimerReportSnapshot(
       : [],
     assigned_timer: (raw.assigned_timer as TimerReportSnapshotAssignedTimer) ?? null,
     is_vpe: Boolean(raw.is_vpe),
+    summary_visible_to_members: raw.summary_visible_to_members !== false,
     timer_reports: Array.isArray(raw.timer_reports) ? (raw.timer_reports as Record<string, unknown>[]) : [],
     visiting_guests: parseMeetingVisitingGuests(raw.visiting_guests),
     category_roles: Array.isArray(raw.category_roles) ? (raw.category_roles as TimerReportSnapshotCategoryRole[]) : [],

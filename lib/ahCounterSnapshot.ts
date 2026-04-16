@@ -9,6 +9,7 @@ export const ahCounterQueryKeys = {
 export type AhCounterSnapshot = {
   meeting: Record<string, unknown> | null;
   club_id: string;
+  club_name: string;
   assigned_ah_counter: {
     id: string;
     full_name: string;
@@ -22,6 +23,7 @@ export type AhCounterSnapshot = {
   };
   is_excomm: boolean;
   is_vpe_for_club: boolean;
+  summary_visible_to_members: boolean;
   // Heavy arrays intentionally excluded from the snapshot for performance.
   // Fetch via `get_ah_counter_audit_members` / `get_ah_counter_report_rows` RPCs.
   report_rows: Record<string, unknown>[];
@@ -57,6 +59,7 @@ export async function fetchAhCounterSnapshot(
   return {
     meeting: (raw.meeting as Record<string, unknown> | null) ?? null,
     club_id: String(raw.club_id || ''),
+    club_name: String(raw.club_name || ''),
     assigned_ah_counter:
       (raw.assigned_ah_counter as AhCounterSnapshot['assigned_ah_counter']) ?? null,
     report_stats: {
@@ -66,6 +69,7 @@ export async function fetchAhCounterSnapshot(
     },
     is_excomm: Boolean(raw.is_excomm),
     is_vpe_for_club: Boolean(raw.is_vpe_for_club),
+    summary_visible_to_members: raw.summary_visible_to_members !== false,
     // Backward-compatible fields; new RPC returns [] for these.
     report_rows: Array.isArray(raw.report_rows) ? (raw.report_rows as Record<string, unknown>[]) : [],
     audit_members: Array.isArray(raw.audit_members)

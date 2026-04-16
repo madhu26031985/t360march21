@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Animated, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -107,6 +107,16 @@ function isHiddenIceBreakerBookRole(role: MeetingRole): boolean {
   return false;
 }
 
+function splitBookRoleLists(roles: MeetingRole[], userId: string) {
+  return {
+    available: roles.filter((role) => !role.assigned_user_id && !isHiddenIceBreakerBookRole(role)),
+    mine: roles.filter((role) => role.assigned_user_id === userId && !isHiddenIceBreakerBookRole(role)),
+    others: roles.filter(
+      (role) => role.assigned_user_id && role.assigned_user_id !== userId && !isHiddenIceBreakerBookRole(role)
+    ),
+  };
+}
+
 export default function BookARole() {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -186,6 +196,22 @@ export default function BookARole() {
       setSelectedClassification('all');
     }
   }, [classificationTabs, selectedClassification]);
+
+  const applyOptimisticRoles = useCallback((updater: (roles: MeetingRole[]) => MeetingRole[]) => {
+    if (!selectedMeeting || !user) return;
+    const currentRoles = [
+      ...availableRoles,
+      ...myBookings,
+      ...bookedByOthers,
+    ];
+    const deduped = Array.from(new Map(currentRoles.map((role) => [role.id, role])).values());
+    const nextRoles = updater(deduped);
+    bookRoleRolesCacheByMeeting.set(selectedMeeting.id, { at: Date.now(), roles: nextRoles });
+    const nextLists = splitBookRoleLists(nextRoles, user.id);
+    setAvailableRoles(nextLists.available);
+    setMyBookings(nextLists.mine);
+    setBookedByOthers(nextLists.others);
+  }, [selectedMeeting, user, availableRoles, myBookings, bookedByOthers]);
 
   const loadMeetings = async () => {
     if (!user?.currentClubId) {
@@ -571,8 +597,21 @@ export default function BookARole() {
       // Keep speech details when switching Prepared/Ice slot numbers in same meeting.
       await transferSpeechDetailsToNewSpeakerSlot(role.role_name, role.meeting_id, user.id);
 
+      applyOptimisticRoles((roles) =>
+        roles.map((item) =>
+          item.id === role.id
+            ? {
+                ...item,
+                assigned_user_id: user.id,
+                booking_status: 'booked',
+                booked_at: new Date().toISOString(),
+                withdrawn_at: null,
+              }
+            : item
+        )
+      );
       setSelectedTab('my_bookings');
-      loadMeetingRoles();
+      void loadMeetingRoles();
 
       const bookedToastmaster =
         role.role_name.toLowerCase().includes('toastmaster') &&
@@ -625,8 +664,20 @@ export default function BookARole() {
         }
       }
 
+      applyOptimisticRoles((roles) =>
+        roles.map((item) =>
+          item.id === role.id
+            ? {
+                ...item,
+                assigned_user_id: null,
+                booking_status: 'available',
+                withdrawn_at: new Date().toISOString(),
+              }
+            : item
+        )
+      );
       setWithdrawConfirmRole(null);
-      loadMeetingRoles();
+      void loadMeetingRoles();
       setWithdrawnRoleName(role.role_name);
     } catch (error) {
       console.error('Error withdrawing role:', error);

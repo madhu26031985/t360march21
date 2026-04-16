@@ -17,7 +17,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   Building2,
   BookOpen,
+  CalendarDays,
   CircleHelp,
+  Clock,
+  Clock3,
   Globe,
   Link as LinkIcon,
   Instagram,
@@ -28,6 +31,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Facebook,
+  MapPin,
+  RotateCcw,
   Twitter,
   Star,
   Users,
@@ -137,6 +142,20 @@ function formatMeetingFrequency(frequency: string | null | undefined): string | 
   return frequency;
 }
 
+function formatMeetingDuration(start: string | null | undefined, end: string | null | undefined): string | null {
+  if (!start || !end) return null;
+  const [sh = 0, sm = 0] = start.split(':').map(Number);
+  const [eh = 0, em = 0] = end.split(':').map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
+  let minutes = (eh * 60 + em) - (sh * 60 + sm);
+  if (minutes <= 0) return null;
+  const hours = Math.floor(minutes / 60);
+  minutes %= 60;
+  if (hours > 0 && minutes === 0) return `${hours} hour${hours === 1 ? '' : 's'}`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes} min`;
+}
+
 function formatCharterDateShort(dateStr: string | null | undefined): string | null {
   if (!dateStr) return null;
   try {
@@ -148,6 +167,12 @@ function formatCharterDateShort(dateStr: string | null | undefined): string | nu
   } catch {
     return null;
   }
+}
+
+function normalizeBannerColor(raw: string | null | undefined): string | null {
+  const value = (raw || '').trim();
+  if (!value) return null;
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : null;
 }
 
 function socialIconForKey(key: string) {
@@ -3255,6 +3280,7 @@ export default function MyClub() {
   }, [social]);
 
   const profile = bundle?.clubData;
+  const clubBannerColor = normalizeBannerColor(profile?.banner_color);
   const locationLines = [profile?.address, profile?.city, profile?.country]
     .map((s) => s?.trim())
     .filter(Boolean) as string[];
@@ -3308,6 +3334,9 @@ export default function MyClub() {
     .join(' • ');
   const meetingSecondaryDisplay = meetingSecondaryLine.length > 0 ? meetingSecondaryLine : '—';
   const meetingA11yLabel = `Meeting. ${meetingDayLabel}, ${timeRange}. ${meetingSecondaryDisplay}.`;
+  const timeZoneDisplay = bundle?.clubData.time_zone?.trim() || 'IST';
+  const meetingDurationDisplay =
+    formatMeetingDuration(bundle?.meetingSchedule.meeting_start_time, bundle?.meetingSchedule.meeting_end_time) || '—';
 
   const educationalHighlightRows = useMemo(
     () =>
@@ -3358,17 +3387,31 @@ export default function MyClub() {
                 {/* Notion-style single top card: club, about, meeting grid, location */}
                 <View style={styles.clubTopSegment}>
                   <View style={styles.clubTopFlatBox}>
-                    <View style={styles.clubTopBlock}>
-                    <Text style={styles.clubTopTitle} maxFontSizeMultiplier={1.15}>
+                    <View
+                      style={[
+                        styles.clubTopBlock,
+                        clubBannerColor ? { backgroundColor: clubBannerColor } : null,
+                      ]}
+                    >
+                    <Text
+                      style={[styles.clubTopTitle, clubBannerColor ? styles.clubTopTitleOnBanner : null]}
+                      maxFontSizeMultiplier={1.15}
+                    >
                       {bundle.clubInfo.name}
                     </Text>
                     {clubNumberCharterLine ? (
-                      <Text style={styles.clubTopMeta} maxFontSizeMultiplier={1.1}>
+                      <Text
+                        style={[styles.clubTopMeta, clubBannerColor ? styles.clubTopMetaOnBanner : null]}
+                        maxFontSizeMultiplier={1.1}
+                      >
                         {clubNumberCharterLine}
                       </Text>
                     ) : null}
                     {orgMetaLine ? (
-                      <Text style={styles.clubTopMeta} maxFontSizeMultiplier={1.1}>
+                      <Text
+                        style={[styles.clubTopMeta, clubBannerColor ? styles.clubTopMetaOnBanner : null]}
+                        maxFontSizeMultiplier={1.1}
+                      >
                         {orgMetaLine}
                       </Text>
                     ) : null}
@@ -3386,10 +3429,57 @@ export default function MyClub() {
                     <View style={styles.clubTopDivider} />
 
                     <View style={styles.clubTopBlock}>
-                    <Text style={styles.clubTopSectionTitle} maxFontSizeMultiplier={1.12}>Meetings</Text>
-                    <Text style={styles.clubTopBody} maxFontSizeMultiplier={1.15}>
-                      Every {meetingDayLabel} between {timeRange}. Sessions include Prepared Speeches, Table Topics, and Evaluations. Members can also take up leadership roles to grow as leaders.
-                    </Text>
+                    <Text style={styles.clubTopSectionTitle} maxFontSizeMultiplier={1.12}>Meeting Schedule</Text>
+                    <View style={styles.scheduleList}>
+                      <View style={styles.scheduleRow}>
+                        <View style={[styles.scheduleIconBox, { backgroundColor: '#DBEAFE' }]}>
+                          <CalendarDays size={18} color="#2563EB" strokeWidth={2} />
+                        </View>
+                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                          {`Day: ${meetingDayLabel}`}
+                        </Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <View style={[styles.scheduleIconBox, { backgroundColor: '#EDE9FE' }]}>
+                          <RotateCcw size={18} color="#7C3AED" strokeWidth={2} />
+                        </View>
+                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                          {`Frequency: ${frequencyDisplay}`}
+                        </Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <View style={[styles.scheduleIconBox, { backgroundColor: '#DCFCE7' }]}>
+                          <Clock3 size={18} color="#16A34A" strokeWidth={2} />
+                        </View>
+                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                          {`Time: ${timeRange}`}
+                        </Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <View style={[styles.scheduleIconBox, { backgroundColor: '#FEF3C7' }]}>
+                          <Globe size={18} color="#D97706" strokeWidth={2} />
+                        </View>
+                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                          {`Time Zone: ${timeZoneDisplay}`}
+                        </Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <View style={[styles.scheduleIconBox, { backgroundColor: '#FCE7F3' }]}>
+                          <Clock size={18} color="#DB2777" strokeWidth={2} />
+                        </View>
+                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                          {`Duration: ${meetingDurationDisplay}`}
+                        </Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <View style={[styles.scheduleIconBox, { backgroundColor: '#E0F2FE' }]}>
+                          <MapPin size={18} color="#0284C7" strokeWidth={2} />
+                        </View>
+                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                          {`Type: ${formatDisplay}`}
+                        </Text>
+                      </View>
+                    </View>
                     </View>
 
                     <View style={styles.clubTopDivider} />
@@ -3665,12 +3755,18 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     lineHeight: 30,
   },
+  clubTopTitleOnBanner: {
+    color: '#FFFFFF',
+  },
   clubTopMeta: {
     fontSize: 14,
     fontWeight: '400',
     color: C.textSecondary,
     marginTop: 4,
     lineHeight: 20,
+  },
+  clubTopMetaOnBanner: {
+    color: 'rgba(255,255,255,0.92)',
   },
   clubTopSectionTitle: {
     fontSize: 17,
@@ -3686,37 +3782,67 @@ const styles = StyleSheet.create({
     color: C.textSecondary,
     lineHeight: 24,
   },
+  scheduleList: {
+    marginTop: 2,
+    gap: 10,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  scheduleRowText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.textSecondary,
+    lineHeight: 16,
+  },
+  scheduleIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  clubTopBodySpaced: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: '400',
+    color: C.textSecondary,
+    lineHeight: 24,
+  },
   whyJoinRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 10,
   },
   whyJoinIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 35,
+    height: 35,
+    borderRadius: 10,
     backgroundColor: '#0D4D7A',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   whyJoinIcon: {
-    fontSize: 18,
+    fontSize: 14,
   },
   whyJoinTextCol: {
     flex: 1,
   },
   whyJoinTitle: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '700',
     color: C.text,
-    lineHeight: 24,
+    lineHeight: 19,
   },
   whyJoinDesc: {
-    marginTop: 2,
-    fontSize: 15,
+    marginTop: 1,
+    fontSize: 12,
     color: C.textSecondary,
-    lineHeight: 21,
+    lineHeight: 17,
   },
   locationInnerBox: {
     borderRadius: 0,
@@ -3776,8 +3902,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 11,
-    fontWeight: '500',
-    color: C.textMuted,
+    fontWeight: '700',
+    color: C.text,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 12,
