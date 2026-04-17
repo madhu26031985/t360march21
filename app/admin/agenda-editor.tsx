@@ -14,7 +14,7 @@ import {
   Keyboard,
   InputAccessoryView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -24,7 +24,35 @@ import * as Clipboard from 'expo-clipboard';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import { normalizeStoredPublicAgendaSkin } from '@/lib/publicAgendaSkin';
 import { buildAgendaWebUrl, buildShortAgendaWebUrl } from '@/lib/agendaWebLink';
-import { ChevronLeft, Save, Clock, Eye, EyeOff, Trash2, UserPlus, Search, X, ChevronUp, ChevronDown, RotateCcw, FileText, Zap, PencilLine, Users2, Filter, Check, Square, ListOrdered, ExternalLink, Copy } from 'lucide-react-native';
+import {
+  ChevronLeft,
+  Save,
+  Clock,
+  Eye,
+  EyeOff,
+  Trash2,
+  UserPlus,
+  Search,
+  X,
+  ChevronUp,
+  ChevronDown,
+  RotateCcw,
+  FileText,
+  Zap,
+  PencilLine,
+  Users2,
+  Filter,
+  Check,
+  Square,
+  ListOrdered,
+  ExternalLink,
+  Copy,
+  Home,
+  Users,
+  Calendar,
+  Shield,
+  Settings,
+} from 'lucide-react-native';
 import { useCallback } from 'react';
 
 interface AgendaItem {
@@ -113,6 +141,108 @@ function parsePreparedSpeechesAgenda(raw: unknown): PreparedSpeechAgendaSlot[] {
     .sort((a, b) => a.slot - b.slot);
 }
 
+/** Matches manage-meeting-roles: unbooked roles use `open`; legacy rows may use `available`. */
+const OPEN_PREPARATION_ROLE_BOOKING_STATUSES = new Set(['open', 'available', 'pending', 'booked']);
+
+function slotNumberFromPreparedSpeakerRoleName(name: string): number | null {
+  const m = (name || '').match(/prepared\s*speaker\s*(\d+)/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+async function fetchOpenPreparedSpeakerSlotDefsForMeeting(
+  meetingId: string
+): Promise<Array<{ slot: number; role_name: string }>> {
+  try {
+    const { data: roleRows, error: roleErr } = await supabase
+      .from('app_meeting_roles_management')
+      .select('role_name, booking_status, updated_at')
+      .eq('meeting_id', meetingId)
+      .ilike('role_name', '%prepared%speaker%')
+      .order('updated_at', { ascending: false });
+
+    if (roleErr) {
+      console.error('Failed to load prepared speaker role definitions:', roleErr);
+      return [];
+    }
+
+    const bySlot = new Map<number, string>();
+    (roleRows || []).forEach((r: { role_name: string; booking_status?: string }) => {
+      const sn = slotNumberFromPreparedSpeakerRoleName(r.role_name);
+      if (sn == null || sn < 1 || sn > 5) return;
+      const status = (r.booking_status ?? '').toLowerCase();
+      if (!OPEN_PREPARATION_ROLE_BOOKING_STATUSES.has(status)) return;
+      if (!bySlot.has(sn)) bySlot.set(sn, r.role_name);
+    });
+
+    return Array.from(bySlot.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([slot, role_name]) => ({ slot, role_name }));
+  } catch (e) {
+    console.error('Exception while loading prepared speaker role definitions:', e);
+    return [];
+  }
+}
+
+/** When new prepared-speaker roles are opened after agenda creation, extend stored JSON + DB. */
+async function syncPreparedSpeechesAgendaWithOpenRoles(
+  meetingId: string,
+  items: AgendaItem[]
+): Promise<{ items: AgendaItem[]; slotDefs: Array<{ slot: number; role_name: string }> }> {
+  const slotDefs = await fetchOpenPreparedSpeakerSlotDefsForMeeting(meetingId);
+  const preparedIdx = items.findIndex(i => i.section_name.toLowerCase().includes('prepared speeches'));
+  if (preparedIdx < 0 || slotDefs.length === 0) {
+    return { items, slotDefs };
+  }
+
+  const preparedItem = items[preparedIdx];
+  const parsed = parsePreparedSpeechesAgenda(preparedItem.prepared_speeches_agenda);
+  const parsedBySlot = new Map(parsed.map(s => [s.slot, s]));
+  const parsedSlotSet = new Set(parsed.map(s => s.slot));
+  const hasNewOpenSlot = slotDefs.some(d => !parsedSlotSet.has(d.slot));
+  if (!hasNewOpenSlot) {
+    return { items, slotDefs };
+  }
+
+  const merged: PreparedSpeechAgendaSlot[] = slotDefs
+    .filter(def => def.slot >= 1 && def.slot <= 5)
+    .sort((a, b) => a.slot - b.slot)
+    .map(def => {
+      const existing = parsedBySlot.get(def.slot);
+      if (existing) return existing;
+      return {
+        slot: def.slot,
+        role_name: def.role_name,
+        booked: false,
+        pathway_id: null,
+        speaker_user_id: null,
+        speaker_name: null,
+        speech_title: null,
+        pathway_name: null,
+        level: null,
+        project_number: null,
+        project_name: null,
+        evaluation_form: null,
+        evaluator_user_id: null,
+        evaluator_name: null,
+        is_visible: true,
+      };
+    });
+
+  const { error: upErr } = await supabase
+    .from('meeting_agenda_items')
+    .update({ prepared_speeches_agenda: merged })
+    .eq('id', preparedItem.id);
+
+  if (upErr) {
+    console.error('syncPreparedSpeechesAgendaWithOpenRoles:', upErr);
+    return { items, slotDefs };
+  }
+
+  const next = [...items];
+  next[preparedIdx] = { ...preparedItem, prepared_speeches_agenda: merged };
+  return { items: next, slotDefs };
+}
+
 interface GrammarianCorner {
   word_of_the_day?: {
     id: string;
@@ -178,9 +308,16 @@ interface GESubRole {
   linked_role_id: string | null;
 }
 
+const AGENDA_EDITOR_FOOTER_NAV_ICON_SIZE = 16;
+
 export default function AgendaEditor() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const footerNavBottomPad =
+    Platform.OS === 'web'
+      ? Math.min(Math.max(insets.bottom, 8), 14)
+      : Math.max(insets.bottom, 8);
   const params = useLocalSearchParams();
   const meetingId = params.meetingId as string;
 
@@ -356,7 +493,6 @@ export default function AgendaEditor() {
     loadAhCounter();
     loadGrammarian();
     loadPreparedSpeakers();
-    loadPreparedSpeakerRoleDefs();
     loadIceBreakers();
     loadGeSubRoles();
   }, [meetingId]);
@@ -1187,7 +1323,9 @@ export default function AgendaEditor() {
         return baseItem;
       }) || []).filter((item: any) => !item.section_name.toLowerCase().includes('ancillary'));
 
-      setAgendaItems(items);
+      const { items: itemsSynced, slotDefs } = await syncPreparedSpeechesAgendaWithOpenRoles(meetingId, items);
+      setAgendaItems(itemsSynced);
+      setPreparedSpeakerRoleDefs(slotDefs);
       const grammarianItem = items.find((i: any) => i.section_name === 'Grammarian Corner');
       const stored = grammarianItem?.role_details?.grammarian_corner;
       if (stored) {
@@ -1952,46 +2090,16 @@ export default function AgendaEditor() {
     }
   };
 
-  const slotFromRoleName = (name: string): number | null => {
-    const m = (name || '').match(/prepared\s*speaker\s*(\d+)/i);
-    return m ? parseInt(m[1], 10) : null;
-  };
+  const slotFromRoleName = (name: string): number | null => slotNumberFromPreparedSpeakerRoleName(name);
 
   const loadPreparedSpeakerRoleDefs = async () => {
-    // Prepared speaker slots should reflect how many roles are currently open for this meeting.
-    // (e.g. only 2 roles -> render slots 1..2, even if the UI previously defaulted to 3.)
-    const OPEN_BOOKING_STATUSES = ['available', 'pending', 'booked'];
-    try {
-      const { data: roleRows, error: roleErr } = await supabase
-        .from('app_meeting_roles_management')
-        .select('role_name, booking_status, updated_at')
-        .eq('meeting_id', meetingId)
-        .ilike('role_name', '%prepared%speaker%')
-        .order('updated_at', { ascending: false });
-
-      if (roleErr) {
-        console.error('Failed to load prepared speaker role definitions:', roleErr);
-        setPreparedSpeakerRoleDefs([]);
-        return;
-      }
-
-      const bySlot = new Map<number, string>();
-      (roleRows || []).forEach((r: { role_name: string; booking_status?: string }) => {
-        const sn = slotFromRoleName(r.role_name);
-        if (sn == null || sn < 1 || sn > 5) return;
-        const status = (r.booking_status ?? '').toLowerCase();
-        if (!OPEN_BOOKING_STATUSES.includes(status)) return;
-        if (!bySlot.has(sn)) bySlot.set(sn, r.role_name);
-      });
-
-      const sorted = Array.from(bySlot.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([slot, role_name]) => ({ slot, role_name }));
-
-      setPreparedSpeakerRoleDefs(sorted);
-    } catch (e) {
-      console.error('Exception while loading prepared speaker role definitions:', e);
-      setPreparedSpeakerRoleDefs([]);
+    const { items: nextItems, slotDefs } = await syncPreparedSpeechesAgendaWithOpenRoles(
+      meetingId,
+      agendaItemsRef.current
+    );
+    setPreparedSpeakerRoleDefs(slotDefs);
+    if (nextItems !== agendaItemsRef.current) {
+      setAgendaItems(nextItems);
     }
   };
 
@@ -2019,7 +2127,6 @@ export default function AgendaEditor() {
       }
 
       const roleBySlot = new Map<number, (typeof roleRows)[0]>();
-      const OPEN_BOOKING_STATUSES = ['available', 'pending', 'booked'];
       (roleRows || []).forEach((r: { role_name: string; booking_status?: string }) => {
         const sn = slotFromRoleName(r.role_name);
         if (
@@ -2027,7 +2134,7 @@ export default function AgendaEditor() {
           sn >= 1 &&
           sn <= 5 &&
           !roleBySlot.has(sn) &&
-          OPEN_BOOKING_STATUSES.includes((r.booking_status ?? '').toLowerCase())
+          OPEN_PREPARATION_ROLE_BOOKING_STATUSES.has((r.booking_status ?? '').toLowerCase())
         ) {
           roleBySlot.set(sn, r as (typeof roleRows)[0]);
         }
@@ -2365,7 +2472,7 @@ export default function AgendaEditor() {
     }
   };
 
-  const assignTimer = async (memberId: string, memberName: string) => {
+  const assignTimer = async (memberId: string | null, memberName: string | null) => {
     // Update the agenda item only - do not modify role booking
     const { data: agendaItem, error: timerAgendaFetchError } = await supabase
       .from('meeting_agenda_items')
@@ -2401,7 +2508,7 @@ export default function AgendaEditor() {
     }
   };
 
-  const assignAhCounter = async (memberId: string, memberName: string) => {
+  const assignAhCounter = async (memberId: string | null, memberName: string | null) => {
     // Update the agenda item only - do not modify role booking
     const { data: agendaItem, error: ahCounterAgendaFetchError } = await supabase
       .from('meeting_agenda_items')
@@ -2437,7 +2544,7 @@ export default function AgendaEditor() {
     }
   };
 
-  const assignGrammarian = async (memberId: string, memberName: string) => {
+  const assignGrammarian = async (memberId: string | null, memberName: string | null) => {
     // Update the agenda item only - do not modify role booking
     const { data: agendaItem, error: grammarianAgendaFetchError } = await supabase
       .from('meeting_agenda_items')
@@ -3539,8 +3646,12 @@ export default function AgendaEditor() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      edges={['top', 'left', 'right']}
+    >
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <View style={styles.agendaEditorPageBody}>
       <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ChevronLeft size={24} color={theme.colors.text} />
@@ -3611,7 +3722,11 @@ export default function AgendaEditor() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={{ paddingBottom: 88 + footerNavBottomPad }}
+        showsVerticalScrollIndicator={false}
+      >
         {agendaEditorTab === 'settings' ? (
         <>
         <View
@@ -5461,7 +5576,7 @@ export default function AgendaEditor() {
                       speakerName: string | null;
                     }> = [];
 
-                    [1, 2, 3].forEach(slotNum => {
+                    PREPARED_SPEAKER_ROLE_NAMES.map((_, i) => i + 1).forEach(slotNum => {
                       const slot = bySlot.get(slotNum);
 
                       const hasRoleDef = openSlotSet.size > 0;
@@ -5890,6 +6005,55 @@ export default function AgendaEditor() {
         <View style={styles.bottomSpace} />
       </ScrollView>
 
+      <View
+        style={[
+          styles.agendaEditorFooterNav,
+          {
+            backgroundColor: theme.colors.surface,
+            borderTopColor: theme.colors.border,
+            paddingBottom: footerNavBottomPad,
+          },
+        ]}
+      >
+        <TouchableOpacity style={styles.agendaEditorFooterNavItem} onPress={() => router.push('/(tabs)')} activeOpacity={0.75}>
+          <Home size={AGENDA_EDITOR_FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
+          <Text style={[styles.agendaEditorFooterNavLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            Home
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.agendaEditorFooterNavItem} onPress={() => router.push('/(tabs)/club')} activeOpacity={0.75}>
+          <Users size={AGENDA_EDITOR_FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
+          <Text style={[styles.agendaEditorFooterNavLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            Club
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.agendaEditorFooterNavItem} onPress={() => router.push('/(tabs)/meetings')} activeOpacity={0.75}>
+          <Calendar size={AGENDA_EDITOR_FOOTER_NAV_ICON_SIZE} color={theme.colors.primary} />
+          <Text
+            style={[
+              styles.agendaEditorFooterNavLabel,
+              { color: theme.colors.primary, fontWeight: '700' },
+            ]}
+            maxFontSizeMultiplier={1.2}
+          >
+            Meeting
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.agendaEditorFooterNavItem} onPress={() => router.push('/(tabs)/admin')} activeOpacity={0.75}>
+          <Shield size={AGENDA_EDITOR_FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
+          <Text style={[styles.agendaEditorFooterNavLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            Admin
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.agendaEditorFooterNavItem} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.75}>
+          <Settings size={AGENDA_EDITOR_FOOTER_NAV_ICON_SIZE} color={theme.colors.textSecondary} />
+          <Text style={[styles.agendaEditorFooterNavLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            Settings
+          </Text>
+        </TouchableOpacity>
+      </View>
+      </View>
+
       <Modal
         visible={assignmentModalVisible}
         transparent={true}
@@ -6241,6 +6405,15 @@ export default function AgendaEditor() {
                   Club Members:
                 </Text>
               </View>
+              <TouchableOpacity
+                onPress={() => assignTimer(null, null)}
+                style={[styles.memberItem, { borderBottomColor: theme.colors.border }]}
+              >
+                <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Unassigned
+                </Text>
+                <UserPlus size={18} color={theme.colors.primary} />
+              </TouchableOpacity>
               {clubMembers
                 .filter(member =>
                   member.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -6306,6 +6479,15 @@ export default function AgendaEditor() {
                   Club Members:
                 </Text>
               </View>
+              <TouchableOpacity
+                onPress={() => assignAhCounter(null, null)}
+                style={[styles.memberItem, { borderBottomColor: theme.colors.border }]}
+              >
+                <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Unassigned
+                </Text>
+                <UserPlus size={18} color={theme.colors.primary} />
+              </TouchableOpacity>
               {clubMembers
                 .filter(member =>
                   member.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -6371,6 +6553,15 @@ export default function AgendaEditor() {
                   Club Members:
                 </Text>
               </View>
+              <TouchableOpacity
+                onPress={() => assignGrammarian(null, null)}
+                style={[styles.memberItem, { borderBottomColor: theme.colors.border }]}
+              >
+                <Text style={[styles.memberName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Unassigned
+                </Text>
+                <UserPlus size={18} color={theme.colors.primary} />
+              </TouchableOpacity>
               {clubMembers
                 .filter(member =>
                   member.full_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -6484,6 +6675,32 @@ export default function AgendaEditor() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  agendaEditorPageBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  agendaEditorFooterNav: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    borderTopWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  agendaEditorFooterNavItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minWidth: 56,
+  },
+  agendaEditorFooterNavLabel: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,

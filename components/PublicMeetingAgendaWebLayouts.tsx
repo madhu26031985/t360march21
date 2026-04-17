@@ -44,6 +44,16 @@ function formatPublicAgendaMeetingDateShort(iso: string | undefined): string {
   }
 }
 
+/** Public banners: show HH:MM even when the API returns HH:MM:SS. */
+function formatPublicAgendaBannerTimePart(raw: string | null | undefined): string {
+  const t = (raw ?? '').trim();
+  if (!t) return '';
+  const m = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (!m) return t;
+  const hh = m[1].padStart(2, '0');
+  return `${hh}:${m[2]}`;
+}
+
 /** Role abbreviations for the People column (public minimal agenda). */
 function minimalRoleLabelForSection(sectionName: string): string | null {
   const s = (sectionName || '').toLowerCase();
@@ -335,8 +345,8 @@ function VibrantLayout({
           <Text style={styles.vibBannerMeta}>{formatPublicAgendaMeetingDate(meeting.meeting_date)}</Text>
           {meeting.meeting_start_time ? (
             <Text style={styles.vibBannerMeta}>
-              {meeting.meeting_start_time}
-              {meeting.meeting_end_time ? ` – ${meeting.meeting_end_time}` : ''}
+              {formatPublicAgendaBannerTimePart(meeting.meeting_start_time)}
+              {meeting.meeting_end_time ? ` – ${formatPublicAgendaBannerTimePart(meeting.meeting_end_time)}` : ''}
             </Text>
           ) : null}
           {meeting.meeting_mode ? (
@@ -349,10 +359,6 @@ function VibrantLayout({
             </Pressable>
           ) : null}
         </View>
-
-        <Text style={[styles.vibNote, { color: theme.colors.textTertiary }]}>
-          Shared agenda — open the T360 app to book roles.
-        </Text>
 
         <View style={styles.vibCardStack}>
           {items.map((item) => (
@@ -394,21 +400,40 @@ function AgendaSectionCard({
           <Text style={[styles.icon, skin === 'vibrant' && { fontSize: 26 }]}>{item.section_icon}</Text>
         ) : null}
         <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              skin === 'minimal' && { fontSize: 16, fontWeight: '600' },
-              skin === 'vibrant' && { fontSize: 18, fontWeight: '700' },
-              !(skin === 'minimal' || skin === 'vibrant') && styles.sectionTitle,
-              { color: theme.colors.text },
-            ]}
-          >
-            {item.section_name}
-          </Text>
-          {item.duration_minutes != null ? (
-            <Text style={[styles.duration, { color: theme.colors.textSecondary }]}>
-              {item.duration_minutes} min
-            </Text>
-          ) : null}
+          {skin === 'vibrant' ? (
+            <View style={styles.vibrantTitleRow}>
+              <Text
+                style={[
+                  { fontSize: 18, fontWeight: '700', color: theme.colors.text, flexShrink: 1 },
+                ]}
+                numberOfLines={2}
+              >
+                {item.section_name}
+              </Text>
+              {item.duration_minutes != null ? (
+                <Text style={[styles.duration, styles.vibrantDurationInline, { color: theme.colors.textSecondary }]}>
+                  {item.duration_minutes} min
+                </Text>
+              ) : null}
+            </View>
+          ) : (
+            <>
+              <Text
+                style={[
+                  skin === 'minimal' && { fontSize: 16, fontWeight: '600' },
+                  !(skin === 'minimal' || skin === 'vibrant') && styles.sectionTitle,
+                  { color: theme.colors.text },
+                ]}
+              >
+                {item.section_name}
+              </Text>
+              {item.duration_minutes != null ? (
+                <Text style={[styles.duration, { color: theme.colors.textSecondary }]}>
+                  {item.duration_minutes} min
+                </Text>
+              ) : null}
+            </>
+          )}
         </View>
       </View>
       {item.section_description ? (
@@ -844,7 +869,15 @@ const styles = StyleSheet.create({
   vibBannerTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
   vibBannerMeta: { color: 'rgba(255,255,255,0.95)', fontSize: 15, marginTop: 6 },
   vibLink: { color: '#fff', fontSize: 16, fontWeight: '700', textDecorationLine: 'underline' },
-  vibNote: { fontSize: 13, paddingHorizontal: 20, paddingVertical: 14 },
+  vibrantTitleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  vibrantDurationInline: {
+    marginTop: 0,
+  },
   vibCardStack: { paddingHorizontal: 12, gap: 0 },
   vibCard: {
     marginBottom: 14,
