@@ -196,6 +196,28 @@ function socialIconForKey(key: string) {
   }
 }
 
+/** Brand colours for Connect row (lucide icons as strokes). */
+function socialBrandColorForKey(key: string): string {
+  switch (key) {
+    case 'fb':
+      return '#1877F2';
+    case 'ig':
+      return '#E4405F';
+    case 'li':
+      return '#0A66C2';
+    case 'x':
+      return '#1D9BF0';
+    case 'yt':
+      return '#FF0000';
+    case 'wa':
+      return '#25D366';
+    case 'web':
+      return '#475569';
+    default:
+      return C.text;
+  }
+}
+
 async function openUrl(url: string) {
   try {
     const supported = await Linking.canOpenURL(url);
@@ -3705,7 +3727,7 @@ export default function MyClub() {
                             accessibilityRole="button"
                             accessibilityLabel={s.label}
                           >
-                            <Icon size={20} color={C.text} strokeWidth={2} />
+                            <Icon size={18} color={socialBrandColorForKey(s.key)} strokeWidth={2} />
                           </TouchableOpacity>
                         );
                       })}
@@ -4538,9 +4560,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   socialIconPill: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: C.chipBg,
     borderWidth: 1,
     borderColor: C.border,
