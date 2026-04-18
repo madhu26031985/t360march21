@@ -7,6 +7,9 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "EXPO_NO_CAPABILITY_SYNC": "1"
+      },
       "android": {
         "buildType": "apk"
       },
@@ -17,7 +20,8 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_AGENDA_WEB_HOST": "https://app.t360.in"
+        "EXPO_PUBLIC_AGENDA_WEB_HOST": "https://app.t360.in",
+        "EXPO_NO_CAPABILITY_SYNC": "1"
       },
       "android": {
         "buildType": "apk",
@@ -31,7 +35,8 @@
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_AGENDA_WEB_HOST": "https://app.t360.in"
+        "EXPO_PUBLIC_AGENDA_WEB_HOST": "https://app.t360.in",
+        "EXPO_NO_CAPABILITY_SYNC": "1"
       },
       "android": {
         "buildType": "app-bundle"
