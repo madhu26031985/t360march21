@@ -64,6 +64,8 @@ export default function ClubMeetings() {
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [expandedNextMeeting, setExpandedNextMeeting] = useState<string | null>(null);
   const [openMeetingTab, setOpenMeetingTab] = useState<'actions' | 'roles' | 'evaluation'>('actions');
+  /** Tabs for expanded "Next meetings" cards (separate from open meeting so both sections can differ). */
+  const [nextMeetingTab, setNextMeetingTab] = useState<'actions' | 'roles' | 'evaluation'>('actions');
   /** Expand/collapse the open meeting card (tabs + actions) to reduce scrolling */
   const [openMeetingDetailExpanded, setOpenMeetingDetailExpanded] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -835,7 +837,7 @@ export default function ClubMeetings() {
       setExpandedNextMeeting(null);
     } else {
       setExpandedNextMeeting(meetingId);
-      setOpenMeetingTab('actions');
+      setNextMeetingTab('actions');
     }
   };
 
@@ -1060,7 +1062,7 @@ export default function ClubMeetings() {
                                 <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>
                                   Close
                                 </Text>
-                                <ChevronUp size={14} color="#ffffff" />
+                                <ChevronUp size={12} color="#ffffff" />
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -1132,7 +1134,7 @@ export default function ClubMeetings() {
                               accessibilityLabel="Expand meeting details"
                             >
                               <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>Open</Text>
-                              <ChevronDown size={14} color="#ffffff" />
+                              <ChevronDown size={12} color="#ffffff" />
                             </TouchableOpacity>
                           </View>
                           <View style={styles.heroCardDecoration} />
@@ -1199,8 +1201,7 @@ export default function ClubMeetings() {
                         </View>
                         <View style={styles.heroCardDecoration} />
                       </View>
-                    ) : true ? (
-                      /* Unified expanded box for Next Meeting */
+                    ) : expandedNextMeeting === meeting.id ? (
                       <View style={[styles.unifiedExpandedMeetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                         <View style={styles.unifiedMeetingBar}>
                           <View style={styles.heroCardContent}>
@@ -1223,7 +1224,17 @@ export default function ClubMeetings() {
                                 Mode: {formatMeetingMode(meeting.meeting_mode)}
                               </Text>
                             </View>
-                            <View style={styles.meetingActionSpacer} />
+                            <TouchableOpacity
+                              style={[styles.enterMeetingButton, { backgroundColor: theme.colors.primary }]}
+                              onPress={() => handleNextMeetingPress(meeting.id)}
+                              activeOpacity={0.8}
+                              accessibilityLabel="Collapse meeting details"
+                            >
+                              <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>
+                                Close
+                              </Text>
+                              <ChevronUp size={12} color="#ffffff" />
+                            </TouchableOpacity>
                           </View>
                         </View>
                         <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
@@ -1233,35 +1244,35 @@ export default function ClubMeetings() {
                               key={tab}
                               style={[
                                 styles.openMeetingTab,
-                                openMeetingTab === tab && styles.openMeetingTabActive,
-                                openMeetingTab === tab && { backgroundColor: theme.colors.textSecondary + '15' },
+                                nextMeetingTab === tab && styles.openMeetingTabActive,
+                                nextMeetingTab === tab && { backgroundColor: theme.colors.textSecondary + '15' },
                               ]}
-                              onPress={() => setOpenMeetingTab(tab)}
+                              onPress={() => setNextMeetingTab(tab)}
                               activeOpacity={0.7}
                             >
                               <Text
                                 style={[
                                   styles.openMeetingTabText,
-                                  { color: openMeetingTab === tab ? theme.colors.text : theme.colors.textSecondary },
-                                  openMeetingTab === tab ? styles.openMeetingTabTextActive : undefined,
+                                  { color: nextMeetingTab === tab ? theme.colors.text : theme.colors.textSecondary },
+                                  nextMeetingTab === tab ? styles.openMeetingTabTextActive : undefined,
                                 ]}
                                 maxFontSizeMultiplier={1.3}
                               >
                                 {tab === 'actions' ? 'Actions' : tab === 'roles' ? 'Roles' : 'Evaluation'}
                               </Text>
-                              {openMeetingTab === tab && <View style={[styles.openMeetingTabIndicator, { backgroundColor: theme.colors.primary }]} />}
+                              {nextMeetingTab === tab && <View style={[styles.openMeetingTabIndicator, { backgroundColor: theme.colors.primary }]} />}
                             </TouchableOpacity>
                           ))}
                         </View>
                         <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
                         <View style={styles.unifiedMeetingContent}>
-                          {openMeetingTab === 'actions' && renderActionsTabContent(meeting.id)}
-                          {openMeetingTab === 'roles' && renderRolesTabContent(meeting.id)}
-                          {openMeetingTab === 'evaluation' && renderEvaluationTabContent(meeting.id)}
+                          {nextMeetingTab === 'actions' && renderActionsTabContent(meeting.id)}
+                          {nextMeetingTab === 'roles' && renderRolesTabContent(meeting.id)}
+                          {nextMeetingTab === 'evaluation' && renderEvaluationTabContent(meeting.id)}
                         </View>
                       </View>
                     ) : (
-                      <View style={[styles.lockedHeroMeetingCard, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border }]}>
+                      <View style={[styles.heroMeetingCard, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border }]}>
                         <View style={styles.heroCardContent}>
                           <View style={[styles.dateBadge, { backgroundColor: theme.colors.textSecondary + '15' }]}>
                             <Text style={[styles.dateBadgeDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{dayNum}</Text>
@@ -1283,12 +1294,13 @@ export default function ClubMeetings() {
                             </Text>
                           </View>
                           <TouchableOpacity
-                            style={[styles.preplanButton, { backgroundColor: theme.colors.primary }]}
+                            style={[styles.enterMeetingButton, { backgroundColor: theme.colors.primary }]}
                             onPress={() => handleNextMeetingPress(meeting.id)}
                             activeOpacity={0.8}
+                            accessibilityLabel="Expand meeting details"
                           >
-                            <Text style={styles.preplanButtonText} maxFontSizeMultiplier={1.3}>Plan</Text>
-                            <ChevronDown size={16} color="#ffffff" />
+                            <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>Open</Text>
+                            <ChevronDown size={12} color="#ffffff" />
                           </TouchableOpacity>
                         </View>
                         <View style={styles.heroCardDecoration} />
@@ -1555,13 +1567,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingVertical: 8.5,
+    paddingHorizontal: 17,
     borderRadius: 0,
-    gap: 4,
+    gap: 3,
   },
   enterMeetingButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#ffffff',
   },
