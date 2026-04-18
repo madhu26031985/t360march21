@@ -3430,54 +3430,72 @@ export default function MyClub() {
 
                     <View style={styles.clubTopBlock}>
                     <Text style={styles.clubTopSectionTitle} maxFontSizeMultiplier={1.12}>Meeting Schedule</Text>
-                    <View style={styles.scheduleList}>
-                      <View style={styles.scheduleRow}>
-                        <View style={[styles.scheduleIconBox, { backgroundColor: '#DBEAFE' }]}>
-                          <CalendarDays size={18} color="#2563EB" strokeWidth={2} />
+                    <View style={styles.scheduleGrid}>
+                      <View style={styles.scheduleRowPair}>
+                        <View style={styles.scheduleCell}>
+                          <View style={styles.scheduleRow}>
+                            <View style={[styles.scheduleIconBox, { backgroundColor: '#DBEAFE' }]}>
+                              <CalendarDays size={18} color="#2563EB" strokeWidth={2} />
+                            </View>
+                            <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                              {meetingDayLabel}
+                            </Text>
+                          </View>
                         </View>
-                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
-                          {`Day: ${meetingDayLabel}`}
-                        </Text>
+                        <View style={styles.scheduleCell}>
+                          <View style={styles.scheduleRow}>
+                            <View style={[styles.scheduleIconBox, { backgroundColor: '#EDE9FE' }]}>
+                              <RotateCcw size={18} color="#7C3AED" strokeWidth={2} />
+                            </View>
+                            <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                              {frequencyDisplay}
+                            </Text>
+                          </View>
+                        </View>
                       </View>
-                      <View style={styles.scheduleRow}>
-                        <View style={[styles.scheduleIconBox, { backgroundColor: '#EDE9FE' }]}>
-                          <RotateCcw size={18} color="#7C3AED" strokeWidth={2} />
+                      <View style={styles.scheduleRowPair}>
+                        <View style={styles.scheduleCell}>
+                          <View style={styles.scheduleRow}>
+                            <View style={[styles.scheduleIconBox, { backgroundColor: '#DCFCE7' }]}>
+                              <Clock3 size={18} color="#16A34A" strokeWidth={2} />
+                            </View>
+                            <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                              {timeRange}
+                            </Text>
+                          </View>
                         </View>
-                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
-                          {`Frequency: ${frequencyDisplay}`}
-                        </Text>
+                        <View style={styles.scheduleCell}>
+                          <View style={styles.scheduleRow}>
+                            <View style={[styles.scheduleIconBox, { backgroundColor: '#FEF3C7' }]}>
+                              <Globe size={18} color="#D97706" strokeWidth={2} />
+                            </View>
+                            <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                              {timeZoneDisplay}
+                            </Text>
+                          </View>
+                        </View>
                       </View>
-                      <View style={styles.scheduleRow}>
-                        <View style={[styles.scheduleIconBox, { backgroundColor: '#DCFCE7' }]}>
-                          <Clock3 size={18} color="#16A34A" strokeWidth={2} />
+                      <View style={styles.scheduleRowPair}>
+                        <View style={styles.scheduleCell}>
+                          <View style={styles.scheduleRow}>
+                            <View style={[styles.scheduleIconBox, { backgroundColor: '#FCE7F3' }]}>
+                              <Clock size={18} color="#DB2777" strokeWidth={2} />
+                            </View>
+                            <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                              {meetingDurationDisplay}
+                            </Text>
+                          </View>
                         </View>
-                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
-                          {`Time: ${timeRange}`}
-                        </Text>
-                      </View>
-                      <View style={styles.scheduleRow}>
-                        <View style={[styles.scheduleIconBox, { backgroundColor: '#FEF3C7' }]}>
-                          <Globe size={18} color="#D97706" strokeWidth={2} />
+                        <View style={styles.scheduleCell}>
+                          <View style={styles.scheduleRow}>
+                            <View style={[styles.scheduleIconBox, { backgroundColor: '#E0F2FE' }]}>
+                              <MapPin size={18} color="#0284C7" strokeWidth={2} />
+                            </View>
+                            <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
+                              {formatDisplay}
+                            </Text>
+                          </View>
                         </View>
-                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
-                          {`Time Zone: ${timeZoneDisplay}`}
-                        </Text>
-                      </View>
-                      <View style={styles.scheduleRow}>
-                        <View style={[styles.scheduleIconBox, { backgroundColor: '#FCE7F3' }]}>
-                          <Clock size={18} color="#DB2777" strokeWidth={2} />
-                        </View>
-                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
-                          {`Duration: ${meetingDurationDisplay}`}
-                        </Text>
-                      </View>
-                      <View style={styles.scheduleRow}>
-                        <View style={[styles.scheduleIconBox, { backgroundColor: '#E0F2FE' }]}>
-                          <MapPin size={18} color="#0284C7" strokeWidth={2} />
-                        </View>
-                        <Text style={styles.scheduleRowText} maxFontSizeMultiplier={1.15}>
-                          {`Type: ${formatDisplay}`}
-                        </Text>
                       </View>
                     </View>
                     </View>
@@ -3504,7 +3522,7 @@ export default function MyClub() {
                     <View style={styles.clubTopBlock}>
                     <Text style={styles.clubTopSectionTitle} maxFontSizeMultiplier={1.12}>Location</Text>
                     <View style={styles.locationInnerBox}>
-                      <Text style={styles.clubTopBody} maxFontSizeMultiplier={1.15}>
+                      <Text style={styles.locationAddressText} maxFontSizeMultiplier={1.15}>
                         {locationText || '—'}
                       </Text>
                       {mapsUrl ? (
@@ -3786,16 +3804,28 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     fontSize: 14.4,
   },
-  scheduleList: {
+  scheduleGrid: {
     marginTop: 2,
     gap: 10,
+  },
+  scheduleRowPair: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  scheduleCell: {
+    flex: 1,
+    minWidth: 0,
   },
   scheduleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
   scheduleRowText: {
+    flex: 1,
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '700',
     color: C.textSecondary,
@@ -3853,24 +3883,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.border,
     backgroundColor: C.card,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+  },
+  /** ~20% smaller than clubTopBody for Location block only */
+  locationAddressText: {
+    fontSize: 12.8,
+    fontWeight: '400',
+    color: C.textSecondary,
+    lineHeight: 19.2,
   },
   locationMapsButton: {
     backgroundColor: C.cta,
     borderRadius: 0,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 11,
+    paddingHorizontal: 13,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 13,
   },
   locationMapsButtonText: {
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: '600',
     color: '#FFFFFF',
   },
   notionOnlineButton: {
-    marginTop: 14,
+    marginTop: 11,
   },
   card: {
     backgroundColor: C.card,
