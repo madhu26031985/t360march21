@@ -2028,20 +2028,30 @@ function GrammarianPublishedCarousel({
       <View
         style={styles.wotdCarouselSlide}
         accessibilityRole="summary"
-        accessibilityLabel={`${row.lead}. ${row.meaning ?? ''}. ${row.meetingDateLabel}`}
+        accessibilityLabel={`${row.lead}. Meaning: ${row.meaning ?? ''}. Usage: ${row.usage ?? ''}. ${row.meetingDateLabel}`}
       >
         <Text style={styles.grammarianClubDayLead} maxFontSizeMultiplier={1.15}>
           {row.lead}
         </Text>
         {row.meaning ? (
-          <Text style={styles.grammarianClubDayMeaning} maxFontSizeMultiplier={1.12}>
-            {row.meaning}
-          </Text>
+          <View style={styles.grammarianHighlightBlock}>
+            <Text style={styles.grammarianHighlightFieldLabel} maxFontSizeMultiplier={1.08}>
+              Meaning
+            </Text>
+            <Text style={[styles.grammarianClubDayMeaning, styles.grammarianHighlightBodyTight]} maxFontSizeMultiplier={1.12}>
+              {row.meaning}
+            </Text>
+          </View>
         ) : null}
         {row.usage ? (
-          <Text style={styles.wotdUsage} maxFontSizeMultiplier={1.1}>
-            {row.usage}
-          </Text>
+          <View style={styles.grammarianHighlightBlock}>
+            <Text style={styles.grammarianHighlightFieldLabel} maxFontSizeMultiplier={1.08}>
+              Usage
+            </Text>
+            <Text style={[styles.wotdUsage, styles.grammarianHighlightBodyTight]} maxFontSizeMultiplier={1.1}>
+              {row.usage}
+            </Text>
+          </View>
         ) : null}
         <Text style={styles.wotdMeetingDate} maxFontSizeMultiplier={1.08}>
           {row.meetingDateLabel}
@@ -2124,7 +2134,7 @@ function ClubWordOfTheDayCarousel({
       <View
         style={styles.wotdCarouselSlide}
         accessibilityRole="summary"
-        accessibilityLabel={`${row.word}. ${row.meaning ?? ''}. ${row.meetingDateLabel}`}
+        accessibilityLabel={`${row.word}. Meaning: ${row.meaning ?? ''}. Usage: ${row.usage ?? ''}. ${row.meetingDateLabel}`}
       >
         <Text style={styles.grammarianClubDayLead} maxFontSizeMultiplier={1.15}>
           {row.word}
@@ -2135,14 +2145,24 @@ function ClubWordOfTheDayCarousel({
           </Text>
         ) : null}
         {row.meaning ? (
-          <Text style={styles.grammarianClubDayMeaning} maxFontSizeMultiplier={1.12}>
-            {row.meaning}
-          </Text>
+          <View style={styles.grammarianHighlightBlock}>
+            <Text style={styles.grammarianHighlightFieldLabel} maxFontSizeMultiplier={1.08}>
+              Meaning
+            </Text>
+            <Text style={[styles.grammarianClubDayMeaning, styles.grammarianHighlightBodyTight]} maxFontSizeMultiplier={1.12}>
+              {row.meaning}
+            </Text>
+          </View>
         ) : null}
         {row.usage ? (
-          <Text style={styles.wotdUsage} maxFontSizeMultiplier={1.1}>
-            {row.usage}
-          </Text>
+          <View style={styles.grammarianHighlightBlock}>
+            <Text style={styles.grammarianHighlightFieldLabel} maxFontSizeMultiplier={1.08}>
+              Usage
+            </Text>
+            <Text style={[styles.wotdUsage, styles.grammarianHighlightBodyTight]} maxFontSizeMultiplier={1.1}>
+              {row.usage}
+            </Text>
+          </View>
         ) : null}
         <Text style={styles.wotdMeetingDate} maxFontSizeMultiplier={1.08}>
           {row.meetingDateLabel}
@@ -4024,6 +4044,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 24,
+  },
+  grammarianHighlightFieldLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: C.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.55,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  grammarianHighlightBlock: {
+    marginTop: 10,
+  },
+  grammarianHighlightBodyTight: {
+    marginTop: 0,
   },
   grammarianClubDayLead: {
     fontSize: 15,
