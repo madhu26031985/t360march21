@@ -12,12 +12,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
   buildMinimalAgendaDescriptionLines,
+  formatPublicAgendaBannerDateShort,
+  formatPublicAgendaBannerTimePart,
   formatPublicAgendaMeetingDate,
   preparedSlotsForPublic,
   publicAgendaRoleDetailLines,
 } from '@/lib/publicAgendaFormat';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import type { PublicAgendaItemRow, PublicAgendaPayload } from '@/lib/publicAgendaQuery';
+import { Calendar, Clock, Users } from 'lucide-react-native';
 
 type AppTheme = ReturnType<typeof useTheme>['theme'];
 
@@ -28,30 +31,6 @@ function vibrantCardExtra(): ViewStyle {
     } as ViewStyle;
   }
   return { elevation: 8 };
-}
-
-function formatPublicAgendaMeetingDateShort(iso: string | undefined): string {
-  if (!iso) return '';
-  try {
-    const d = new Date(`${iso}T12:00:00`);
-    return d.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
-}
-
-/** Public banners: show HH:MM even when the API returns HH:MM:SS. */
-function formatPublicAgendaBannerTimePart(raw: string | null | undefined): string {
-  const t = (raw ?? '').trim();
-  if (!t) return '';
-  const m = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
-  if (!m) return t;
-  const hh = m[1].padStart(2, '0');
-  return `${hh}:${m[2]}`;
 }
 
 /** Role abbreviations for the People column (public minimal agenda). */
@@ -209,21 +188,23 @@ function MinimalLayout({
   const { meeting, club, items } = payload;
   const bg = theme.colors.backgroundSecondary;
 
-  const districtDivisionArea = [
+  const clubMetaParts = [
     club.district ? `District ${club.district}` : '',
     club.division ? `Division ${club.division}` : '',
     club.area ? `Area ${club.area}` : '',
   ].filter(Boolean);
+  const clubMetaText = clubMetaParts.join(' | ');
 
-  const metaLine = [
-    formatPublicAgendaMeetingDateShort(meeting.meeting_date),
-    meeting.meeting_start_time
-      ? `🕒 ${meeting.meeting_start_time}${meeting.meeting_end_time ? `–${meeting.meeting_end_time}` : ''}`
-      : '',
-    meeting.meeting_number ? `👥 Meeting #${meeting.meeting_number}` : '',
-  ].filter(Boolean);
-
-  const metaLineText = metaLine.join(' · ');
+  const dateStr = formatPublicAgendaBannerDateShort(meeting.meeting_date);
+  const timeStr =
+    meeting.meeting_start_time || meeting.meeting_end_time
+      ? `${formatPublicAgendaBannerTimePart(meeting.meeting_start_time)} - ${formatPublicAgendaBannerTimePart(meeting.meeting_end_time)}`
+      : '';
+  const meetingNumStr =
+    meeting.meeting_number == null ? '' : String(meeting.meeting_number).trim();
+  const meetingNoLabel = `Meeting ${meetingNumStr || '—'}`;
+  const chipMuted = theme.colors.textSecondary;
+  const iconSize = 12;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
@@ -243,17 +224,40 @@ function MinimalLayout({
               {club.club_name}
             </Text>
 
-            {districtDivisionArea.length > 0 ? (
-              <Text style={[styles.minBannerSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                {districtDivisionArea.join(' | ')}
+            {clubMetaText ? (
+              <Text
+                style={[styles.minBannerSub, { color: theme.colors.textSecondary }]}
+                numberOfLines={3}
+                accessibilityLabel={clubMetaText}
+              >
+                {clubMetaText}
               </Text>
             ) : null}
 
-            {metaLineText ? (
-              <Text style={[styles.minBannerMetaLine, { color: theme.colors.textSecondary }]} numberOfLines={2}>
-                {metaLineText}
-              </Text>
-            ) : null}
+            <View style={styles.minBannerChipsRow}>
+              {dateStr ? (
+                <View style={styles.minBannerChip}>
+                  <Calendar size={iconSize} color={chipMuted} strokeWidth={2.25} />
+                  <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{dateStr}</Text>
+                </View>
+              ) : null}
+              {dateStr && timeStr ? (
+                <Text style={[styles.minBannerChipSep, { color: theme.colors.textTertiary }]}> | </Text>
+              ) : null}
+              {timeStr ? (
+                <View style={styles.minBannerChip}>
+                  <Clock size={iconSize} color={chipMuted} strokeWidth={2.25} />
+                  <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{timeStr}</Text>
+                </View>
+              ) : null}
+              {(dateStr || timeStr) && meetingNoLabel ? (
+                <Text style={[styles.minBannerChipSep, { color: theme.colors.textTertiary }]}> | </Text>
+              ) : null}
+              <View style={styles.minBannerChip}>
+                <Users size={iconSize} color={chipMuted} strokeWidth={2.25} />
+                <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{meetingNoLabel}</Text>
+              </View>
+            </View>
 
             {meeting.meeting_title ? (
               <Text style={[styles.minBannerMeetingTitle, { color: theme.colors.text }]} numberOfLines={3}>
@@ -648,15 +652,33 @@ const styles = StyleSheet.create({
     lineHeight: 36,
   },
   minBannerSub: {
-    marginTop: 6,
-    textAlign: 'center',
-    fontSize: 14,
-  },
-  minBannerMetaLine: {
-    marginTop: 10,
+    marginTop: 8,
     textAlign: 'center',
     fontSize: 14,
     lineHeight: 20,
+  },
+  minBannerChipsRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    rowGap: 8,
+  },
+  minBannerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  minBannerChipText: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  minBannerChipSep: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '500',
   },
   minBannerMeetingTitle: {
     marginTop: 14,

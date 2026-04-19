@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
-import { useGlobalSearchParams } from 'expo-router';
+import { ActivityIndicator, Platform, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PublicMeetingAgendaLoadedView } from '@/components/PublicMeetingAgendaWebLayouts';
 import { useTheme } from '@/contexts/ThemeContext';
+import { usePublicAgendaSkinQuery } from '@/hooks/usePublicAgendaSkinQuery';
 import { extractUuidFromRouteParam } from '@/lib/agendaWebLink';
 import {
   normalizeStoredPublicAgendaSkin,
@@ -18,7 +18,7 @@ type Props = { meetingIdParam: string | string[] | undefined };
 
 export default function PublicMeetingAgendaByMeetingIdScreen({ meetingIdParam }: Props) {
   const { theme } = useTheme();
-  const globalParams = useGlobalSearchParams<{ skin?: string | string[] }>();
+  const skinQuery = usePublicAgendaSkinQuery();
 
   const [state, setState] = useState<'loading' | 'error' | 'empty' | 'ready'>('loading');
   const [payload, setPayload] = useState<PublicAgendaPayload | null>(null);
@@ -90,7 +90,7 @@ export default function PublicMeetingAgendaByMeetingIdScreen({ meetingIdParam }:
   if (!payload) return null;
 
   const skin =
-    publicAgendaSkinFromUrlParam(globalParams.skin) ??
+    publicAgendaSkinFromUrlParam(skinQuery) ??
     normalizeStoredPublicAgendaSkin(payload.meeting.public_agenda_skin);
 
   return <PublicMeetingAgendaLoadedView skin={skin} payload={payload} theme={theme} />;

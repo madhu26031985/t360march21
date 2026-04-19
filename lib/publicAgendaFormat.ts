@@ -16,6 +16,31 @@ export function formatPublicAgendaMeetingDate(iso: string | undefined): string {
   }
 }
 
+/** Matches `formatDateShort` on the in-app meeting agenda banner (`meeting-agenda-view`: en-US, short month). */
+export function formatPublicAgendaBannerDateShort(iso: string | undefined): string {
+  if (!iso) return '';
+  try {
+    const date = new Date(iso);
+    return date.toLocaleDateString('en-US', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+/** Banner-style time: HH:MM (24-hour), strips seconds if present — matches meeting agenda banner. */
+export function formatPublicAgendaBannerTimePart(raw: string | null | undefined): string {
+  const t = (raw ?? '').trim();
+  if (!t) return '';
+  const m = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (!m) return t;
+  const hh = m[1].padStart(2, '0');
+  return `${hh}:${m[2]}`;
+}
+
 export function preparedSlotsForPublic(item: PublicAgendaItemRow) {
   const parsed = parseMemberPreparedAgenda(item.prepared_speeches_agenda);
   const str = (v: unknown) => (v != null && String(v).trim() !== '' ? 1 : 0);

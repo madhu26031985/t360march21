@@ -133,12 +133,27 @@ export async function fetchPublicMeetingAgenda(params: {
     typeof clubRaw?.club_name === 'string' && clubRaw.club_name.trim() !== ''
       ? clubRaw.club_name.trim()
       : 'Club';
+
+  /** RPC jsonb may return numbers (e.g. district 120) — coerce for UI. */
+  const rpcClubFieldToString = (v: unknown): string | null => {
+    if (v == null) return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : null;
+    if (typeof v === 'string') {
+      const t = v.trim();
+      return t === '' ? null : t;
+    }
+    const s = String(v).trim();
+    return s === '' ? null : s;
+  };
+
+  const clubObj = clubRaw && typeof clubRaw === 'object' ? (clubRaw as Record<string, unknown>) : null;
+
   const club: PublicAgendaClub = {
     club_name: name,
-    club_number:
-      clubRaw && typeof clubRaw === 'object' && 'club_number' in clubRaw
-        ? (clubRaw.club_number as string | null)
-        : null,
+    club_number: clubObj ? rpcClubFieldToString(clubObj.club_number) : null,
+    district: clubObj ? rpcClubFieldToString(clubObj.district) : null,
+    division: clubObj ? rpcClubFieldToString(clubObj.division) : null,
+    area: clubObj ? rpcClubFieldToString(clubObj.area) : null,
   };
   return { ok: true, data: { meeting, club, items } };
 }
