@@ -43,12 +43,12 @@ function formatMinimalAgendaTimeRange(start: string | null, end: string | null):
   return '';
 }
 
-/** Title suffix e.g. " (15 mins)" or " (1 min)"; empty when no duration. */
-function formatMinimalDurationParen(minutes: number | null | undefined): string {
+/** Right column under time: "(15 mins)" / "(1 min)"; empty when no duration. */
+function formatMinimalDurationLabel(minutes: number | null | undefined): string {
   if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return '';
   const n = Math.round(minutes);
-  if (n === 1) return ' (1 min)';
-  return ` (${n} mins)`;
+  if (n === 1) return '(1 min)';
+  return `(${n} mins)`;
 }
 
 function isMeetAndGreetSection(sectionName: string): boolean {
@@ -87,17 +87,14 @@ function buildMinimalPeopleLines(item: PublicAgendaItemRow): string[] {
     }
   }
 
-  if (lines.length === 0) {
-    lines.push('—');
-  }
   return lines;
 }
 
-function minimalCardAttendeeSummary(item: PublicAgendaItemRow): string {
-  const lines = buildMinimalPeopleLines(item);
-  const first = lines[0]?.trim();
-  if (!first || first === '—' || first === '–') return '';
-  return first;
+/** Names / role lines for below description; no placeholder hyphens. */
+function minimalCardPeopleLines(item: PublicAgendaItemRow): string[] {
+  return buildMinimalPeopleLines(item)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s !== '—' && s !== '–');
 }
 
 function minimalCardDescriptionPreview(item: PublicAgendaItemRow): string {
@@ -117,10 +114,10 @@ function minimalCardWebShadow(): ViewStyle {
 
 function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; theme: AppTheme }) {
   const timeRangeText = formatMinimalAgendaTimeRange(item.start_time, item.end_time).trim();
-  const durationParen = formatMinimalDurationParen(item.duration_minutes);
-  const titleLine = `${item.section_name}${durationParen}`;
+  const durationLabel = formatMinimalDurationLabel(item.duration_minutes);
   const descPreview = minimalCardDescriptionPreview(item).trim();
-  const attendee = minimalCardAttendeeSummary(item);
+  const peopleLines = minimalCardPeopleLines(item);
+  const hasTimeBlock = Boolean(timeRangeText || durationLabel);
 
   return (
     <View
@@ -134,27 +131,53 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
         Platform.OS === 'android' ? { elevation: 2 } : {},
       ]}
     >
-      <Text style={[styles.minItemTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
-        {titleLine}
-      </Text>
-      {timeRangeText ? (
-        <Text style={[styles.minItemTime, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-          {timeRangeText}
+      <View style={styles.minItemCardHeaderRow}>
+        <Text
+          style={[styles.minItemTitleLeft, { color: theme.colors.text }]}
+          maxFontSizeMultiplier={1.15}
+          numberOfLines={3}
+        >
+          {item.section_name}
         </Text>
-      ) : null}
+        {hasTimeBlock ? (
+          <View style={styles.minItemTimeBlock}>
+            {timeRangeText ? (
+              <Text style={[styles.minItemTimeRight, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                {timeRangeText}
+              </Text>
+            ) : null}
+            {durationLabel ? (
+              <Text
+                style={[styles.minItemDurationRight, { color: theme.colors.text }]}
+                maxFontSizeMultiplier={1.05}
+              >
+                {durationLabel}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
       {descPreview ? (
         <Text
           style={[styles.minItemDesc, { color: theme.colors.textSecondary }]}
-          numberOfLines={3}
+          numberOfLines={4}
           maxFontSizeMultiplier={1.1}
         >
           {descPreview}
         </Text>
       ) : null}
-      {attendee ? (
-        <Text style={[styles.minItemPeopleText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.1}>
-          {attendee}
-        </Text>
+      {peopleLines.length > 0 ? (
+        <View style={styles.minItemPeopleBlock}>
+          {peopleLines.map((line, i) => (
+            <Text
+              key={`p-${i}-${line.slice(0, 48)}`}
+              style={[styles.minItemPeopleText, { color: theme.colors.textSecondary }]}
+              maxFontSizeMultiplier={1.1}
+            >
+              {line}
+            </Text>
+          ))}
+        </View>
       ) : null}
     </View>
   );
@@ -675,27 +698,51 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  minItemTitle: {
+  minItemCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  minItemTitleLeft: {
+    flex: 1,
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 21,
+    paddingRight: 4,
   },
-  minItemTime: {
-    marginTop: 8,
+  minItemTimeBlock: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    minWidth: 88,
+  },
+  minItemTimeRight: {
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 20,
+    textAlign: 'right',
+  },
+  minItemDurationRight: {
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 17,
+    textAlign: 'right',
   },
   minItemDesc: {
-    marginTop: 8,
+    marginTop: 10,
     fontSize: 14,
     lineHeight: 20,
   },
+  minItemPeopleBlock: {
+    marginTop: 10,
+    gap: 4,
+  },
   minItemPeopleText: {
-    marginTop: 12,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
-    lineHeight: 20,
+    lineHeight: 19,
   },
   minBannerClub: {
     fontSize: 26,
