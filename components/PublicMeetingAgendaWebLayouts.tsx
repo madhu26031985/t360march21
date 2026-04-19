@@ -33,6 +33,36 @@ function vibrantCardExtra(): ViewStyle {
   return { elevation: 8 };
 }
 
+/**
+ * Time column: show only the minute:second parts of each stored time (HH:MM(:SS) → MM:SS).
+ * Example: 21:23:00–21:38:00 → 23:00–38:00.
+ */
+function formatClockMmSsOnly(raw: string | null | undefined): string {
+  const t = (raw ?? '').trim();
+  const m = t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return t;
+  const mm = m[2].padStart(2, '0');
+  const ss = (m[3] ?? '00').padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
+function formatMinimalAgendaTimeRange(start: string | null, end: string | null): string {
+  const a = start ? formatClockMmSsOnly(start) : '';
+  const b = end ? formatClockMmSsOnly(end) : '';
+  if (a && b) return `${a}–${b}`;
+  if (a) return a;
+  if (b) return b;
+  return '';
+}
+
+/** Duration column: "15 mins" / "1 min". */
+function formatMinimalDurationMins(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return '—';
+  const n = Math.round(minutes);
+  if (n === 1) return '1 min';
+  return `${n} mins`;
+}
+
 /** Role abbreviations for the People column (public minimal agenda). */
 function minimalRoleLabelForSection(sectionName: string): string | null {
   const s = (sectionName || '').toLowerCase();
@@ -320,6 +350,11 @@ function MinimalLayout({
                   <Text style={[styles.notionHeaderCell, styles.notionColTime, { color: theme.colors.textSecondary }]}>
                     Time
                   </Text>
+                  <Text
+                    style={[styles.notionHeaderCell, styles.notionColDuration, { color: theme.colors.textSecondary }]}
+                  >
+                    Duration
+                  </Text>
                   <Text style={[styles.notionHeaderCell, styles.notionColTitle, { color: theme.colors.textSecondary }]}>
                     Title
                   </Text>
@@ -525,9 +560,8 @@ function AgendaSectionCard({
   if (skin === 'minimal') {
     const descLines = buildMinimalAgendaDescriptionLines(item);
     const peopleLines = buildMinimalPeopleLines(item);
-    const durationText = item.duration_minutes != null ? `${item.duration_minutes}m` : '—';
-    const rangeText =
-      item.start_time && item.end_time ? `${item.start_time}–${item.end_time}` : '';
+    const timeRangeText = formatMinimalAgendaTimeRange(item.start_time, item.end_time);
+    const durationLabel = formatMinimalDurationMins(item.duration_minutes);
 
     return (
       <View
@@ -541,24 +575,20 @@ function AgendaSectionCard({
       >
         <View style={[styles.notionColTime, styles.notionCellPad]}>
           <Text style={[styles.notionTimePrimary, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
-            {durationText}
+            {timeRangeText || '—'}
           </Text>
-          {rangeText ? (
-            <Text style={[styles.notionTimeSecondary, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.05}>
-              {rangeText}
-            </Text>
-          ) : null}
+        </View>
+
+        <View style={[styles.notionColDuration, styles.notionCellPad]}>
+          <Text style={[styles.notionDurationText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+            {durationLabel}
+          </Text>
         </View>
 
         <View style={[styles.notionColTitle, styles.notionCellPad]}>
-          <View style={styles.notionTitleLine}>
-            {item.section_icon ? (
-              <Text style={[styles.notionTitleIcon, { color: theme.colors.text }]}>{item.section_icon}</Text>
-            ) : null}
-            <Text style={[styles.notionTitleText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
-              {item.section_name}
-            </Text>
-          </View>
+          <Text style={[styles.notionTitleText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
+            {item.section_name}
+          </Text>
         </View>
 
         <View style={[styles.notionColDesc, styles.notionCellPad]}>
@@ -824,7 +854,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   notionTable: {
-    minWidth: 820,
+    minWidth: 920,
     alignSelf: 'flex-start',
     width: '100%' as const,
   },
@@ -850,7 +880,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   notionColTime: {
-    width: 100,
+    width: 108,
+    flexShrink: 0,
+  },
+  notionColDuration: {
+    width: 88,
     flexShrink: 0,
   },
   notionColTitle: {
@@ -868,28 +902,20 @@ const styles = StyleSheet.create({
     width: 220,
   },
   notionTimePrimary: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
   },
-  notionTimeSecondary: {
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 4,
+  notionDurationText: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
   },
-  notionTitleLine: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  notionTitleIcon: {
-    fontSize: 20,
-    lineHeight: 24,
-  },
+  /** Minimal title: 15% smaller than previous 15px → 12.75px rounded to 13. */
   notionTitleText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 20,
+    lineHeight: 17,
     flex: 1,
   },
   notionDescLine: {
