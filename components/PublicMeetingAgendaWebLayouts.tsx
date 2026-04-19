@@ -205,6 +205,18 @@ function MinimalLayout({
   const meetingNoLabel = `Meeting ${meetingNumStr || '—'}`;
   const chipMuted = theme.colors.textSecondary;
   const iconSize = 12;
+  const isLightDoc =
+    theme.colors.background.toLowerCase() === '#ffffff' ||
+    theme.colors.background.toLowerCase() === '#fff';
+  const notionBannerBg = isLightDoc ? '#f5f4f1' : theme.colors.backgroundSecondary;
+  const notionChipsWellBg = isLightDoc ? '#ffffff' : theme.colors.surfaceSecondary;
+  const notionChipsWellBorder = isLightDoc ? '#e8e6e3' : theme.colors.borderLight;
+  const bannerWebShadow =
+    Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 1px 0 rgba(15,15,15,0.06), 0 6px 20px rgba(15,15,15,0.04)',
+        } as ViewStyle)
+      : {};
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
@@ -219,7 +231,16 @@ function MinimalLayout({
             },
           ]}
         >
-          <View style={[styles.minBannerCard, { backgroundColor: theme.colors.background }]}>
+          <View
+            style={[
+              styles.minNotionBanner,
+              {
+                backgroundColor: notionBannerBg,
+                borderBottomColor: theme.colors.borderLight,
+              },
+              bannerWebShadow,
+            ]}
+          >
             <Text style={[styles.minBannerClub, { color: theme.colors.text }]} numberOfLines={2}>
               {club.club_name}
             </Text>
@@ -234,39 +255,40 @@ function MinimalLayout({
               </Text>
             ) : null}
 
-            <View style={styles.minBannerChipsRow}>
-              {dateStr ? (
+            <View
+              style={[
+                styles.minNotionChipsWell,
+                { backgroundColor: notionChipsWellBg, borderColor: notionChipsWellBorder },
+              ]}
+            >
+              <View style={styles.minBannerChipsRow}>
+                {dateStr ? (
+                  <View style={styles.minBannerChip}>
+                    <Calendar size={iconSize} color={chipMuted} strokeWidth={2.25} />
+                    <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{dateStr}</Text>
+                  </View>
+                ) : null}
+                {dateStr && timeStr ? (
+                  <Text style={[styles.minBannerChipSep, { color: theme.colors.textTertiary }]}> | </Text>
+                ) : null}
+                {timeStr ? (
+                  <View style={styles.minBannerChip}>
+                    <Clock size={iconSize} color={chipMuted} strokeWidth={2.25} />
+                    <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{timeStr}</Text>
+                  </View>
+                ) : null}
+                {(dateStr || timeStr) && meetingNoLabel ? (
+                  <Text style={[styles.minBannerChipSep, { color: theme.colors.textTertiary }]}> | </Text>
+                ) : null}
                 <View style={styles.minBannerChip}>
-                  <Calendar size={iconSize} color={chipMuted} strokeWidth={2.25} />
-                  <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{dateStr}</Text>
+                  <Users size={iconSize} color={chipMuted} strokeWidth={2.25} />
+                  <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{meetingNoLabel}</Text>
                 </View>
-              ) : null}
-              {dateStr && timeStr ? (
-                <Text style={[styles.minBannerChipSep, { color: theme.colors.textTertiary }]}> | </Text>
-              ) : null}
-              {timeStr ? (
-                <View style={styles.minBannerChip}>
-                  <Clock size={iconSize} color={chipMuted} strokeWidth={2.25} />
-                  <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{timeStr}</Text>
-                </View>
-              ) : null}
-              {(dateStr || timeStr) && meetingNoLabel ? (
-                <Text style={[styles.minBannerChipSep, { color: theme.colors.textTertiary }]}> | </Text>
-              ) : null}
-              <View style={styles.minBannerChip}>
-                <Users size={iconSize} color={chipMuted} strokeWidth={2.25} />
-                <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{meetingNoLabel}</Text>
               </View>
             </View>
 
-            {meeting.meeting_title ? (
-              <Text style={[styles.minBannerMeetingTitle, { color: theme.colors.text }]} numberOfLines={3}>
-                {meeting.meeting_title}
-              </Text>
-            ) : null}
-
             {meeting.meeting_link ? (
-              <View style={{ marginTop: 12, alignItems: 'center' }}>
+              <View style={{ marginTop: 16, alignItems: 'center' }}>
                 <Pressable
                   onPress={() => openLink(meeting.meeting_link!)}
                   style={[styles.minBannerLinkBtn, { backgroundColor: theme.colors.primary }]}
@@ -277,43 +299,50 @@ function MinimalLayout({
             ) : null}
           </View>
 
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator={Platform.OS === 'web'}
-            contentContainerStyle={styles.notionTableScrollInner}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.notionTable}>
-              <View
-                style={[
-                  styles.notionHeaderRow,
-                  { borderBottomColor: theme.colors.borderLight, backgroundColor: theme.colors.backgroundSecondary },
-                ]}
-              >
-                <Text style={[styles.notionHeaderCell, styles.notionColTime, { color: theme.colors.textSecondary }]}>
-                  Time
-                </Text>
-                <Text style={[styles.notionHeaderCell, styles.notionColTitle, { color: theme.colors.textSecondary }]}>
-                  Title
-                </Text>
-                <Text style={[styles.notionHeaderCell, styles.notionColDesc, { color: theme.colors.textSecondary }]}>
-                  Description
-                </Text>
-                <Text style={[styles.notionHeaderCell, styles.notionColPeople, { color: theme.colors.textSecondary }]}>
-                  People
-                </Text>
+          <View style={[styles.minNotionBody, { backgroundColor: theme.colors.background }]}>
+            <ScrollView
+              horizontal
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator={Platform.OS === 'web'}
+              contentContainerStyle={styles.notionTableScrollInner}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.notionTable}>
+                <View
+                  style={[
+                    styles.notionHeaderRow,
+                    {
+                      borderBottomColor: theme.colors.borderLight,
+                      backgroundColor: isLightDoc ? '#fafaf9' : theme.colors.backgroundSecondary,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.notionHeaderCell, styles.notionColTime, { color: theme.colors.textSecondary }]}>
+                    Time
+                  </Text>
+                  <Text style={[styles.notionHeaderCell, styles.notionColTitle, { color: theme.colors.textSecondary }]}>
+                    Title
+                  </Text>
+                  <Text style={[styles.notionHeaderCell, styles.notionColDesc, { color: theme.colors.textSecondary }]}>
+                    Description
+                  </Text>
+                  <Text
+                    style={[styles.notionHeaderCell, styles.notionColPeople, { color: theme.colors.textSecondary }]}
+                  >
+                    People
+                  </Text>
+                </View>
+                {items.map((item) => (
+                  <AgendaSectionCard
+                    key={`${item.section_order}-${item.section_name}`}
+                    item={item}
+                    theme={theme}
+                    skin="minimal"
+                  />
+                ))}
               </View>
-              {items.map((item) => (
-                <AgendaSectionCard
-                  key={`${item.section_order}-${item.section_name}`}
-                  item={item}
-                  theme={theme}
-                  skin="minimal"
-                />
-              ))}
-            </View>
-          </ScrollView>
+            </ScrollView>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -638,27 +667,41 @@ const styles = StyleSheet.create({
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderRightWidth: StyleSheet.hairlineWidth,
   },
-  minBannerCard: {
-    marginTop: 10,
-    marginHorizontal: 14,
-    borderRadius: 18,
-    paddingHorizontal: 20,
-    paddingVertical: 22,
+  minNotionBanner: {
+    paddingHorizontal: 26,
+    paddingTop: 28,
+    paddingBottom: 26,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    ...(Platform.OS === 'android' ? { elevation: 1 } : {}),
+  },
+  minNotionChipsWell: {
+    marginTop: 18,
+    alignSelf: 'center',
+    maxWidth: '100%' as const,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  minNotionBody: {
+    paddingTop: 6,
+    paddingBottom: 10,
   },
   minBannerClub: {
-    fontSize: 30,
-    fontWeight: '800',
+    fontSize: 26,
+    fontWeight: '700',
     textAlign: 'center',
-    lineHeight: 36,
+    lineHeight: 32,
+    letterSpacing: -0.35,
   },
   minBannerSub: {
-    marginTop: 8,
+    marginTop: 10,
     textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 19,
+    letterSpacing: 0.15,
   },
   minBannerChipsRow: {
-    marginTop: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
@@ -679,13 +722,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     fontWeight: '500',
-  },
-  minBannerMeetingTitle: {
-    marginTop: 14,
-    textAlign: 'center',
-    fontSize: 17,
-    fontWeight: '600',
-    lineHeight: 24,
   },
   minBannerLinkBtn: {
     borderRadius: 12,
