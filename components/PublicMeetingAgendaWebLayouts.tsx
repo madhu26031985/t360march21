@@ -20,7 +20,7 @@ import {
 } from '@/lib/publicAgendaFormat';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import type { PublicAgendaItemRow, PublicAgendaPayload } from '@/lib/publicAgendaQuery';
-import { Calendar, Clock, User, Users } from 'lucide-react-native';
+import { Calendar, Clock, Users } from 'lucide-react-native';
 
 type AppTheme = ReturnType<typeof useTheme>['theme'];
 
@@ -96,15 +96,14 @@ function buildMinimalPeopleLines(item: PublicAgendaItemRow): string[] {
 function minimalCardAttendeeSummary(item: PublicAgendaItemRow): string {
   const lines = buildMinimalPeopleLines(item);
   const first = lines[0]?.trim();
-  if (!first) return '–';
-  if (first === '—') return '–';
+  if (!first || first === '—' || first === '–') return '';
   return first;
 }
 
 function minimalCardDescriptionPreview(item: PublicAgendaItemRow): string {
   const descLines = buildMinimalAgendaDescriptionLines(item);
   if (descLines.length > 0) return descLines[0]!;
-  return item.section_description?.trim() || '–';
+  return item.section_description?.trim() || '';
 }
 
 function minimalCardWebShadow(): ViewStyle {
@@ -117,10 +116,10 @@ function minimalCardWebShadow(): ViewStyle {
 }
 
 function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; theme: AppTheme }) {
-  const timeRangeText = formatMinimalAgendaTimeRange(item.start_time, item.end_time) || '—';
+  const timeRangeText = formatMinimalAgendaTimeRange(item.start_time, item.end_time).trim();
   const durationParen = formatMinimalDurationParen(item.duration_minutes);
   const titleLine = `${item.section_name}${durationParen}`;
-  const descPreview = minimalCardDescriptionPreview(item);
+  const descPreview = minimalCardDescriptionPreview(item).trim();
   const attendee = minimalCardAttendeeSummary(item);
 
   return (
@@ -135,25 +134,28 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
         Platform.OS === 'android' ? { elevation: 2 } : {},
       ]}
     >
-      <Text style={[styles.minItemTime, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-        {timeRangeText}
-      </Text>
       <Text style={[styles.minItemTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
         {titleLine}
       </Text>
-      <Text
-        style={[styles.minItemDesc, { color: theme.colors.textSecondary }]}
-        numberOfLines={3}
-        maxFontSizeMultiplier={1.1}
-      >
-        {descPreview}
-      </Text>
-      <View style={styles.minItemPeopleRow}>
-        <User size={18} color={theme.colors.primary} strokeWidth={2.2} />
+      {timeRangeText ? (
+        <Text style={[styles.minItemTime, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+          {timeRangeText}
+        </Text>
+      ) : null}
+      {descPreview ? (
+        <Text
+          style={[styles.minItemDesc, { color: theme.colors.textSecondary }]}
+          numberOfLines={3}
+          maxFontSizeMultiplier={1.1}
+        >
+          {descPreview}
+        </Text>
+      ) : null}
+      {attendee ? (
         <Text style={[styles.minItemPeopleText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.1}>
           {attendee}
         </Text>
-      </View>
+      ) : null}
     </View>
   );
 }
@@ -673,32 +675,27 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  minItemTime: {
-    fontSize: 15,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
   minItemTitle: {
-    marginTop: 6,
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 21,
+  },
+  minItemTime: {
+    marginTop: 8,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 20,
   },
   minItemDesc: {
     marginTop: 8,
     fontSize: 14,
     lineHeight: 20,
   },
-  minItemPeopleRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   minItemPeopleText: {
+    marginTop: 12,
     fontSize: 15,
     fontWeight: '500',
-    flex: 1,
+    lineHeight: 20,
   },
   minBannerClub: {
     fontSize: 26,
