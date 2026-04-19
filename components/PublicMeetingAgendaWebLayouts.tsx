@@ -19,7 +19,7 @@ import {
 } from '@/lib/publicAgendaFormat';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import type { PublicAgendaItemRow, PublicAgendaPayload } from '@/lib/publicAgendaQuery';
-import { Calendar, Clock, Link2, MapPin, Users } from 'lucide-react-native';
+import { Calendar, Clock, Link2, Users } from 'lucide-react-native';
 
 type AppTheme = ReturnType<typeof useTheme>['theme'];
 
@@ -828,10 +828,8 @@ function MinimalLayout({
         } as ViewStyle)
       : {};
 
-  const locationText = meeting.meeting_location?.trim() || '';
   const meetingLink = meeting.meeting_link?.trim() || '';
-  const showBannerTopMeta = Boolean(locationText || meetingLink);
-  const locIconSize = 14;
+  const showBannerTopMeta = Boolean(meetingLink);
   const linkIconSize = 13;
 
   return (
@@ -859,14 +857,6 @@ function MinimalLayout({
           >
             {showBannerTopMeta ? (
               <View style={styles.minBannerTopMeta}>
-                {locationText ? (
-                  <View style={styles.minBannerLocRow} accessibilityLabel={`Location: ${locationText}`}>
-                    <MapPin size={locIconSize} color={chipMuted} strokeWidth={2.25} />
-                    <Text style={[styles.minBannerLocText, { color: docInk.inkMuted }]} numberOfLines={4}>
-                      {locationText}
-                    </Text>
-                  </View>
-                ) : null}
                 {meetingLink ? (
                   <Pressable
                     onPress={() => openLink(meetingLink)}
@@ -875,7 +865,7 @@ function MinimalLayout({
                       {
                         borderColor: notionChipsWellBorder,
                         backgroundColor: notionChipsWellBg,
-                        marginTop: locationText ? 10 : 0,
+                        marginTop: 0,
                         opacity: pressed ? 0.88 : 1,
                       },
                     ]}
