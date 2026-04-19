@@ -12,7 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
   buildMinimalAgendaDescriptionLines,
-  formatPublicAgendaBannerDateShort,
   formatPublicAgendaBannerTimePart,
   formatPublicAgendaMeetingDate,
   preparedSlotsForPublic,
@@ -23,6 +22,22 @@ import type { PublicAgendaItemRow, PublicAgendaPayload } from '@/lib/publicAgend
 import { Calendar, Clock, Users } from 'lucide-react-native';
 
 type AppTheme = ReturnType<typeof useTheme>['theme'];
+
+/** Minimal skin: avoid pure black (#000) and red accents; use neutral greys on light docs. */
+type MinimalDocInk = { ink: string; inkMuted: string; inkSoft: string };
+
+function minimalDocTextColors(theme: AppTheme): MinimalDocInk {
+  const bg = theme.colors.background.toLowerCase();
+  const isLightDoc = bg === '#ffffff' || bg === '#fff';
+  if (!isLightDoc) {
+    return {
+      ink: theme.colors.text,
+      inkMuted: theme.colors.textSecondary,
+      inkSoft: theme.colors.textTertiary,
+    };
+  }
+  return { ink: '#3a3a3a', inkMuted: '#6b6b6b', inkSoft: '#949494' };
+}
 
 function vibrantCardExtra(): ViewStyle {
   if (Platform.OS === 'web') {
@@ -43,25 +58,29 @@ function formatMinimalAgendaTimeRange(start: string | null, end: string | null):
   return '';
 }
 
-/** Short duration for header pill: "15m" / "1m". */
-function formatMinimalDurationShortM(minutes: number | null | undefined): string {
+/** Bottom-right duration copy: "15 minutes" / "1 minute". */
+function formatMinimalDurationWords(minutes: number | null | undefined): string {
   if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return '';
   const n = Math.round(minutes);
-  return `${n}m`;
+  if (n === 1) return '1 minute';
+  return `${n} minutes`;
 }
 
-/** Right column: "21:23–21:38 • 15m" (bold single line). */
-function formatMinimalTimeDurationRight(
-  start: string | null,
-  end: string | null,
-  minutes: number | null | undefined
-): string {
-  const t = formatMinimalAgendaTimeRange(start, end).trim();
-  const d = formatMinimalDurationShortM(minutes);
-  if (t && d) return `${t} • ${d}`;
-  if (t) return t;
-  if (d) return d;
-  return '';
+/** Bold role-style label before the assignee name (see tag-team row pattern). */
+function minimalRoleHeadingForSection(sectionName: string): string {
+  const s = (sectionName || '').toLowerCase();
+  if (s.includes('meet and greet') || s.includes('meet & greet')) return 'Everyone';
+  if (s.includes('call to order')) return 'Serjeant-at-Arms';
+  if (s.includes('presiding officer')) return 'President';
+  if (s.includes('toastmaster')) return 'Toastmaster';
+  if (s.includes('general evaluator')) return 'General Evaluator';
+  if (s.includes('prepared speeches') || s.includes('prepared speech')) return 'Speakers';
+  if (s.includes('table topic')) return 'Table Topics';
+  if (s.includes('ice breaker')) return 'Ice Breakers';
+  if (s.includes('ah counter')) return 'Ah Counter';
+  if (s.includes('grammarian')) return 'Grammarian';
+  if (s.includes('timer')) return 'Timer';
+  return 'Role';
 }
 
 function isMeetAndGreetSection(sectionName: string): boolean {
@@ -110,6 +129,38 @@ function minimalCardPeopleLines(item: PublicAgendaItemRow): string[] {
     .filter((s) => s.length > 0 && s !== '—' && s !== '–');
 }
 
+/** Prepared / evaluator lines from `buildMinimalPeopleLines` → heading + name (PDF-style rows). */
+function parseSpeakerEvaluatorHeading(line: string): { heading: string; name: string } | null {
+  const m = line.match(/^(speaker|evaluator)\s+(\d+)\s*:\s*(.+)$/i);
+  if (!m) return null;
+  const kind = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+  return { heading: `${kind} ${m[2]}`, name: m[3].trim() };
+}
+
+function lineLabelForMinimalFooterRow(item: PublicAgendaItemRow, line: string): string {
+  if (item.timer_user_name?.trim() === line) return 'Timer';
+  if (item.ah_counter_user_name?.trim() === line) return 'Ah Counter';
+  if (item.grammarian_user_name?.trim() === line) return 'Grammarian';
+  return minimalRoleHeadingForSection(item.section_name);
+}
+
+function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: string }[] {
+  if (isMeetAndGreetSection(item.section_name)) {
+    return [{ heading: 'Everyone', name: 'All' }];
+  }
+  const lines = minimalCardPeopleLines(item);
+  const out: { heading: string; name: string }[] = [];
+  for (const line of lines) {
+    const parsed = parseSpeakerEvaluatorHeading(line);
+    if (parsed) {
+      out.push(parsed);
+      continue;
+    }
+    out.push({ heading: lineLabelForMinimalFooterRow(item, line), name: line });
+  }
+  return out;
+}
+
 function minimalCardDescriptionPreview(item: PublicAgendaItemRow): string {
   const descLines = buildMinimalAgendaDescriptionLines(item);
   if (descLines.length > 0) return descLines[0]!;
@@ -126,14 +177,13 @@ function minimalCardWebShadow(): ViewStyle {
 }
 
 function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; theme: AppTheme }) {
-  const timeDurationRight = formatMinimalTimeDurationRight(
-    item.start_time,
-    item.end_time,
-    item.duration_minutes
-  ).trim();
+  const docInk = minimalDocTextColors(theme);
+  const timeRangeOnly = formatMinimalAgendaTimeRange(item.start_time, item.end_time).trim();
   const descPreview = minimalCardDescriptionPreview(item).trim();
-  const peopleLines = minimalCardPeopleLines(item);
-  const hasTimeBlock = Boolean(timeDurationRight);
+  const footerRows = minimalFooterRows(item);
+  const durationWords = formatMinimalDurationWords(item.duration_minutes);
+  const hasTimeTop = Boolean(timeRangeOnly);
+  const showFooter = Boolean(durationWords) || footerRows.length > 0;
 
   return (
     <View
@@ -156,7 +206,7 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
               </Text>
             ) : null}
             <Text
-              style={[styles.minItemTitleLeft, { color: theme.colors.text }]}
+              style={[styles.minItemTitleLeft, { color: docInk.ink }]}
               maxFontSizeMultiplier={1.15}
               numberOfLines={3}
             >
@@ -164,39 +214,53 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
             </Text>
           </View>
         </View>
-        {hasTimeBlock ? (
+        {hasTimeTop ? (
           <View style={styles.minItemTimeBlock}>
             <Text
-              style={[styles.minItemTimeRight, { color: theme.colors.text }]}
+              style={[styles.minItemTimeRight, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
               maxFontSizeMultiplier={1.2}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              {timeDurationRight}
+              {timeRangeOnly}
             </Text>
           </View>
         ) : null}
       </View>
       {descPreview ? (
         <Text
-          style={[styles.minItemDesc, { color: theme.colors.textSecondary }]}
+          style={[styles.minItemDesc, { color: docInk.inkMuted }]}
           numberOfLines={4}
           maxFontSizeMultiplier={1.1}
         >
           {descPreview}
         </Text>
       ) : null}
-      {peopleLines.length > 0 ? (
-        <View style={styles.minItemPeopleBlock}>
-          {peopleLines.map((line, i) => (
+      {showFooter ? (
+        <View style={styles.minItemFooterRow}>
+          <View style={styles.minItemFooterRowsBlock}>
+            {footerRows.map((row, i) => (
+              <View
+                key={`${i}-${row.heading}-${row.name.slice(0, 24)}`}
+                style={[styles.minItemFooterRoleRow, i > 0 ? styles.minItemFooterRoleRowSpaced : null]}
+              >
+                <Text style={[styles.minItemRoleHeading, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+                  {row.heading}
+                </Text>
+                <Text style={[styles.minItemRoleName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+                  {` ${row.name}`}
+                </Text>
+              </View>
+            ))}
+          </View>
+          {durationWords ? (
             <Text
-              key={`p-${i}-${line.slice(0, 48)}`}
-              style={[styles.minItemPeopleText, { color: theme.colors.text }]}
-              maxFontSizeMultiplier={1.1}
+              style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
+              maxFontSizeMultiplier={1.05}
             >
-              {line}
+              {durationWords}
             </Text>
-          ))}
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -313,7 +377,7 @@ function MinimalLayout({
   ].filter(Boolean);
   const clubMetaText = clubMetaParts.join(' | ');
 
-  const dateStr = formatPublicAgendaBannerDateShort(meeting.meeting_date);
+  const dateStr = formatPublicAgendaMeetingDate(meeting.meeting_date);
   const timeStr =
     meeting.meeting_start_time || meeting.meeting_end_time
       ? `${formatPublicAgendaBannerTimePart(meeting.meeting_start_time)} - ${formatPublicAgendaBannerTimePart(meeting.meeting_end_time)}`
@@ -321,7 +385,8 @@ function MinimalLayout({
   const meetingNumStr =
     meeting.meeting_number == null ? '' : String(meeting.meeting_number).trim();
   const meetingNoLabel = `Meeting ${meetingNumStr || '—'}`;
-  const chipMuted = theme.colors.textSecondary;
+  const docInk = minimalDocTextColors(theme);
+  const chipMuted = docInk.inkMuted;
   const iconSize = 11;
   const isLightDoc =
     theme.colors.background.toLowerCase() === '#ffffff' ||
@@ -359,13 +424,13 @@ function MinimalLayout({
               bannerWebShadow,
             ]}
           >
-            <Text style={[styles.minBannerClub, { color: theme.colors.text }]} numberOfLines={2}>
+            <Text style={[styles.minBannerClub, { color: docInk.ink }]} numberOfLines={2}>
               {club.club_name}
             </Text>
 
             {clubMetaText ? (
               <Text
-                style={[styles.minBannerSub, { color: theme.colors.textSecondary }]}
+                style={[styles.minBannerSub, { color: docInk.inkMuted }]}
                 numberOfLines={3}
                 accessibilityLabel={clubMetaText}
               >
@@ -383,11 +448,16 @@ function MinimalLayout({
                 {dateStr ? (
                   <View style={styles.minBannerChip}>
                     <Calendar size={iconSize} color={chipMuted} strokeWidth={2.25} />
-                    <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{dateStr}</Text>
+                    <Text
+                      style={[styles.minBannerChipText, { color: chipMuted }]}
+                      numberOfLines={3}
+                    >
+                      {dateStr}
+                    </Text>
                   </View>
                 ) : null}
                 {dateStr && timeStr ? (
-                  <Text style={[styles.minBannerChipSep, { color: theme.colors.textTertiary }]}> | </Text>
+                  <Text style={[styles.minBannerChipSep, { color: docInk.inkSoft }]}> | </Text>
                 ) : null}
                 {timeStr ? (
                   <View style={styles.minBannerChip}>
@@ -396,7 +466,7 @@ function MinimalLayout({
                   </View>
                 ) : null}
                 {(dateStr || timeStr) && meetingNoLabel ? (
-                  <Text style={[styles.minBannerChipSep, { color: theme.colors.textTertiary }]}> | </Text>
+                  <Text style={[styles.minBannerChipSep, { color: docInk.inkSoft }]}> | </Text>
                 ) : null}
                 <View style={styles.minBannerChip}>
                   <Users size={iconSize} color={chipMuted} strokeWidth={2.25} />
@@ -409,9 +479,16 @@ function MinimalLayout({
               <View style={{ marginTop: 16, alignItems: 'center' }}>
                 <Pressable
                   onPress={() => openLink(meeting.meeting_link!)}
-                  style={[styles.minBannerLinkBtn, { backgroundColor: theme.colors.primary }]}
+                  style={[
+                    styles.minBannerLinkBtn,
+                    {
+                      backgroundColor: notionChipsWellBg,
+                      borderColor: notionChipsWellBorder,
+                      borderWidth: StyleSheet.hairlineWidth,
+                    },
+                  ]}
                 >
-                  <Text style={[styles.minBannerLinkBtnText, { color: '#fff' }]}>Join online</Text>
+                  <Text style={[styles.minBannerLinkBtnText, { color: docInk.inkMuted }]}>Join online</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -749,13 +826,19 @@ const styles = StyleSheet.create({
   },
   minItemTimeBlock: {
     alignItems: 'flex-end',
-    flexShrink: 1,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
+    flexGrow: 0,
     minWidth: 108,
     marginLeft: 6,
   },
+  /** Card time (top-right) and duration (bottom-right): always regular weight, never semibold/bold. */
+  minItemMetaPlain: {
+    fontWeight: '400',
+    fontStyle: 'normal',
+  },
   minItemTimeRight: {
     fontSize: 14,
-    fontWeight: '700',
     lineHeight: 19,
     textAlign: 'right',
   },
@@ -764,14 +847,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
-  minItemPeopleBlock: {
+  minItemFooterRow: {
     marginTop: 10,
-    gap: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  minItemPeopleText: {
+  minItemFooterRowsBlock: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 8,
+  },
+  minItemFooterRoleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+  },
+  minItemFooterRoleRowSpaced: {
+    marginTop: 6,
+  },
+  minItemRoleHeading: {
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 18,
+  },
+  minItemRoleName: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 18,
+  },
+  minItemDurationBottom: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'right',
+    flexShrink: 0,
+    alignSelf: 'flex-end',
   },
   minBannerClub: {
     fontSize: 25,
@@ -802,12 +913,12 @@ const styles = StyleSheet.create({
   minBannerChipText: {
     fontSize: 13,
     lineHeight: 17,
-    fontWeight: '500',
+    fontWeight: '400',
   },
   minBannerChipSep: {
     fontSize: 13,
     lineHeight: 17,
-    fontWeight: '500',
+    fontWeight: '400',
   },
   minBannerLinkBtn: {
     borderRadius: 12,
@@ -816,7 +927,7 @@ const styles = StyleSheet.create({
   },
   minBannerLinkBtnText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 
   minHeader: {
