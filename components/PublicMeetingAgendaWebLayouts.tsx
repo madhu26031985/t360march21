@@ -120,6 +120,17 @@ function isThemeOnStackSection(sectionName: string): boolean {
   return s.includes('toastmaster') || isEducationalMinimalSection(sectionName);
 }
 
+/** Toastmaster-of-the-Day style card (theme stack + avatar row); not used for generic "toastmaster" elsewhere if any. */
+function isToastmasterStackSection(sectionName: string): boolean {
+  return sectionNameLower(sectionName).includes('toastmaster');
+}
+
+function themeAssigneeInitialLetter(name: string): string {
+  const w = name.trim().split(/\s+/)[0];
+  if (!w) return '?';
+  return w.charAt(0).toUpperCase();
+}
+
 /** Theme / topic text shown in the dedicated stack block (TMOD + educational). */
 function themeOrTopicForStack(item: PublicAgendaItemRow): string {
   const rd = agendaRoleDetails(item);
@@ -562,20 +573,28 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
       ) : null}
 
       {showThemeStack ? (
-        <View style={styles.minItemThemeStack}>
-          <Text style={[styles.minItemThemeStackLabel, { color: docInk.ink }]} maxFontSizeMultiplier={1.05}>
-            🎯 Theme of the Day
-          </Text>
-          <View style={[styles.minItemThemeStackPill, { backgroundColor: themePillBg }]}>
-            <Text
-              style={[styles.minItemThemeStackPillText, { color: themePillText }]}
-              numberOfLines={4}
-              maxFontSizeMultiplier={1.05}
-            >
-              {stackTheme}
+        <>
+          <View
+            style={[
+              styles.minItemThemeHeaderRule,
+              { backgroundColor: innerWellBorder, marginTop: descPreview ? 14 : 4 },
+            ]}
+          />
+          <View style={styles.minItemThemeStack}>
+            <Text style={[styles.minItemThemeStackLabel, { color: docInk.ink }]} maxFontSizeMultiplier={1.05}>
+              🎯 Theme of the Day
             </Text>
+            <View style={[styles.minItemThemeStackPill, { backgroundColor: themePillBg }]}>
+              <Text
+                style={[styles.minItemThemeStackPillText, { color: themePillText }]}
+                numberOfLines={4}
+                maxFontSizeMultiplier={1.05}
+              >
+                {stackTheme.toUpperCase()}
+              </Text>
+            </View>
           </View>
-        </View>
+        </>
       ) : null}
 
       {showThemeStack && assigneeName ? (
@@ -583,15 +602,39 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
           style={[
             styles.minItemInnerWell,
             styles.minItemThemeAssigneeWell,
-            { borderColor: innerWellBorder, backgroundColor: innerWellBg },
+            {
+              borderColor: innerWellBorder,
+              backgroundColor: isToastmasterStackSection(item.section_name)
+                ? theme.colors.background
+                : innerWellBg,
+            },
           ]}
         >
-          <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
-            {themeStackRoleLabel}
-          </Text>
-          <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-            {assigneeName}
-          </Text>
+          {isToastmasterStackSection(item.section_name) ? (
+            <View style={styles.minItemThemeAssigneeRow}>
+              <View style={styles.minItemThemeInitialBubble}>
+                <Text style={styles.minItemThemeInitialLetter} maxFontSizeMultiplier={1.2}>
+                  {themeAssigneeInitialLetter(assigneeName)}
+                </Text>
+              </View>
+              <Text
+                style={[styles.minItemThemeAssigneeNameOnly, { color: docInk.ink }]}
+                numberOfLines={2}
+                maxFontSizeMultiplier={1.1}
+              >
+                {assigneeName}
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+                {themeStackRoleLabel}
+              </Text>
+              <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+                {assigneeName}
+              </Text>
+            </>
+          )}
         </View>
       ) : null}
 
@@ -1253,28 +1296,63 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
+  minItemThemeHeaderRule: {
+    alignSelf: 'stretch',
+    height: StyleSheet.hairlineWidth,
+    marginBottom: 2,
+  },
   minItemThemeStack: {
     marginTop: 12,
+    alignSelf: 'stretch',
   },
   minItemThemeStackLabel: {
     fontSize: 13,
-    fontWeight: '400',
+    fontWeight: '700',
     lineHeight: 19,
   },
   minItemThemeStackPill: {
-    marginTop: 8,
-    borderRadius: 10,
+    marginTop: 10,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
+    alignSelf: 'stretch',
   },
   minItemThemeStackPillText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     lineHeight: 21,
-    textAlign: 'center',
+    textAlign: 'left',
+    letterSpacing: 0.4,
   },
   minItemThemeAssigneeWell: {
-    marginTop: 10,
+    marginTop: 12,
+  },
+  minItemThemeAssigneeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  minItemThemeInitialBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  minItemThemeInitialLetter: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1d4ed8',
+    lineHeight: 22,
+  },
+  minItemThemeAssigneeNameOnly: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 21,
   },
   minItemInnerWell: {
     marginTop: 0,
