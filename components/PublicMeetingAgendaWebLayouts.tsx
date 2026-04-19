@@ -43,12 +43,25 @@ function formatMinimalAgendaTimeRange(start: string | null, end: string | null):
   return '';
 }
 
-/** Right column under time: "(15 mins)" / "(1 min)"; empty when no duration. */
-function formatMinimalDurationLabel(minutes: number | null | undefined): string {
+/** Short duration for header pill: "15m" / "1m". */
+function formatMinimalDurationShortM(minutes: number | null | undefined): string {
   if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return '';
   const n = Math.round(minutes);
-  if (n === 1) return '(1 min)';
-  return `(${n} mins)`;
+  return `${n}m`;
+}
+
+/** Right column: "21:23–21:38 • 15m" (bold single line). */
+function formatMinimalTimeDurationRight(
+  start: string | null,
+  end: string | null,
+  minutes: number | null | undefined
+): string {
+  const t = formatMinimalAgendaTimeRange(start, end).trim();
+  const d = formatMinimalDurationShortM(minutes);
+  if (t && d) return `${t} • ${d}`;
+  if (t) return t;
+  if (d) return d;
+  return '';
 }
 
 function isMeetAndGreetSection(sectionName: string): boolean {
@@ -113,11 +126,14 @@ function minimalCardWebShadow(): ViewStyle {
 }
 
 function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; theme: AppTheme }) {
-  const timeRangeText = formatMinimalAgendaTimeRange(item.start_time, item.end_time).trim();
-  const durationLabel = formatMinimalDurationLabel(item.duration_minutes);
+  const timeDurationRight = formatMinimalTimeDurationRight(
+    item.start_time,
+    item.end_time,
+    item.duration_minutes
+  ).trim();
   const descPreview = minimalCardDescriptionPreview(item).trim();
   const peopleLines = minimalCardPeopleLines(item);
-  const hasTimeBlock = Boolean(timeRangeText || durationLabel);
+  const hasTimeBlock = Boolean(timeDurationRight);
 
   return (
     <View
@@ -150,19 +166,14 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
         </View>
         {hasTimeBlock ? (
           <View style={styles.minItemTimeBlock}>
-            {timeRangeText ? (
-              <Text style={[styles.minItemTimeRight, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                {timeRangeText}
-              </Text>
-            ) : null}
-            {durationLabel ? (
-              <Text
-                style={[styles.minItemDurationRight, { color: theme.colors.text }]}
-                maxFontSizeMultiplier={1.05}
-              >
-                {durationLabel}
-              </Text>
-            ) : null}
+            <Text
+              style={[styles.minItemTimeRight, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {timeDurationRight}
+            </Text>
           </View>
         ) : null}
       </View>
@@ -311,7 +322,7 @@ function MinimalLayout({
     meeting.meeting_number == null ? '' : String(meeting.meeting_number).trim();
   const meetingNoLabel = `Meeting ${meetingNumStr || '—'}`;
   const chipMuted = theme.colors.textSecondary;
-  const iconSize = 12;
+  const iconSize = 11;
   const isLightDoc =
     theme.colors.background.toLowerCase() === '#ffffff' ||
     theme.colors.background.toLowerCase() === '#fff';
@@ -724,62 +735,56 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   minItemSectionIcon: {
-    fontSize: 20,
-    lineHeight: 24,
+    fontSize: 19,
+    lineHeight: 23,
     marginTop: 1,
   },
   minItemTitleLeft: {
     flex: 1,
     flexShrink: 1,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    lineHeight: 21,
+    lineHeight: 20,
     paddingRight: 4,
   },
   minItemTimeBlock: {
     alignItems: 'flex-end',
-    flexShrink: 0,
-    minWidth: 88,
+    flexShrink: 1,
+    minWidth: 108,
+    marginLeft: 6,
   },
   minItemTimeRight: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    lineHeight: 20,
-    textAlign: 'right',
-  },
-  minItemDurationRight: {
-    marginTop: 2,
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 17,
+    lineHeight: 19,
     textAlign: 'right',
   },
   minItemDesc: {
     marginTop: 10,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 19,
   },
   minItemPeopleBlock: {
     marginTop: 10,
     gap: 4,
   },
   minItemPeopleText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 19,
+    lineHeight: 18,
   },
   minBannerClub: {
-    fontSize: 26,
+    fontSize: 25,
     fontWeight: '700',
     textAlign: 'center',
-    lineHeight: 32,
+    lineHeight: 30,
     letterSpacing: -0.35,
   },
   minBannerSub: {
     marginTop: 10,
     textAlign: 'center',
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 18,
     letterSpacing: 0.15,
   },
   minBannerChipsRow: {
@@ -795,13 +800,13 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   minBannerChipText: {
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 17,
     fontWeight: '500',
   },
   minBannerChipSep: {
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 17,
     fontWeight: '500',
   },
   minBannerLinkBtn: {
@@ -810,7 +815,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   minBannerLinkBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
 
