@@ -33,22 +33,10 @@ function vibrantCardExtra(): ViewStyle {
   return { elevation: 8 };
 }
 
-/**
- * Time column: show only the minute:second parts of each stored time (HH:MM(:SS) → MM:SS).
- * Example: 21:23:00–21:38:00 → 23:00–38:00.
- */
-function formatClockMmSsOnly(raw: string | null | undefined): string {
-  const t = (raw ?? '').trim();
-  const m = t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (!m) return t;
-  const mm = m[2].padStart(2, '0');
-  const ss = (m[3] ?? '00').padStart(2, '0');
-  return `${mm}:${ss}`;
-}
-
+/** Time column: HH:mm–HH:mm (seconds stripped). */
 function formatMinimalAgendaTimeRange(start: string | null, end: string | null): string {
-  const a = start ? formatClockMmSsOnly(start) : '';
-  const b = end ? formatClockMmSsOnly(end) : '';
+  const a = start ? formatPublicAgendaBannerTimePart(start) : '';
+  const b = end ? formatPublicAgendaBannerTimePart(end) : '';
   if (a && b) return `${a}–${b}`;
   if (a) return a;
   if (b) return b;
@@ -63,46 +51,32 @@ function formatMinimalDurationMins(minutes: number | null | undefined): string {
   return `${n} mins`;
 }
 
-/** Role abbreviations for the People column (public minimal agenda). */
-function minimalRoleLabelForSection(sectionName: string): string | null {
+function isMeetAndGreetSection(sectionName: string): boolean {
   const s = (sectionName || '').toLowerCase();
-  if (s.includes('call to order')) return 'SAA';
-  if (s.includes('presiding officer')) return 'President';
-  if (s.includes('toastmaster')) return 'TMOD';
-  if (s.includes('general evaluator')) return 'GE';
-  if (s.includes('prepared speeches')) return 'Speakers';
-  if (s.includes('ice breaker')) return 'Ice Breakers';
-  if (s.includes('table topic')) return 'TT';
-  if (s.includes('ah counter')) return 'Ah Counter';
-  if (s.includes('grammarian')) return 'Grammar';
-  if (s.includes('timer')) return 'Timer';
-  return null;
+  return s.includes('meet and greet') || s.includes('meet & greet');
 }
 
+/** People column: Meet and Greet → "All"; otherwise assigned and tag names (no role abbreviations). */
 function buildMinimalPeopleLines(item: PublicAgendaItemRow): string[] {
+  if (isMeetAndGreetSection(item.section_name)) {
+    return ['All'];
+  }
+
   const lines: string[] = [];
-  const rp = minimalRoleLabelForSection(item.section_name);
-  const primary = item.assigned_user_name;
-  if (primary) {
-    lines.push(rp ? `${rp} · ${primary}` : primary);
-  } else if (rp) {
-    lines.push(rp);
-  } else {
-    lines.push('All');
-  }
-  const seen = new Set<string>(primary ? [primary] : []);
-  if (item.timer_user_name && !seen.has(item.timer_user_name)) {
-    lines.push(`Timer: ${item.timer_user_name}`);
-    seen.add(item.timer_user_name);
-  }
-  if (item.ah_counter_user_name && !seen.has(item.ah_counter_user_name)) {
-    lines.push(`Ah Counter: ${item.ah_counter_user_name}`);
-    seen.add(item.ah_counter_user_name);
-  }
-  if (item.grammarian_user_name && !seen.has(item.grammarian_user_name)) {
-    lines.push(`Grammarian: ${item.grammarian_user_name}`);
-    seen.add(item.grammarian_user_name);
-  }
+  const seen = new Set<string>();
+
+  const pushName = (name: string | null | undefined) => {
+    const n = name?.trim();
+    if (!n || seen.has(n)) return;
+    lines.push(n);
+    seen.add(n);
+  };
+
+  pushName(item.assigned_user_name);
+  pushName(item.timer_user_name);
+  pushName(item.ah_counter_user_name);
+  pushName(item.grammarian_user_name);
+
   const slots = preparedSlotsForPublic(item);
   for (const s of slots) {
     if (s.speaker_name?.trim()) {
@@ -111,6 +85,10 @@ function buildMinimalPeopleLines(item: PublicAgendaItemRow): string[] {
     if (s.evaluator_name?.trim()) {
       lines.push(`Evaluator ${s.slot}: ${s.evaluator_name.trim()}`);
     }
+  }
+
+  if (lines.length === 0) {
+    lines.push('—');
   }
   return lines;
 }
