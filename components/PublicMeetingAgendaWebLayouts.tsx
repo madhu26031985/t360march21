@@ -132,13 +132,22 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
       ]}
     >
       <View style={styles.minItemCardHeaderRow}>
-        <Text
-          style={[styles.minItemTitleLeft, { color: theme.colors.text }]}
-          maxFontSizeMultiplier={1.15}
-          numberOfLines={3}
-        >
-          {item.section_name}
-        </Text>
+        <View style={styles.minItemTitleColumn}>
+          <View style={styles.minItemTitleWithIcon}>
+            {item.section_icon ? (
+              <Text style={styles.minItemSectionIcon} maxFontSizeMultiplier={1.2}>
+                {item.section_icon}
+              </Text>
+            ) : null}
+            <Text
+              style={[styles.minItemTitleLeft, { color: theme.colors.text }]}
+              maxFontSizeMultiplier={1.15}
+              numberOfLines={3}
+            >
+              {item.section_name}
+            </Text>
+          </View>
+        </View>
         {hasTimeBlock ? (
           <View style={styles.minItemTimeBlock}>
             {timeRangeText ? (
@@ -171,7 +180,7 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
           {peopleLines.map((line, i) => (
             <Text
               key={`p-${i}-${line.slice(0, 48)}`}
-              style={[styles.minItemPeopleText, { color: theme.colors.textSecondary }]}
+              style={[styles.minItemPeopleText, { color: theme.colors.text }]}
               maxFontSizeMultiplier={1.1}
             >
               {line}
@@ -704,6 +713,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  minItemTitleColumn: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  minItemTitleWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  minItemSectionIcon: {
+    fontSize: 20,
+    lineHeight: 24,
+    marginTop: 1,
+  },
   minItemTitleLeft: {
     flex: 1,
     flexShrink: 1,
@@ -741,7 +765,7 @@ const styles = StyleSheet.create({
   },
   minItemPeopleText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '700',
     lineHeight: 19,
   },
   minBannerClub: {
