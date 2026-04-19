@@ -19,7 +19,7 @@ import {
 } from '@/lib/publicAgendaFormat';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import type { PublicAgendaItemRow, PublicAgendaPayload } from '@/lib/publicAgendaQuery';
-import { Calendar, Clock, Users } from 'lucide-react-native';
+import { Calendar, Clock, Link2, MapPin, Users } from 'lucide-react-native';
 
 type AppTheme = ReturnType<typeof useTheme>['theme'];
 
@@ -66,25 +66,73 @@ function formatMinimalDurationWords(minutes: number | null | undefined): string 
   return `${n} minutes`;
 }
 
-/** Bold role-style label before the assignee name (see tag-team row pattern). */
+function sectionNameLower(sectionName: string): string {
+  return (sectionName || '').toLowerCase();
+}
+
+function agendaRoleDetails(item: PublicAgendaItemRow): Record<string, unknown> | null {
+  if (!item.role_details || typeof item.role_details !== 'object') return null;
+  return item.role_details as Record<string, unknown>;
+}
+
+function rdTrim(rd: Record<string, unknown> | null, key: string): string {
+  if (!rd) return '';
+  const v = rd[key];
+  if (v == null) return '';
+  return String(v).trim();
+}
+
+/** Role-style label before the assignee name (footer: label regular weight, name bold). */
 function minimalRoleHeadingForSection(sectionName: string): string {
-  const s = (sectionName || '').toLowerCase();
+  const s = sectionNameLower(sectionName);
   if (s.includes('meet and greet') || s.includes('meet & greet')) return 'Everyone';
   if (s.includes('call to order')) return 'Serjeant-at-Arms';
   if (s.includes('presiding officer')) return 'President';
   if (s.includes('toastmaster')) return 'Toastmaster';
   if (s.includes('general evaluator')) return 'General Evaluator';
+  if (s.includes('educational')) return 'Educational speaker';
   if (s.includes('prepared speeches') || s.includes('prepared speech')) return 'Speakers';
   if (s.includes('table topic')) return 'Table Topics';
   if (s.includes('ice breaker')) return 'Ice Breakers';
   if (s.includes('ah counter')) return 'Ah Counter';
   if (s.includes('grammarian')) return 'Grammarian';
   if (s.includes('timer')) return 'Timer';
+  if (s.includes('speech evaluation')) return 'Evaluator';
   return 'Role';
 }
 
+function isPreparedSpeechesMinimalSection(sectionName: string): boolean {
+  return sectionNameLower(sectionName).includes('prepared speech');
+}
+
+function isSpeechEvaluationMinimalSection(sectionName: string): boolean {
+  const s = sectionNameLower(sectionName);
+  if (s.includes('general evaluator')) return false;
+  return s.includes('speech evaluation');
+}
+
+function isEducationalMinimalSection(sectionName: string): boolean {
+  return sectionNameLower(sectionName).includes('educational');
+}
+
+function isThemeOnStackSection(sectionName: string): boolean {
+  const s = sectionNameLower(sectionName);
+  return s.includes('toastmaster') || isEducationalMinimalSection(sectionName);
+}
+
+/** Theme / topic text shown in the dedicated stack block (TMOD + educational). */
+function themeOrTopicForStack(item: PublicAgendaItemRow): string {
+  const rd = agendaRoleDetails(item);
+  const fromRd = rdTrim(rd, 'theme_of_the_day');
+  if (fromRd) return fromRd;
+  if (isEducationalMinimalSection(item.section_name)) {
+    return item.educational_topic?.trim() || '';
+  }
+  return '';
+}
+
 function isMeetAndGreetSection(sectionName: string): boolean {
-  const s = (sectionName || '').toLowerCase();
+  const s = sectionNameLower(sectionName);
   return s.includes('meet and greet') || s.includes('meet & greet');
 }
 
@@ -148,13 +196,42 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
   if (isMeetAndGreetSection(item.section_name)) {
     return [{ heading: 'Everyone', name: 'All' }];
   }
+  const skipSpeakerEvaluatorLines =
+    isPreparedSpeechesMinimalSection(item.section_name) ||
+    isSpeechEvaluationMinimalSection(item.section_name);
+  const preparedSlotNames = (() => {
+    if (!isPreparedSpeechesMinimalSection(item.section_name)) return new Set<string>();
+    const set = new Set<string>();
+    for (const s of preparedSlotsForPublic(item)) {
+      if (s.speaker_name?.trim()) set.add(s.speaker_name.trim());
+      if (s.evaluator_name?.trim()) set.add(s.evaluator_name.trim());
+    }
+    return set;
+  })();
+  const evalShapeForFooter = isSpeechEvaluationMinimalSection(item.section_name)
+    ? speechEvalDisplayShape(item)
+    : null;
+
   const lines = minimalCardPeopleLines(item);
   const out: { heading: string; name: string }[] = [];
   for (const line of lines) {
     const parsed = parseSpeakerEvaluatorHeading(line);
+    if (parsed && skipSpeakerEvaluatorLines) {
+      continue;
+    }
     if (parsed) {
       out.push(parsed);
       continue;
+    }
+    if (preparedSlotNames.size > 0 && preparedSlotNames.has(line)) {
+      continue;
+    }
+    if (evalShapeForFooter) {
+      const sp = evalShapeForFooter.speaker_name?.trim();
+      const ev = evalShapeForFooter.evaluator_name?.trim();
+      if ((sp && line === sp) || (ev && line === ev)) {
+        continue;
+      }
     }
     out.push({ heading: lineLabelForMinimalFooterRow(item, line), name: line });
   }
@@ -162,9 +239,228 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
 }
 
 function minimalCardDescriptionPreview(item: PublicAgendaItemRow): string {
-  const descLines = buildMinimalAgendaDescriptionLines(item);
-  if (descLines.length > 0) return descLines[0]!;
+  const stackTheme = themeOrTopicForStack(item);
+  const showThemeBlock = isThemeOnStackSection(item.section_name) && Boolean(stackTheme);
+  const topicTrim = item.educational_topic?.trim();
+
+  const rawLines = buildMinimalAgendaDescriptionLines(item);
+  const filtered = rawLines.filter((l) => {
+    const t = l.trim();
+    if (showThemeBlock && /^theme of the day:/i.test(t)) return false;
+    if (showThemeBlock && topicTrim && t === `Topic: ${topicTrim}`) return false;
+    return true;
+  });
+
+  if (filtered.length > 0) return filtered[0]!;
   return item.section_description?.trim() || '';
+}
+
+type MinimalSlotDisplay = {
+  slot: number;
+  speaker_name: string | null;
+  evaluator_name: string | null;
+  speech_title: string | null;
+  pathway_name: string | null;
+  project_name: string | null;
+  level: number | null;
+  project_number: string | null;
+  evaluation_form: string | null;
+};
+
+function slotToDisplayShape(s: ReturnType<typeof preparedSlotsForPublic>[number]): MinimalSlotDisplay {
+  return {
+    slot: s.slot,
+    speaker_name: s.speaker_name,
+    evaluator_name: s.evaluator_name,
+    speech_title: s.speech_title,
+    pathway_name: s.pathway_name,
+    project_name: s.project_name,
+    level: s.level,
+    project_number: s.project_number,
+    evaluation_form: s.evaluation_form,
+  };
+}
+
+function speechEvalDisplayShape(item: PublicAgendaItemRow): MinimalSlotDisplay | null {
+  const slots = preparedSlotsForPublic(item);
+  if (slots.length > 0) {
+    const base = slotToDisplayShape(slots[0]!);
+    const ev = slots[0]!.evaluator_name?.trim() || item.assigned_user_name?.trim() || null;
+    return { ...base, evaluator_name: ev };
+  }
+  const rd = agendaRoleDetails(item);
+  if (!rd) return null;
+  const title = rdTrim(rd, 'speech_title');
+  const speaker = rdTrim(rd, 'speaker_name');
+  const evaluator =
+    item.assigned_user_name?.trim() || rdTrim(rd, 'evaluator_name') || rdTrim(rd, 'evaluator');
+  const pathway = rdTrim(rd, 'pathway_name');
+  const project = rdTrim(rd, 'project_title') || rdTrim(rd, 'project_name');
+  const levelRaw = rd.pathway_level;
+  const level =
+    levelRaw != null && Number.isFinite(Number(levelRaw)) ? Math.round(Number(levelRaw)) : null;
+  const projNum = rdTrim(rd, 'project_number');
+  const evalForm = rdTrim(rd, 'evaluation_form');
+  if (!title && !speaker && !evaluator && !pathway && !project) return null;
+  return {
+    slot: 1,
+    speaker_name: speaker || null,
+    evaluator_name: evaluator || null,
+    speech_title: title || null,
+    pathway_name: pathway || null,
+    project_name: project || null,
+    level,
+    project_number: projNum || null,
+    evaluation_form: evalForm || null,
+  };
+}
+
+function evaluationFormUrl(raw: string | null | undefined): string | null {
+  const u = raw?.trim();
+  if (!u) return null;
+  if (/^https?:\/\//i.test(u)) return u;
+  return null;
+}
+
+function MinimalAgendaInnerSlotWell({
+  slot,
+  docInk,
+  borderColor,
+  wellBg,
+  variant,
+  evalTitlePillBg,
+}: {
+  slot: MinimalSlotDisplay;
+  docInk: MinimalDocInk;
+  borderColor: string;
+  wellBg: string;
+  variant: 'prepared' | 'evaluation';
+  evalTitlePillBg?: string;
+}) {
+  const speaker = slot.speaker_name?.trim() || '';
+  const evaluator = slot.evaluator_name?.trim() || '';
+  const formUrl = evaluationFormUrl(slot.evaluation_form);
+
+  const preparedHasMeta =
+    variant === 'prepared' &&
+    (Boolean(slot.speech_title?.trim()) ||
+      Boolean(slot.pathway_name?.trim()) ||
+      Boolean(slot.project_name?.trim()) ||
+      slot.level != null ||
+      Boolean(slot.project_number?.trim()));
+
+  const evalHasMeta =
+    variant === 'evaluation' &&
+    (Boolean(slot.pathway_name?.trim()) ||
+      Boolean(slot.project_name?.trim()) ||
+      slot.level != null ||
+      Boolean(slot.project_number?.trim()));
+
+  const personBlock = (role: string, name: string) => (
+    <View style={styles.minItemInnerPersonCol}>
+      <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+        {role}
+      </Text>
+      {name ? (
+        <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+          {name}
+        </Text>
+      ) : (
+        <Text style={[styles.minItemInnerPlaceholder, { color: docInk.inkSoft }]} maxFontSizeMultiplier={1.05}>
+          Yet to be assigned
+        </Text>
+      )}
+    </View>
+  );
+
+  return (
+    <View style={[styles.minItemInnerWell, { borderColor, backgroundColor: wellBg }]}>
+      <View style={styles.minItemInnerSpeakerEvalRow}>
+        {personBlock('Speaker', speaker)}
+        <View style={[styles.minItemInnerVertRule, { backgroundColor: borderColor }]} />
+        {personBlock('Evaluator', evaluator)}
+      </View>
+
+      {variant === 'evaluation' && slot.speech_title?.trim() ? (
+        <>
+          <View style={[styles.minItemInnerHRule, { backgroundColor: borderColor }]} />
+          <Text style={[styles.minItemInnerDetailLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+            Speech title
+          </Text>
+          <View style={[styles.minItemInnerTitlePillMint, evalTitlePillBg ? { backgroundColor: evalTitlePillBg } : null]}>
+            <Text
+              style={[styles.minItemInnerTitlePillMintText, { color: docInk.ink }]}
+              numberOfLines={3}
+              maxFontSizeMultiplier={1.05}
+            >
+              {slot.speech_title.trim()}
+            </Text>
+          </View>
+        </>
+      ) : null}
+
+      {preparedHasMeta ? (
+        <View style={styles.minItemInnerDetailsBlock}>
+          {slot.speech_title?.trim() ? (
+            <View style={styles.minItemInnerDetailRow}>
+              <Text style={[styles.minItemInnerDetailPrefix, { color: docInk.inkMuted }]}>📄 Speech title: </Text>
+              <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]}>{slot.speech_title.trim()}</Text>
+            </View>
+          ) : null}
+          {slot.pathway_name?.trim() ? (
+            <View style={styles.minItemInnerDetailRow}>
+              <Text style={[styles.minItemInnerDetailPrefix, { color: docInk.inkMuted }]}>🧭 Pathway: </Text>
+              <Text style={[styles.minItemInnerDetailValue, { color: docInk.inkMuted }]}>{slot.pathway_name.trim()}</Text>
+            </View>
+          ) : null}
+          {slot.project_name?.trim() ? (
+            <View style={styles.minItemInnerDetailRow}>
+              <Text style={[styles.minItemInnerDetailPrefix, { color: docInk.inkMuted }]}>📄 Project: </Text>
+              <Text style={[styles.minItemInnerDetailValue, { color: docInk.inkMuted }]}>{slot.project_name.trim()}</Text>
+            </View>
+          ) : null}
+          {(slot.level != null || slot.project_number?.trim()) ? (
+            <Text style={[styles.minItemInnerDetailValue, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+              {slot.level != null ? `Level ${slot.level}` : ''}
+              {slot.level != null && slot.project_number?.trim() ? '  ·  ' : ''}
+              {slot.project_number?.trim() ? `Project ${slot.project_number.trim()}` : ''}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {evalHasMeta ? (
+        <View style={styles.minItemInnerDetailsBlock}>
+          {(slot.pathway_name?.trim() || slot.project_name?.trim()) ? (
+            <Text style={[styles.minItemInnerDetailValue, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+              {[slot.pathway_name?.trim(), slot.project_name?.trim()].filter(Boolean).join(' · ')}
+            </Text>
+          ) : null}
+          {(slot.level != null || slot.project_number?.trim()) ? (
+            <Text style={[styles.minItemInnerDetailValue, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+              {slot.level != null ? `Level ${slot.level}` : ''}
+              {slot.level != null && slot.project_number?.trim() ? '  ·  ' : ''}
+              {slot.project_number?.trim() ? `Project ${slot.project_number.trim()}` : ''}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {formUrl ? (
+        <Pressable
+          onPress={() => Linking.openURL(formUrl).catch(() => {})}
+          style={({ pressed }) => [
+            styles.minItemInnerFormBtn,
+            { borderColor, backgroundColor: wellBg, opacity: pressed ? 0.85 : 1 },
+          ]}
+        >
+          <Text style={[styles.minItemInnerFormBtnText, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+            📄 Evaluation form — Open
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 function minimalCardWebShadow(): ViewStyle {
@@ -184,6 +480,34 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
   const durationWords = formatMinimalDurationWords(item.duration_minutes);
   const hasTimeTop = Boolean(timeRangeOnly);
   const showFooter = Boolean(durationWords) || footerRows.length > 0;
+
+  const stackTheme = themeOrTopicForStack(item);
+  const showThemeStack = isThemeOnStackSection(item.section_name) && Boolean(stackTheme);
+  const assigneeName = item.assigned_user_name?.trim() || '';
+  const themeStackRoleLabel = minimalRoleHeadingForSection(item.section_name);
+
+  const isLightDoc =
+    theme.colors.background.toLowerCase() === '#ffffff' ||
+    theme.colors.background.toLowerCase() === '#fff';
+  const innerWellBorder = theme.colors.borderLight;
+  const innerWellBg = isLightDoc ? '#fafafa' : theme.colors.surfaceSecondary;
+  const themePillBg = isLightDoc ? '#d8f3ef' : 'rgba(45,212,191,0.16)';
+  const themePillText = isLightDoc ? '#0f766e' : theme.colors.textSecondary;
+
+  const preparedSlots = isPreparedSpeechesMinimalSection(item.section_name)
+    ? preparedSlotsForPublic(item)
+    : [];
+  const evalShape = isSpeechEvaluationMinimalSection(item.section_name) ? speechEvalDisplayShape(item) : null;
+
+  const hasStackAbovePrepared =
+    Boolean(descPreview) || showThemeStack || (showThemeStack && Boolean(assigneeName));
+  const preparedSlotGapTop = (idx: number) =>
+    idx > 0 ? 10 : hasStackAbovePrepared ? 12 : 0;
+  const evalWellGapTop =
+    preparedSlots.length > 0 ? 10 : hasStackAbovePrepared ? 12 : 0;
+
+  const hasInnerStack =
+    showThemeStack || preparedSlots.length > 0 || Boolean(evalShape);
 
   return (
     <View
@@ -236,8 +560,68 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
           {descPreview}
         </Text>
       ) : null}
+
+      {showThemeStack ? (
+        <View style={styles.minItemThemeStack}>
+          <Text style={[styles.minItemThemeStackLabel, { color: docInk.ink }]} maxFontSizeMultiplier={1.05}>
+            🎯 Theme of the Day
+          </Text>
+          <View style={[styles.minItemThemeStackPill, { backgroundColor: themePillBg }]}>
+            <Text
+              style={[styles.minItemThemeStackPillText, { color: themePillText }]}
+              numberOfLines={4}
+              maxFontSizeMultiplier={1.05}
+            >
+              {stackTheme}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {showThemeStack && assigneeName ? (
+        <View
+          style={[
+            styles.minItemInnerWell,
+            styles.minItemThemeAssigneeWell,
+            { borderColor: innerWellBorder, backgroundColor: innerWellBg },
+          ]}
+        >
+          <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+            {themeStackRoleLabel}
+          </Text>
+          <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+            {assigneeName}
+          </Text>
+        </View>
+      ) : null}
+
+      {preparedSlots.map((s, idx) => (
+        <View key={`prep-${s.slot}`} style={{ marginTop: preparedSlotGapTop(idx) }}>
+          <MinimalAgendaInnerSlotWell
+            slot={slotToDisplayShape(s)}
+            docInk={docInk}
+            borderColor={innerWellBorder}
+            wellBg={innerWellBg}
+            variant="prepared"
+          />
+        </View>
+      ))}
+
+      {evalShape ? (
+        <View style={{ marginTop: evalWellGapTop }}>
+          <MinimalAgendaInnerSlotWell
+            slot={evalShape}
+            docInk={docInk}
+            borderColor={innerWellBorder}
+            wellBg={innerWellBg}
+            variant="evaluation"
+            evalTitlePillBg={isLightDoc ? '#bfe9e2' : 'rgba(45,212,191,0.22)'}
+          />
+        </View>
+      ) : null}
+
       {showFooter ? (
-        <View style={styles.minItemFooterRow}>
+        <View style={[styles.minItemFooterRow, hasInnerStack ? styles.minItemFooterAfterStack : null]}>
           <View style={styles.minItemFooterRowsBlock}>
             {footerRows.map((row, i) => (
               <View
@@ -401,6 +785,12 @@ function MinimalLayout({
         } as ViewStyle)
       : {};
 
+  const locationText = meeting.meeting_location?.trim() || '';
+  const meetingLink = meeting.meeting_link?.trim() || '';
+  const showBannerTopMeta = Boolean(locationText || meetingLink);
+  const locIconSize = 14;
+  const linkIconSize = 13;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
       <ScrollView contentContainerStyle={styles.minScroll} keyboardShouldPersistTaps="handled">
@@ -424,6 +814,40 @@ function MinimalLayout({
               bannerWebShadow,
             ]}
           >
+            {showBannerTopMeta ? (
+              <View style={styles.minBannerTopMeta}>
+                {locationText ? (
+                  <View style={styles.minBannerLocRow} accessibilityLabel={`Location: ${locationText}`}>
+                    <MapPin size={locIconSize} color={chipMuted} strokeWidth={2.25} />
+                    <Text style={[styles.minBannerLocText, { color: docInk.inkMuted }]} numberOfLines={4}>
+                      {locationText}
+                    </Text>
+                  </View>
+                ) : null}
+                {meetingLink ? (
+                  <Pressable
+                    onPress={() => openLink(meetingLink)}
+                    style={({ pressed }) => [
+                      styles.minBannerTopLinkWell,
+                      {
+                        borderColor: notionChipsWellBorder,
+                        backgroundColor: notionChipsWellBg,
+                        marginTop: locationText ? 10 : 0,
+                        opacity: pressed ? 0.88 : 1,
+                      },
+                    ]}
+                    accessibilityRole="link"
+                    accessibilityLabel="Open online meeting link"
+                  >
+                    <Link2 size={linkIconSize} color={chipMuted} strokeWidth={2.25} />
+                    <Text style={[styles.minBannerTopLinkText, { color: docInk.inkMuted }]} numberOfLines={2}>
+                      Online meeting link
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+
             <Text style={[styles.minBannerClub, { color: docInk.ink }]} numberOfLines={2}>
               {club.club_name}
             </Text>
@@ -474,24 +898,6 @@ function MinimalLayout({
                 </View>
               </View>
             </View>
-
-            {meeting.meeting_link ? (
-              <View style={{ marginTop: 16, alignItems: 'center' }}>
-                <Pressable
-                  onPress={() => openLink(meeting.meeting_link!)}
-                  style={[
-                    styles.minBannerLinkBtn,
-                    {
-                      backgroundColor: notionChipsWellBg,
-                      borderColor: notionChipsWellBorder,
-                      borderWidth: StyleSheet.hairlineWidth,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.minBannerLinkBtnText, { color: docInk.inkMuted }]}>Join online</Text>
-                </Pressable>
-              </View>
-            ) : null}
           </View>
 
           <View
@@ -847,12 +1253,134 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
+  minItemThemeStack: {
+    marginTop: 12,
+  },
+  minItemThemeStackLabel: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 19,
+  },
+  minItemThemeStackPill: {
+    marginTop: 8,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  minItemThemeStackPillText: {
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  minItemThemeAssigneeWell: {
+    marginTop: 10,
+  },
+  minItemInnerWell: {
+    marginTop: 0,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  minItemInnerSpeakerEvalRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  minItemInnerPersonCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  minItemInnerVertRule: {
+    width: StyleSheet.hairlineWidth,
+    marginHorizontal: 12,
+    alignSelf: 'stretch',
+  },
+  minItemInnerHRule: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  minItemInnerRoleLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 16,
+  },
+  minItemInnerPersonName: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 19,
+  },
+  minItemInnerPlaceholder: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 19,
+    fontStyle: 'italic',
+  },
+  minItemInnerDetailLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 16,
+    marginBottom: 6,
+  },
+  minItemInnerTitlePillMint: {
+    marginTop: 8,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#bfe9e2',
+  },
+  minItemInnerTitlePillMintText: {
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  minItemInnerDetailsBlock: {
+    marginTop: 12,
+    gap: 8,
+  },
+  minItemInnerDetailRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+  },
+  minItemInnerDetailPrefix: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 19,
+    marginRight: 4,
+  },
+  minItemInnerDetailValue: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 19,
+    flexShrink: 1,
+  },
+  minItemInnerFormBtn: {
+    marginTop: 14,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  minItemInnerFormBtnText: {
+    fontSize: 13,
+    fontWeight: '400',
+    textAlign: 'center',
+  },
   minItemFooterRow: {
     marginTop: 10,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: 10,
+  },
+  minItemFooterAfterStack: {
+    marginTop: 16,
   },
   minItemFooterRowsBlock: {
     flex: 1,
@@ -869,12 +1397,12 @@ const styles = StyleSheet.create({
   },
   minItemRoleHeading: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '400',
     lineHeight: 18,
   },
   minItemRoleName: {
     fontSize: 13,
-    fontWeight: '400',
+    fontWeight: '700',
     lineHeight: 18,
   },
   minItemDurationBottom: {
@@ -883,6 +1411,44 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     flexShrink: 0,
     alignSelf: 'flex-end',
+  },
+  minBannerTopMeta: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  minBannerLocRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 8,
+    maxWidth: '100%',
+    paddingHorizontal: 4,
+  },
+  minBannerLocText: {
+    flexShrink: 1,
+    maxWidth: '92%',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '400',
+    textAlign: 'center',
+  },
+  minBannerTopLinkWell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: '100%',
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  minBannerTopLinkText: {
+    flexShrink: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '400',
+    textAlign: 'left',
   },
   minBannerClub: {
     fontSize: 25,
