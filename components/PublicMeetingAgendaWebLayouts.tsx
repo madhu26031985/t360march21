@@ -20,7 +20,7 @@ import {
 } from '@/lib/publicAgendaFormat';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import type { PublicAgendaItemRow, PublicAgendaPayload } from '@/lib/publicAgendaQuery';
-import { Calendar, Clock, Users } from 'lucide-react-native';
+import { Calendar, Clock, User, Users } from 'lucide-react-native';
 
 type AppTheme = ReturnType<typeof useTheme>['theme'];
 
@@ -43,12 +43,12 @@ function formatMinimalAgendaTimeRange(start: string | null, end: string | null):
   return '';
 }
 
-/** Duration column: "15 mins" / "1 min". */
-function formatMinimalDurationMins(minutes: number | null | undefined): string {
-  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return '—';
+/** Title suffix e.g. " (15 mins)" or " (1 min)"; empty when no duration. */
+function formatMinimalDurationParen(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return '';
   const n = Math.round(minutes);
-  if (n === 1) return '1 min';
-  return `${n} mins`;
+  if (n === 1) return ' (1 min)';
+  return ` (${n} mins)`;
 }
 
 function isMeetAndGreetSection(sectionName: string): boolean {
@@ -56,7 +56,7 @@ function isMeetAndGreetSection(sectionName: string): boolean {
   return s.includes('meet and greet') || s.includes('meet & greet');
 }
 
-/** People column: Meet and Greet → "All"; otherwise assigned and tag names (no role abbreviations). */
+/** People line: Meet and Greet → "All"; otherwise assigned and tag names (no role abbreviations). */
 function buildMinimalPeopleLines(item: PublicAgendaItemRow): string[] {
   if (isMeetAndGreetSection(item.section_name)) {
     return ['All'];
@@ -91,6 +91,71 @@ function buildMinimalPeopleLines(item: PublicAgendaItemRow): string[] {
     lines.push('—');
   }
   return lines;
+}
+
+function minimalCardAttendeeSummary(item: PublicAgendaItemRow): string {
+  const lines = buildMinimalPeopleLines(item);
+  const first = lines[0]?.trim();
+  if (!first) return '–';
+  if (first === '—') return '–';
+  return first;
+}
+
+function minimalCardDescriptionPreview(item: PublicAgendaItemRow): string {
+  const descLines = buildMinimalAgendaDescriptionLines(item);
+  if (descLines.length > 0) return descLines[0]!;
+  return item.section_description?.trim() || '–';
+}
+
+function minimalCardWebShadow(): ViewStyle {
+  if (Platform.OS === 'web') {
+    return {
+      boxShadow: '0 1px 2px rgba(15,15,15,0.06), 0 4px 14px rgba(15,15,15,0.06)',
+    } as ViewStyle;
+  }
+  return {};
+}
+
+function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; theme: AppTheme }) {
+  const timeRangeText = formatMinimalAgendaTimeRange(item.start_time, item.end_time) || '—';
+  const durationParen = formatMinimalDurationParen(item.duration_minutes);
+  const titleLine = `${item.section_name}${durationParen}`;
+  const descPreview = minimalCardDescriptionPreview(item);
+  const attendee = minimalCardAttendeeSummary(item);
+
+  return (
+    <View
+      style={[
+        styles.minItemCard,
+        {
+          backgroundColor: theme.colors.background,
+          borderColor: theme.colors.borderLight,
+        },
+        minimalCardWebShadow(),
+        Platform.OS === 'android' ? { elevation: 2 } : {},
+      ]}
+    >
+      <Text style={[styles.minItemTime, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+        {timeRangeText}
+      </Text>
+      <Text style={[styles.minItemTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
+        {titleLine}
+      </Text>
+      <Text
+        style={[styles.minItemDesc, { color: theme.colors.textSecondary }]}
+        numberOfLines={3}
+        maxFontSizeMultiplier={1.1}
+      >
+        {descPreview}
+      </Text>
+      <View style={styles.minItemPeopleRow}>
+        <User size={18} color={theme.colors.primary} strokeWidth={2.2} />
+        <Text style={[styles.minItemPeopleText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.1}>
+          {attendee}
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 export function PublicMeetingAgendaLoadedView({
@@ -307,54 +372,19 @@ function MinimalLayout({
             ) : null}
           </View>
 
-          <View style={[styles.minNotionBody, { backgroundColor: theme.colors.background }]}>
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={Platform.OS === 'web'}
-              contentContainerStyle={styles.notionTableScrollInner}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.notionTable}>
-                <View
-                  style={[
-                    styles.notionHeaderRow,
-                    {
-                      borderBottomColor: theme.colors.borderLight,
-                      backgroundColor: isLightDoc ? '#fafaf9' : theme.colors.backgroundSecondary,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.notionHeaderCell, styles.notionColTime, { color: theme.colors.textSecondary }]}>
-                    Time
-                  </Text>
-                  <Text
-                    style={[styles.notionHeaderCell, styles.notionColDuration, { color: theme.colors.textSecondary }]}
-                  >
-                    Duration
-                  </Text>
-                  <Text style={[styles.notionHeaderCell, styles.notionColTitle, { color: theme.colors.textSecondary }]}>
-                    Title
-                  </Text>
-                  <Text style={[styles.notionHeaderCell, styles.notionColDesc, { color: theme.colors.textSecondary }]}>
-                    Description
-                  </Text>
-                  <Text
-                    style={[styles.notionHeaderCell, styles.notionColPeople, { color: theme.colors.textSecondary }]}
-                  >
-                    People
-                  </Text>
-                </View>
-                {items.map((item) => (
-                  <AgendaSectionCard
-                    key={`${item.section_order}-${item.section_name}`}
-                    item={item}
-                    theme={theme}
-                    skin="minimal"
-                  />
-                ))}
-              </View>
-            </ScrollView>
+          <View
+            style={[
+              styles.minCardListSection,
+              { backgroundColor: isLightDoc ? '#e8e7e4' : theme.colors.background },
+            ]}
+          >
+            {items.map((item) => (
+              <MinimalAgendaItemCard
+                key={`${item.section_order}-${item.section_name}`}
+                item={item}
+                theme={theme}
+              />
+            ))}
           </View>
         </View>
       </ScrollView>
@@ -536,68 +566,7 @@ function AgendaSectionCard({
   );
 
   if (skin === 'minimal') {
-    const descLines = buildMinimalAgendaDescriptionLines(item);
-    const peopleLines = buildMinimalPeopleLines(item);
-    const timeRangeText = formatMinimalAgendaTimeRange(item.start_time, item.end_time);
-    const durationLabel = formatMinimalDurationMins(item.duration_minutes);
-
-    return (
-      <View
-        style={[
-          styles.notionDataRow,
-          {
-            backgroundColor: theme.colors.background,
-            borderBottomColor: theme.colors.borderLight,
-          },
-        ]}
-      >
-        <View style={[styles.notionColTime, styles.notionCellPad]}>
-          <Text style={[styles.notionTimePrimary, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
-            {timeRangeText || '—'}
-          </Text>
-        </View>
-
-        <View style={[styles.notionColDuration, styles.notionCellPad]}>
-          <Text style={[styles.notionDurationText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
-            {durationLabel}
-          </Text>
-        </View>
-
-        <View style={[styles.notionColTitle, styles.notionCellPad]}>
-          <Text style={[styles.notionTitleText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.15}>
-            {item.section_name}
-          </Text>
-        </View>
-
-        <View style={[styles.notionColDesc, styles.notionCellPad]}>
-          {descLines.length === 0 ? (
-            <Text style={[styles.notionDescMuted, { color: theme.colors.textTertiary }]}>—</Text>
-          ) : (
-            descLines.map((line, i) => (
-              <Text
-                key={`d-${i}-${line.slice(0, 40)}`}
-                style={[styles.notionDescLine, { color: theme.colors.textSecondary }]}
-                maxFontSizeMultiplier={1.1}
-              >
-                {line}
-              </Text>
-            ))
-          )}
-        </View>
-
-        <View style={[styles.notionColPeople, styles.notionCellPad]}>
-          {peopleLines.map((line, i) => (
-            <Text
-              key={`p-${i}-${line.slice(0, 40)}`}
-              style={[styles.notionPeopleLine, { color: theme.colors.text }]}
-              maxFontSizeMultiplier={1.1}
-            >
-              {line}
-            </Text>
-          ))}
-        </View>
-      </View>
-    );
+    return <MinimalAgendaItemCard item={item} theme={theme} />;
   }
 
   if (skin === 'vibrant') {
@@ -691,9 +660,45 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  minNotionBody: {
-    paddingTop: 6,
-    paddingBottom: 10,
+  minCardListSection: {
+    paddingTop: 14,
+    paddingBottom: 28,
+    paddingHorizontal: 2,
+  },
+  minItemCard: {
+    marginHorizontal: 14,
+    marginBottom: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  minItemTime: {
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  minItemTitle: {
+    marginTop: 6,
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 21,
+  },
+  minItemDesc: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  minItemPeopleRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  minItemPeopleText: {
+    fontSize: 15,
+    fontWeight: '500',
+    flex: 1,
   },
   minBannerClub: {
     fontSize: 26,
@@ -826,90 +831,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   minFooter: { textAlign: 'center', fontSize: 11, marginTop: 24, paddingHorizontal: 24 },
-
-  notionTableScrollInner: {
-    flexGrow: 1,
-    paddingBottom: 4,
-  },
-  notionTable: {
-    minWidth: 920,
-    alignSelf: 'flex-start',
-    width: '100%' as const,
-  },
-  notionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    borderBottomWidth: 1,
-    paddingVertical: 11,
-  },
-  notionHeaderCell: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  notionDataRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  notionCellPad: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  notionColTime: {
-    width: 108,
-    flexShrink: 0,
-  },
-  notionColDuration: {
-    width: 88,
-    flexShrink: 0,
-  },
-  notionColTitle: {
-    width: 176,
-    flexShrink: 0,
-  },
-  notionColDesc: {
-    width: 300,
-    flexShrink: 0,
-  },
-  notionColPeople: {
-    minWidth: 200,
-    flexGrow: 1,
-    flexShrink: 0,
-    width: 220,
-  },
-  notionTimePrimary: {
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 18,
-  },
-  notionDurationText: {
-    fontSize: 13,
-    fontWeight: '500',
-    lineHeight: 18,
-  },
-  /** Minimal title: 15% smaller than previous 15px → 12.75px rounded to 13. */
-  notionTitleText: {
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 17,
-    flex: 1,
-  },
-  notionDescLine: {
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  notionDescMuted: {
-    fontSize: 13,
-  },
-  notionPeopleLine: {
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 8,
-    fontWeight: '500',
-  },
 
   vibScroll: { paddingBottom: 40 },
   vibBannerTop: {
