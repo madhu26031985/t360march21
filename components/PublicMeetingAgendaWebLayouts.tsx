@@ -132,12 +132,15 @@ function themeAssigneeInitialLetter(name: string): string {
 }
 
 /** Theme / topic text shown in the dedicated stack block (TMOD + educational). */
-function themeOrTopicForStack(item: PublicAgendaItemRow): string {
+function themeOrTopicForStack(item: PublicAgendaItemRow, meetingTheme?: string | null): string {
   const rd = agendaRoleDetails(item);
   const fromRd = rdTrim(rd, 'theme_of_the_day');
   if (fromRd) return fromRd;
   if (isEducationalMinimalSection(item.section_name)) {
     return item.educational_topic?.trim() || '';
+  }
+  if (isToastmasterStackSection(item.section_name)) {
+    return meetingTheme?.trim() || '';
   }
   return '';
 }
@@ -249,9 +252,11 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
   return out;
 }
 
-function minimalCardDescriptionPreview(item: PublicAgendaItemRow): string {
-  const stackTheme = themeOrTopicForStack(item);
-  const showThemeBlock = isThemeOnStackSection(item.section_name) && Boolean(stackTheme);
+function minimalCardDescriptionPreview(item: PublicAgendaItemRow, meetingTheme?: string | null): string {
+  const stackTheme = themeOrTopicForStack(item, meetingTheme);
+  const showThemeBlock =
+    isToastmasterStackSection(item.section_name) ||
+    (isThemeOnStackSection(item.section_name) && Boolean(stackTheme));
   const topicTrim = item.educational_topic?.trim();
 
   const rawLines = buildMinimalAgendaDescriptionLines(item);
@@ -483,17 +488,28 @@ function minimalCardWebShadow(): ViewStyle {
   return {};
 }
 
-function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; theme: AppTheme }) {
+function MinimalAgendaItemCard({
+  item,
+  theme,
+  meetingTheme,
+}: {
+  item: PublicAgendaItemRow;
+  theme: AppTheme;
+  meetingTheme?: string | null;
+}) {
   const docInk = minimalDocTextColors(theme);
   const timeRangeOnly = formatMinimalAgendaTimeRange(item.start_time, item.end_time).trim();
-  const descPreview = minimalCardDescriptionPreview(item).trim();
+  const descPreview = minimalCardDescriptionPreview(item, meetingTheme).trim();
   const footerRows = minimalFooterRows(item);
   const durationWords = formatMinimalDurationWords(item.duration_minutes);
   const hasTimeTop = Boolean(timeRangeOnly);
   const showFooter = Boolean(durationWords) || footerRows.length > 0;
 
-  const stackTheme = themeOrTopicForStack(item);
-  const showThemeStack = isThemeOnStackSection(item.section_name) && Boolean(stackTheme);
+  const stackTheme = themeOrTopicForStack(item, meetingTheme);
+  const isToastmasterStack = isToastmasterStackSection(item.section_name);
+  const showThemeStack =
+    isToastmasterStack || (isThemeOnStackSection(item.section_name) && Boolean(stackTheme));
+  const stackThemeLabel = stackTheme.trim() ? stackTheme.toUpperCase() : 'THEME TBD';
   const assigneeName = item.assigned_user_name?.trim() || '';
   const themeStackRoleLabel = minimalRoleHeadingForSection(item.section_name);
 
@@ -590,7 +606,7 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
                 numberOfLines={4}
                 maxFontSizeMultiplier={1.05}
               >
-                {stackTheme.toUpperCase()}
+                {stackThemeLabel}
               </Text>
             </View>
           </View>
@@ -679,15 +695,15 @@ function MinimalAgendaItemCard({ item, theme }: { item: PublicAgendaItemRow; the
                 </Text>
               </View>
             ))}
+            {durationWords ? (
+              <Text
+                style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
+                maxFontSizeMultiplier={1.05}
+              >
+                {durationWords}
+              </Text>
+            ) : null}
           </View>
-          {durationWords ? (
-            <Text
-              style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
-              maxFontSizeMultiplier={1.05}
-            >
-              {durationWords}
-            </Text>
-          ) : null}
         </View>
       ) : null}
     </View>
@@ -831,6 +847,7 @@ function MinimalLayout({
   const meetingLink = meeting.meeting_link?.trim() || '';
   const showBannerTopMeta = Boolean(meetingLink);
   const linkIconSize = 13;
+  const meetingTheme = meeting.theme?.trim() || null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
@@ -944,6 +961,7 @@ function MinimalLayout({
                 key={`${item.section_order}-${item.section_name}`}
                 item={item}
                 theme={theme}
+                meetingTheme={meetingTheme}
               />
             ))}
           </View>
@@ -1442,18 +1460,12 @@ const styles = StyleSheet.create({
   },
   minItemFooterRow: {
     marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: 10,
   },
   minItemFooterAfterStack: {
     marginTop: 16,
   },
   minItemFooterRowsBlock: {
-    flex: 1,
     minWidth: 0,
-    marginRight: 8,
   },
   minItemFooterRoleRow: {
     flexDirection: 'row',
@@ -1476,9 +1488,9 @@ const styles = StyleSheet.create({
   minItemDurationBottom: {
     fontSize: 13,
     lineHeight: 18,
-    textAlign: 'right',
-    flexShrink: 0,
-    alignSelf: 'flex-end',
+    textAlign: 'left',
+    marginTop: 6,
+    alignSelf: 'flex-start',
   },
   minBannerTopMeta: {
     width: '100%',

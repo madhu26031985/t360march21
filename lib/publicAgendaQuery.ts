@@ -11,6 +11,8 @@ export type PublicAgendaMeeting = {
   meeting_mode: string | null;
   meeting_location: string | null;
   meeting_link: string | null;
+  /** Meeting / Toastmaster theme of the day from public agenda RPC. */
+  theme?: string | null;
   club_info_banner_color?: string | null;
   datetime_banner_color?: string | null;
   /** ExComm default for web layout; URL ?skin= overrides. */
