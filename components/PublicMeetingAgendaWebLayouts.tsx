@@ -125,12 +125,6 @@ function isToastmasterStackSection(sectionName: string): boolean {
   return sectionNameLower(sectionName).includes('toastmaster');
 }
 
-function themeAssigneeInitialLetter(name: string): string {
-  const w = name.trim().split(/\s+/)[0];
-  if (!w) return '?';
-  return w.charAt(0).toUpperCase();
-}
-
 function initialsFromName(name: string): string {
   const parts = name
     .trim()
@@ -159,6 +153,11 @@ function themeOrTopicForStack(item: PublicAgendaItemRow, meetingTheme?: string |
 function isMeetAndGreetSection(sectionName: string): boolean {
   const s = sectionNameLower(sectionName);
   return s.includes('meet and greet') || s.includes('meet & greet');
+}
+
+function isTagTeamIntroductionSection(sectionName: string): boolean {
+  const s = sectionNameLower(sectionName);
+  return s.includes('tag team');
 }
 
 /** People line: Meet and Greet → "All"; otherwise assigned and tag names (no role abbreviations). */
@@ -223,6 +222,16 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
   }
   if (isMeetAndGreetSection(item.section_name)) {
     return [{ heading: 'Everyone', name: 'All' }];
+  }
+  if (isTagTeamIntroductionSection(item.section_name)) {
+    const tagRows: { heading: string; name: string }[] = [];
+    const timerName = item.timer_user_name?.trim();
+    const ahName = item.ah_counter_user_name?.trim();
+    const grammarianName = item.grammarian_user_name?.trim();
+    if (timerName) tagRows.push({ heading: 'Timer', name: timerName });
+    if (ahName) tagRows.push({ heading: 'Ah Counter', name: ahName });
+    if (grammarianName) tagRows.push({ heading: 'Grammarian', name: grammarianName });
+    if (tagRows.length > 0) return tagRows;
   }
   const skipSpeakerEvaluatorLines =
     isPreparedSpeechesMinimalSection(item.section_name) ||
@@ -638,19 +647,31 @@ function MinimalAgendaItemCard({
 
       {showThemeStack ? (
         <>
-          <View
-            style={[
-              styles.minItemThemeHeaderRule,
-              { backgroundColor: innerWellBorder, marginTop: descPreview ? 14 : 4 },
-            ]}
-          />
+          {!isToastmasterStack ? (
+            <View
+              style={[
+                styles.minItemThemeHeaderRule,
+                { backgroundColor: innerWellBorder, marginTop: descPreview ? 14 : 4 },
+              ]}
+            />
+          ) : null}
           <View style={styles.minItemThemeStack}>
             <Text style={[styles.minItemThemeStackLabel, { color: docInk.ink }]} maxFontSizeMultiplier={1.05}>
               🎯 Theme of the Day
             </Text>
-            <View style={[styles.minItemThemeStackPill, { backgroundColor: themePillBg }]}>
+            <View
+              style={[
+                styles.minItemThemeStackPill,
+                isToastmasterStack ? styles.minItemThemeStackPillCompact : null,
+                { backgroundColor: themePillBg },
+              ]}
+            >
               <Text
-                style={[styles.minItemThemeStackPillText, { color: themePillText }]}
+                style={[
+                  styles.minItemThemeStackPillText,
+                  isToastmasterStack ? styles.minItemThemeStackPillTextCompact : null,
+                  { color: themePillText },
+                ]}
                 numberOfLines={4}
                 maxFontSizeMultiplier={1.05}
               >
@@ -661,45 +682,17 @@ function MinimalAgendaItemCard({
         </>
       ) : null}
 
-      {showThemeStack && assigneeName ? (
-        <View
-          style={[
-            styles.minItemInnerWell,
-            styles.minItemThemeAssigneeWell,
-            {
-              borderColor: innerWellBorder,
-              backgroundColor: isToastmasterStackSection(item.section_name)
-                ? theme.colors.background
-                : innerWellBg,
-            },
-          ]}
-        >
-          {isToastmasterStackSection(item.section_name) ? (
-            <View style={styles.minItemThemeAssigneeRow}>
-              <View style={styles.minItemThemeInitialBubble}>
-                <Text style={styles.minItemThemeInitialLetter} maxFontSizeMultiplier={1.2}>
-                  {themeAssigneeInitialLetter(assigneeName)}
-                </Text>
-              </View>
-              <Text
-                style={[styles.minItemThemeAssigneeNameOnly, { color: docInk.ink }]}
-                numberOfLines={2}
-                maxFontSizeMultiplier={1.1}
-              >
-                {assigneeName}
-              </Text>
-            </View>
-          ) : (
-            <>
-              <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
-                {themeStackRoleLabel}
-              </Text>
-              <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-                {assigneeName}
-              </Text>
-            </>
-          )}
-        </View>
+      {showThemeStack && assigneeName && isToastmasterStack ? (
+        (
+          <View style={styles.minItemThemeAssigneeLine}>
+            <Text style={[styles.minItemRoleHeading, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+              {themeStackRoleLabel}
+            </Text>
+            <Text style={[styles.minItemRoleName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+              {` ${assigneeName}`}
+            </Text>
+          </View>
+        )
       ) : null}
 
       {preparedSlots.map((s, idx) => (
@@ -1373,6 +1366,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     alignSelf: 'stretch',
   },
+  minItemThemeStackPillCompact: {
+    paddingVertical: 11,
+    paddingHorizontal: 13,
+  },
   minItemThemeStackPillText: {
     fontSize: 14,
     fontWeight: '700',
@@ -1380,35 +1377,18 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     letterSpacing: 0.4,
   },
+  minItemThemeStackPillTextCompact: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
   minItemThemeAssigneeWell: {
     marginTop: 12,
   },
-  minItemThemeAssigneeRow: {
+  minItemThemeAssigneeLine: {
+    marginTop: 12,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  minItemThemeInitialBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#dbeafe',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  minItemThemeInitialLetter: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1d4ed8',
-    lineHeight: 22,
-  },
-  minItemThemeAssigneeNameOnly: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 19,
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
   },
   minItemInnerWell: {
     marginTop: 0,
