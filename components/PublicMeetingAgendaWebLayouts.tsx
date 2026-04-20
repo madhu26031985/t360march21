@@ -115,6 +115,10 @@ function isEducationalMinimalSection(sectionName: string): boolean {
   return sectionNameLower(sectionName).includes('educational');
 }
 
+function isKeynoteMinimalSection(sectionName: string): boolean {
+  return sectionNameLower(sectionName).includes('keynote speaker');
+}
+
 function isThemeOnStackSection(sectionName: string): boolean {
   const s = sectionNameLower(sectionName);
   return s.includes('toastmaster') || isEducationalMinimalSection(sectionName);
@@ -354,6 +358,14 @@ function speechEvalDisplayShape(item: PublicAgendaItemRow): MinimalSlotDisplay |
   };
 }
 
+function keynoteTitleForMinimal(item: PublicAgendaItemRow): string {
+  const rd = agendaRoleDetails(item);
+  const fromRoleDetails =
+    rdTrim(rd, 'speech_title') || rdTrim(rd, 'keynote_title') || rdTrim(rd, 'title');
+  if (fromRoleDetails) return fromRoleDetails;
+  return '';
+}
+
 function evaluationFormUrl(raw: string | null | undefined): string | null {
   const u = raw?.trim();
   if (!u) return null;
@@ -549,10 +561,12 @@ function MinimalAgendaItemCard({
   item,
   theme,
   meetingTheme,
+  speechEvaluationFallbackSlots,
 }: {
   item: PublicAgendaItemRow;
   theme: AppTheme;
   meetingTheme?: string | null;
+  speechEvaluationFallbackSlots?: MinimalSlotDisplay[];
 }) {
   const docInk = minimalDocTextColors(theme);
   const timeRangeOnly = formatMinimalAgendaTimeRange(item.start_time, item.end_time).trim();
@@ -569,6 +583,9 @@ function MinimalAgendaItemCard({
   const stackThemeLabel = stackTheme.trim() ? stackTheme.toUpperCase() : 'THEME TBD';
   const assigneeName = item.assigned_user_name?.trim() || '';
   const themeStackRoleLabel = minimalRoleHeadingForSection(item.section_name);
+  const themeStackHeadingLabel = isEducationalMinimalSection(item.section_name)
+    ? 'Title'
+    : 'Theme of the Day';
 
   const isLightDoc =
     theme.colors.background.toLowerCase() === '#ffffff' ||
@@ -582,6 +599,12 @@ function MinimalAgendaItemCard({
     ? preparedSlotsForPublic(item)
     : [];
   const evalShape = isSpeechEvaluationMinimalSection(item.section_name) ? speechEvalDisplayShape(item) : null;
+  const keynoteTitle = isKeynoteMinimalSection(item.section_name) ? keynoteTitleForMinimal(item) : '';
+  const evalFallbackShapes =
+    isSpeechEvaluationMinimalSection(item.section_name) && !evalShape
+      ? (speechEvaluationFallbackSlots ?? [])
+      : [];
+  const evalShapesToRender = evalShape ? [evalShape] : evalFallbackShapes;
 
   const hasStackAbovePrepared =
     Boolean(descPreview) || showThemeStack || (showThemeStack && Boolean(assigneeName));
@@ -590,8 +613,8 @@ function MinimalAgendaItemCard({
   const evalWellGapTop =
     preparedSlots.length > 0 ? 10 : hasStackAbovePrepared ? 12 : 0;
 
-  const hasInnerStack =
-    showThemeStack || preparedSlots.length > 0 || Boolean(evalShape);
+  const hasContentBeforeKeynote = showThemeStack || preparedSlots.length > 0 || evalShapesToRender.length > 0;
+  const hasInnerStack = hasContentBeforeKeynote || Boolean(keynoteTitle);
 
   return (
     <View
@@ -657,7 +680,7 @@ function MinimalAgendaItemCard({
           ) : null}
           <View style={styles.minItemThemeStack}>
             <Text style={[styles.minItemThemeStackLabel, { color: docInk.ink }]} maxFontSizeMultiplier={1.05}>
-              🎯 Theme of the Day
+              {themeStackHeadingLabel}
             </Text>
             <View
               style={[
@@ -707,16 +730,38 @@ function MinimalAgendaItemCard({
         </View>
       ))}
 
-      {evalShape ? (
-        <View style={{ marginTop: evalWellGapTop }}>
+      {evalShapesToRender.map((slot, idx) => (
+        <View
+          key={`eval-${slot.slot}-${slot.speaker_name ?? 'speaker'}-${idx}`}
+          style={{ marginTop: idx === 0 ? evalWellGapTop : 10 }}
+        >
           <MinimalAgendaInnerSlotWell
-            slot={evalShape}
+            slot={slot}
             docInk={docInk}
             borderColor={innerWellBorder}
             wellBg={innerWellBg}
             variant="evaluation"
             evalTitlePillBg={isLightDoc ? '#bfe9e2' : 'rgba(45,212,191,0.22)'}
           />
+        </View>
+      ))}
+
+      {keynoteTitle ? (
+        <View style={{ marginTop: hasContentBeforeKeynote ? 12 : 0 }}>
+          <View style={[styles.minItemInnerWell, { borderColor: innerWellBorder, backgroundColor: innerWellBg }]}>
+            <Text style={[styles.minItemInnerDetailLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+              Keynote Title
+            </Text>
+            <View style={[styles.minItemInnerTitlePillMint, { backgroundColor: isLightDoc ? '#bfe9e2' : 'rgba(45,212,191,0.22)' }]}>
+              <Text
+                style={[styles.minItemInnerTitlePillMintText, { color: docInk.ink }]}
+                numberOfLines={3}
+                maxFontSizeMultiplier={1.05}
+              >
+                {keynoteTitle}
+              </Text>
+            </View>
+          </View>
         </View>
       ) : null}
 
@@ -889,6 +934,11 @@ function MinimalLayout({
   const showBannerTopMeta = Boolean(meetingLink);
   const linkIconSize = 13;
   const meetingTheme = meeting.theme?.trim() || null;
+  const preparedSpeechSlotsForSpeechEvalFallback = (() => {
+    const preparedSection = items.find((it) => isPreparedSpeechesMinimalSection(it.section_name));
+    if (!preparedSection) return [];
+    return preparedSlotsForPublic(preparedSection).map(slotToDisplayShape);
+  })();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
@@ -1003,6 +1053,7 @@ function MinimalLayout({
                 item={item}
                 theme={theme}
                 meetingTheme={meetingTheme}
+                speechEvaluationFallbackSlots={preparedSpeechSlotsForSpeechEvalFallback}
               />
             ))}
           </View>
