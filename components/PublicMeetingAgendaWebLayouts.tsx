@@ -131,6 +131,17 @@ function themeAssigneeInitialLetter(name: string): string {
   return w.charAt(0).toUpperCase();
 }
 
+function initialsFromName(name: string): string {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0]!.charAt(0).toUpperCase();
+  return `${parts[0]!.charAt(0)}${parts[1]!.charAt(0)}`.toUpperCase();
+}
+
 /** Theme / topic text shown in the dedicated stack block (TMOD + educational). */
 function themeOrTopicForStack(item: PublicAgendaItemRow, meetingTheme?: string | null): string {
   const rd = agendaRoleDetails(item);
@@ -207,6 +218,9 @@ function lineLabelForMinimalFooterRow(item: PublicAgendaItemRow, line: string): 
 }
 
 function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: string }[] {
+  if (isToastmasterStackSection(item.section_name)) {
+    return [];
+  }
   if (isMeetAndGreetSection(item.section_name)) {
     return [{ heading: 'Everyone', name: 'All' }];
   }
@@ -374,17 +388,41 @@ function MinimalAgendaInnerSlotWell({
 
   const personBlock = (role: string, name: string) => (
     <View style={styles.minItemInnerPersonCol}>
-      <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
-        {role}
-      </Text>
-      {name ? (
-        <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-          {name}
-        </Text>
+      {variant === 'prepared' ? (
+        <View style={styles.minItemInnerIdentityRow}>
+          <View style={styles.minItemInnerIdentityBubble}>
+            <Text style={styles.minItemInnerIdentityBubbleText}>{name ? initialsFromName(name) : '?'}</Text>
+          </View>
+          <View style={styles.minItemInnerIdentityTextCol}>
+            {name ? (
+              <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+                {name}
+              </Text>
+            ) : (
+              <Text style={[styles.minItemInnerPlaceholder, { color: docInk.inkSoft }]} maxFontSizeMultiplier={1.05}>
+                Yet to be assigned
+              </Text>
+            )}
+            <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+              {role}
+            </Text>
+          </View>
+        </View>
       ) : (
-        <Text style={[styles.minItemInnerPlaceholder, { color: docInk.inkSoft }]} maxFontSizeMultiplier={1.05}>
-          Yet to be assigned
-        </Text>
+        <>
+          <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+            {role}
+          </Text>
+          {name ? (
+            <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+              {name}
+            </Text>
+          ) : (
+            <Text style={[styles.minItemInnerPlaceholder, { color: docInk.inkSoft }]} maxFontSizeMultiplier={1.05}>
+              Yet to be assigned
+            </Text>
+          )}
+        </>
       )}
     </View>
   );
@@ -467,10 +505,20 @@ function MinimalAgendaInnerSlotWell({
           onPress={() => Linking.openURL(formUrl).catch(() => {})}
           style={({ pressed }) => [
             styles.minItemInnerFormBtn,
-            { borderColor, backgroundColor: wellBg, opacity: pressed ? 0.85 : 1 },
+            {
+              borderColor: variant === 'prepared' ? '#1f6feb' : borderColor,
+              backgroundColor: variant === 'prepared' ? '#1f6feb' : wellBg,
+              opacity: pressed ? 0.85 : 1,
+            },
           ]}
         >
-          <Text style={[styles.minItemInnerFormBtnText, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+          <Text
+            style={[
+              styles.minItemInnerFormBtnText,
+              { color: variant === 'prepared' ? '#ffffff' : docInk.inkMuted },
+            ]}
+            maxFontSizeMultiplier={1.05}
+          >
             📄 Evaluation form — Open
           </Text>
         </Pressable>
@@ -834,7 +882,7 @@ function MinimalLayout({
   const isLightDoc =
     theme.colors.background.toLowerCase() === '#ffffff' ||
     theme.colors.background.toLowerCase() === '#fff';
-  const notionBannerBg = isLightDoc ? '#f5f4f1' : theme.colors.backgroundSecondary;
+  const notionBannerBg = theme.colors.background;
   const notionChipsWellBg = isLightDoc ? '#ffffff' : theme.colors.surfaceSecondary;
   const notionChipsWellBorder = isLightDoc ? '#e8e6e3' : theme.colors.borderLight;
   const bannerWebShadow =
@@ -1269,16 +1317,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   minItemSectionIcon: {
-    fontSize: 19,
-    lineHeight: 23,
+    fontSize: 18,
+    lineHeight: 22,
     marginTop: 1,
   },
   minItemTitleLeft: {
     flex: 1,
     flexShrink: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 20,
+    lineHeight: 18,
     paddingRight: 4,
   },
   minItemTimeBlock: {
@@ -1295,14 +1343,14 @@ const styles = StyleSheet.create({
     fontStyle: 'normal',
   },
   minItemTimeRight: {
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 13,
+    lineHeight: 18,
     textAlign: 'right',
   },
   minItemDesc: {
     marginTop: 10,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 17,
   },
   minItemThemeHeaderRule: {
     alignSelf: 'stretch',
@@ -1314,9 +1362,9 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   minItemThemeStackLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    lineHeight: 19,
+    lineHeight: 17,
   },
   minItemThemeStackPill: {
     marginTop: 10,
@@ -1326,9 +1374,9 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   minItemThemeStackPillText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    lineHeight: 21,
+    lineHeight: 19,
     textAlign: 'left',
     letterSpacing: 0.4,
   },
@@ -1358,22 +1406,46 @@ const styles = StyleSheet.create({
   minItemThemeAssigneeNameOnly: {
     flex: 1,
     minWidth: 0,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    lineHeight: 21,
+    lineHeight: 19,
   },
   minItemInnerWell: {
     marginTop: 0,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   minItemInnerSpeakerEvalRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
   },
   minItemInnerPersonCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  minItemInnerIdentityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  minItemInnerIdentityBubble: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  minItemInnerIdentityBubbleText: {
+    fontSize: 16,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  minItemInnerIdentityTextCol: {
     flex: 1,
     minWidth: 0,
   },
@@ -1389,21 +1461,21 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   minItemInnerRoleLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '400',
-    lineHeight: 16,
+    lineHeight: 15,
   },
   minItemInnerPersonName: {
     marginTop: 4,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 19,
+    lineHeight: 17,
   },
   minItemInnerPlaceholder: {
     marginTop: 4,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '400',
-    lineHeight: 19,
+    lineHeight: 17,
     fontStyle: 'italic',
   },
   minItemInnerDetailLabel: {
@@ -1435,15 +1507,15 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   minItemInnerDetailPrefix: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '400',
-    lineHeight: 19,
+    lineHeight: 17,
     marginRight: 4,
   },
   minItemInnerDetailValue: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '400',
-    lineHeight: 19,
+    lineHeight: 17,
     flexShrink: 1,
   },
   minItemInnerFormBtn: {
@@ -1454,8 +1526,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   minItemInnerFormBtnText: {
-    fontSize: 13,
-    fontWeight: '400',
+    fontSize: 12,
+    fontWeight: '600',
     textAlign: 'center',
   },
   minItemFooterRow: {
@@ -1476,18 +1548,18 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   minItemRoleHeading: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '400',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   minItemRoleName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   minItemDurationBottom: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     textAlign: 'left',
     marginTop: 6,
     alignSelf: 'flex-start',
@@ -1525,16 +1597,16 @@ const styles = StyleSheet.create({
   },
   minBannerTopLinkText: {
     flexShrink: 1,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '400',
     textAlign: 'left',
   },
   minBannerClub: {
-    fontSize: 25,
+    fontSize: 22,
     fontWeight: '700',
     textAlign: 'center',
-    lineHeight: 30,
+    lineHeight: 27,
     letterSpacing: -0.35,
   },
   minBannerSub: {
