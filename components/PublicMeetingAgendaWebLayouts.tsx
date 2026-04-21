@@ -411,6 +411,7 @@ function MinimalAgendaInnerSlotWell({
   wellBg,
   variant,
   evalTitlePillBg,
+  titlePillTextColor,
 }: {
   slot: MinimalSlotDisplay;
   docInk: MinimalDocInk;
@@ -418,6 +419,7 @@ function MinimalAgendaInnerSlotWell({
   wellBg: string;
   variant: 'prepared' | 'evaluation';
   evalTitlePillBg?: string;
+  titlePillTextColor: string;
 }) {
   const speaker = slot.speaker_name?.trim() || '';
   const evaluator = slot.evaluator_name?.trim() || '';
@@ -495,7 +497,11 @@ function MinimalAgendaInnerSlotWell({
           </Text>
           <View style={[styles.minItemInnerTitlePillMint, evalTitlePillBg ? { backgroundColor: evalTitlePillBg } : null]}>
             <Text
-              style={[styles.minItemInnerTitlePillMintText, styles.minItemInnerTitlePillMintTextLeft, { color: docInk.ink }]}
+              style={[
+                styles.minItemInnerTitlePillMintText,
+                styles.minItemInnerTitlePillMintTextLeft,
+                { color: titlePillTextColor },
+              ]}
               numberOfLines={3}
               maxFontSizeMultiplier={1.05}
             >
@@ -588,6 +594,26 @@ function minimalCardWebShadow(): ViewStyle {
   return {};
 }
 
+function minimalCardWebPrintKeepTogether(): ViewStyle {
+  if (Platform.OS === 'web') {
+    return {
+      breakInside: 'avoid',
+      pageBreakInside: 'avoid',
+    } as ViewStyle;
+  }
+  return {};
+}
+
+function minimalPreparedSectionPageStart(sectionName: string): ViewStyle {
+  if (Platform.OS === 'web' && isPreparedSpeechesMinimalSection(sectionName)) {
+    return {
+      breakBefore: 'page',
+      pageBreakBefore: 'always',
+    } as ViewStyle;
+  }
+  return {};
+}
+
 function MinimalAgendaItemCard({
   item,
   theme,
@@ -659,6 +685,8 @@ function MinimalAgendaItemCard({
           borderColor: theme.colors.borderLight,
         },
         minimalCardWebShadow(),
+        minimalCardWebPrintKeepTogether(),
+        minimalPreparedSectionPageStart(item.section_name),
         Platform.OS === 'android' ? { elevation: 2 } : {},
       ]}
     >
@@ -702,13 +730,32 @@ function MinimalAgendaItemCard({
         </Text>
       ) : null}
       {grammarianLines.map((line, idx) => (
-        <Text
-          key={`grammarian-line-${idx}-${line.slice(0, 24)}`}
-          style={[styles.minItemGrammarianLine, { color: docInk.inkMuted }]}
-          maxFontSizeMultiplier={1.05}
-        >
-          {line}
-        </Text>
+        (() => {
+          const parts = line.split(':');
+          if (parts.length < 2) {
+            return (
+              <Text
+                key={`grammarian-line-${idx}-${line.slice(0, 24)}`}
+                style={[styles.minItemGrammarianLine, { color: docInk.inkMuted }]}
+                maxFontSizeMultiplier={1.05}
+              >
+                {line}
+              </Text>
+            );
+          }
+          const label = `${parts[0]}:`;
+          const value = parts.slice(1).join(':').trim();
+          return (
+            <Text
+              key={`grammarian-line-${idx}-${line.slice(0, 24)}`}
+              style={[styles.minItemGrammarianLine, { color: docInk.inkMuted }]}
+              maxFontSizeMultiplier={1.05}
+            >
+              <Text style={styles.minItemGrammarianLabel}>{`${label} `}</Text>
+              <Text style={styles.minItemGrammarianValue}>{value}</Text>
+            </Text>
+          );
+        })()
       ))}
 
       {showThemeStack ? (
@@ -769,6 +816,7 @@ function MinimalAgendaItemCard({
             borderColor={innerWellBorder}
             wellBg={innerWellBg}
             variant="prepared"
+            titlePillTextColor={themePillText}
           />
         </View>
       ))}
@@ -785,6 +833,7 @@ function MinimalAgendaItemCard({
             wellBg={innerWellBg}
             variant="evaluation"
             evalTitlePillBg={isLightDoc ? '#bfe9e2' : 'rgba(45,212,191,0.22)'}
+            titlePillTextColor={themePillText}
           />
         </View>
       ))}
@@ -797,7 +846,11 @@ function MinimalAgendaItemCard({
             </Text>
             <View style={[styles.minItemInnerTitlePillMint, { backgroundColor: isLightDoc ? '#bfe9e2' : 'rgba(45,212,191,0.22)' }]}>
               <Text
-                style={[styles.minItemInnerTitlePillMintText, styles.minItemInnerTitlePillMintTextLeft, { color: docInk.ink }]}
+                style={[
+                  styles.minItemInnerTitlePillMintText,
+                  styles.minItemInnerTitlePillMintTextLeft,
+                  { color: themePillText },
+                ]}
                 numberOfLines={3}
                 maxFontSizeMultiplier={1.05}
               >
@@ -1452,6 +1505,12 @@ const styles = StyleSheet.create({
     lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
+  minItemGrammarianLabel: {
+    fontWeight: '400',
+  },
+  minItemGrammarianValue: {
+    fontWeight: '700',
+  },
   minItemThemeHeaderRule: {
     alignSelf: 'stretch',
     height: StyleSheet.hairlineWidth,
@@ -1591,9 +1650,9 @@ const styles = StyleSheet.create({
   },
   minItemInnerTitlePillMintText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: IS_MOBILE ? 16 : 15,
+    fontSize: IS_MOBILE ? 15 : 14,
     fontWeight: '700',
-    lineHeight: IS_MOBILE ? 22 : 21,
+    lineHeight: IS_MOBILE ? 20 : 19,
     textAlign: 'center',
     letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
   },
