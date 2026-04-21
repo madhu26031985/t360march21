@@ -267,9 +267,9 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
     const timerName = item.timer_user_name?.trim();
     const ahName = item.ah_counter_user_name?.trim();
     const grammarianName = item.grammarian_user_name?.trim();
-    if (timerName) tagRows.push({ heading: minimalAssignedHeading(), name: timerName });
-    if (ahName) tagRows.push({ heading: minimalAssignedHeading(), name: ahName });
-    if (grammarianName) tagRows.push({ heading: minimalAssignedHeading(), name: grammarianName });
+    if (timerName) tagRows.push({ heading: 'Timer Assigned :', name: timerName });
+    if (ahName) tagRows.push({ heading: 'Ah Counter Assigned :', name: ahName });
+    if (grammarianName) tagRows.push({ heading: 'Grammarian Assigned :', name: grammarianName });
     if (tagRows.length > 0) return tagRows;
   }
   const skipSpeakerEvaluatorLines =
