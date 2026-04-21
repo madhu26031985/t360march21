@@ -194,6 +194,11 @@ function isTagTeamIntroductionSection(sectionName: string): boolean {
   return s.includes('tag team');
 }
 
+function allowsTwoLineTitle(sectionName: string): boolean {
+  const s = sectionNameLower(sectionName);
+  return s.includes('general evaluator opening');
+}
+
 /** People line: Meet and Greet → "All"; otherwise assigned and tag names (no role abbreviations). */
 function buildMinimalPeopleLines(item: PublicAgendaItemRow): string[] {
   if (isMeetAndGreetSection(item.section_name)) {
@@ -657,7 +662,7 @@ function MinimalAgendaItemCard({
     isToastmasterStack || (isThemeOnStackSection(item.section_name) && Boolean(stackTheme));
   const stackThemeLabel = stackTheme.trim() ? stackTheme.toUpperCase() : 'THEME TBD';
   const assigneeName = item.assigned_user_name?.trim() || '';
-  const themeStackRoleLabel = minimalRoleHeadingForSection(item.section_name);
+  const themeStackRoleLabel = isToastmasterStack ? 'Assigned :' : minimalRoleHeadingForSection(item.section_name);
   const themeStackHeadingLabel = isEducationalMinimalSection(item.section_name)
     ? 'Title'
     : 'Theme of the Day';
@@ -718,8 +723,9 @@ function MinimalAgendaItemCard({
             <Text
               style={[styles.minItemTitleLeft, { color: docInk.ink }]}
               maxFontSizeMultiplier={1.15}
-              numberOfLines={1}
-              ellipsizeMode="tail"
+              numberOfLines={allowsTwoLineTitle(item.section_name) ? 2 : 1}
+              adjustsFontSizeToFit={!allowsTwoLineTitle(item.section_name)}
+              minimumFontScale={0.72}
             >
               {item.section_name}
             </Text>
@@ -763,10 +769,14 @@ function MinimalAgendaItemCard({
           }
           const label = `${parts[0]}:`;
           const value = parts.slice(1).join(':').trim();
+          const isQuoteLine = /^quote of the day:/i.test(label);
           return (
             <Text
               key={`grammarian-line-${idx}-${line.slice(0, 24)}`}
               style={[styles.minItemGrammarianLine, { color: docInk.inkMuted }]}
+              numberOfLines={isQuoteLine ? 1 : undefined}
+              adjustsFontSizeToFit={isQuoteLine}
+              minimumFontScale={isQuoteLine ? 0.62 : undefined}
               maxFontSizeMultiplier={1.05}
             >
               <Text style={[styles.minItemGrammarianLabel, { color: docInk.inkMuted }]}>{`${label} `}</Text>
@@ -899,12 +909,18 @@ function MinimalAgendaItemCard({
               </View>
             ))}
             {durationWords ? (
-              <Text
-                style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
-                maxFontSizeMultiplier={1.05}
-              >
-                {durationWords}
-              </Text>
+              (() => {
+                const durationValue = durationWords.replace(/^Duration\s*:\s*/i, '').trim();
+                return (
+                  <Text
+                    style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
+                    maxFontSizeMultiplier={1.05}
+                  >
+                    <Text style={[styles.minItemDurationLabel, { color: docInk.inkMuted }]}>Duration : </Text>
+                    <Text style={[styles.minItemDurationValue, { color: docInk.ink }]}>{durationValue}</Text>
+                  </Text>
+                );
+              })()
             ) : null}
           </View>
         </View>
@@ -1768,6 +1784,14 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
+  minItemDurationLabel: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontWeight: '400',
+  },
+  minItemDurationValue: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontWeight: '700',
+  },
   minBannerTopMeta: {
     width: '100%',
     alignItems: 'center',
@@ -1826,10 +1850,10 @@ const styles = StyleSheet.create({
   },
   minBannerChipsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: IS_MOBILE ? 'nowrap' : 'wrap',
     justifyContent: 'center',
     alignItems: 'center',
-    rowGap: 8,
+    rowGap: IS_MOBILE ? 0 : 8,
   },
   minBannerChip: {
     flexDirection: 'row',
@@ -1838,14 +1862,14 @@ const styles = StyleSheet.create({
   },
   minBannerChipText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: ms(IS_MOBILE ? 14 : 13),
+    fontSize: ms(IS_MOBILE ? 13 : 13),
     lineHeight: IS_MOBILE ? 19 : 17,
     fontWeight: '400',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minBannerChipSep: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: ms(IS_MOBILE ? 14 : 13),
+    fontSize: ms(IS_MOBILE ? 13 : 13),
     lineHeight: IS_MOBILE ? 19 : 17,
     fontWeight: '400',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
