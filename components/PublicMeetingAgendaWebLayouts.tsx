@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
   buildMinimalAgendaDescriptionLines,
+  formatPublicAgendaBannerDateShort,
   formatPublicAgendaBannerTimePart,
   formatPublicAgendaMeetingDate,
   grammarianCornerLinesFromRoleDetails,
@@ -83,8 +84,8 @@ function formatMinimalAgendaTimeRange(start: string | null, end: string | null):
 function formatMinimalDurationWords(minutes: number | null | undefined): string {
   if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return '';
   const n = Math.round(minutes);
-  if (n === 1) return '1 minute';
-  return `${n} minutes`;
+  if (n === 1) return 'Duration : 1 min';
+  return `Duration : ${n} mins`;
 }
 
 function sectionNameLower(sectionName: string): string {
@@ -120,6 +121,10 @@ function minimalRoleHeadingForSection(sectionName: string): string {
   if (s.includes('timer')) return 'Timer';
   if (s.includes('speech evaluation')) return 'Evaluator';
   return 'Role';
+}
+
+function minimalAssignedHeading(): string {
+  return 'Assigned';
 }
 
 function isPreparedSpeechesMinimalSection(sectionName: string): boolean {
@@ -250,16 +255,16 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
     return [];
   }
   if (isMeetAndGreetSection(item.section_name)) {
-    return [{ heading: 'Everyone', name: 'All' }];
+    return [{ heading: minimalAssignedHeading(), name: 'All' }];
   }
   if (isTagTeamIntroductionSection(item.section_name)) {
     const tagRows: { heading: string; name: string }[] = [];
     const timerName = item.timer_user_name?.trim();
     const ahName = item.ah_counter_user_name?.trim();
     const grammarianName = item.grammarian_user_name?.trim();
-    if (timerName) tagRows.push({ heading: 'Timer', name: timerName });
-    if (ahName) tagRows.push({ heading: 'Ah Counter', name: ahName });
-    if (grammarianName) tagRows.push({ heading: 'Grammarian', name: grammarianName });
+    if (timerName) tagRows.push({ heading: minimalAssignedHeading(), name: timerName });
+    if (ahName) tagRows.push({ heading: minimalAssignedHeading(), name: ahName });
+    if (grammarianName) tagRows.push({ heading: minimalAssignedHeading(), name: grammarianName });
     if (tagRows.length > 0) return tagRows;
   }
   const skipSpeakerEvaluatorLines =
@@ -299,7 +304,7 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
         continue;
       }
     }
-    out.push({ heading: lineLabelForMinimalFooterRow(item, line), name: line });
+    out.push({ heading: minimalAssignedHeading(), name: line });
   }
   return out;
 }
@@ -713,7 +718,8 @@ function MinimalAgendaItemCard({
             <Text
               style={[styles.minItemTitleLeft, { color: docInk.ink }]}
               maxFontSizeMultiplier={1.15}
-              numberOfLines={3}
+              numberOfLines={1}
+              ellipsizeMode="tail"
             >
               {item.section_name}
             </Text>
@@ -763,8 +769,8 @@ function MinimalAgendaItemCard({
               style={[styles.minItemGrammarianLine, { color: docInk.inkMuted }]}
               maxFontSizeMultiplier={1.05}
             >
-              <Text style={styles.minItemGrammarianLabel}>{`${label} `}</Text>
-              <Text style={styles.minItemGrammarianValue}>{value}</Text>
+              <Text style={[styles.minItemGrammarianLabel, { color: docInk.inkMuted }]}>{`${label} `}</Text>
+              <Text style={[styles.minItemGrammarianValue, { color: docInk.ink }]}>{value}</Text>
             </Text>
           );
         })()
@@ -1017,7 +1023,8 @@ function MinimalLayout({
   ].filter(Boolean);
   const clubMetaText = clubMetaParts.join(' | ');
 
-  const dateStr = formatPublicAgendaMeetingDate(meeting.meeting_date);
+  // Match original agenda banner style and keep mobile compact (no weekday).
+  const dateStr = formatPublicAgendaBannerDateShort(meeting.meeting_date);
   const timeStr =
     meeting.meeting_start_time || meeting.meeting_end_time
       ? `${formatPublicAgendaBannerTimePart(meeting.meeting_start_time)} - ${formatPublicAgendaBannerTimePart(meeting.meeting_end_time)}`
@@ -1480,9 +1487,9 @@ const styles = StyleSheet.create({
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     flex: 1,
     flexShrink: 1,
-    fontSize: ms(IS_MOBILE ? 14 : 13),
+    fontSize: ms(IS_MOBILE ? 13 : 13),
     fontWeight: '700',
-    lineHeight: IS_MOBILE ? 19 : 18,
+    lineHeight: IS_MOBILE ? 18 : 18,
     letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
     paddingRight: 4,
   },
@@ -1491,7 +1498,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     flexShrink: 0,
     flexGrow: 0,
-    minWidth: 108,
+    minWidth: IS_MOBILE ? 98 : 108,
     marginLeft: 6,
   },
   /** Card time (top-right) and duration (bottom-right): always regular weight, never semibold/bold. */
