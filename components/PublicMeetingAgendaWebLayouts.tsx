@@ -372,14 +372,8 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
 function shouldSuppressAssignedTba(sectionName: string): boolean {
   const s = sectionNameLower(sectionName);
   return (
-    s.includes('grammarian') ||
-    s.includes('prepared speech') ||
-    s.includes('ancillary') ||
-    s.includes('speech evaluation') ||
-    s.includes('break') ||
-    (s.includes('toastmaster') && (s.includes('continue') || s.includes('closing'))) ||
-    s.includes('voting') ||
-    s.includes('listener')
+    (s.includes('toastmaster') || s.includes('tmod')) &&
+    (s.includes('continue') || s.includes('closing'))
   );
 }
 
