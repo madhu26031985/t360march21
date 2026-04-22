@@ -753,14 +753,17 @@ function MinimalAgendaItemCard({
       ))}
 
       {showThemeStack ? (
-        <View style={styles.minItemThemeTitleLine}>
-          <Text style={[styles.minItemRoleHeading, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-            {stackTitleLabel}
-          </Text>
-          <Text style={[styles.minItemRoleName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-            {` ${stackThemeValue}`}
-          </Text>
-        </View>
+        <Text
+          style={[styles.minItemTitleInlineText, { color: docInk.ink }]}
+          maxFontSizeMultiplier={1.1}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          adjustsFontSizeToFit
+          minimumFontScale={0.82}
+        >
+          <Text style={styles.minItemTitleInlineLabel}>{`${stackTitleLabel} `}</Text>
+          <Text style={styles.minItemTitleInlineValue}>{stackThemeValue}</Text>
+        </Text>
       ) : null}
 
       {preparedSlots.map((s, idx) => (
@@ -794,14 +797,20 @@ function MinimalAgendaItemCard({
       ))}
 
       {keynoteTitle ? (
-        <View style={[styles.minItemThemeTitleLine, { marginTop: hasContentBeforeKeynote ? 12 : 0 }]}>
-          <Text style={[styles.minItemRoleHeading, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-            Title :
-          </Text>
-          <Text style={[styles.minItemRoleName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-            {` ${keynoteTitle}`}
-          </Text>
-        </View>
+        <Text
+          style={[
+            styles.minItemTitleInlineText,
+            { color: docInk.ink, marginTop: hasContentBeforeKeynote ? 12 : 0 },
+          ]}
+          maxFontSizeMultiplier={1.1}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          adjustsFontSizeToFit
+          minimumFontScale={0.82}
+        >
+          <Text style={styles.minItemTitleInlineLabel}>Title : </Text>
+          <Text style={styles.minItemTitleInlineValue}>{keynoteTitle}</Text>
+        </Text>
       ) : null}
 
       {showFooter ? (
@@ -820,6 +829,20 @@ function MinimalAgendaItemCard({
                 </Text>
               </View>
             ))}
+            {durationWords ? (
+              (() => {
+                const durationValue = durationWords.replace(/^Duration\s*:\s*/i, '').trim();
+                return (
+                  <Text
+                    style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
+                    maxFontSizeMultiplier={1.05}
+                  >
+                    <Text style={[styles.minItemDurationLabel, { color: docInk.inkMuted }]}>Duration : </Text>
+                    <Text style={[styles.minItemDurationValue, { color: docInk.ink }]}>{durationValue}</Text>
+                  </Text>
+                );
+              })()
+            ) : null}
           </View>
           {hasMetaRight ? (
             <View style={styles.minItemMetaRightBlock}>
@@ -833,20 +856,6 @@ function MinimalAgendaItemCard({
                   <Text style={[styles.minItemMetaRightLabel, { color: docInk.inkMuted }]}>Time : </Text>
                   <Text style={[styles.minItemMetaRightValue, { color: docInk.ink }]}>{timeRangeOnly}</Text>
                 </Text>
-              ) : null}
-              {durationWords ? (
-                (() => {
-                  const durationValue = durationWords.replace(/^Duration\s*:\s*/i, '').trim();
-                  return (
-                    <Text
-                      style={[styles.minItemMetaRightText, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
-                      maxFontSizeMultiplier={1.05}
-                    >
-                      <Text style={[styles.minItemMetaRightLabel, { color: docInk.inkMuted }]}>Duration : </Text>
-                      <Text style={[styles.minItemMetaRightValue, { color: docInk.ink }]}>{durationValue}</Text>
-                    </Text>
-                  );
-                })()
               ) : null}
             </View>
           ) : null}
@@ -1718,6 +1727,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  minItemTitleInlineText: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    marginTop: 6,
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    fontWeight: '400',
+    lineHeight: IS_MOBILE ? 19 : 17,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  minItemTitleInlineLabel: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontWeight: '400',
+  },
+  minItemTitleInlineValue: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontWeight: '700',
   },
   minItemDurationBottom: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
