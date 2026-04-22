@@ -372,14 +372,25 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
 function shouldSuppressAssignedTba(sectionName: string): boolean {
   const s = sectionNameLower(sectionName);
   return (
-    (s.includes('toastmaster') || s.includes('tmod')) &&
-    (s.includes('continue') || s.includes('closing'))
+    s.includes('grammarian') ||
+    s.includes('prepared speech') ||
+    s.includes('ancillary') ||
+    s.includes('speech evaluation') ||
+    s.includes('break') ||
+    s.includes('voting') ||
+    s.includes('listener') ||
+    s.includes('listner')
   );
 }
 
 function shouldSuppressDurationTba(sectionName: string): boolean {
   const s = sectionNameLower(sectionName);
   return s.includes('grammarian');
+}
+
+function shouldHideFooterTime(sectionName: string): boolean {
+  const s = sectionNameLower(sectionName);
+  return s.includes('grammarian corner');
 }
 
 function minimalCardDescriptionPreview(item: PublicAgendaItemRow, meetingTheme?: string | null): string {
@@ -718,7 +729,7 @@ function MinimalAgendaItemCard({
   const isDurationTba = /:\s*TBA\s*$/i.test(durationWords);
   const showDuration = Boolean(durationWords) && !(isDurationTba && shouldSuppressDurationTba(item.section_name));
   const hasTimeValue = Boolean(timeRangeOnly);
-  const showFooterTime = !isGrammarianMinimalSection(item.section_name);
+  const showFooterTime = !shouldHideFooterTime(item.section_name);
   const timeLabelValue = hasTimeValue ? timeRangeOnly : 'TBA';
   const hasMetaRight = showFooterTime || showDuration;
   const showFooter = hasMetaRight || visibleFooterRows.length > 0;
