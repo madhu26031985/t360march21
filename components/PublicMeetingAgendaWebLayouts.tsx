@@ -264,9 +264,9 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
     const timerName = item.timer_user_name?.trim();
     const ahName = item.ah_counter_user_name?.trim();
     const grammarianName = item.grammarian_user_name?.trim();
-    if (timerName) tagRows.push({ heading: 'Timer Assigned :', name: timerName });
-    if (ahName) tagRows.push({ heading: 'Ah Counter Assigned :', name: ahName });
-    if (grammarianName) tagRows.push({ heading: 'Grammarian Assigned :', name: grammarianName });
+    if (timerName) tagRows.push({ heading: 'Timer :', name: timerName });
+    if (ahName) tagRows.push({ heading: 'Ah Counter :', name: ahName });
+    if (grammarianName) tagRows.push({ heading: 'Grammarian :', name: grammarianName });
     if (tagRows.length > 0) return tagRows;
   }
   const skipSpeakerEvaluatorLines =
@@ -447,31 +447,11 @@ function MinimalAgendaInnerSlotWell({
 
   const personBlock = (role: string, name: string) => (
     <View style={styles.minItemInnerPersonCol}>
-      {variant === 'prepared' ? (
-        <View style={styles.minItemInnerIdentityRow}>
-          <View style={styles.minItemInnerIdentityBubble}>
-            <Text style={styles.minItemInnerIdentityBubbleText}>{name ? initialsFromName(name) : '?'}</Text>
-          </View>
-          <View style={styles.minItemInnerIdentityTextCol}>
-            {name ? (
-              <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-                {name}
-              </Text>
-            ) : (
-              <Text style={[styles.minItemInnerPlaceholder, { color: docInk.inkSoft }]} maxFontSizeMultiplier={1.05}>
-                Yet to be assigned
-              </Text>
-            )}
-            <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
-              {role}
-            </Text>
-          </View>
+      <View style={styles.minItemInnerIdentityRow}>
+        <View style={styles.minItemInnerIdentityBubble}>
+          <Text style={styles.minItemInnerIdentityBubbleText}>{name ? initialsFromName(name) : '?'}</Text>
         </View>
-      ) : (
-        <>
-          <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
-            {role}
-          </Text>
+        <View style={styles.minItemInnerIdentityTextCol}>
           {name ? (
             <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
               {name}
@@ -481,17 +461,30 @@ function MinimalAgendaInnerSlotWell({
               Yet to be assigned
             </Text>
           )}
-        </>
-      )}
+          <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+            {role}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 
   return (
     <View style={[styles.minItemInnerWell, { borderColor, backgroundColor: wellBg }]}>
       <View style={styles.minItemInnerSpeakerEvalRow}>
-        {personBlock('Speaker', speaker)}
-        <View style={[styles.minItemInnerVertRule, { backgroundColor: borderColor }]} />
-        {personBlock('Evaluator', evaluator)}
+        {variant === 'evaluation' ? (
+          <>
+            {personBlock('Evaluator', evaluator)}
+            <View style={[styles.minItemInnerVertRule, { backgroundColor: borderColor }]} />
+            {personBlock('Speaker', speaker)}
+          </>
+        ) : (
+          <>
+            {personBlock('Speaker', speaker)}
+            <View style={[styles.minItemInnerVertRule, { backgroundColor: borderColor }]} />
+            {personBlock('Evaluator', evaluator)}
+          </>
+        )}
       </View>
 
       {variant === 'evaluation' && slot.speech_title?.trim() ? (
@@ -510,9 +503,16 @@ function MinimalAgendaInnerSlotWell({
         <View style={styles.minItemInnerDetailsBlock}>
           {slot.speech_title?.trim() ? (
             <View style={styles.minItemInnerDetailRow}>
-              <Text style={[styles.minItemInnerDetailPrefix, { color: docInk.inkMuted }]}>📄 Title: </Text>
-              <Text style={[styles.minItemInnerDetailValueStrong, { color: docInk.ink }]}>
-                {slot.speech_title.trim()}
+              <Text
+                style={[styles.minItemInnerDetailValue, { color: docInk.inkMuted }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                maxFontSizeMultiplier={1.05}
+              >
+                <Text style={[styles.minItemInnerDetailPrefix, { color: docInk.inkMuted }]}>📄 Title : </Text>
+                <Text style={[styles.minItemInnerDetailValueStrong, { color: docInk.ink }]}>
+                  {slot.speech_title.trim()}
+                </Text>
               </Text>
             </View>
           ) : null}
@@ -561,8 +561,8 @@ function MinimalAgendaInnerSlotWell({
           style={({ pressed }) => [
             styles.minItemInnerFormBtn,
             {
-              borderColor: variant === 'prepared' ? '#1f6feb' : borderColor,
-              backgroundColor: variant === 'prepared' ? '#1f6feb' : wellBg,
+              borderColor: '#1f6feb',
+              backgroundColor: '#1f6feb',
               opacity: pressed ? 0.85 : 1,
             },
           ]}
@@ -570,7 +570,7 @@ function MinimalAgendaInnerSlotWell({
           <Text
             style={[
               styles.minItemInnerFormBtnText,
-              { color: variant === 'prepared' ? '#ffffff' : docInk.inkMuted },
+              { color: '#ffffff' },
             ]}
             maxFontSizeMultiplier={1.05}
           >
@@ -637,7 +637,8 @@ function MinimalAgendaItemCard({
   const footerRows = minimalFooterRows(item);
   const durationWords = formatMinimalDurationWords(item.duration_minutes);
   const hasTimeValue = Boolean(timeRangeOnly);
-  const hasMetaRight = hasTimeValue || Boolean(durationWords);
+  const showFooterTime = hasTimeValue && !isGrammarianMinimalSection(item.section_name);
+  const hasMetaRight = showFooterTime || Boolean(durationWords);
   const showFooter = hasMetaRight || footerRows.length > 0;
 
   const stackTheme = themeOrTopicForStack(item, meetingTheme);
@@ -740,9 +741,6 @@ function MinimalAgendaItemCard({
             <Text
               key={`grammarian-line-${idx}-${line.slice(0, 24)}`}
               style={[styles.minItemGrammarianLine, { color: docInk.inkMuted }]}
-              numberOfLines={isQuoteLine ? 1 : undefined}
-              adjustsFontSizeToFit={isQuoteLine}
-              minimumFontScale={isQuoteLine ? 0.62 : undefined}
               maxFontSizeMultiplier={1.05}
             >
               <Text style={[styles.minItemGrammarianLabel, { color: docInk.inkMuted }]}>{`${label} `}</Text>
@@ -831,17 +829,12 @@ function MinimalAgendaItemCard({
                   style={[styles.minItemRoleHeading, { color: docInk.ink }]}
                   maxFontSizeMultiplier={1.1}
                   numberOfLines={1}
-                  ellipsizeMode="tail"
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                  ellipsizeMode="clip"
                 >
                   {row.heading}
-                </Text>
-                <Text
-                  style={[styles.minItemRoleName, { color: docInk.ink }]}
-                  maxFontSizeMultiplier={1.1}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {` ${row.name}`}
+                  <Text style={[styles.minItemRoleName, { color: docInk.ink }]}>{` ${row.name}`}</Text>
                 </Text>
               </View>
             ))}
@@ -864,7 +857,7 @@ function MinimalAgendaItemCard({
           </View>
           {hasMetaRight ? (
             <View style={styles.minItemMetaRightBlock}>
-              {hasTimeValue ? (
+              {showFooterTime ? (
                 <Text
                   style={[styles.minItemMetaRightText, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
                   maxFontSizeMultiplier={1.05}
@@ -1400,13 +1393,13 @@ const styles = StyleSheet.create({
   },
   minNotionBanner: {
     paddingHorizontal: 26,
-    paddingTop: 28,
-    paddingBottom: 26,
+    paddingTop: 22,
+    paddingBottom: 21,
     borderBottomWidth: StyleSheet.hairlineWidth,
     ...(Platform.OS === 'android' ? { elevation: 1 } : {}),
   },
   minBannerDetailsRowWrap: {
-    marginTop: 18,
+    marginTop: 14,
     alignSelf: 'center',
     maxWidth: '100%' as const,
   },
@@ -1706,11 +1699,11 @@ const styles = StyleSheet.create({
   minItemFooterRowsBlock: {
     minWidth: 0,
     flex: 1,
-    paddingRight: IS_MOBILE ? 8 : 12,
+    paddingRight: IS_MOBILE ? 4 : 12,
   },
   minItemMetaRightBlock: {
-    minWidth: IS_MOBILE ? 112 : 120,
-    maxWidth: IS_MOBILE ? '42%' : '40%',
+    minWidth: IS_MOBILE ? 94 : 120,
+    maxWidth: IS_MOBILE ? '34%' : '40%',
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
     gap: 4,
@@ -1718,8 +1711,8 @@ const styles = StyleSheet.create({
   },
   minItemMetaRightText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: ms(IS_MOBILE ? 13 : 12),
-    lineHeight: IS_MOBILE ? 19 : 17,
+    fontSize: ms(IS_MOBILE ? 12 : 12),
+    lineHeight: IS_MOBILE ? 17 : 17,
     textAlign: 'right',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     ...(Platform.OS === 'android'
@@ -1736,7 +1729,7 @@ const styles = StyleSheet.create({
   },
   minItemFooterRoleRow: {
     flexDirection: 'row',
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
     alignItems: 'baseline',
     minWidth: 0,
   },
@@ -1852,11 +1845,17 @@ const styles = StyleSheet.create({
   },
   minBannerSub: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    marginTop: 10,
+    marginTop: 8,
     textAlign: 'center',
     fontSize: ms(IS_MOBILE ? 13 : 12),
     lineHeight: IS_MOBILE ? 19 : 18,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textDecorationLine: 'none',
+    ...(Platform.OS === 'web'
+      ? ({
+          textDecorationColor: 'transparent',
+        } as ViewStyle)
+      : {}),
   },
   minBannerChipsRow: {
     flexDirection: 'row',
