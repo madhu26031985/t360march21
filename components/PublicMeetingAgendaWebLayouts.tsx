@@ -963,7 +963,6 @@ function DefaultLayout({
   openLink: (u: string) => void;
 }) {
   const { meeting, club, items } = payload;
-  const normalizedItems = normalizeAgendaNames(items);
   const clubBanner = meeting.club_info_banner_color || '#0ea5e9';
   const dateBanner = meeting.datetime_banner_color || '#f97316';
 
@@ -1032,6 +1031,7 @@ function MinimalLayout({
   openLink: (u: string) => void;
 }) {
   const { meeting, club, items } = payload;
+  const normalizedItems = normalizeAgendaNames(items);
   const bg = theme.colors.backgroundSecondary;
 
   const clubMetaParts = [
