@@ -814,17 +814,33 @@ function MinimalAgendaItemCard({
       ) : null}
 
       {showFooter ? (
-        <View style={[styles.minItemFooterRow, hasInnerStack ? styles.minItemFooterAfterStack : null]}>
+        <View
+          style={[
+            styles.minItemFooterRow,
+            hasInnerStack ? styles.minItemFooterAfterStack : null,
+            showThemeStack || Boolean(keynoteTitle) ? styles.minItemFooterAfterInlineTitle : null,
+          ]}
+        >
           <View style={styles.minItemFooterRowsBlock}>
             {footerRows.map((row, i) => (
               <View
                 key={`${i}-${row.heading}-${row.name.slice(0, 24)}`}
                 style={[styles.minItemFooterRoleRow, i > 0 ? styles.minItemFooterRoleRowSpaced : null]}
               >
-                <Text style={[styles.minItemRoleHeading, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+                <Text
+                  style={[styles.minItemRoleHeading, { color: docInk.ink }]}
+                  maxFontSizeMultiplier={1.1}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
                   {row.heading}
                 </Text>
-                <Text style={[styles.minItemRoleName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+                <Text
+                  style={[styles.minItemRoleName, { color: docInk.ink }]}
+                  maxFontSizeMultiplier={1.1}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
                   {` ${row.name}`}
                 </Text>
               </View>
@@ -836,6 +852,8 @@ function MinimalAgendaItemCard({
                   <Text
                     style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
                     maxFontSizeMultiplier={1.05}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
                   >
                     <Text style={[styles.minItemDurationLabel, { color: docInk.inkMuted }]}>Duration : </Text>
                     <Text style={[styles.minItemDurationValue, { color: docInk.ink }]}>{durationValue}</Text>
@@ -1676,18 +1694,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
+    flexWrap: 'nowrap',
     gap: 12,
   },
   minItemFooterAfterStack: {
     marginTop: 16,
   },
+  minItemFooterAfterInlineTitle: {
+    marginTop: 8,
+  },
   minItemFooterRowsBlock: {
     minWidth: 0,
     flex: 1,
+    paddingRight: IS_MOBILE ? 8 : 12,
   },
   minItemMetaRightBlock: {
-    minWidth: 120,
+    minWidth: IS_MOBILE ? 112 : 120,
+    maxWidth: IS_MOBILE ? '42%' : '40%',
     alignItems: 'flex-end',
+    justifyContent: 'flex-end',
     gap: 4,
     flexShrink: 0,
   },
@@ -1697,6 +1722,9 @@ const styles = StyleSheet.create({
     lineHeight: IS_MOBILE ? 19 : 17,
     textAlign: 'right',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    ...(Platform.OS === 'android'
+      ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const)
+      : {}),
   },
   minItemMetaRightLabel: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
@@ -1708,8 +1736,9 @@ const styles = StyleSheet.create({
   },
   minItemFooterRoleRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     alignItems: 'baseline',
+    minWidth: 0,
   },
   minItemFooterRoleRowSpaced: {
     marginTop: 6,
@@ -1720,6 +1749,9 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    ...(Platform.OS === 'android'
+      ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const)
+      : {}),
   },
   minItemRoleName: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
@@ -1727,6 +1759,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    ...(Platform.OS === 'android'
+      ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const)
+      : {}),
   },
   minItemTitleInlineText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
@@ -1735,6 +1770,9 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    ...(Platform.OS === 'android'
+      ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const)
+      : {}),
   },
   minItemTitleInlineLabel: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
@@ -1752,6 +1790,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
     alignSelf: 'flex-start',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    ...(Platform.OS === 'android'
+      ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const)
+      : {}),
   },
   minItemDurationLabel: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
