@@ -61,6 +61,13 @@ function minimalDocTextColors(theme: AppTheme): MinimalDocInk {
   return { ink: '#3a3a3a', inkMuted: '#6b6b6b', inkSoft: '#949494' };
 }
 
+function deLinkDigits(value: string | null | undefined): string {
+  const raw = (value || '').trim();
+  if (!raw) return '';
+  // Insert word joiners between digits to avoid mobile browser auto-link underlines.
+  return raw.replace(/\d(?=\d)/g, '$&\u2060');
+}
+
 function vibrantCardExtra(): ViewStyle {
   if (Platform.OS === 'web') {
     return {
@@ -82,7 +89,7 @@ function formatMinimalAgendaTimeRange(start: string | null, end: string | null):
 
 /** Bottom-right duration copy: "15 minutes" / "1 minute". */
 function formatMinimalDurationWords(minutes: number | null | undefined): string {
-  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return '';
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return 'Duration : TBA';
   const n = Math.round(minutes);
   if (n === 1) return 'Duration : 1 min';
   return `Duration : ${n} mins`;
@@ -102,6 +109,54 @@ function rdTrim(rd: Record<string, unknown> | null, key: string): string {
   const v = rd[key];
   if (v == null) return '';
   return String(v).trim();
+}
+
+function isLikelyTruncatedName(name: string): boolean {
+  return /\.\.\.$/.test(name.trim());
+}
+
+function expandTruncatedName(
+  name: string | null | undefined,
+  knownFullNames: readonly string[]
+): string | null {
+  const raw = name?.trim();
+  if (!raw) return null;
+  if (!isLikelyTruncatedName(raw)) return raw;
+  const prefix = raw.replace(/\.\.\.$/, '').trim().toLowerCase();
+  if (!prefix) return raw;
+  const match = knownFullNames.find((n) => n.toLowerCase().startsWith(prefix));
+  return match || raw;
+}
+
+function collectKnownFullNames(items: readonly PublicAgendaItemRow[]): string[] {
+  const out = new Set<string>();
+  const push = (v: string | null | undefined) => {
+    const t = v?.trim();
+    if (!t || isLikelyTruncatedName(t)) return;
+    out.add(t);
+  };
+  for (const item of items) {
+    push(item.assigned_user_name);
+    push(item.timer_user_name);
+    push(item.ah_counter_user_name);
+    push(item.grammarian_user_name);
+    for (const slot of preparedSlotsForPublic(item)) {
+      push(slot.speaker_name);
+      push(slot.evaluator_name);
+    }
+  }
+  return Array.from(out);
+}
+
+function normalizeAgendaNames(items: readonly PublicAgendaItemRow[]): PublicAgendaItemRow[] {
+  const knownFullNames = collectKnownFullNames(items);
+  return items.map((item) => ({
+    ...item,
+    assigned_user_name: expandTruncatedName(item.assigned_user_name, knownFullNames),
+    timer_user_name: expandTruncatedName(item.timer_user_name, knownFullNames),
+    ah_counter_user_name: expandTruncatedName(item.ah_counter_user_name, knownFullNames),
+    grammarian_user_name: expandTruncatedName(item.grammarian_user_name, knownFullNames),
+  }));
 }
 
 /** Role-style label before the assignee name (footer: label regular weight, name bold). */
@@ -264,10 +319,10 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
     const timerName = item.timer_user_name?.trim();
     const ahName = item.ah_counter_user_name?.trim();
     const grammarianName = item.grammarian_user_name?.trim();
-    if (timerName) tagRows.push({ heading: 'Timer :', name: timerName });
-    if (ahName) tagRows.push({ heading: 'Ah Counter :', name: ahName });
-    if (grammarianName) tagRows.push({ heading: 'Grammarian :', name: grammarianName });
-    if (tagRows.length > 0) return tagRows;
+    tagRows.push({ heading: 'Timer :', name: timerName || 'TBA' });
+    tagRows.push({ heading: 'Ah Counter :', name: ahName || 'TBA' });
+    tagRows.push({ heading: 'Grammarian :', name: grammarianName || 'TBA' });
+    return tagRows;
   }
   const skipSpeakerEvaluatorLines =
     isPreparedSpeechesMinimalSection(item.section_name) ||
@@ -307,6 +362,9 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
       }
     }
     out.push({ heading: minimalAssignedHeading(), name: line });
+  }
+  if (out.length === 0) {
+    return [{ heading: minimalAssignedHeading(), name: 'TBA' }];
   }
   return out;
 }
@@ -458,7 +516,7 @@ function MinimalAgendaInnerSlotWell({
             </Text>
           ) : (
             <Text style={[styles.minItemInnerPlaceholder, { color: docInk.inkSoft }]} maxFontSizeMultiplier={1.05}>
-              Yet to be assigned
+              TBA
             </Text>
           )}
           <Text style={[styles.minItemInnerRoleLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
@@ -637,15 +695,15 @@ function MinimalAgendaItemCard({
   const footerRows = minimalFooterRows(item);
   const durationWords = formatMinimalDurationWords(item.duration_minutes);
   const hasTimeValue = Boolean(timeRangeOnly);
-  const showFooterTime = hasTimeValue && !isGrammarianMinimalSection(item.section_name);
+  const showFooterTime = !isGrammarianMinimalSection(item.section_name);
+  const timeLabelValue = hasTimeValue ? timeRangeOnly : 'TBA';
   const hasMetaRight = showFooterTime || Boolean(durationWords);
   const showFooter = hasMetaRight || footerRows.length > 0;
 
   const stackTheme = themeOrTopicForStack(item, meetingTheme);
   const isToastmasterStack = isToastmasterStackSection(item.section_name);
-  const showThemeStack =
-    isToastmasterStack || (isThemeOnStackSection(item.section_name) && Boolean(stackTheme));
-  const stackThemeValue = stackTheme.trim() || 'TBD';
+  const showThemeStack = isThemeOnStackSection(item.section_name);
+  const stackThemeValue = stackTheme.trim() || 'TBA';
   const stackTitleLabel = isToastmasterStack ? 'Theme of the Day :' : 'Title :';
 
   const isLightDoc =
@@ -668,8 +726,7 @@ function MinimalAgendaItemCard({
       : [];
   const evalShapesToRender = evalShape ? [evalShape] : evalFallbackShapes;
 
-  const hasStackAbovePrepared =
-    Boolean(descPreview) || showThemeStack || (showThemeStack && Boolean(assigneeName));
+  const hasStackAbovePrepared = Boolean(descPreview) || showThemeStack;
   const preparedSlotGapTop = (idx: number) =>
     idx > 0 ? 10 : hasStackAbovePrepared ? 12 : 0;
   const evalWellGapTop =
@@ -794,7 +851,7 @@ function MinimalAgendaItemCard({
         </View>
       ))}
 
-      {keynoteTitle ? (
+      {isKeynoteMinimalSection(item.section_name) ? (
         <Text
           style={[
             styles.minItemTitleInlineText,
@@ -807,7 +864,7 @@ function MinimalAgendaItemCard({
           minimumFontScale={0.82}
         >
           <Text style={styles.minItemTitleInlineLabel}>Title : </Text>
-          <Text style={styles.minItemTitleInlineValue}>{keynoteTitle}</Text>
+          <Text style={styles.minItemTitleInlineValue}>{keynoteTitle || 'TBA'}</Text>
         </Text>
       ) : null}
 
@@ -825,38 +882,33 @@ function MinimalAgendaItemCard({
                 key={`${i}-${row.heading}-${row.name.slice(0, 24)}`}
                 style={[styles.minItemFooterRoleRow, i > 0 ? styles.minItemFooterRoleRowSpaced : null]}
               >
-                <Text
-                  style={[styles.minItemRoleHeading, { color: docInk.ink }]}
-                  maxFontSizeMultiplier={1.1}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.78}
-                  ellipsizeMode="clip"
-                >
+                <Text style={[styles.minItemRoleHeading, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
                   {row.heading}
                   <Text style={[styles.minItemRoleName, { color: docInk.ink }]}>{` ${row.name}`}</Text>
                 </Text>
               </View>
             ))}
-            {durationWords ? (
-              (() => {
-                const durationValue = durationWords.replace(/^Duration\s*:\s*/i, '').trim();
-                return (
-                  <Text
-                    style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
-                    maxFontSizeMultiplier={1.05}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    <Text style={[styles.minItemDurationLabel, { color: docInk.inkMuted }]}>Duration : </Text>
-                    <Text style={[styles.minItemDurationValue, { color: docInk.ink }]}>{durationValue}</Text>
-                  </Text>
-                );
-              })()
-            ) : null}
           </View>
-          {hasMetaRight ? (
-            <View style={styles.minItemMetaRightBlock}>
+          {(durationWords || showFooterTime) ? (
+            <View style={styles.minItemFooterMetaRow}>
+              {durationWords ? (
+                (() => {
+                  const durationValue = durationWords.replace(/^Duration\s*:\s*/i, '').trim();
+                  return (
+                    <Text
+                      style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
+                      maxFontSizeMultiplier={1.05}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      <Text style={[styles.minItemDurationLabel, { color: docInk.inkMuted }]}>Duration : </Text>
+                      <Text style={[styles.minItemDurationValue, { color: docInk.ink }]}>{durationValue}</Text>
+                    </Text>
+                  );
+                })()
+              ) : (
+                <View />
+              )}
               {showFooterTime ? (
                 <Text
                   style={[styles.minItemMetaRightText, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
@@ -865,9 +917,11 @@ function MinimalAgendaItemCard({
                   ellipsizeMode="tail"
                 >
                   <Text style={[styles.minItemMetaRightLabel, { color: docInk.inkMuted }]}>Time : </Text>
-                  <Text style={[styles.minItemMetaRightValue, { color: docInk.ink }]}>{timeRangeOnly}</Text>
+                  <Text style={[styles.minItemMetaRightValue, { color: docInk.ink }]}>{timeLabelValue}</Text>
                 </Text>
-              ) : null}
+              ) : (
+                <View />
+              )}
             </View>
           ) : null}
         </View>
@@ -909,6 +963,7 @@ function DefaultLayout({
   openLink: (u: string) => void;
 }) {
   const { meeting, club, items } = payload;
+  const normalizedItems = normalizeAgendaNames(items);
   const clubBanner = meeting.club_info_banner_color || '#0ea5e9';
   const dateBanner = meeting.datetime_banner_color || '#f97316';
 
@@ -980,9 +1035,9 @@ function MinimalLayout({
   const bg = theme.colors.backgroundSecondary;
 
   const clubMetaParts = [
-    club.district ? `District ${club.district}` : '',
-    club.division ? `Division ${club.division}` : '',
-    club.area ? `Area ${club.area}` : '',
+    club.district ? `District ${deLinkDigits(club.district)}` : '',
+    club.division ? `Division ${deLinkDigits(club.division)}` : '',
+    club.area ? `Area ${deLinkDigits(club.area)}` : '',
   ].filter(Boolean);
   const clubMetaText = clubMetaParts.join(' | ');
 
@@ -1016,7 +1071,9 @@ function MinimalLayout({
   const linkIconSize = 13;
   const meetingTheme = meeting.theme?.trim() || null;
   const preparedSpeechSlotsForSpeechEvalFallback = (() => {
-    const preparedSection = items.find((it) => isPreparedSpeechesMinimalSection(it.section_name));
+    const preparedSection = normalizedItems.find((it) =>
+      isPreparedSpeechesMinimalSection(it.section_name)
+    );
     if (!preparedSection) return [];
     return preparedSlotsForPublic(preparedSection).map(slotToDisplayShape);
   })();
@@ -1123,7 +1180,7 @@ function MinimalLayout({
               { backgroundColor: isLightDoc ? '#e8e7e4' : theme.colors.background },
             ]}
           >
-            {items.map((item) => (
+            {normalizedItems.map((item) => (
               <MinimalAgendaItemCard
                 key={`${item.section_order}-${item.section_name}`}
                 item={item}
@@ -1684,11 +1741,9 @@ const styles = StyleSheet.create({
   },
   minItemFooterRow: {
     marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    flexWrap: 'nowrap',
-    gap: 12,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 0,
   },
   minItemFooterAfterStack: {
     marginTop: 16,
@@ -1698,16 +1753,15 @@ const styles = StyleSheet.create({
   },
   minItemFooterRowsBlock: {
     minWidth: 0,
-    flex: 1,
-    paddingRight: IS_MOBILE ? 4 : 12,
+    width: '100%',
   },
-  minItemMetaRightBlock: {
-    minWidth: IS_MOBILE ? 94 : 120,
-    maxWidth: IS_MOBILE ? '34%' : '40%',
-    alignItems: 'flex-end',
-    justifyContent: 'flex-end',
-    gap: 4,
-    flexShrink: 0,
+  minItemFooterMetaRow: {
+    marginTop: 6,
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: 12,
   },
   minItemMetaRightText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
@@ -1780,7 +1834,7 @@ const styles = StyleSheet.create({
     fontSize: ms(IS_MOBILE ? 13 : 12),
     lineHeight: IS_MOBILE ? 19 : 17,
     textAlign: 'left',
-    marginTop: 6,
+    marginTop: 0,
     alignSelf: 'flex-start',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     ...(Platform.OS === 'android'
