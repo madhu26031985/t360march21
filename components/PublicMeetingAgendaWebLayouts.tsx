@@ -124,7 +124,7 @@ function minimalRoleHeadingForSection(sectionName: string): string {
 }
 
 function minimalAssignedHeading(): string {
-  return 'Assigned';
+  return 'Assigned :';
 }
 
 function isPreparedSpeechesMinimalSection(sectionName: string): boolean {
@@ -256,9 +256,6 @@ function lineLabelForMinimalFooterRow(item: PublicAgendaItemRow, line: string): 
 }
 
 function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: string }[] {
-  if (isToastmasterStackSection(item.section_name)) {
-    return [];
-  }
   if (isMeetAndGreetSection(item.section_name)) {
     return [{ heading: minimalAssignedHeading(), name: 'All' }];
   }
@@ -422,16 +419,12 @@ function MinimalAgendaInnerSlotWell({
   borderColor,
   wellBg,
   variant,
-  evalTitlePillBg,
-  titlePillTextColor,
 }: {
   slot: MinimalSlotDisplay;
   docInk: MinimalDocInk;
   borderColor: string;
   wellBg: string;
   variant: 'prepared' | 'evaluation';
-  evalTitlePillBg?: string;
-  titlePillTextColor: string;
 }) {
   const speaker = slot.speaker_name?.trim() || '';
   const evaluator = slot.evaluator_name?.trim() || '';
@@ -504,22 +497,12 @@ function MinimalAgendaInnerSlotWell({
       {variant === 'evaluation' && slot.speech_title?.trim() ? (
         <>
           <View style={[styles.minItemInnerHRule, { backgroundColor: borderColor }]} />
-          <Text style={[styles.minItemInnerDetailLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
-            Speech Title
-          </Text>
-          <View style={[styles.minItemInnerTitlePillMint, evalTitlePillBg ? { backgroundColor: evalTitlePillBg } : null]}>
-            <Text
-              style={[
-                styles.minItemInnerTitlePillMintText,
-                styles.minItemInnerTitlePillMintTextLeft,
-                { color: titlePillTextColor },
-              ]}
-              numberOfLines={3}
-              maxFontSizeMultiplier={1.05}
-            >
+          <Text style={[styles.minItemInnerDetailValue, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+            <Text style={[styles.minItemInnerDetailPrefix, { color: docInk.inkMuted }]}>Title : </Text>
+            <Text style={[styles.minItemInnerDetailValueStrong, { color: docInk.ink }]}>
               {slot.speech_title.trim()}
             </Text>
-          </View>
+          </Text>
         </>
       ) : null}
 
@@ -527,7 +510,7 @@ function MinimalAgendaInnerSlotWell({
         <View style={styles.minItemInnerDetailsBlock}>
           {slot.speech_title?.trim() ? (
             <View style={styles.minItemInnerDetailRow}>
-              <Text style={[styles.minItemInnerDetailPrefix, { color: docInk.inkMuted }]}>📄 Speech title: </Text>
+              <Text style={[styles.minItemInnerDetailPrefix, { color: docInk.inkMuted }]}>📄 Title: </Text>
               <Text style={[styles.minItemInnerDetailValueStrong, { color: docInk.ink }]}>
                 {slot.speech_title.trim()}
               </Text>
@@ -653,27 +636,22 @@ function MinimalAgendaItemCard({
   const descPreview = minimalCardDescriptionPreview(item, meetingTheme).trim();
   const footerRows = minimalFooterRows(item);
   const durationWords = formatMinimalDurationWords(item.duration_minutes);
-  const hasTimeTop = Boolean(timeRangeOnly);
-  const showFooter = Boolean(durationWords) || footerRows.length > 0;
+  const hasTimeValue = Boolean(timeRangeOnly);
+  const hasMetaRight = hasTimeValue || Boolean(durationWords);
+  const showFooter = hasMetaRight || footerRows.length > 0;
 
   const stackTheme = themeOrTopicForStack(item, meetingTheme);
   const isToastmasterStack = isToastmasterStackSection(item.section_name);
   const showThemeStack =
     isToastmasterStack || (isThemeOnStackSection(item.section_name) && Boolean(stackTheme));
-  const stackThemeLabel = stackTheme.trim() ? stackTheme.toUpperCase() : 'THEME TBD';
-  const assigneeName = item.assigned_user_name?.trim() || '';
-  const themeStackRoleLabel = isToastmasterStack ? 'Assigned :' : minimalRoleHeadingForSection(item.section_name);
-  const themeStackHeadingLabel = isEducationalMinimalSection(item.section_name)
-    ? 'Title'
-    : 'Theme of the Day';
+  const stackThemeValue = stackTheme.trim() || 'TBD';
+  const stackTitleLabel = isToastmasterStack ? 'Theme of the Day :' : 'Title :';
 
   const isLightDoc =
     theme.colors.background.toLowerCase() === '#ffffff' ||
     theme.colors.background.toLowerCase() === '#fff';
   const innerWellBorder = theme.colors.borderLight;
   const innerWellBg = isLightDoc ? '#fafafa' : theme.colors.surfaceSecondary;
-  const themePillBg = isLightDoc ? '#d8f3ef' : 'rgba(45,212,191,0.16)';
-  const themePillText = isLightDoc ? '#0f766e' : theme.colors.textSecondary;
 
   const preparedSlots = isPreparedSpeechesMinimalSection(item.section_name)
     ? preparedSlotsForPublic(item)
@@ -731,18 +709,6 @@ function MinimalAgendaItemCard({
             </Text>
           </View>
         </View>
-        {hasTimeTop ? (
-          <View style={styles.minItemTimeBlock}>
-            <Text
-              style={[styles.minItemTimeRight, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
-              maxFontSizeMultiplier={1.2}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {timeRangeOnly}
-            </Text>
-          </View>
-        ) : null}
       </View>
       {descPreview ? (
         <Text
@@ -787,53 +753,14 @@ function MinimalAgendaItemCard({
       ))}
 
       {showThemeStack ? (
-        <>
-          {!isToastmasterStack ? (
-            <View
-              style={[
-                styles.minItemThemeHeaderRule,
-                { backgroundColor: innerWellBorder, marginTop: descPreview ? 14 : 4 },
-              ]}
-            />
-          ) : null}
-          <View style={styles.minItemThemeStack}>
-            <Text style={[styles.minItemThemeStackLabel, { color: docInk.ink }]} maxFontSizeMultiplier={1.05}>
-              {themeStackHeadingLabel}
-            </Text>
-            <View
-              style={[
-                styles.minItemThemeStackPill,
-                isToastmasterStack ? styles.minItemThemeStackPillCompact : null,
-                { backgroundColor: themePillBg },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.minItemThemeStackPillText,
-                  isToastmasterStack ? styles.minItemThemeStackPillTextCompact : null,
-                  { color: themePillText },
-                ]}
-                numberOfLines={4}
-                maxFontSizeMultiplier={1.05}
-              >
-                {stackThemeLabel}
-              </Text>
-            </View>
-          </View>
-        </>
-      ) : null}
-
-      {showThemeStack && assigneeName && isToastmasterStack ? (
-        (
-          <View style={styles.minItemThemeAssigneeLine}>
-            <Text style={[styles.minItemRoleHeading, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-              {themeStackRoleLabel}
-            </Text>
-            <Text style={[styles.minItemRoleName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
-              {` ${assigneeName}`}
-            </Text>
-          </View>
-        )
+        <View style={styles.minItemThemeTitleLine}>
+          <Text style={[styles.minItemRoleHeading, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+            {stackTitleLabel}
+          </Text>
+          <Text style={[styles.minItemRoleName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+            {` ${stackThemeValue}`}
+          </Text>
+        </View>
       ) : null}
 
       {preparedSlots.map((s, idx) => (
@@ -847,7 +774,6 @@ function MinimalAgendaItemCard({
             borderColor={innerWellBorder}
             wellBg={innerWellBg}
             variant="prepared"
-            titlePillTextColor={themePillText}
           />
         </View>
       ))}
@@ -863,32 +789,18 @@ function MinimalAgendaItemCard({
             borderColor={innerWellBorder}
             wellBg={innerWellBg}
             variant="evaluation"
-            evalTitlePillBg={isLightDoc ? '#bfe9e2' : 'rgba(45,212,191,0.22)'}
-            titlePillTextColor={themePillText}
           />
         </View>
       ))}
 
       {keynoteTitle ? (
-        <View style={{ marginTop: hasContentBeforeKeynote ? 12 : 0 }}>
-          <View style={[styles.minItemInnerWell, { borderColor: innerWellBorder, backgroundColor: innerWellBg }]}>
-            <Text style={[styles.minItemInnerDetailLabel, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
-              Keynote Title
-            </Text>
-            <View style={[styles.minItemInnerTitlePillMint, { backgroundColor: isLightDoc ? '#bfe9e2' : 'rgba(45,212,191,0.22)' }]}>
-              <Text
-                style={[
-                  styles.minItemInnerTitlePillMintText,
-                  styles.minItemInnerTitlePillMintTextLeft,
-                  { color: themePillText },
-                ]}
-                numberOfLines={3}
-                maxFontSizeMultiplier={1.05}
-              >
-                {keynoteTitle}
-              </Text>
-            </View>
-          </View>
+        <View style={[styles.minItemThemeTitleLine, { marginTop: hasContentBeforeKeynote ? 12 : 0 }]}>
+          <Text style={[styles.minItemRoleHeading, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+            Title :
+          </Text>
+          <Text style={[styles.minItemRoleName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+            {` ${keynoteTitle}`}
+          </Text>
         </View>
       ) : null}
 
@@ -908,21 +820,36 @@ function MinimalAgendaItemCard({
                 </Text>
               </View>
             ))}
-            {durationWords ? (
-              (() => {
-                const durationValue = durationWords.replace(/^Duration\s*:\s*/i, '').trim();
-                return (
-                  <Text
-                    style={[styles.minItemDurationBottom, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
-                    maxFontSizeMultiplier={1.05}
-                  >
-                    <Text style={[styles.minItemDurationLabel, { color: docInk.inkMuted }]}>Duration : </Text>
-                    <Text style={[styles.minItemDurationValue, { color: docInk.ink }]}>{durationValue}</Text>
-                  </Text>
-                );
-              })()
-            ) : null}
           </View>
+          {hasMetaRight ? (
+            <View style={styles.minItemMetaRightBlock}>
+              {hasTimeValue ? (
+                <Text
+                  style={[styles.minItemMetaRightText, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
+                  maxFontSizeMultiplier={1.05}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  <Text style={[styles.minItemMetaRightLabel, { color: docInk.inkMuted }]}>Time : </Text>
+                  <Text style={[styles.minItemMetaRightValue, { color: docInk.ink }]}>{timeRangeOnly}</Text>
+                </Text>
+              ) : null}
+              {durationWords ? (
+                (() => {
+                  const durationValue = durationWords.replace(/^Duration\s*:\s*/i, '').trim();
+                  return (
+                    <Text
+                      style={[styles.minItemMetaRightText, styles.minItemMetaPlain, { color: docInk.inkMuted }]}
+                      maxFontSizeMultiplier={1.05}
+                    >
+                      <Text style={[styles.minItemMetaRightLabel, { color: docInk.inkMuted }]}>Duration : </Text>
+                      <Text style={[styles.minItemMetaRightValue, { color: docInk.ink }]}>{durationValue}</Text>
+                    </Text>
+                  );
+                })()
+              ) : null}
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -1137,12 +1064,7 @@ function MinimalLayout({
               </Text>
             ) : null}
 
-            <View
-              style={[
-                styles.minNotionChipsWell,
-                { backgroundColor: notionChipsWellBg, borderColor: notionChipsWellBorder },
-              ]}
-            >
+            <View style={styles.minBannerDetailsRowWrap}>
               <View style={styles.minBannerChipsRow}>
                 {dateStr ? (
                   <View style={styles.minBannerChip}>
@@ -1456,14 +1378,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     ...(Platform.OS === 'android' ? { elevation: 1 } : {}),
   },
-  minNotionChipsWell: {
+  minBannerDetailsRowWrap: {
     marginTop: 18,
     alignSelf: 'center',
     maxWidth: '100%' as const,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
   },
   minCardListSection: {
     paddingTop: 14,
@@ -1746,12 +1664,38 @@ const styles = StyleSheet.create({
   },
   minItemFooterRow: {
     marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: 12,
   },
   minItemFooterAfterStack: {
     marginTop: 16,
   },
   minItemFooterRowsBlock: {
     minWidth: 0,
+    flex: 1,
+  },
+  minItemMetaRightBlock: {
+    minWidth: 120,
+    alignItems: 'flex-end',
+    gap: 4,
+    flexShrink: 0,
+  },
+  minItemMetaRightText: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    textAlign: 'right',
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  minItemMetaRightLabel: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontWeight: '400',
+  },
+  minItemMetaRightValue: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontWeight: '700',
   },
   minItemFooterRoleRow: {
     flexDirection: 'row',
@@ -1862,15 +1806,15 @@ const styles = StyleSheet.create({
   },
   minBannerChipText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: ms(IS_MOBILE ? 13 : 13),
-    lineHeight: IS_MOBILE ? 19 : 17,
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
     fontWeight: '400',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minBannerChipSep: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: ms(IS_MOBILE ? 13 : 13),
-    lineHeight: IS_MOBILE ? 19 : 17,
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
     fontWeight: '400',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
