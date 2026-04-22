@@ -369,6 +369,25 @@ function minimalFooterRows(item: PublicAgendaItemRow): { heading: string; name: 
   return out;
 }
 
+function shouldSuppressAssignedTba(sectionName: string): boolean {
+  const s = sectionNameLower(sectionName);
+  return (
+    s.includes('grammarian') ||
+    s.includes('prepared speech') ||
+    s.includes('ancillary') ||
+    s.includes('speech evaluation') ||
+    s.includes('break') ||
+    (s.includes('toastmaster') && (s.includes('continue') || s.includes('closing'))) ||
+    s.includes('voting') ||
+    s.includes('listener')
+  );
+}
+
+function shouldSuppressDurationTba(sectionName: string): boolean {
+  const s = sectionNameLower(sectionName);
+  return s.includes('grammarian');
+}
+
 function minimalCardDescriptionPreview(item: PublicAgendaItemRow, meetingTheme?: string | null): string {
   const stackTheme = themeOrTopicForStack(item, meetingTheme);
   const showThemeBlock =
@@ -694,11 +713,21 @@ function MinimalAgendaItemCard({
   const descPreview = minimalCardDescriptionPreview(item, meetingTheme).trim();
   const footerRows = minimalFooterRows(item);
   const durationWords = formatMinimalDurationWords(item.duration_minutes);
+  const visibleFooterRows = footerRows.filter(
+    (row) =>
+      !(
+        row.heading.trim() === minimalAssignedHeading().trim() &&
+        row.name.trim().toUpperCase() === 'TBA' &&
+        shouldSuppressAssignedTba(item.section_name)
+      )
+  );
+  const isDurationTba = /:\s*TBA\s*$/i.test(durationWords);
+  const showDuration = Boolean(durationWords) && !(isDurationTba && shouldSuppressDurationTba(item.section_name));
   const hasTimeValue = Boolean(timeRangeOnly);
   const showFooterTime = !isGrammarianMinimalSection(item.section_name);
   const timeLabelValue = hasTimeValue ? timeRangeOnly : 'TBA';
-  const hasMetaRight = showFooterTime || Boolean(durationWords);
-  const showFooter = hasMetaRight || footerRows.length > 0;
+  const hasMetaRight = showFooterTime || showDuration;
+  const showFooter = hasMetaRight || visibleFooterRows.length > 0;
 
   const stackTheme = themeOrTopicForStack(item, meetingTheme);
   const isToastmasterStack = isToastmasterStackSection(item.section_name);
@@ -877,7 +906,7 @@ function MinimalAgendaItemCard({
           ]}
         >
           <View style={styles.minItemFooterRowsBlock}>
-            {footerRows.map((row, i) => (
+            {visibleFooterRows.map((row, i) => (
               <View
                 key={`${i}-${row.heading}-${row.name.slice(0, 24)}`}
                 style={[styles.minItemFooterRoleRow, i > 0 ? styles.minItemFooterRoleRowSpaced : null]}
@@ -889,9 +918,9 @@ function MinimalAgendaItemCard({
               </View>
             ))}
           </View>
-          {(durationWords || showFooterTime) ? (
+          {(showDuration || showFooterTime) ? (
             <View style={styles.minItemFooterMetaRow}>
-              {durationWords ? (
+              {showDuration ? (
                 (() => {
                   const durationValue = durationWords.replace(/^Duration\s*:\s*/i, '').trim();
                   return (
