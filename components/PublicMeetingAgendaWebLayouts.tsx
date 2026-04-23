@@ -22,7 +22,7 @@ import {
 } from '@/lib/publicAgendaFormat';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import type { PublicAgendaItemRow, PublicAgendaPayload } from '@/lib/publicAgendaQuery';
-import { Calendar, Clock, Link2, Users } from 'lucide-react-native';
+import { Link2 } from 'lucide-react-native';
 
 type AppTheme = ReturnType<typeof useTheme>['theme'];
 
@@ -52,14 +52,8 @@ const MINIMAL_AGENDA_BODY_TRACKING = Platform.select({
   android: 0.05,
   default: 0.12,
 });
-const MINIMAL_FONT_SCALE = 1;
+const MINIMAL_FONT_SCALE = 1.02;
 const ms = (size: number): number => Math.round(size * MINIMAL_FONT_SCALE * 100) / 100;
-/** Minimal dense scaler; kept at 1 to preserve screenshot typography. */
-const MINIMAL_DENSE_SCALE = 1;
-const mds = (size: number): number =>
-  Math.max(6, Math.round(ms(size) * MINIMAL_DENSE_SCALE * 100) / 100);
-const mdsLH = (line: number): number =>
-  Math.max(7, Math.round(line * MINIMAL_DENSE_SCALE * 100) / 100);
 
 function minimalDocTextColors(theme: AppTheme): MinimalDocInk {
   const bg = theme.colors.background.toLowerCase();
@@ -1105,9 +1099,10 @@ function MinimalLayout({
   const normalizedItems = normalizeAgendaNames(items);
   const { width: layoutWidth } = useWindowDimensions();
   const isMinimalHeaderCompact = IS_MOBILE || layoutWidth < 640;
-  const titleFontSize = Math.round((isMinimalHeaderCompact ? 22 : 28) * MINIMAL_DENSE_SCALE * 100) / 100;
-  const subtitleFontSize = Math.round((isMinimalHeaderCompact ? 13 : 16) * MINIMAL_DENSE_SCALE * 100) / 100;
-  const metaFontSize = Math.round((isMinimalHeaderCompact ? 13 : 15) * MINIMAL_DENSE_SCALE * 100) / 100;
+  const titleFontSize = isMinimalHeaderCompact ? 22 : 28;
+  const subtitleFontSize = isMinimalHeaderCompact ? 13 : 16;
+  const metaFontSize = isMinimalHeaderCompact ? 13 : 15;
+  const bg = theme.colors.backgroundSecondary;
 
   const clubMetaParts = [
     club.district ? `District ${deLinkDigits(club.district)}` : '',
@@ -1127,11 +1122,13 @@ function MinimalLayout({
   const meetingNoLabel = `Meeting ${meetingNumStr || '—'}`;
   const docInk = minimalDocTextColors(theme);
   const chipMuted = docInk.inkMuted;
+  const isLightDoc =
+    theme.colors.background.toLowerCase() === '#ffffff' ||
+    theme.colors.background.toLowerCase() === '#fff';
 
   const meetingLink = meeting.meeting_link?.trim() || '';
   const showBannerTopMeta = Boolean(meetingLink);
-  const linkIconSize = Math.max(8, Math.round(13 * MINIMAL_DENSE_SCALE * 100) / 100);
-  const metaIconSize = isMinimalHeaderCompact ? 15 : 16;
+  const linkIconSize = 13;
   const meetingTheme = meeting.theme?.trim() || null;
   const preparedSpeechSlotsForSpeechEvalFallback = (() => {
     const preparedSection = normalizedItems.find((it) =>
@@ -1142,7 +1139,7 @@ function MinimalLayout({
   })();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
       <ScrollView contentContainerStyle={styles.minScroll} keyboardShouldPersistTaps="handled">
         <View
           style={[
@@ -1236,83 +1233,65 @@ function MinimalLayout({
                 { borderTopColor: theme.colors.borderLight },
               ]}
             >
-              <View style={styles.minBannerWireMetaRow}>
+              <View
+                style={[
+                  styles.minBannerWireMetaRow,
+                  isMinimalHeaderCompact ? styles.minBannerWireMetaRowStack : null,
+                ]}
+              >
                 {dateStr ? (
-                  <View style={styles.minBannerWireMetaChip}>
-                    <Calendar size={metaIconSize} color={chipMuted} strokeWidth={2} />
-                    <Text
-                      style={[
-                        styles.minBannerWireMetaItem,
-                        {
-                          color: chipMuted,
-                          fontFamily: MINIMAL_HEADER_FONT_FAMILY,
-                          fontSize: metaFontSize,
-                          lineHeight: Math.round(metaFontSize * 1.35),
-                        },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {dateStr}
-                    </Text>
-                  </View>
-                ) : null}
-                {dateStr && timeStr ? (
                   <Text
                     style={[
-                      styles.minBannerWireMetaSep,
-                      { color: docInk.inkSoft, fontSize: metaFontSize },
+                      styles.minBannerWireMetaItem,
+                      {
+                        color: chipMuted,
+                        fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+                        fontSize: metaFontSize,
+                        lineHeight: Math.round(metaFontSize * 1.35),
+                      },
                     ]}
+                    numberOfLines={2}
                   >
-                    {' '}|{' '}
+                    📅 {dateStr}
                   </Text>
+                ) : null}
+                {!isMinimalHeaderCompact && dateStr && timeStr ? (
+                  <Text style={[styles.minBannerWireMetaSep, { color: docInk.inkSoft }]}> | </Text>
                 ) : null}
                 {timeStr ? (
-                  <View style={styles.minBannerWireMetaChip}>
-                    <Clock size={metaIconSize} color={chipMuted} strokeWidth={2} />
-                    <Text
-                      style={[
-                        styles.minBannerWireMetaItem,
-                        {
-                          color: chipMuted,
-                          fontFamily: MINIMAL_HEADER_FONT_FAMILY,
-                          fontSize: metaFontSize,
-                          lineHeight: Math.round(metaFontSize * 1.35),
-                        },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {timeStr}
-                    </Text>
-                  </View>
-                ) : null}
-                {(dateStr || timeStr) && meetingNoLabel ? (
                   <Text
                     style={[
-                      styles.minBannerWireMetaSep,
-                      { color: docInk.inkSoft, fontSize: metaFontSize },
+                      styles.minBannerWireMetaItem,
+                      {
+                        color: chipMuted,
+                        fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+                        fontSize: metaFontSize,
+                        lineHeight: Math.round(metaFontSize * 1.35),
+                      },
                     ]}
+                    numberOfLines={2}
                   >
-                    {' '}|{' '}
+                    ⏰ {timeStr}
                   </Text>
                 ) : null}
+                {!isMinimalHeaderCompact && (dateStr || timeStr) && meetingNoLabel ? (
+                  <Text style={[styles.minBannerWireMetaSep, { color: docInk.inkSoft }]}> | </Text>
+                ) : null}
                 {meetingNoLabel ? (
-                  <View style={styles.minBannerWireMetaChip}>
-                    <Users size={metaIconSize} color={chipMuted} strokeWidth={2} />
-                    <Text
-                      style={[
-                        styles.minBannerWireMetaItem,
-                        {
-                          color: chipMuted,
-                          fontFamily: MINIMAL_HEADER_FONT_FAMILY,
-                          fontSize: metaFontSize,
-                          lineHeight: Math.round(metaFontSize * 1.35),
-                        },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {meetingNoLabel}
-                    </Text>
-                  </View>
+                  <Text
+                    style={[
+                      styles.minBannerWireMetaItem,
+                      {
+                        color: chipMuted,
+                        fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+                        fontSize: metaFontSize,
+                        lineHeight: Math.round(metaFontSize * 1.35),
+                      },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    👥 {meetingNoLabel}
+                  </Text>
                 ) : null}
               </View>
             </View>
@@ -1321,7 +1300,7 @@ function MinimalLayout({
           <View
             style={[
               styles.minCardListSection,
-              { backgroundColor: 'transparent' },
+              { backgroundColor: isLightDoc ? '#e8e7e4' : theme.colors.background },
             ]}
           >
             {normalizedItems.map((item) => (
@@ -1632,30 +1611,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     alignItems: 'center',
-    alignSelf: 'center',
-    rowGap: 8,
-    columnGap: 2,
-    width: '100%',
+    rowGap: 10,
+    columnGap: 6,
     maxWidth: '100%',
-    paddingHorizontal: 4,
   },
-  minBannerWireMetaChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 1,
-    minWidth: 0,
+  minBannerWireMetaRowStack: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    width: '100%',
   },
   minBannerWireMetaItem: {
+    textAlign: 'center',
     fontWeight: '400',
     letterSpacing: 0.06,
-    flexShrink: 1,
-    minWidth: 0,
   },
   minBannerWireMetaSep: {
     fontFamily: MINIMAL_HEADER_FONT_FAMILY,
     fontWeight: '400',
-    lineHeight: 22,
   },
   minBannerDetailsRowWrap: {
     marginTop: 14,
@@ -1692,17 +1664,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   minItemSectionIcon: {
-    fontSize: mds(18),
-    lineHeight: mdsLH(22),
+    fontSize: 18,
+    lineHeight: 22,
     marginTop: 1,
   },
   minItemTitleLeft: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     flex: 1,
     flexShrink: 1,
-    fontSize: mds(IS_MOBILE ? 13 : 13),
+    fontSize: ms(IS_MOBILE ? 13 : 13),
     fontWeight: '700',
-    lineHeight: mdsLH(IS_MOBILE ? 18 : 18),
+    lineHeight: IS_MOBILE ? 18 : 18,
     letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
     paddingRight: 4,
   },
@@ -1721,23 +1693,23 @@ const styles = StyleSheet.create({
   },
   minItemTimeRight: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 12 : 13),
-    lineHeight: mdsLH(IS_MOBILE ? 17 : 18),
+    fontSize: ms(IS_MOBILE ? 12 : 13),
+    lineHeight: IS_MOBILE ? 17 : 18,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     textAlign: 'right',
   },
   minItemDesc: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     marginTop: 10,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minItemGrammarianLine: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     marginTop: 8,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minItemGrammarianLabel: {
@@ -1757,9 +1729,9 @@ const styles = StyleSheet.create({
   },
   minItemThemeStackLabel: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(12),
+    fontSize: ms(12),
     fontWeight: '700',
-    lineHeight: mdsLH(17),
+    lineHeight: 17,
     letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
   },
   minItemThemeStackPill: {
@@ -1775,15 +1747,15 @@ const styles = StyleSheet.create({
   },
   minItemThemeStackPillText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 15 : 14),
+    fontSize: ms(IS_MOBILE ? 15 : 14),
     fontWeight: '700',
-    lineHeight: mdsLH(IS_MOBILE ? 20 : 19),
+    lineHeight: IS_MOBILE ? 20 : 19,
     textAlign: 'left',
     letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
   },
   minItemThemeStackPillTextCompact: {
-    fontSize: mds(13),
-    lineHeight: mdsLH(18),
+    fontSize: ms(13),
+    lineHeight: 18,
   },
   minItemThemeAssigneeWell: {
     marginTop: 12,
@@ -1815,17 +1787,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   minItemInnerIdentityBubble: {
-    width: 19,
-    height: 19,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#dbeafe',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   minItemInnerIdentityBubbleText: {
-    fontSize: mds(16),
-    lineHeight: mdsLH(18),
+    fontSize: ms(16),
+    lineHeight: 18,
     fontWeight: '700',
     color: '#1d4ed8',
   },
@@ -1846,33 +1818,33 @@ const styles = StyleSheet.create({
   },
   minItemInnerRoleLabel: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 12 : 11),
+    fontSize: ms(IS_MOBILE ? 12 : 11),
     fontWeight: '400',
-    lineHeight: mdsLH(IS_MOBILE ? 16 : 15),
+    lineHeight: IS_MOBILE ? 16 : 15,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minItemInnerPersonName: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     marginTop: 4,
-    fontSize: mds(IS_MOBILE ? 14 : 13),
+    fontSize: ms(IS_MOBILE ? 14 : 13),
     fontWeight: '700',
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minItemInnerPlaceholder: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     marginTop: 4,
-    fontSize: mds(IS_MOBILE ? 14 : 13),
+    fontSize: ms(IS_MOBILE ? 14 : 13),
     fontWeight: '400',
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    lineHeight: IS_MOBILE ? 19 : 17,
     fontStyle: 'italic',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minItemInnerDetailLabel: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
     fontWeight: '400',
-    lineHeight: mdsLH(IS_MOBILE ? 18 : 16),
+    lineHeight: IS_MOBILE ? 18 : 16,
     marginBottom: 6,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
@@ -1885,9 +1857,9 @@ const styles = StyleSheet.create({
   },
   minItemInnerTitlePillMintText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 15 : 14),
+    fontSize: ms(IS_MOBILE ? 15 : 14),
     fontWeight: '700',
-    lineHeight: mdsLH(IS_MOBILE ? 20 : 19),
+    lineHeight: IS_MOBILE ? 20 : 19,
     textAlign: 'center',
     letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
   },
@@ -1905,25 +1877,25 @@ const styles = StyleSheet.create({
   },
   minItemInnerDetailPrefix: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
     fontWeight: '400',
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    lineHeight: IS_MOBILE ? 19 : 17,
     marginRight: 4,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minItemInnerDetailValue: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
     fontWeight: '400',
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    lineHeight: IS_MOBILE ? 19 : 17,
     flexShrink: 1,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minItemInnerDetailValueStrong: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 14 : 13),
+    fontSize: ms(IS_MOBILE ? 14 : 13),
     fontWeight: '700',
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    lineHeight: IS_MOBILE ? 19 : 17,
     flexShrink: 1,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
@@ -1936,7 +1908,7 @@ const styles = StyleSheet.create({
   },
   minItemInnerFormBtnText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
     fontWeight: '600',
     textAlign: 'center',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
@@ -1967,8 +1939,8 @@ const styles = StyleSheet.create({
   },
   minItemMetaRightText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 12 : 12),
-    lineHeight: mdsLH(IS_MOBILE ? 17 : 17),
+    fontSize: ms(IS_MOBILE ? 12 : 12),
+    lineHeight: IS_MOBILE ? 17 : 17,
     textAlign: 'right',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     ...(Platform.OS === 'android'
@@ -1994,9 +1966,9 @@ const styles = StyleSheet.create({
   },
   minItemRoleHeading: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
     fontWeight: '400',
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     ...(Platform.OS === 'android'
       ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const)
@@ -2004,9 +1976,9 @@ const styles = StyleSheet.create({
   },
   minItemRoleName: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
     fontWeight: '700',
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     ...(Platform.OS === 'android'
       ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const)
@@ -2015,9 +1987,9 @@ const styles = StyleSheet.create({
   minItemTitleInlineText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     marginTop: 6,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
     fontWeight: '400',
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    lineHeight: IS_MOBILE ? 19 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     ...(Platform.OS === 'android'
       ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const)
@@ -2033,8 +2005,8 @@ const styles = StyleSheet.create({
   },
   minItemDurationBottom: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 17),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
     textAlign: 'left',
     marginTop: 0,
     alignSelf: 'flex-start',
@@ -2085,26 +2057,26 @@ const styles = StyleSheet.create({
   minBannerTopLinkText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     flexShrink: 1,
-    fontSize: mds(IS_MOBILE ? 13 : 12),
-    lineHeight: mdsLH(IS_MOBILE ? 18 : 17),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 18 : 17,
     fontWeight: '400',
     textAlign: 'left',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minBannerClub: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 24 : 22),
+    fontSize: ms(IS_MOBILE ? 24 : 22),
     fontWeight: '700',
     textAlign: 'center',
-    lineHeight: mdsLH(IS_MOBILE ? 29 : 27),
+    lineHeight: IS_MOBILE ? 29 : 27,
     letterSpacing: -0.35,
   },
   minBannerSub: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     marginTop: 8,
     textAlign: 'center',
-    fontSize: mds(IS_MOBILE ? 13 : 12),
-    lineHeight: mdsLH(IS_MOBILE ? 19 : 18),
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 18,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     textDecorationLine: 'none',
     ...(Platform.OS === 'web'
@@ -2127,15 +2099,15 @@ const styles = StyleSheet.create({
   },
   minBannerChipText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 12.35 : 12.35),
-    lineHeight: mdsLH(IS_MOBILE ? 18 : 16),
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
     fontWeight: '400',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minBannerChipSep: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: mds(IS_MOBILE ? 12.35 : 12.35),
-    lineHeight: mdsLH(IS_MOBILE ? 18 : 16),
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
     fontWeight: '400',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
