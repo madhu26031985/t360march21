@@ -3,8 +3,8 @@
  * Path includes Expo `experiments.baseUrl` so the link matches the real URL in the browser:
  * /weblogin/{club-slug}/agenda/{meetingNo}/{meetingId} (slug from club display name; legacy UUID first segment still works).
  *
- * Short share link (same agenda): /weblogin/{club-slug}/a/{meetingId} when a display name is known,
- * or /weblogin/a/{meetingId} (slug in the path is cosmetic; meeting UUID loads data).
+ * Short share link (same agenda): /{club-slug}/a/{meetingId} when a display name is known,
+ * or /a/{meetingId}. These URLs are routed through a server-side preview endpoint for WhatsApp/OG.
  *
  * Shorter URLs without /weblogin still work: Netlify redirects them to this path.
  *
@@ -107,8 +107,8 @@ export function buildShortAgendaWebUrl(params: {
   const slug = trimmed ? slugifyClubNameForAgendaUrl(trimmed) : '';
   const path =
     trimmed && slug.length > 0
-      ? `${AGENDA_WEB_PATH_PREFIX}/${slug}/a/${params.meetingId}`
-      : `${AGENDA_WEB_PATH_PREFIX}/a/${params.meetingId}`;
+      ? `/${slug}/a/${params.meetingId}`
+      : `/a/${params.meetingId}`;
   let url = `${agendaWebHost()}${path}`;
   if (params.skin === 'minimal' || params.skin === 'vibrant') {
     url += `?skin=${params.skin}`;
