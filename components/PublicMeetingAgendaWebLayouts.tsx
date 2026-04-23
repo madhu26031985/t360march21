@@ -1303,7 +1303,7 @@ function MinimalLayout({
           <View
             style={[
               styles.minCardListSection,
-              { backgroundColor: isLightDoc ? '#e8e7e4' : theme.colors.background },
+              { backgroundColor: theme.colors.background },
             ]}
           >
             {normalizedItems.map((item) => (
@@ -1315,6 +1315,16 @@ function MinimalLayout({
                 speechEvaluationFallbackSlots={preparedSpeechSlotsForSpeechEvalFallback}
               />
             ))}
+          </View>
+          <View
+            style={[
+              styles.minFooterBanner,
+              {
+                backgroundColor: theme.colors.background,
+                borderTopColor: theme.colors.borderLight,
+              },
+            ]}
+          >
             <Text style={[styles.minFooter, { color: docInk.inkSoft }]} numberOfLines={2}>
               {minFooterLine}
             </Text>
@@ -1635,8 +1645,16 @@ const styles = StyleSheet.create({
   },
   minCardListSection: {
     paddingTop: 14,
-    paddingBottom: 28,
+    paddingBottom: 12,
     paddingHorizontal: 2,
+  },
+  minFooterBanner: {
+    width: '100%',
+    paddingTop: 14,
+    paddingBottom: 16,
+    paddingHorizontal: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
   },
   minItemCard: {
     marginHorizontal: 14,
@@ -2204,7 +2222,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'right',
   },
-  minFooter: { textAlign: 'center', fontSize: 11, marginTop: 24, paddingHorizontal: 24 },
+  minFooter: {
+    textAlign: 'center',
+    fontSize: 11,
+    marginTop: 0,
+    paddingHorizontal: 24,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
 
   vibScroll: { paddingBottom: 40 },
   vibBannerTop: {
