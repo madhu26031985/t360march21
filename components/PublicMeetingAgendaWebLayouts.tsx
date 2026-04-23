@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,7 +22,7 @@ import {
 } from '@/lib/publicAgendaFormat';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import type { PublicAgendaItemRow, PublicAgendaPayload } from '@/lib/publicAgendaQuery';
-import { Calendar, Clock, Link2, Users } from 'lucide-react-native';
+import { Link2 } from 'lucide-react-native';
 
 type AppTheme = ReturnType<typeof useTheme>['theme'];
 
@@ -29,6 +30,12 @@ type AppTheme = ReturnType<typeof useTheme>['theme'];
 type MinimalDocInk = { ink: string; inkMuted: string; inkSoft: string };
 
 const IS_MOBILE = Platform.OS === 'ios' || Platform.OS === 'android';
+/** Inter-first stack for minimal agenda header (wireframe typography). */
+const MINIMAL_HEADER_FONT_FAMILY = Platform.select({
+  ios: 'Inter',
+  android: 'Inter',
+  default: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+});
 const MINIMAL_AGENDA_FONT_FAMILY = Platform.select({
   ios: 'Avenir Next',
   android: 'Roboto',
@@ -66,6 +73,30 @@ function deLinkDigits(value: string | null | undefined): string {
   if (!raw) return '';
   // Insert word joiners between digits to avoid mobile browser auto-link underlines.
   return raw.replace(/\d(?=\d)/g, '$&\u2060');
+}
+
+function formatClubMetaToken(value: string | null | undefined): string {
+  const v = deLinkDigits(value).trim();
+  if (!v) return '';
+  return v.length === 1 ? v.toUpperCase() : v;
+}
+
+/** Premium soft shell — no fill color; web shadow + native elevation. */
+function minimalHeaderShellShadow(): ViewStyle {
+  if (Platform.OS === 'web') {
+    return {
+      boxShadow: '0 1px 2px rgba(15,15,15,0.05), 0 10px 32px rgba(15,15,15,0.06)',
+    } as ViewStyle;
+  }
+  if (Platform.OS === 'ios') {
+    return {
+      shadowColor: '#000',
+      shadowOpacity: 0.06,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+    };
+  }
+  return { elevation: 2 };
 }
 
 function vibrantCardExtra(): ViewStyle {
@@ -1066,12 +1097,17 @@ function MinimalLayout({
 }) {
   const { meeting, club, items } = payload;
   const normalizedItems = normalizeAgendaNames(items);
+  const { width: layoutWidth } = useWindowDimensions();
+  const isMinimalHeaderCompact = IS_MOBILE || layoutWidth < 640;
+  const titleFontSize = isMinimalHeaderCompact ? 22 : 28;
+  const subtitleFontSize = isMinimalHeaderCompact ? 13 : 16;
+  const metaFontSize = isMinimalHeaderCompact ? 13 : 15;
   const bg = theme.colors.backgroundSecondary;
 
   const clubMetaParts = [
     club.district ? `District ${deLinkDigits(club.district)}` : '',
-    club.division ? `Division ${deLinkDigits(club.division)}` : '',
-    club.area ? `Area ${deLinkDigits(club.area)}` : '',
+    club.division ? `Division ${formatClubMetaToken(club.division)}` : '',
+    club.area ? `Area ${formatClubMetaToken(club.area)}` : '',
   ].filter(Boolean);
   const clubMetaText = clubMetaParts.join(' | ');
 
@@ -1086,19 +1122,9 @@ function MinimalLayout({
   const meetingNoLabel = `Meeting ${meetingNumStr || '—'}`;
   const docInk = minimalDocTextColors(theme);
   const chipMuted = docInk.inkMuted;
-  const iconSize = 11;
   const isLightDoc =
     theme.colors.background.toLowerCase() === '#ffffff' ||
     theme.colors.background.toLowerCase() === '#fff';
-  const notionBannerBg = theme.colors.background;
-  const notionChipsWellBg = isLightDoc ? '#ffffff' : theme.colors.surfaceSecondary;
-  const notionChipsWellBorder = isLightDoc ? '#e8e6e3' : theme.colors.borderLight;
-  const bannerWebShadow =
-    Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 1px 0 rgba(15,15,15,0.06), 0 6px 20px rgba(15,15,15,0.04)',
-        } as ViewStyle)
-      : {};
 
   const meetingLink = meeting.meeting_link?.trim() || '';
   const showBannerTopMeta = Boolean(meetingLink);
@@ -1129,10 +1155,10 @@ function MinimalLayout({
             style={[
               styles.minNotionBanner,
               {
-                backgroundColor: notionBannerBg,
-                borderBottomColor: theme.colors.borderLight,
+                backgroundColor: 'transparent',
+                borderBottomWidth: 0,
               },
-              bannerWebShadow,
+              minimalHeaderShellShadow(),
             ]}
           >
             {showBannerTopMeta ? (
@@ -1143,8 +1169,8 @@ function MinimalLayout({
                     style={({ pressed }) => [
                       styles.minBannerTopLinkWell,
                       {
-                        borderColor: notionChipsWellBorder,
-                        backgroundColor: notionChipsWellBg,
+                        borderColor: theme.colors.borderLight,
+                        backgroundColor: 'transparent',
                         marginTop: 0,
                         opacity: pressed ? 0.88 : 1,
                       },
@@ -1153,7 +1179,13 @@ function MinimalLayout({
                     accessibilityLabel="Open online meeting link"
                   >
                     <Link2 size={linkIconSize} color={chipMuted} strokeWidth={2.25} />
-                    <Text style={[styles.minBannerTopLinkText, { color: docInk.inkMuted }]} numberOfLines={2}>
+                    <Text
+                      style={[
+                        styles.minBannerTopLinkText,
+                        { color: docInk.inkMuted, fontFamily: MINIMAL_HEADER_FONT_FAMILY },
+                      ]}
+                      numberOfLines={2}
+                    >
                       Online meeting link
                     </Text>
                   </Pressable>
@@ -1161,49 +1193,106 @@ function MinimalLayout({
               </View>
             ) : null}
 
-            <Text style={[styles.minBannerClub, { color: docInk.ink }]} numberOfLines={2}>
-              {club.club_name}
-            </Text>
-
-            {clubMetaText ? (
+            <View style={styles.minBannerWireHeader}>
               <Text
-                style={[styles.minBannerSub, { color: docInk.inkMuted }]}
-                numberOfLines={3}
-                accessibilityLabel={clubMetaText}
+                style={[
+                  styles.minBannerWireTitle,
+                  {
+                    color: docInk.ink,
+                    fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+                    fontSize: titleFontSize,
+                    lineHeight: Math.round(titleFontSize * 1.25),
+                  },
+                ]}
+                numberOfLines={2}
               >
-                {clubMetaText}
+                {club.club_name}
               </Text>
-            ) : null}
+              {clubMetaText ? (
+                <Text
+                  style={[
+                    styles.minBannerWireSubtitle,
+                    {
+                      color: docInk.inkMuted,
+                      fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+                      fontSize: subtitleFontSize,
+                      lineHeight: Math.round(subtitleFontSize * 1.38),
+                    },
+                  ]}
+                  numberOfLines={3}
+                  accessibilityLabel={clubMetaText}
+                >
+                  {clubMetaText}
+                </Text>
+              ) : null}
+            </View>
 
-            <View style={styles.minBannerDetailsRowWrap}>
-              <View style={styles.minBannerChipsRow}>
+            <View
+              style={[
+                styles.minBannerWireMeta,
+                { borderTopColor: theme.colors.borderLight },
+              ]}
+            >
+              <View
+                style={[
+                  styles.minBannerWireMetaRow,
+                  isMinimalHeaderCompact ? styles.minBannerWireMetaRowStack : null,
+                ]}
+              >
                 {dateStr ? (
-                  <View style={styles.minBannerChip}>
-                    <Calendar size={iconSize} color={chipMuted} strokeWidth={2.25} />
-                    <Text
-                      style={[styles.minBannerChipText, { color: chipMuted }]}
-                      numberOfLines={3}
-                    >
-                      {dateStr}
-                    </Text>
-                  </View>
+                  <Text
+                    style={[
+                      styles.minBannerWireMetaItem,
+                      {
+                        color: chipMuted,
+                        fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+                        fontSize: metaFontSize,
+                        lineHeight: Math.round(metaFontSize * 1.35),
+                      },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    📅 {dateStr}
+                  </Text>
                 ) : null}
-                {dateStr && timeStr ? (
-                  <Text style={[styles.minBannerChipSep, { color: docInk.inkSoft }]}> | </Text>
+                {!isMinimalHeaderCompact && dateStr && timeStr ? (
+                  <Text style={[styles.minBannerWireMetaSep, { color: docInk.inkSoft }]}> | </Text>
                 ) : null}
                 {timeStr ? (
-                  <View style={styles.minBannerChip}>
-                    <Clock size={iconSize} color={chipMuted} strokeWidth={2.25} />
-                    <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{timeStr}</Text>
-                  </View>
+                  <Text
+                    style={[
+                      styles.minBannerWireMetaItem,
+                      {
+                        color: chipMuted,
+                        fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+                        fontSize: metaFontSize,
+                        lineHeight: Math.round(metaFontSize * 1.35),
+                      },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    ⏰ {timeStr}
+                  </Text>
                 ) : null}
-                {(dateStr || timeStr) && meetingNoLabel ? (
-                  <Text style={[styles.minBannerChipSep, { color: docInk.inkSoft }]}> | </Text>
+                {!isMinimalHeaderCompact && (dateStr || timeStr) && meetingNoLabel ? (
+                  <Text style={[styles.minBannerWireMetaSep, { color: docInk.inkSoft }]}> | </Text>
                 ) : null}
-                <View style={styles.minBannerChip}>
-                  <Users size={iconSize} color={chipMuted} strokeWidth={2.25} />
-                  <Text style={[styles.minBannerChipText, { color: chipMuted }]}>{meetingNoLabel}</Text>
-                </View>
+                {meetingNoLabel ? (
+                  <Text
+                    style={[
+                      styles.minBannerWireMetaItem,
+                      {
+                        color: chipMuted,
+                        fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+                        fontSize: metaFontSize,
+                        lineHeight: Math.round(metaFontSize * 1.35),
+                      },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    👥 {meetingNoLabel}
+                  </Text>
+                ) : null}
               </View>
             </View>
           </View>
@@ -1483,11 +1572,62 @@ const styles = StyleSheet.create({
     borderRightWidth: StyleSheet.hairlineWidth,
   },
   minNotionBanner: {
-    paddingHorizontal: 26,
-    paddingTop: 22,
-    paddingBottom: 21,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    ...(Platform.OS === 'android' ? { elevation: 1 } : {}),
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 22,
+    borderBottomWidth: 0,
+    overflow: 'visible',
+    ...(Platform.OS === 'android' ? { elevation: 0 } : {}),
+  },
+  minBannerWireHeader: {
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  minBannerWireTitle: {
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: -0.25,
+  },
+  minBannerWireSubtitle: {
+    marginTop: 10,
+    textAlign: 'center',
+    fontWeight: '400',
+    letterSpacing: 0.08,
+  },
+  minBannerWireMeta: {
+    marginTop: 18,
+    paddingTop: 18,
+    paddingBottom: 6,
+    paddingHorizontal: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    width: '100%',
+    alignItems: 'center',
+  },
+  minBannerWireMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    rowGap: 10,
+    columnGap: 6,
+    maxWidth: '100%',
+  },
+  minBannerWireMetaRowStack: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    width: '100%',
+  },
+  minBannerWireMetaItem: {
+    textAlign: 'center',
+    fontWeight: '400',
+    letterSpacing: 0.06,
+  },
+  minBannerWireMetaSep: {
+    fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+    fontWeight: '400',
   },
   minBannerDetailsRowWrap: {
     marginTop: 14,
