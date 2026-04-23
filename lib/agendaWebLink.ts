@@ -1,7 +1,7 @@
 /**
  * Shareable public agenda URLs (no login).
- * Path includes Expo `experiments.baseUrl` so the link matches the real URL in the browser:
- * /weblogin/{club-slug}/agenda/{meetingNo}/{meetingId} (slug from club display name; legacy UUID first segment still works).
+ * Full share link (same agenda): /{club-slug}/agenda/{meetingNo}/{meetingId}.
+ * This route is handled by a server-side preview endpoint (OG tags) and then redirects to /weblogin.
  *
  * Short share link (same agenda): /{club-slug}/a/{meetingId} when a display name is known,
  * or /a/{meetingId}. These URLs are routed through a server-side preview endpoint for WhatsApp/OG.
@@ -88,7 +88,7 @@ export function buildAgendaWebUrl(params: {
   const trimmed = params.clubDisplayName?.trim();
   const clubSegment =
     trimmed && trimmed.length > 0 ? slugifyClubNameForAgendaUrl(trimmed) : params.clubId;
-  const path = `${AGENDA_WEB_PATH_PREFIX}/${clubSegment}/agenda/${num}/${params.meetingId}`;
+  const path = `/${clubSegment}/agenda/${num}/${params.meetingId}`;
   let url = `${agendaWebHost()}${path}`;
   if (params.skin === 'minimal' || params.skin === 'vibrant') {
     url += `?skin=${params.skin}`;

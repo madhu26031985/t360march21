@@ -1,5 +1,5 @@
 # /{club-segment}/agenda/{meetingNo}/{meetingId} → Expo baseUrl (slug or legacy club UUID)
-/:clubId/agenda/:meetingNo/:meetingId  /weblogin/:clubId/agenda/:meetingNo/:meetingId  302
+/:clubId/agenda/:meetingNo/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:clubId&meetingNo=:meetingNo&mode=agenda  200
 
 # Short public agenda: /a/{meetingId}
 /a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId  200

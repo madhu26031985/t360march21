@@ -12,8 +12,8 @@
 # Public agenda: /{club-segment}/agenda/{meetingNo}/{meetingId} (slug or legacy UUID; no /weblogin in shared URL)
 [[redirects]]
   from = "/:clubId/agenda/:meetingNo/:meetingId"
-  to = "/weblogin/:clubId/agenda/:meetingNo/:meetingId"
-  status = 302
+  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:clubId&meetingNo=:meetingNo&mode=agenda"
+  status = 200
 
 # Short public agenda: /a/{meetingId}
 [[redirects]]
