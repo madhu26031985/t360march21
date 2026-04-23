@@ -785,13 +785,14 @@ function MinimalAgendaItemCard({
   const grammarianLines = isGrammarianMinimalSection(item.section_name)
     ? grammarianCornerLinesFromRoleDetails(agendaRoleDetails(item))
     : [];
+  const showDescPreview = Boolean(descPreview) && !isGrammarianMinimalSection(item.section_name);
   const evalFallbackShapes =
     isSpeechEvaluationMinimalSection(item.section_name) && !evalShape
       ? (speechEvaluationFallbackSlots ?? [])
       : [];
   const evalShapesToRender = evalShape ? [evalShape] : evalFallbackShapes;
 
-  const hasStackAbovePrepared = Boolean(descPreview) || showThemeStack;
+  const hasStackAbovePrepared = showDescPreview || showThemeStack;
   const preparedSlotGapTop = (idx: number) =>
     idx > 0 ? 10 : hasStackAbovePrepared ? 12 : 0;
   const evalWellGapTop =
@@ -833,7 +834,7 @@ function MinimalAgendaItemCard({
           </View>
         </View>
       </View>
-      {descPreview ? (
+      {showDescPreview ? (
         <Text
           style={[styles.minItemDesc, { color: docInk.inkMuted }]}
           numberOfLines={4}
@@ -1129,6 +1130,13 @@ function MinimalLayout({
   const meetingLink = meeting.meeting_link?.trim() || '';
   const showBannerTopMeta = Boolean(meetingLink);
   const linkIconSize = 13;
+  const vpmName = club.vpm_name?.trim() || '';
+  const vpmNumber = club.vpm_phone_number?.trim() || '';
+  const footerBits = [`${club.club_name} - 2026`];
+  if (vpmName) {
+    footerBits.push(`VPM Name : ${vpmName}${vpmNumber ? ` : ${vpmNumber}` : ''}`);
+  }
+  const minFooterLine = footerBits.join(' | ');
   const meetingTheme = meeting.theme?.trim() || null;
   const preparedSpeechSlotsForSpeechEvalFallback = (() => {
     const preparedSection = normalizedItems.find((it) =>
@@ -1307,6 +1315,9 @@ function MinimalLayout({
                 speechEvaluationFallbackSlots={preparedSpeechSlotsForSpeechEvalFallback}
               />
             ))}
+            <Text style={[styles.minFooter, { color: docInk.inkSoft }]} numberOfLines={2}>
+              {minFooterLine}
+            </Text>
           </View>
         </View>
       </ScrollView>

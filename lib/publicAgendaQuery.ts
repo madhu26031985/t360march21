@@ -25,6 +25,9 @@ export type PublicAgendaClub = {
   district?: string | null;
   division?: string | null;
   area?: string | null;
+  /** Optional VP Membership details if RPC includes them. */
+  vpm_name?: string | null;
+  vpm_phone_number?: string | null;
 };
 
 export type PublicAgendaItemRow = {
@@ -156,6 +159,22 @@ export async function fetchPublicMeetingAgenda(params: {
     district: clubObj ? rpcClubFieldToString(clubObj.district) : null,
     division: clubObj ? rpcClubFieldToString(clubObj.division) : null,
     area: clubObj ? rpcClubFieldToString(clubObj.area) : null,
+    vpm_name: clubObj
+      ? rpcClubFieldToString(
+          clubObj.vpm_name ??
+            clubObj.vpm_full_name ??
+            clubObj.vpm ??
+            clubObj.vp_membership_name
+        )
+      : null,
+    vpm_phone_number: clubObj
+      ? rpcClubFieldToString(
+          clubObj.vpm_phone_number ??
+            clubObj.vpm_number ??
+            clubObj.vpm_phone ??
+            clubObj.vpm_mobile
+        )
+      : null,
   };
   return { ok: true, data: { meeting, club, items } };
 }
