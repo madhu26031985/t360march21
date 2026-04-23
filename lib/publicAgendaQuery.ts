@@ -25,6 +25,9 @@ export type PublicAgendaClub = {
   district?: string | null;
   division?: string | null;
   area?: string | null;
+  /** Optional VP Education details if RPC includes them. */
+  vpe_name?: string | null;
+  vpe_phone_number?: string | null;
   /** Optional VP Membership details if RPC includes them. */
   vpm_name?: string | null;
   vpm_phone_number?: string | null;
@@ -159,6 +162,22 @@ export async function fetchPublicMeetingAgenda(params: {
     district: clubObj ? rpcClubFieldToString(clubObj.district) : null,
     division: clubObj ? rpcClubFieldToString(clubObj.division) : null,
     area: clubObj ? rpcClubFieldToString(clubObj.area) : null,
+    vpe_name: clubObj
+      ? rpcClubFieldToString(
+          clubObj.vpe_name ??
+            clubObj.vpe_full_name ??
+            clubObj.vpe ??
+            clubObj.vp_education_name
+        )
+      : null,
+    vpe_phone_number: clubObj
+      ? rpcClubFieldToString(
+          clubObj.vpe_phone_number ??
+            clubObj.vpe_number ??
+            clubObj.vpe_phone ??
+            clubObj.vpe_mobile
+        )
+      : null,
     vpm_name: clubObj
       ? rpcClubFieldToString(
           clubObj.vpm_name ??

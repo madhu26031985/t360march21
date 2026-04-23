@@ -1130,13 +1130,17 @@ function MinimalLayout({
   const meetingLink = meeting.meeting_link?.trim() || '';
   const showBannerTopMeta = Boolean(meetingLink);
   const linkIconSize = 13;
+  const vpeName = club.vpe_name?.trim() || '';
+  const vpeNumber = club.vpe_phone_number?.trim() || '';
   const vpmName = club.vpm_name?.trim() || '';
   const vpmNumber = club.vpm_phone_number?.trim() || '';
-  const footerBits = [`${club.club_name} - 2026`];
-  if (vpmName) {
-    footerBits.push(`VPM Name : ${vpmName}${vpmNumber ? ` : ${vpmNumber}` : ''}`);
-  }
-  const minFooterLine = footerBits.join(' | ');
+  const minFooterLine = `${club.club_name} - 2026`;
+  const meetingLocation = meeting.meeting_location?.trim() || '';
+  const mapUrl = meetingLocation
+    ? /^https?:\/\//i.test(meetingLocation)
+      ? meetingLocation
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(meetingLocation)}`
+    : '';
   const meetingTheme = meeting.theme?.trim() || null;
   const preparedSpeechSlotsForSpeechEvalFallback = (() => {
     const preparedSection = normalizedItems.find((it) =>
@@ -1325,9 +1329,41 @@ function MinimalLayout({
               },
             ]}
           >
-            <Text style={[styles.minFooter, { color: docInk.inkSoft }]} numberOfLines={2}>
+            <Text style={[styles.minFooter, { color: docInk.inkSoft }]} numberOfLines={1}>
               {minFooterLine}
             </Text>
+            {vpeName ? (
+              <Text style={[styles.minFooterDetail, { color: docInk.inkMuted }]} numberOfLines={1}>
+                <Text style={styles.minFooterDetailLabel}>VPE Name : </Text>
+                <Text style={styles.minFooterDetailValue}>{vpeName}{vpeNumber ? ` : ${vpeNumber}` : ''}</Text>
+              </Text>
+            ) : null}
+            {vpmName ? (
+              <Text style={[styles.minFooterDetail, { color: docInk.inkMuted }]} numberOfLines={1}>
+                <Text style={styles.minFooterDetailLabel}>VPM Name : </Text>
+                <Text style={styles.minFooterDetailValue}>{vpmName}{vpmNumber ? ` : ${vpmNumber}` : ''}</Text>
+              </Text>
+            ) : null}
+            {mapUrl ? (
+              <Pressable
+                onPress={() => openLink(mapUrl)}
+                style={({ pressed }) => [styles.minFooterLinkWrap, { opacity: pressed ? 0.75 : 1 }]}
+                accessibilityRole="link"
+                accessibilityLabel="Open map location"
+              >
+                <Text style={[styles.minFooterLinkText, { color: docInk.inkMuted }]}>📍 Open map</Text>
+              </Pressable>
+            ) : null}
+            {meetingLink ? (
+              <Pressable
+                onPress={() => openLink(meetingLink)}
+                style={({ pressed }) => [styles.minFooterLinkWrap, { opacity: pressed ? 0.75 : 1 }]}
+                accessibilityRole="link"
+                accessibilityLabel="Open online meeting link"
+              >
+                <Text style={[styles.minFooterLinkText, { color: docInk.inkMuted }]}>🔗 Online : Link</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </ScrollView>
@@ -2224,11 +2260,40 @@ const styles = StyleSheet.create({
   },
   minFooter: {
     textAlign: 'center',
-    fontSize: 11,
+    fontSize: 11.5,
     marginTop: 0,
     paddingHorizontal: 24,
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    fontWeight: '600',
+  },
+  minFooterDetail: {
+    marginTop: 6,
+    textAlign: 'center',
+    fontSize: 11,
+    lineHeight: 15,
+    paddingHorizontal: 16,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  minFooterDetailLabel: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontWeight: '400',
+  },
+  minFooterDetailValue: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontWeight: '600',
+  },
+  minFooterLinkWrap: {
+    marginTop: 6,
+    alignSelf: 'center',
+  },
+  minFooterLinkText: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textDecorationLine: 'underline',
   },
 
   vibScroll: { paddingBottom: 40 },
