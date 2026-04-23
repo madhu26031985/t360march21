@@ -1233,12 +1233,7 @@ function MinimalLayout({
                 { borderTopColor: theme.colors.borderLight },
               ]}
             >
-              <View
-                style={[
-                  styles.minBannerWireMetaRow,
-                  isMinimalHeaderCompact ? styles.minBannerWireMetaRowStack : null,
-                ]}
-              >
+              <View style={styles.minBannerWireMetaRow}>
                 {dateStr ? (
                   <Text
                     style={[
@@ -1255,7 +1250,7 @@ function MinimalLayout({
                     📅 {dateStr}
                   </Text>
                 ) : null}
-                {!isMinimalHeaderCompact && dateStr && timeStr ? (
+                {dateStr && timeStr ? (
                   <Text style={[styles.minBannerWireMetaSep, { color: docInk.inkSoft }]}> | </Text>
                 ) : null}
                 {timeStr ? (
@@ -1274,7 +1269,7 @@ function MinimalLayout({
                     ⏰ {timeStr}
                   </Text>
                 ) : null}
-                {!isMinimalHeaderCompact && (dateStr || timeStr) && meetingNoLabel ? (
+                {(dateStr || timeStr) && meetingNoLabel ? (
                   <Text style={[styles.minBannerWireMetaSep, { color: docInk.inkSoft }]}> | </Text>
                 ) : null}
                 {meetingNoLabel ? (
@@ -1608,17 +1603,10 @@ const styles = StyleSheet.create({
   },
   minBannerWireMetaRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     justifyContent: 'center',
     alignItems: 'center',
-    rowGap: 10,
-    columnGap: 6,
     maxWidth: '100%',
-  },
-  minBannerWireMetaRowStack: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    width: '100%',
   },
   minBannerWireMetaItem: {
     textAlign: 'center',
