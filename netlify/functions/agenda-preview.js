@@ -50,8 +50,10 @@ function formatTimeRange(startTime, endTime) {
 }
 
 function resolveTargetPath({ meetingId, brand, skin }) {
+  if (!meetingId || !isUuid(meetingId)) return '/weblogin/';
   const safeMeetingId = encodeURIComponent(meetingId);
-  const safeBrand = brand ? encodeURIComponent(brand) : '';
+  const normalizedBrand = brand && brand.toLowerCase() === 'weblogin' ? '' : brand;
+  const safeBrand = normalizedBrand ? encodeURIComponent(normalizedBrand) : '';
   const base = safeBrand ? `/weblogin/${safeBrand}/a/${safeMeetingId}` : `/weblogin/a/${safeMeetingId}`;
   if (skin === 'minimal' || skin === 'vibrant') return `${base}?skin=${skin}`;
   return base;

@@ -2870,7 +2870,8 @@ export default function AgendaEditor() {
       : null;
 
   const handleOpenPublicWebAgenda = async () => {
-    const url = publicWebAgendaShortUrl ?? publicWebAgendaUrl;
+    // Open with the canonical full URL to avoid short-link crawler/redirect edge cases.
+    const url = publicWebAgendaUrl ?? publicWebAgendaShortUrl;
     if (!url) return;
     try {
       const supported = await Linking.canOpenURL(url);

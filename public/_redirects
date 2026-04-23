@@ -2,10 +2,10 @@
 /:clubId/agenda/:meetingNo/:meetingId  /weblogin/:clubId/agenda/:meetingNo/:meetingId  302
 
 # Short public agenda: /a/{meetingId}
-/a/:meetingId  /weblogin/a/:meetingId  302
+/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId  200
 
 # Branded short agenda: /{club-slug}/a/{meetingId}
-/:brand/a/:meetingId  /weblogin/:brand/a/:meetingId  302
+/:brand/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:brand  200
 
 # Netlify redirects for SPA routing at /weblogin
 /weblogin    /weblogin/    301
