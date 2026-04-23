@@ -1099,9 +1099,9 @@ function MinimalLayout({
   const normalizedItems = normalizeAgendaNames(items);
   const { width: layoutWidth } = useWindowDimensions();
   const isMinimalHeaderCompact = IS_MOBILE || layoutWidth < 640;
-  const titleFontSize = isMinimalHeaderCompact ? 22 : 28;
-  const subtitleFontSize = isMinimalHeaderCompact ? 13 : 16;
-  const metaFontSize = isMinimalHeaderCompact ? 13 : 15;
+  const titleFontSize = Math.round((isMinimalHeaderCompact ? 22 : 28) * 0.9 * 100) / 100;
+  const subtitleFontSize = Math.round((isMinimalHeaderCompact ? 13 : 16) * 0.9 * 100) / 100;
+  const metaFontSize = Math.round((isMinimalHeaderCompact ? 13 : 15) * 0.85 * 100) / 100;
   const bg = theme.colors.backgroundSecondary;
 
   const clubMetaParts = [
@@ -1587,7 +1587,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.25,
   },
   minBannerWireSubtitle: {
-    marginTop: 10,
+    marginTop: 5,
     textAlign: 'center',
     fontWeight: '400',
     letterSpacing: 0.08,
