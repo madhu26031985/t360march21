@@ -1568,8 +1568,8 @@ const styles = StyleSheet.create({
   },
   minNotionBanner: {
     paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 22,
+    paddingTop: 14,
+    paddingBottom: 12,
     borderBottomWidth: 0,
     overflow: 'visible',
     ...(Platform.OS === 'android' ? { elevation: 0 } : {}),
@@ -1579,7 +1579,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingTop: 2,
-    paddingBottom: 2,
+    paddingBottom: 0,
   },
   minBannerWireTitle: {
     fontWeight: '600',
@@ -1593,9 +1593,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.08,
   },
   minBannerWireMeta: {
-    marginTop: 18,
-    paddingTop: 18,
-    paddingBottom: 6,
+    marginTop: 10,
+    paddingTop: 10,
+    paddingBottom: 2,
     paddingHorizontal: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     width: '100%',
