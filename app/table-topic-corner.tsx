@@ -285,6 +285,9 @@ export default function TableTopicCorner(): JSX.Element {
   const [activeTab, setActiveTab] = useState<'participants' | 'table_topic_corner' | 'table_topic_summary'>('participants');
   const prevActiveTabRef = useRef<'participants' | 'table_topic_corner' | 'table_topic_summary'>('participants');
   const [publishedQuestions, setPublishedQuestions] = useState<AssignedQuestion[]>([]);
+  const [summaryQuestionsFromSnapshot, setSummaryQuestionsFromSnapshot] = useState<
+    Array<{ id: string; question_text: string; question_order: number }>
+  >([]);
   const [tableTopicSummaryVisibleToMembers, setTableTopicSummaryVisibleToMembers] = useState<boolean>(true);
   const [clubInfo, setClubInfo] = useState<{ name: string; club_number: string | null; banner_color: string | null } | null>(null);
   const [isVPEClub, setIsVPEClub] = useState<boolean>(false);
@@ -364,6 +367,11 @@ export default function TableTopicCorner(): JSX.Element {
           staleTime: 60 * 1000,
         });
         await applyBundleToState(bundle);
+        // Source of truth for member visibility toggle.
+        // Keep this explicit fetch so all viewers (TTM/member) reflect disabled state reliably.
+        await loadTableTopicSummaryVisibility();
+        // Ensure summary question text is available for non-TTM viewers as well.
+        await loadAssignedQuestions();
 
         // Note: `participantQuestions` is not used elsewhere in this screen.
         // Keeping bundle fetch lightweight via the optimized snapshot payload.
@@ -678,12 +686,14 @@ export default function TableTopicCorner(): JSX.Element {
     return canManageTableTopicCorner();
   };
   const canViewTableTopicSummaryTab = (): boolean => {
-    if (isVPEClub) return true;
-    return !isTableTopicMaster();
+    // TTM and VPE must both be able to access Summary.
+    // Members can also view this tab; content visibility is gated separately.
+    return true;
   };
   const canViewTableTopicSummaryContent = (): boolean => {
     if (!canViewTableTopicSummaryTab()) return false;
-    return tableTopicSummaryVisibleToMembers || canManageTableTopicCorner();
+    // When disabled, do not show summary to TTM; only VPE can still access it.
+    return tableTopicSummaryVisibleToMembers || isVPEClub;
   };
   const tableTopicQuestionOwnerId = tableTopicMaster?.assigned_user_id || user?.id || '';
 
@@ -722,8 +732,11 @@ export default function TableTopicCorner(): JSX.Element {
       setParticipants(sortTableTopicParticipants(bundle.participants));
       setAssignedQuestions(bundle.assignedQuestions);
       setPublishedQuestions(bundle.publishedQuestions);
+      setSummaryQuestionsFromSnapshot(bundle.summaryQuestions ?? []);
       setIsVPEClub(bundle.isVpe);
-      setTableTopicSummaryVisibleToMembers(bundle.summaryVisibleToMembers !== false);
+      if (typeof bundle.summaryVisibleToMembers === 'boolean') {
+        setTableTopicSummaryVisibleToMembers(bundle.summaryVisibleToMembers);
+      }
       return true;
     },
     []
@@ -1669,6 +1682,19 @@ export default function TableTopicCorner(): JSX.Element {
   const summaryDraftQuestions = cornerCommittedTexts
     .map((text, index) => ({ order: index + 1, text: (text || '').trim() }))
     .filter((q) => q.text.length > 0);
+  const summaryAssignedQuestions = assignedQuestions
+    .map((q, index) => ({ order: index + 1, text: (q.question_text || '').trim() }))
+    .filter((q) => q.text.length > 0);
+  const snapshotSummaryQuestions = summaryQuestionsFromSnapshot
+    .map((q) => ({ order: q.question_order || 0, text: (q.question_text || '').trim() }))
+    .filter((q) => q.order > 0 && q.text.length > 0)
+    .sort((a, b) => a.order - b.order);
+  const summaryQuestionsToRender =
+    summaryDraftQuestions.length > 0
+      ? summaryDraftQuestions
+      : snapshotSummaryQuestions.length > 0
+        ? snapshotSummaryQuestions
+        : summaryAssignedQuestions;
 
   /** Bottom dock icons — same treatment as General Evaluator Report (no per-tile boxes). */
   const footerIconTileStyle = {
@@ -2159,11 +2185,11 @@ export default function TableTopicCorner(): JSX.Element {
                   Table Topic Summary is hidden
                 </Text>
                 <Text style={[styles.noSummarySubtext, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                  Questions are not shared with members for this meeting.
+                  The Table Topic Master will share the questions asked during the meeting at the end of the session.
                 </Text>
               </View>
             </View>
-          ) : summaryDraftQuestions.length > 0 ? (
+          ) : summaryQuestionsToRender.length > 0 ? (
             <View style={[styles.summarySection, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
               <View style={[styles.ttSummaryHead, { borderBottomColor: theme.colors.border }]}>
                 <Text style={[styles.ttSummaryTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
@@ -2171,12 +2197,12 @@ export default function TableTopicCorner(): JSX.Element {
                 </Text>
               </View>
               <View style={[styles.cornerQuestionList, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
-                {summaryDraftQuestions.map((q, idx) => (
+                {summaryQuestionsToRender.map((q, idx) => (
                   <View
                     key={`tt-summary-draft-${q.order}`}
                     style={[
                       styles.cornerQuestionRow,
-                      idx < summaryDraftQuestions.length - 1 ? { borderBottomColor: theme.colors.border } : { borderBottomWidth: 0 },
+                      idx < summaryQuestionsToRender.length - 1 ? { borderBottomColor: theme.colors.border } : { borderBottomWidth: 0 },
                     ]}
                   >
                     <View style={[styles.cornerQuestionNumber, { backgroundColor: theme.colors.primary + '12' }]}>
