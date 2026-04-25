@@ -88,7 +88,7 @@ export function buildAgendaWebUrl(params: {
   const trimmed = params.clubDisplayName?.trim();
   const clubSegment =
     trimmed && trimmed.length > 0 ? slugifyClubNameForAgendaUrl(trimmed) : params.clubId;
-  const path = `/${clubSegment}/agenda/${num}/${params.meetingId}`;
+  const path = `${AGENDA_WEB_PATH_PREFIX}/${clubSegment}/agenda/${num}/${params.meetingId}`;
   let url = `${agendaWebHost()}${path}`;
   if (params.skin === 'minimal' || params.skin === 'vibrant') {
     url += `?skin=${params.skin}`;
@@ -107,8 +107,8 @@ export function buildShortAgendaWebUrl(params: {
   const slug = trimmed ? slugifyClubNameForAgendaUrl(trimmed) : '';
   const path =
     trimmed && slug.length > 0
-      ? `/${slug}/a/${params.meetingId}`
-      : `/a/${params.meetingId}`;
+      ? `${AGENDA_WEB_PATH_PREFIX}/${slug}/a/${params.meetingId}`
+      : `${AGENDA_WEB_PATH_PREFIX}/a/${params.meetingId}`;
   let url = `${agendaWebHost()}${path}`;
   if (params.skin === 'minimal' || params.skin === 'vibrant') {
     url += `?skin=${params.skin}`;
