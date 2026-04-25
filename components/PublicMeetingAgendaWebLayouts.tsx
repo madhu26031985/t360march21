@@ -609,7 +609,12 @@ function MinimalAgendaInnerSlotWell({
       {variant === 'evaluation' && slot.speech_title?.trim() ? (
         <>
           <View style={[styles.minItemInnerHRule, { backgroundColor: borderColor }]} />
-          <Text style={[styles.minItemInnerDetailValue, { color: docInk.inkMuted }]} maxFontSizeMultiplier={1.05}>
+          <Text
+            style={[styles.minItemInnerDetailValue, { color: docInk.inkMuted }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            maxFontSizeMultiplier={1.05}
+          >
             <Text style={[styles.minItemInnerDetailPrefix, { color: docInk.inkMuted }]}>Title : </Text>
             <Text style={[styles.minItemInnerDetailValueStrong, { color: docInk.ink }]}>
               {slot.speech_title.trim()}
@@ -781,7 +786,12 @@ function MinimalAgendaItemCard({
     theme.colors.background.toLowerCase() === '#ffffff' ||
     theme.colors.background.toLowerCase() === '#fff';
   const innerWellBorder = theme.colors.borderLight;
-  const innerWellBg = isLightDoc ? '#fafafa' : theme.colors.surfaceSecondary;
+  const innerWellBg =
+    theme.colors.background.toLowerCase() === '#fff8ef'
+      ? theme.colors.background
+      : isLightDoc
+        ? '#fafafa'
+        : theme.colors.surfaceSecondary;
 
   const preparedSlots = isPreparedSpeechesMinimalSection(item.section_name)
     ? preparedSlotsForPublic(item)
@@ -2159,12 +2169,12 @@ const styles = StyleSheet.create({
   minItemInnerIdentityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: IS_MOBILE ? 6 : 8,
   },
   minItemInnerIdentityBubble: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: IS_MOBILE ? 34 : 38,
+    height: IS_MOBILE ? 34 : 38,
+    borderRadius: IS_MOBILE ? 17 : 19,
     backgroundColor: '#dbeafe',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2182,7 +2192,7 @@ const styles = StyleSheet.create({
   },
   minItemInnerVertRule: {
     width: StyleSheet.hairlineWidth,
-    marginHorizontal: 12,
+    marginHorizontal: IS_MOBILE ? 8 : 12,
     alignSelf: 'stretch',
   },
   minItemInnerHRule: {
@@ -2201,9 +2211,9 @@ const styles = StyleSheet.create({
   minItemInnerPersonName: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     marginTop: 4,
-    fontSize: ms(IS_MOBILE ? 14 : 13),
+    fontSize: ms(IS_MOBILE ? 12 : 13),
     fontWeight: '700',
-    lineHeight: IS_MOBILE ? 19 : 17,
+    lineHeight: IS_MOBILE ? 16 : 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
   },
   minItemInnerPlaceholder: {
