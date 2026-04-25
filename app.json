@@ -72,7 +72,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font",
+      "./plugins/withBundleHermesTaskDeps",
       [
         "expo-image-picker",
         {

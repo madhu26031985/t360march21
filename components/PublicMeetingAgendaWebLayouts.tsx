@@ -22,7 +22,6 @@ import {
 } from '@/lib/publicAgendaFormat';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import type { PublicAgendaItemRow, PublicAgendaPayload } from '@/lib/publicAgendaQuery';
-import { Link2 } from 'lucide-react-native';
 
 type AppTheme = ReturnType<typeof useTheme>['theme'];
 
@@ -1128,8 +1127,6 @@ function MinimalLayout({
     theme.colors.background.toLowerCase() === '#fff';
 
   const meetingLink = meeting.meeting_link?.trim() || '';
-  const showBannerTopMeta = Boolean(meetingLink);
-  const linkIconSize = 13;
   const vpeName = club.vpe_name?.trim() || '';
   const vpeNumber = club.vpe_phone_number?.trim() || '';
   const vpmName = club.vpm_name?.trim() || '';
@@ -1173,38 +1170,6 @@ function MinimalLayout({
               minimalHeaderShellShadow(),
             ]}
           >
-            {showBannerTopMeta ? (
-              <View style={styles.minBannerTopMeta}>
-                {meetingLink ? (
-                  <Pressable
-                    onPress={() => openLink(meetingLink)}
-                    style={({ pressed }) => [
-                      styles.minBannerTopLinkWell,
-                      {
-                        borderColor: theme.colors.borderLight,
-                        backgroundColor: 'transparent',
-                        marginTop: 0,
-                        opacity: pressed ? 0.88 : 1,
-                      },
-                    ]}
-                    accessibilityRole="link"
-                    accessibilityLabel="Open online meeting link"
-                  >
-                    <Link2 size={linkIconSize} color={chipMuted} strokeWidth={2.25} />
-                    <Text
-                      style={[
-                        styles.minBannerTopLinkText,
-                        { color: docInk.inkMuted, fontFamily: MINIMAL_HEADER_FONT_FAMILY },
-                      ]}
-                      numberOfLines={2}
-                    >
-                      Online meeting link
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
-
             <View style={styles.minBannerWireHeader}>
               <Text
                 style={[
