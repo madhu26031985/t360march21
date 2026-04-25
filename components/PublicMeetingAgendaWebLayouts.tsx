@@ -1368,6 +1368,13 @@ function VibrantLayout({
       ? meetingLocation
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(meetingLocation)}`
     : '';
+  const preparedSpeechSlotsForSpeechEvalFallback = (() => {
+    const preparedSection = normalizedItems.find((it) =>
+      isPreparedSpeechesMinimalSection(it.section_name)
+    );
+    if (!preparedSection) return [];
+    return preparedSlotsForPublic(preparedSection).map(slotToDisplayShape);
+  })();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0a0a0a' }} edges={['top']}>
