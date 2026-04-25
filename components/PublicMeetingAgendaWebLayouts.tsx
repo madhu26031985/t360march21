@@ -1028,59 +1028,128 @@ function DefaultLayout({
   openLink: (u: string) => void;
 }) {
   const { meeting, club, items } = payload;
-  const clubBanner = meeting.club_info_banner_color || '#0ea5e9';
-  const dateBanner = meeting.datetime_banner_color || '#f97316';
+  const normalizedItems = normalizeAgendaNames(items);
+  const coolGray = '#A9B2B1';
+  const loyalBlue = '#004165';
+  const softPanel = '#BDC5C4';
+  const panelBorder = '#8D9896';
+  const dateStr = formatPublicAgendaBannerDateShort(meeting.meeting_date);
+  const timeStr =
+    meeting.meeting_start_time || meeting.meeting_end_time
+      ? `${formatPublicAgendaBannerTimePart(meeting.meeting_start_time)} - ${formatPublicAgendaBannerTimePart(meeting.meeting_end_time)}`
+      : '';
+  const meetingNumStr =
+    meeting.meeting_number == null ? '' : String(meeting.meeting_number).trim();
+  const meetingNoLabel = `Meeting ${meetingNumStr || '—'}`;
+  const clubMetaText = [
+    club.district ? `District ${deLinkDigits(club.district)}` : '',
+    club.division ? `Division ${formatClubMetaToken(club.division)}` : '',
+    club.area ? `Area ${formatClubMetaToken(club.area)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' | ');
+  const meetingLink = meeting.meeting_link?.trim() || '';
+  const meetingLocation = meeting.meeting_location?.trim() || '';
+  const mapUrl = meetingLocation
+    ? /^https?:\/\//i.test(meetingLocation)
+      ? meetingLocation
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(meetingLocation)}`
+    : '';
+  const preparedSpeechSlotsForSpeechEvalFallback = (() => {
+    const preparedSection = normalizedItems.find((it) =>
+      isPreparedSpeechesMinimalSection(it.section_name)
+    );
+    if (!preparedSection) return [];
+    return preparedSlotsForPublic(preparedSection).map(slotToDisplayShape);
+  })();
+  const themedDefault = {
+    ...theme,
+    colors: {
+      ...theme.colors,
+      background: coolGray,
+      surface: softPanel,
+      borderLight: panelBorder,
+      text: loyalBlue,
+      textSecondary: loyalBlue,
+      textTertiary: loyalBlue,
+    },
+  };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: coolGray }} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={[styles.banner, { backgroundColor: clubBanner }]}>
-          <Text style={styles.bannerClub} numberOfLines={2}>
+        <View style={[styles.defBannerTop, { backgroundColor: coolGray, borderBottomColor: panelBorder }]}>
+          <Text style={[styles.defBannerClub, { color: loyalBlue }]} numberOfLines={2}>
             {club.club_name}
           </Text>
-          {club.club_number ? <Text style={styles.bannerMeta}>Club #{club.club_number}</Text> : null}
+          {clubMetaText ? <Text style={[styles.defBannerSub, { color: loyalBlue }]}>{clubMetaText}</Text> : null}
+          <View style={[styles.defHeaderDivider, { backgroundColor: panelBorder }]} />
+          <View style={styles.defBannerMetaRow}>
+            {dateStr ? <Text style={[styles.defBannerMeta, { color: loyalBlue }]}>🗓️ {dateStr}</Text> : null}
+            {dateStr && timeStr ? <Text style={[styles.defBannerMetaSep, { color: loyalBlue }]}> | </Text> : null}
+            {timeStr ? <Text style={[styles.defBannerMeta, { color: loyalBlue }]}>⏰ {timeStr}</Text> : null}
+            {(dateStr || timeStr) && meetingNoLabel ? (
+              <Text style={[styles.defBannerMetaSep, { color: loyalBlue }]}> | </Text>
+            ) : null}
+            {meetingNoLabel ? <Text style={[styles.defBannerMeta, { color: loyalBlue }]}>👥 {meetingNoLabel}</Text> : null}
+          </View>
         </View>
 
-        <View style={[styles.banner, { backgroundColor: dateBanner, borderTopLeftRadius: 0, borderTopRightRadius: 0 }]}>
-          <Text style={styles.bannerTitle} numberOfLines={3}>
+        <View style={[styles.defMeetingCard, { backgroundColor: softPanel, borderColor: panelBorder }]}>
+          <Text style={[styles.defMeetingTitle, { color: loyalBlue }]} numberOfLines={3}>
             {meeting.meeting_title}
           </Text>
-          <Text style={styles.bannerMeta}>{formatPublicAgendaMeetingDate(meeting.meeting_date)}</Text>
+          <Text style={[styles.defMeetingLine, { color: loyalBlue }]}>
+            {formatPublicAgendaMeetingDate(meeting.meeting_date)}
+          </Text>
           {meeting.meeting_start_time ? (
-            <Text style={styles.bannerMeta}>
+            <Text style={[styles.defMeetingLine, { color: loyalBlue }]}>
               {meeting.meeting_start_time}
               {meeting.meeting_end_time ? ` – ${meeting.meeting_end_time}` : ''}
             </Text>
           ) : null}
           {meeting.meeting_mode ? (
-            <Text style={styles.bannerMeta} accessibilityLabel="Meeting mode">
+            <Text style={[styles.defMeetingLine, { color: loyalBlue }]} accessibilityLabel="Meeting mode">
               {meeting.meeting_mode.replace(/_/g, ' ')}
             </Text>
           ) : null}
-          {meeting.meeting_location ? <Text style={styles.bannerMeta}>{meeting.meeting_location}</Text> : null}
-          {meeting.meeting_link ? (
-            <Pressable onPress={() => openLink(meeting.meeting_link!)} style={styles.linkWrap}>
-              <Text style={styles.linkText}>Join online</Text>
+          {meetingLocation ? <Text style={[styles.defMeetingLine, { color: loyalBlue }]}>{meetingLocation}</Text> : null}
+          {meetingLink ? (
+            <Pressable onPress={() => openLink(meetingLink)} style={styles.linkWrap}>
+              <Text style={[styles.linkText, { color: loyalBlue }]}>Join online</Text>
             </Pressable>
           ) : null}
         </View>
 
-        <Text style={[styles.publicNote, { color: theme.colors.textTertiary }]}>
+        <Text style={[styles.publicNote, { color: loyalBlue }]}>
           Shared agenda — sign in to the T360 app to book roles or see member-only details.
         </Text>
 
-        {items.map((item) => (
+        {normalizedItems.map((item) => (
           <AgendaSectionCard
             key={`${item.section_order}-${item.section_name}`}
             item={item}
-            theme={theme}
+            theme={themedDefault}
             skin="default"
+            speechEvaluationFallbackSlots={preparedSpeechSlotsForSpeechEvalFallback}
           />
         ))}
 
-        <Text style={[styles.footer, { color: theme.colors.textTertiary }]}>
-          © {new Date().getFullYear()} {club.club_name}
-        </Text>
+        <View style={[styles.defFooterBlock, { backgroundColor: coolGray, borderColor: panelBorder }]}>
+          <Text style={[styles.defFooterTitle, { color: loyalBlue }]}>
+            {club.club_name} - {new Date().getFullYear()}
+          </Text>
+          {mapUrl ? (
+            <Pressable onPress={() => openLink(mapUrl)} style={styles.defFooterLinkWrap}>
+              <Text style={[styles.defFooterLink, { color: loyalBlue }]}>📍 Open map</Text>
+            </Pressable>
+          ) : null}
+          {meetingLink ? (
+            <Pressable onPress={() => openLink(meetingLink)} style={styles.defFooterLinkWrap}>
+              <Text style={[styles.defFooterLink, { color: loyalBlue }]}>🔗 Online : Link</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1542,14 +1611,24 @@ function AgendaSectionCard({
   item,
   theme,
   skin,
+  speechEvaluationFallbackSlots,
 }: {
   item: PublicAgendaItemRow;
   theme: AppTheme;
   skin: PublicAgendaSkinId;
+  speechEvaluationFallbackSlots?: MinimalSlotDisplay[];
 }) {
   const rd = item.role_details && typeof item.role_details === 'object' ? item.role_details : null;
   const extraLines = publicAgendaRoleDetailLines(rd);
   const slots = preparedSlotsForPublic(item);
+  const evalShape = isSpeechEvaluationMinimalSection(item.section_name)
+    ? speechEvalDisplayShape(item)
+    : null;
+  const evalFallbackShapes =
+    isSpeechEvaluationMinimalSection(item.section_name) && !evalShape
+      ? (speechEvaluationFallbackSlots ?? [])
+      : [];
+  const evalShapesToRender = evalShape ? [evalShape] : evalFallbackShapes;
   const tagParts = [item.timer_user_name, item.ah_counter_user_name, item.grammarian_user_name].filter(Boolean);
 
   const body = (
@@ -1638,8 +1717,71 @@ function AgendaSectionCard({
                   Evaluator: {s.evaluator_name}
                 </Text>
               ) : null}
+              {evaluationFormUrl(s.evaluation_form) ? (
+                <Pressable
+                  onPress={() => Linking.openURL(evaluationFormUrl(s.evaluation_form)!).catch(() => {})}
+                  style={({ pressed }) => [
+                    styles.defEvalFormBtn,
+                    { opacity: pressed ? 0.85 : 1 },
+                  ]}
+                  accessibilityRole="link"
+                  accessibilityLabel="Open evaluation form"
+                >
+                  <Text style={styles.defEvalFormBtnText}>📄 Evaluation form — Open</Text>
+                </Pressable>
+              ) : null}
             </View>
           ))}
+        </View>
+      ) : null}
+      {evalShapesToRender.length > 0 ? (
+        <View style={styles.slots}>
+          {evalShapesToRender.map((slot, idx) => {
+            const formUrl = evaluationFormUrl(slot.evaluation_form);
+            return (
+              <View key={`eval-${slot.slot}-${idx}`} style={[styles.slotRow, { borderTopColor: theme.colors.borderLight }]}>
+                <Text style={[styles.slotTitle, { color: theme.colors.text }]}>
+                  Evaluator
+                  {slot.evaluator_name ? `: ${slot.evaluator_name}` : ''}
+                </Text>
+                {slot.speaker_name ? (
+                  <Text style={[styles.detailLine, { color: theme.colors.textSecondary }]}>
+                    Speaker: {slot.speaker_name}
+                  </Text>
+                ) : null}
+                {slot.speech_title ? (
+                  <Text style={[styles.detailLine, { color: theme.colors.textSecondary }]}>
+                    Title: {slot.speech_title}
+                  </Text>
+                ) : null}
+                {(slot.pathway_name || slot.project_name) ? (
+                  <Text style={[styles.detailLine, { color: theme.colors.textSecondary }]}>
+                    {[slot.pathway_name, slot.project_name].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
+                {(slot.level != null || slot.project_number?.trim()) ? (
+                  <Text style={[styles.detailLine, { color: theme.colors.textSecondary }]}>
+                    {slot.level != null ? `Level ${slot.level}` : ''}
+                    {slot.level != null && slot.project_number?.trim() ? ' · ' : ''}
+                    {slot.project_number?.trim() ? `Project ${slot.project_number.trim()}` : ''}
+                  </Text>
+                ) : null}
+                {formUrl ? (
+                  <Pressable
+                    onPress={() => Linking.openURL(formUrl).catch(() => {})}
+                    style={({ pressed }) => [
+                      styles.defEvalFormBtn,
+                      { opacity: pressed ? 0.85 : 1 },
+                    ]}
+                    accessibilityRole="link"
+                    accessibilityLabel="Open evaluation form"
+                  >
+                    <Text style={styles.defEvalFormBtnText}>📄 Evaluation form — Open</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            );
+          })}
         </View>
       ) : null}
       {item.custom_notes ? (
@@ -1697,6 +1839,125 @@ const styles = StyleSheet.create({
   bannerMeta: { color: 'rgba(255,255,255,0.92)', fontSize: 15, marginTop: 4 },
   linkWrap: { marginTop: 10, alignSelf: 'flex-start' },
   linkText: { color: '#fff', fontSize: 16, fontWeight: '600', textDecorationLine: 'underline' },
+  defBannerTop: {
+    marginHorizontal: 0,
+    marginTop: 0,
+    paddingHorizontal: 22,
+    paddingVertical: 18,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    alignItems: 'center',
+  },
+  defBannerClub: {
+    fontSize: ms(IS_MOBILE ? 22 : 24),
+    lineHeight: IS_MOBILE ? 28 : 31,
+    fontWeight: '700',
+    fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
+    textAlign: 'center',
+    width: '100%',
+  },
+  defBannerSub: {
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    marginTop: 6,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textAlign: 'center',
+    width: '100%',
+  },
+  defHeaderDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 10,
+    marginBottom: 8,
+    width: '100%',
+  },
+  defBannerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: IS_MOBILE ? 'nowrap' : 'wrap',
+    width: '100%',
+    maxWidth: '100%',
+    paddingHorizontal: 4,
+  },
+  defBannerMeta: {
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
+    marginTop: 2,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  defBannerMetaSep: {
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
+    marginTop: 2,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  defMeetingCard: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 6,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  defMeetingTitle: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 22,
+    lineHeight: 29,
+    fontWeight: '700',
+  },
+  defMeetingLine: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  defFooterBlock: {
+    marginTop: 2,
+    marginHorizontal: 0,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  defFooterTitle: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 11.5,
+    lineHeight: 15,
+    fontWeight: '600',
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textAlign: 'center',
+  },
+  defFooterLinkWrap: {
+    marginTop: 4,
+  },
+  defFooterLink: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textDecorationLine: 'underline',
+  },
+  defEvalFormBtn: {
+    marginTop: 10,
+    borderRadius: 10,
+    backgroundColor: '#2f74da',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  defEvalFormBtnText: {
+    color: '#ffffff',
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    fontWeight: '700',
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
   publicNote: { fontSize: 13, paddingHorizontal: 16, paddingVertical: 12 },
   card: {
     marginHorizontal: 16,
