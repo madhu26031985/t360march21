@@ -21,6 +21,12 @@
   to = "/.netlify/functions/agenda-preview?meetingId=:meetingId"
   status = 200
 
+# Keep already-prefixed short links stable (avoid matching branded rule below).
+[[redirects]]
+  from = "/weblogin/a/:meetingId"
+  to = "/weblogin/a/:meetingId"
+  status = 200
+
 # Branded short agenda: /{club-slug}/a/{meetingId}
 [[redirects]]
   from = "/:brand/a/:meetingId"

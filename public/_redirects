@@ -4,6 +4,9 @@
 # Short public agenda: /a/{meetingId}
 /a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId  200
 
+# Keep already-prefixed short links stable (avoid matching branded rule below).
+/weblogin/a/:meetingId  /weblogin/a/:meetingId  200
+
 # Branded short agenda: /{club-slug}/a/{meetingId}
 /:brand/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:brand  200
 
