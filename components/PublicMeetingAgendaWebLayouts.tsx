@@ -1029,10 +1029,10 @@ function DefaultLayout({
 }) {
   const { meeting, club, items } = payload;
   const normalizedItems = normalizeAgendaNames(items);
-  const coolGray = '#A9B2B1';
+  const coolGray = '#F4EDC4';
   const loyalBlue = '#004165';
-  const softPanel = '#BDC5C4';
-  const panelBorder = '#8D9896';
+  const softPanel = '#F8F2CF';
+  const panelBorder = '#E7DCA7';
   const dateStr = formatPublicAgendaBannerDateShort(meeting.meeting_date);
   const timeStr =
     meeting.meeting_start_time || meeting.meeting_end_time
@@ -1093,32 +1093,6 @@ function DefaultLayout({
             ) : null}
             {meetingNoLabel ? <Text style={[styles.defBannerMeta, { color: loyalBlue }]}>👥 {meetingNoLabel}</Text> : null}
           </View>
-        </View>
-
-        <View style={[styles.defMeetingCard, { backgroundColor: softPanel, borderColor: panelBorder }]}>
-          <Text style={[styles.defMeetingTitle, { color: loyalBlue }]} numberOfLines={3}>
-            {meeting.meeting_title}
-          </Text>
-          <Text style={[styles.defMeetingLine, { color: loyalBlue }]}>
-            {formatPublicAgendaMeetingDate(meeting.meeting_date)}
-          </Text>
-          {meeting.meeting_start_time ? (
-            <Text style={[styles.defMeetingLine, { color: loyalBlue }]}>
-              {meeting.meeting_start_time}
-              {meeting.meeting_end_time ? ` – ${meeting.meeting_end_time}` : ''}
-            </Text>
-          ) : null}
-          {meeting.meeting_mode ? (
-            <Text style={[styles.defMeetingLine, { color: loyalBlue }]} accessibilityLabel="Meeting mode">
-              {meeting.meeting_mode.replace(/_/g, ' ')}
-            </Text>
-          ) : null}
-          {meetingLocation ? <Text style={[styles.defMeetingLine, { color: loyalBlue }]}>{meetingLocation}</Text> : null}
-          {meetingLink ? (
-            <Pressable onPress={() => openLink(meetingLink)} style={styles.linkWrap}>
-              <Text style={[styles.linkText, { color: loyalBlue }]}>Join online</Text>
-            </Pressable>
-          ) : null}
         </View>
 
         <Text style={[styles.publicNote, { color: loyalBlue }]}>
@@ -1894,27 +1868,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
-  },
-  defMeetingCard: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 6,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  defMeetingTitle: {
-    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: 22,
-    lineHeight: 29,
-    fontWeight: '700',
-  },
-  defMeetingLine: {
-    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 4,
   },
   defFooterBlock: {
     marginTop: 2,
