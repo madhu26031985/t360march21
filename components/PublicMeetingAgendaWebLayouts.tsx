@@ -1029,10 +1029,10 @@ function DefaultLayout({
 }) {
   const { meeting, club, items } = payload;
   const normalizedItems = normalizeAgendaNames(items);
-  const coolGray = '#EEF3F7';
-  const loyalBlue = '#004165';
-  const softPanel = '#EEF3F7';
-  const panelBorder = '#D6E1EA';
+  const coolGray = '#FFF8EF';
+  const loyalBlue = '#1F3A5F';
+  const softPanel = '#FFF8EF';
+  const panelBorder = '#EADFD0';
   const dateStr = formatPublicAgendaBannerDateShort(meeting.meeting_date);
   const timeStr =
     meeting.meeting_start_time || meeting.meeting_end_time
