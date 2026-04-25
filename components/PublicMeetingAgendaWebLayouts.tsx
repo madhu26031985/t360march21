@@ -569,7 +569,9 @@ function MinimalAgendaInnerSlotWell({
               style={[styles.minItemInnerPersonName, { color: docInk.ink }]}
               numberOfLines={1}
               ellipsizeMode="tail"
-              maxFontSizeMultiplier={1.1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+              maxFontSizeMultiplier={1}
             >
               {name}
             </Text>
