@@ -1346,56 +1346,188 @@ function VibrantLayout({
   openLink: (u: string) => void;
 }) {
   const { meeting, club, items } = payload;
-  const clubBanner = meeting.club_info_banner_color || '#6366f1';
-  const dateBanner = meeting.datetime_banner_color || '#ea580c';
+  const normalizedItems = normalizeAgendaNames(items);
+  const headerColor = '#641327';
+  const cardBg = '#0d0d0d';
+  const cardBorder = '#262626';
+  const cardText = '#f5f5f5';
+  const cardMuted = '#c7c7c7';
+  const cardSoft = '#a0a0a0';
+  const dateStr = formatPublicAgendaBannerDateShort(meeting.meeting_date);
+  const timeStr =
+    meeting.meeting_start_time || meeting.meeting_end_time
+      ? `${formatPublicAgendaBannerTimePart(meeting.meeting_start_time)} - ${formatPublicAgendaBannerTimePart(meeting.meeting_end_time)}`
+      : '';
+  const meetingNumStr =
+    meeting.meeting_number == null ? '' : String(meeting.meeting_number).trim();
+  const meetingNoLabel = `Meeting ${meetingNumStr || '—'}`;
+  const meetingLink = meeting.meeting_link?.trim() || '';
+  const meetingLocation = meeting.meeting_location?.trim() || '';
+  const mapUrl = meetingLocation
+    ? /^https?:\/\//i.test(meetingLocation)
+      ? meetingLocation
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(meetingLocation)}`
+    : '';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0a0a0a' }} edges={['top']}>
       <ScrollView contentContainerStyle={styles.vibScroll} keyboardShouldPersistTaps="handled">
-        <View style={[styles.vibBannerTop, { backgroundColor: clubBanner }]}>
+        <View style={[styles.vibBannerTop, { backgroundColor: headerColor }]}>
           <Text style={styles.vibBannerClub} numberOfLines={2}>
             {club.club_name}
           </Text>
-          {club.club_number ? <Text style={styles.vibBannerSub}>Club #{club.club_number}</Text> : null}
-        </View>
-        <View style={[styles.vibBannerMid, { backgroundColor: dateBanner }]}>
-          <Text style={styles.vibBannerTitle} numberOfLines={3}>
-            {meeting.meeting_title}
+          <Text style={styles.vibBannerSub}>
+            {[
+              club.district ? `District ${deLinkDigits(club.district)}` : '',
+              club.division ? `Division ${formatClubMetaToken(club.division)}` : '',
+              club.area ? `Area ${formatClubMetaToken(club.area)}` : '',
+            ]
+              .filter(Boolean)
+              .join(' | ')}
           </Text>
-          <Text style={styles.vibBannerMeta}>{formatPublicAgendaMeetingDate(meeting.meeting_date)}</Text>
-          {meeting.meeting_start_time ? (
-            <Text style={styles.vibBannerMeta}>
-              {formatPublicAgendaBannerTimePart(meeting.meeting_start_time)}
-              {meeting.meeting_end_time ? ` – ${formatPublicAgendaBannerTimePart(meeting.meeting_end_time)}` : ''}
-            </Text>
-          ) : null}
-          {meeting.meeting_mode ? (
-            <Text style={styles.vibBannerMeta}>{meeting.meeting_mode.replace(/_/g, ' ')}</Text>
-          ) : null}
-          {meeting.meeting_location ? <Text style={styles.vibBannerMeta}>{meeting.meeting_location}</Text> : null}
-          {meeting.meeting_link ? (
-            <Pressable onPress={() => openLink(meeting.meeting_link!)} style={{ marginTop: 12 }}>
-              <Text style={styles.vibLink}>Join online →</Text>
-            </Pressable>
-          ) : null}
+          <View style={styles.vibHeaderDivider} />
+          <View style={styles.vibBannerMetaRow}>
+            {dateStr ? <Text style={styles.vibBannerMeta}>🗓️ {dateStr}</Text> : null}
+            {dateStr && timeStr ? <Text style={styles.vibBannerMetaSep}> | </Text> : null}
+            {timeStr ? <Text style={styles.vibBannerMeta}>⏰ {timeStr}</Text> : null}
+            {(dateStr || timeStr) && meetingNoLabel ? <Text style={styles.vibBannerMetaSep}> | </Text> : null}
+            {meetingNoLabel ? <Text style={styles.vibBannerMeta}>👥 {meetingNoLabel}</Text> : null}
+          </View>
         </View>
 
         <View style={styles.vibCardStack}>
-          {items.map((item) => (
-            <AgendaSectionCard
+          {normalizedItems.map((item) => (
+            <VibrantAgendaItemCard
               key={`${item.section_order}-${item.section_name}`}
               item={item}
-              theme={theme}
-              skin="vibrant"
+              cardBg={cardBg}
+              cardBorder={cardBorder}
+              cardText={cardText}
+              cardMuted={cardMuted}
+              cardSoft={cardSoft}
+              speechEvaluationFallbackSlots={preparedSpeechSlotsForSpeechEvalFallback}
             />
           ))}
         </View>
 
-        <Text style={[styles.vibFooter, { color: theme.colors.textTertiary }]}>
-          © {new Date().getFullYear()} {club.club_name}
-        </Text>
+        <View style={[styles.vibFooterBlock, { backgroundColor: headerColor }]}>
+          <Text style={styles.vibFooterTitle}>{club.club_name} - {new Date().getFullYear()}</Text>
+          {mapUrl ? (
+            <Pressable onPress={() => openLink(mapUrl)} style={styles.vibFooterLinkWrap}>
+              <Text style={styles.vibFooterLink}>📍 Open map</Text>
+            </Pressable>
+          ) : null}
+          {meetingLink ? (
+            <Pressable onPress={() => openLink(meetingLink)} style={styles.vibFooterLinkWrap}>
+              <Text style={styles.vibFooterLink}>🔗 Online : Link</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function VibrantAgendaItemCard({
+  item,
+  cardBg,
+  cardBorder,
+  cardText,
+  cardMuted,
+  cardSoft,
+  speechEvaluationFallbackSlots,
+}: {
+  item: PublicAgendaItemRow;
+  cardBg: string;
+  cardBorder: string;
+  cardText: string;
+  cardMuted: string;
+  cardSoft: string;
+  speechEvaluationFallbackSlots?: MinimalSlotDisplay[];
+}) {
+  const timeRange = formatMinimalAgendaTimeRange(item.start_time, item.end_time);
+  const preparedSlots = isPreparedSpeechesMinimalSection(item.section_name)
+    ? preparedSlotsForPublic(item).map(slotToDisplayShape)
+    : [];
+  const evalShape = isSpeechEvaluationMinimalSection(item.section_name)
+    ? speechEvalDisplayShape(item)
+    : null;
+  const evalFallbackShapes =
+    isSpeechEvaluationMinimalSection(item.section_name) && !evalShape
+      ? (speechEvaluationFallbackSlots ?? [])
+      : [];
+  const evalShapesToRender = evalShape ? [evalShape] : evalFallbackShapes;
+
+  const slotBlock = (slot: MinimalSlotDisplay, variant: 'prepared' | 'evaluation') => {
+    const formUrl = evaluationFormUrl(slot.evaluation_form);
+    const speaker = slot.speaker_name?.trim() || 'TBA';
+    const evaluator = slot.evaluator_name?.trim() || 'TBA';
+    return (
+      <View
+        key={`${variant}-${slot.slot}-${speaker}-${evaluator}`}
+        style={[styles.vibInnerWell, { borderColor: cardBorder }]}
+      >
+        <View style={styles.vibInnerPeopleRow}>
+          <Text style={[styles.vibInnerPerson, { color: cardText }]}>
+            {variant === 'prepared' ? 'Speaker' : 'Evaluator'}: {variant === 'prepared' ? speaker : evaluator}
+          </Text>
+          <Text style={[styles.vibInnerPerson, { color: cardText }]}>
+            {variant === 'prepared' ? 'Evaluator' : 'Speaker'}: {variant === 'prepared' ? evaluator : speaker}
+          </Text>
+        </View>
+        {slot.speech_title?.trim() ? (
+          <Text style={[styles.vibInnerMeta, { color: cardMuted }]}>Title : {slot.speech_title.trim()}</Text>
+        ) : null}
+        {(slot.pathway_name?.trim() || slot.project_name?.trim()) ? (
+          <Text style={[styles.vibInnerMeta, { color: cardMuted }]}>
+            {[slot.pathway_name?.trim(), slot.project_name?.trim()].filter(Boolean).join(' · ')}
+          </Text>
+        ) : null}
+        {(slot.level != null || slot.project_number?.trim()) ? (
+          <Text style={[styles.vibInnerMeta, { color: cardMuted }]}>
+            {slot.level != null ? `Level ${slot.level}` : ''}
+            {slot.level != null && slot.project_number?.trim() ? '  ·  ' : ''}
+            {slot.project_number?.trim() ? `Project ${slot.project_number.trim()}` : ''}
+          </Text>
+        ) : null}
+        {formUrl ? (
+          <Pressable
+            onPress={() => Linking.openURL(formUrl).catch(() => {})}
+            style={({ pressed }) => [styles.vibEvalFormBtn, { opacity: pressed ? 0.9 : 1 }]}
+          >
+            <Text style={styles.vibEvalFormBtnText}>📄 Evaluation form — Open</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  };
+  return (
+    <View style={[styles.vibCardSimple, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+      <View style={styles.vibCardSimpleHeader}>
+        {item.section_icon ? <Text style={styles.vibCardSimpleIcon}>{item.section_icon}</Text> : null}
+        <Text style={[styles.vibCardSimpleTitle, { color: cardText }]}>{item.section_name}</Text>
+      </View>
+      {item.section_description ? (
+        <Text style={[styles.vibCardSimpleDesc, { color: cardMuted }]}>{item.section_description}</Text>
+      ) : null}
+      {item.assigned_user_name ? (
+        <Text style={[styles.vibCardSimpleLine, { color: cardMuted }]}>
+          Assigned : <Text style={[styles.vibCardSimpleStrong, { color: cardText }]}>{item.assigned_user_name}</Text>
+        </Text>
+      ) : null}
+      {preparedSlots.map((slot) => slotBlock(slot, 'prepared'))}
+      {evalShapesToRender.map((slot) => slotBlock(slot, 'evaluation'))}
+      <View style={styles.vibCardSimpleFooterRow}>
+        <Text style={[styles.vibCardSimpleLine, { color: cardMuted }]}>
+          Duration : <Text style={[styles.vibCardSimpleStrong, { color: cardText }]}>{`${item.duration_minutes ?? 0} mins`}</Text>
+        </Text>
+        {timeRange ? (
+          <Text style={[styles.vibCardSimpleTime, { color: cardSoft }]}>
+            Time : <Text style={[styles.vibCardSimpleStrong, { color: cardText }]}>{timeRange}</Text>
+          </Text>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
@@ -2263,24 +2395,57 @@ const styles = StyleSheet.create({
 
   vibScroll: { paddingBottom: 40 },
   vibBannerTop: {
-    marginHorizontal: 12,
-    marginTop: 8,
+    marginHorizontal: 0,
+    marginTop: 0,
     paddingHorizontal: 22,
-    paddingVertical: 22,
-    borderRadius: 20,
+    paddingVertical: 18,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
   },
-  vibBannerMid: {
-    marginHorizontal: 12,
+  vibBannerClub: {
+    color: '#fff',
+    fontSize: ms(IS_MOBILE ? 22 : 24),
+    lineHeight: IS_MOBILE ? 28 : 31,
+    fontWeight: '700',
+    fontFamily: MINIMAL_HEADER_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
+  },
+  vibBannerSub: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    marginTop: 6,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  vibHeaderDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.25)',
     marginTop: 10,
-    paddingHorizontal: 22,
-    paddingVertical: 20,
-    borderRadius: 20,
+    marginBottom: 8,
   },
-  vibBannerClub: { color: '#fff', fontSize: 24, fontWeight: '800' },
-  vibBannerSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, marginTop: 6 },
-  vibBannerTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  vibBannerMeta: { color: 'rgba(255,255,255,0.95)', fontSize: 15, marginTop: 6 },
-  vibLink: { color: '#fff', fontSize: 16, fontWeight: '700', textDecorationLine: 'underline' },
+  vibBannerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  vibBannerMeta: {
+    color: 'rgba(255,255,255,0.95)',
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
+    marginTop: 2,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  vibBannerMetaSep: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
+    marginTop: 2,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
   vibrantTitleRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2290,12 +2455,138 @@ const styles = StyleSheet.create({
   vibrantDurationInline: {
     marginTop: 0,
   },
-  vibCardStack: { paddingHorizontal: 12, gap: 0 },
+  vibCardStack: { paddingHorizontal: 0, gap: 0, marginTop: 8 },
+  vibCardSimple: {
+    marginHorizontal: 0,
+    marginBottom: 8,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+  },
+  vibCardSimpleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  vibCardSimpleIcon: {
+    fontSize: 20,
+    lineHeight: 22,
+  },
+  vibCardSimpleTitle: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: ms(IS_MOBILE ? 13 : 13),
+    fontWeight: '700',
+    lineHeight: IS_MOBILE ? 18 : 18,
+    letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
+    flexShrink: 1,
+  },
+  vibCardSimpleDesc: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    marginTop: 8,
+  },
+  vibCardSimpleLine: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    marginTop: 6,
+  },
+  vibCardSimpleStrong: {
+    fontWeight: '700',
+  },
+  vibCardSimpleFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 2,
+  },
+  vibCardSimpleTime: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textAlign: 'right',
+  },
+  vibInnerWell: {
+    marginTop: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  vibInnerPeopleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  vibInnerPerson: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    fontWeight: '600',
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    flex: 1,
+  },
+  vibInnerMeta: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    marginTop: 6,
+  },
+  vibEvalFormBtn: {
+    marginTop: 10,
+    borderRadius: 10,
+    backgroundColor: '#2f74da',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  vibEvalFormBtnText: {
+    color: '#ffffff',
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: ms(IS_MOBILE ? 13 : 12),
+    lineHeight: IS_MOBILE ? 19 : 17,
+    fontWeight: '700',
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
   vibCard: {
     marginBottom: 14,
     borderRadius: 16,
     borderLeftWidth: 5,
     padding: 18,
+  },
+  vibFooterBlock: {
+    marginTop: 2,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  vibFooterTitle: {
+    color: '#f3f3f3',
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 11.5,
+    lineHeight: 15,
+    fontWeight: '600',
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textAlign: 'center',
+  },
+  vibFooterLinkWrap: {
+    marginTop: 4,
+  },
+  vibFooterLink: {
+    color: '#d9d9d9',
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textDecorationLine: 'underline',
   },
   vibFooter: { textAlign: 'center', fontSize: 12, marginTop: 8, paddingHorizontal: 16 },
 });
