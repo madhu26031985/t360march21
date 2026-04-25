@@ -2408,6 +2408,7 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     borderBottomLeftRadius: 14,
     borderBottomRightRadius: 14,
+    alignItems: 'center',
   },
   vibBannerClub: {
     color: '#fff',
@@ -2416,6 +2417,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: MINIMAL_HEADER_FONT_FAMILY,
     letterSpacing: MINIMAL_AGENDA_HEADING_TRACKING,
+    textAlign: 'center',
+    width: '100%',
   },
   vibBannerSub: {
     color: 'rgba(255,255,255,0.9)',
@@ -2424,18 +2427,24 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textAlign: 'center',
+    width: '100%',
   },
   vibHeaderDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(255,255,255,0.25)',
     marginTop: 10,
     marginBottom: 8,
+    width: '100%',
   },
   vibBannerMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    flexWrap: 'wrap',
+    flexWrap: IS_MOBILE ? 'nowrap' : 'wrap',
+    width: '100%',
+    maxWidth: '100%',
+    paddingHorizontal: 4,
   },
   vibBannerMeta: {
     color: 'rgba(255,255,255,0.95)',
