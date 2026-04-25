@@ -565,7 +565,12 @@ function MinimalAgendaInnerSlotWell({
         </View>
         <View style={styles.minItemInnerIdentityTextCol}>
           {name ? (
-            <Text style={[styles.minItemInnerPersonName, { color: docInk.ink }]} maxFontSizeMultiplier={1.1}>
+            <Text
+              style={[styles.minItemInnerPersonName, { color: docInk.ink }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.1}
+            >
               {name}
             </Text>
           ) : (
