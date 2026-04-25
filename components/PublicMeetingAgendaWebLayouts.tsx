@@ -1029,10 +1029,10 @@ function DefaultLayout({
 }) {
   const { meeting, club, items } = payload;
   const normalizedItems = normalizeAgendaNames(items);
-  const coolGray = '#F4EDC4';
+  const coolGray = '#FAF9F6';
   const loyalBlue = '#004165';
-  const softPanel = '#F8F2CF';
-  const panelBorder = '#E7DCA7';
+  const softPanel = '#FAF9F6';
+  const panelBorder = '#E6E3DE';
   const dateStr = formatPublicAgendaBannerDateShort(meeting.meeting_date);
   const timeStr =
     meeting.meeting_start_time || meeting.meeting_end_time
@@ -1062,6 +1062,7 @@ function DefaultLayout({
     if (!preparedSection) return [];
     return preparedSlotsForPublic(preparedSection).map(slotToDisplayShape);
   })();
+  const meetingTheme = meeting.theme?.trim() || null;
   const themedDefault = {
     ...theme,
     colors: {
@@ -1095,16 +1096,12 @@ function DefaultLayout({
           </View>
         </View>
 
-        <Text style={[styles.publicNote, { color: loyalBlue }]}>
-          Shared agenda — sign in to the T360 app to book roles or see member-only details.
-        </Text>
-
         {normalizedItems.map((item) => (
-          <AgendaSectionCard
+          <MinimalAgendaItemCard
             key={`${item.section_order}-${item.section_name}`}
             item={item}
             theme={themedDefault}
-            skin="default"
+            meetingTheme={meetingTheme}
             speechEvaluationFallbackSlots={preparedSpeechSlotsForSpeechEvalFallback}
           />
         ))}
