@@ -2896,7 +2896,7 @@ export default function AgendaEditor() {
   };
 
   const handleCopyPublicWebAgendaLink = async () => {
-    const url = publicWebAgendaShortUrl?.trim() ?? publicWebAgendaUrl?.trim();
+    const url = publicWebAgendaUrl?.trim() ?? publicWebAgendaShortUrl?.trim();
     if (!url) {
       Alert.alert('Nothing to copy', 'The public link is not available yet.');
       return;
@@ -2904,8 +2904,8 @@ export default function AgendaEditor() {
 
     const flashCopied = () => {
       flashPublicWebLinkCopied(
-        publicWebAgendaShortUrl
-          ? 'Short agenda link copied to clipboard.'
+        publicWebAgendaUrl
+          ? 'Agenda link copied to clipboard.'
           : 'Public agenda link copied to clipboard.'
       );
     };
@@ -2966,7 +2966,7 @@ export default function AgendaEditor() {
     } catch (e) {
       console.error('Copy full public web agenda link:', e);
       setPublicWebLinkCopied(false);
-      Alert.alert('Could not copy', 'Try selecting the full URL from another device or paste the short link.');
+      Alert.alert('Could not copy', 'Try selecting the full URL from another device or paste the agenda link.');
     }
   };
 
@@ -3939,7 +3939,7 @@ export default function AgendaEditor() {
                   maxFontSizeMultiplier={1.15}
                   selectable
                 >
-                  {publicWebAgendaShortUrl ?? publicWebAgendaUrl}
+                  {publicWebAgendaUrl ?? publicWebAgendaShortUrl}
                 </Text>
                 {isAgendaVisible === false ? (
                   <Text style={[styles.publicWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.1}>
@@ -3976,7 +3976,7 @@ export default function AgendaEditor() {
                 >
                   <Copy size={16} color={theme.colors.primary} />
                   <Text style={[styles.publicWebLinkOutlineButtonLabel, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.1}>
-                    {publicWebLinkCopied ? 'Copied!' : 'Copy short link'}
+                    {publicWebLinkCopied ? 'Copied!' : 'Copy agenda link'}
                   </Text>
                 </TouchableOpacity>
               </View>

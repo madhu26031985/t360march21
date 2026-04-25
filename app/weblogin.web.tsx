@@ -33,23 +33,6 @@ export default function WebloginWeb() {
       return;
     }
 
-    // Recovery guard: if hosting/router serves this screen for a public agenda URL under /weblogin,
-    // redirect to the same path without the prefix so normal route resolution can continue.
-    if (pathname.startsWith('/weblogin/')) {
-      const pathWithoutPrefix = pathname.slice('/weblogin'.length);
-      const looksLikePublicAgendaRoute =
-        /^\/[^/]+\/agenda\/[^/]+\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          pathWithoutPrefix
-        ) ||
-        /^\/(?:[^/]+\/)?a\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          pathWithoutPrefix
-        );
-      if (looksLikePublicAgendaRoute) {
-        window.location.replace(`${origin}${pathWithoutPrefix}${search}${hash}`);
-        return;
-      }
-    }
-
     // Production: normalize bare `/weblogin` → `/weblogin/` while preserving OAuth hash/query.
     if (pathname === '/weblogin') {
       window.location.replace(`${origin}/weblogin/${search}${hash}`);
