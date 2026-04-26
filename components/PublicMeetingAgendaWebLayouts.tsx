@@ -1046,10 +1046,14 @@ function DefaultLayout({
 }) {
   const { meeting, club, items } = payload;
   const normalizedItems = normalizeAgendaNames(items);
-  const coolGray = '#FFF8EF';
-  const loyalBlue = '#1F3A5F';
-  const softPanel = '#FFF8EF';
-  const panelBorder = '#EADFD0';
+  const contentBg = '#FFFFFF';
+  const contentText = '#111827';
+  const contentTextMuted = '#374151';
+  const panelBorder = '#E5E7EB';
+  const headerFooterMaroon = '#641327';
+  const headerFooterText = '#F9FAFB';
+  const headerFooterSoftText = 'rgba(249,250,251,0.88)';
+  const headerFooterDivider = 'rgba(249,250,251,0.3)';
   const dateStr = formatPublicAgendaBannerDateShort(meeting.meeting_date);
   const timeStr =
     meeting.meeting_start_time || meeting.meeting_end_time
@@ -1084,57 +1088,79 @@ function DefaultLayout({
     ...theme,
     colors: {
       ...theme.colors,
-      background: coolGray,
-      surface: softPanel,
+      background: contentBg,
+      surface: contentBg,
       borderLight: panelBorder,
-      text: loyalBlue,
-      textSecondary: loyalBlue,
-      textTertiary: loyalBlue,
+      text: contentText,
+      textSecondary: contentTextMuted,
+      textTertiary: contentTextMuted,
     },
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: coolGray }} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={[styles.defBannerTop, { backgroundColor: coolGray, borderBottomColor: panelBorder }]}>
-          <Text style={[styles.defBannerClub, { color: loyalBlue }]} numberOfLines={2}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: contentBg }} edges={['top']}>
+      <ScrollView
+        style={{ backgroundColor: contentBg }}
+        contentContainerStyle={[styles.scrollContent, { backgroundColor: contentBg }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View
+          style={[
+            styles.defBannerTop,
+            { backgroundColor: headerFooterMaroon, borderBottomColor: headerFooterDivider },
+          ]}
+        >
+          <Text style={[styles.defBannerClub, { color: headerFooterText }]} numberOfLines={2}>
             {club.club_name}
           </Text>
-          {clubMetaText ? <Text style={[styles.defBannerSub, { color: loyalBlue }]}>{clubMetaText}</Text> : null}
-          <View style={[styles.defHeaderDivider, { backgroundColor: panelBorder }]} />
+          {clubMetaText ? (
+            <Text style={[styles.defBannerSub, { color: headerFooterSoftText }]}>{clubMetaText}</Text>
+          ) : null}
+          <View style={[styles.defHeaderDivider, { backgroundColor: headerFooterDivider }]} />
           <View style={styles.defBannerMetaRow}>
-            {dateStr ? <Text style={[styles.defBannerMeta, { color: loyalBlue }]}>🗓️ {dateStr}</Text> : null}
-            {dateStr && timeStr ? <Text style={[styles.defBannerMetaSep, { color: loyalBlue }]}> | </Text> : null}
-            {timeStr ? <Text style={[styles.defBannerMeta, { color: loyalBlue }]}>⏰ {timeStr}</Text> : null}
-            {(dateStr || timeStr) && meetingNoLabel ? (
-              <Text style={[styles.defBannerMetaSep, { color: loyalBlue }]}> | </Text>
+            {dateStr ? <Text style={[styles.defBannerMeta, { color: headerFooterText }]}>🗓️ {dateStr}</Text> : null}
+            {dateStr && timeStr ? (
+              <Text style={[styles.defBannerMetaSep, { color: headerFooterSoftText }]}> | </Text>
             ) : null}
-            {meetingNoLabel ? <Text style={[styles.defBannerMeta, { color: loyalBlue }]}>👥 {meetingNoLabel}</Text> : null}
+            {timeStr ? <Text style={[styles.defBannerMeta, { color: headerFooterText }]}>⏰ {timeStr}</Text> : null}
+            {(dateStr || timeStr) && meetingNoLabel ? (
+              <Text style={[styles.defBannerMetaSep, { color: headerFooterSoftText }]}> | </Text>
+            ) : null}
+            {meetingNoLabel ? (
+              <Text style={[styles.defBannerMeta, { color: headerFooterText }]}>👥 {meetingNoLabel}</Text>
+            ) : null}
           </View>
         </View>
 
-        {normalizedItems.map((item) => (
-          <MinimalAgendaItemCard
-            key={`${item.section_order}-${item.section_name}`}
-            item={item}
-            theme={themedDefault}
-            meetingTheme={meetingTheme}
-            speechEvaluationFallbackSlots={preparedSpeechSlotsForSpeechEvalFallback}
-          />
-        ))}
+        <View style={{ backgroundColor: contentBg }}>
+          {normalizedItems.map((item) => (
+            <MinimalAgendaItemCard
+              key={`${item.section_order}-${item.section_name}`}
+              item={item}
+              theme={themedDefault}
+              meetingTheme={meetingTheme}
+              speechEvaluationFallbackSlots={preparedSpeechSlotsForSpeechEvalFallback}
+            />
+          ))}
+        </View>
 
-        <View style={[styles.defFooterBlock, { backgroundColor: coolGray, borderColor: panelBorder }]}>
-          <Text style={[styles.defFooterTitle, { color: loyalBlue }]}>
+        <View
+          style={[
+            styles.defFooterBlock,
+            { backgroundColor: headerFooterMaroon, borderColor: headerFooterDivider },
+          ]}
+        >
+          <Text style={[styles.defFooterTitle, { color: headerFooterText }]}>
             {club.club_name} - {new Date().getFullYear()}
           </Text>
           {mapUrl ? (
             <Pressable onPress={() => openLink(mapUrl)} style={styles.defFooterLinkWrap}>
-              <Text style={[styles.defFooterLink, { color: loyalBlue }]}>📍 Open map</Text>
+              <Text style={[styles.defFooterLink, { color: headerFooterSoftText }]}>📍 Open map</Text>
             </Pressable>
           ) : null}
           {meetingLink ? (
             <Pressable onPress={() => openLink(meetingLink)} style={styles.defFooterLinkWrap}>
-              <Text style={[styles.defFooterLink, { color: loyalBlue }]}>🔗 Online : Link</Text>
+              <Text style={[styles.defFooterLink, { color: headerFooterSoftText }]}>🔗 Online : Link</Text>
             </Pressable>
           ) : null}
         </View>
