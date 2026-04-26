@@ -567,10 +567,10 @@ function MinimalAgendaInnerSlotWell({
           {name ? (
             <Text
               style={[styles.minItemInnerPersonName, { color: docInk.ink }]}
-              numberOfLines={1}
+              numberOfLines={IS_MOBILE ? 2 : 1}
               ellipsizeMode="tail"
-              adjustsFontSizeToFit
-              minimumFontScale={0.72}
+              adjustsFontSizeToFit={!IS_MOBILE}
+              minimumFontScale={IS_MOBILE ? 1 : 0.72}
               maxFontSizeMultiplier={1}
             >
               {name}
