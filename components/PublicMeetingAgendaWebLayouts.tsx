@@ -1263,7 +1263,7 @@ function MinimalLayout({
   })();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.minScroll} keyboardShouldPersistTaps="handled">
         <View
           style={[
