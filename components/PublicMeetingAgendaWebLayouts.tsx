@@ -685,7 +685,7 @@ function MinimalAgendaInnerSlotWell({
             ]}
             maxFontSizeMultiplier={1.05}
           >
-            📄 Evaluation form — Open
+            📄 Open - Evaluation Form
           </Text>
         </Pressable>
       ) : null}
@@ -724,6 +724,89 @@ function minimalInnerBlockWebPrintKeepTogether(): ViewStyle {
     } as ViewStyle;
   }
   return {};
+}
+
+type FooterActionsProps = {
+  mapUrl: string;
+  meetingLink: string;
+  openLink: (u: string) => void;
+  titleColor: string;
+  textColor: string;
+  mutedColor: string;
+  dividerColor: string;
+};
+
+function AgendaFooterActions({
+  mapUrl,
+  meetingLink,
+  openLink,
+  titleColor,
+  textColor,
+  mutedColor,
+  dividerColor,
+}: FooterActionsProps) {
+  const actions = [
+    mapUrl
+      ? {
+          key: 'map',
+          icon: '📍',
+          title: 'Open in Maps',
+          subtitle: 'Get directions to the venue',
+          url: mapUrl,
+          a11y: 'Open map location',
+        }
+      : null,
+    meetingLink
+      ? {
+          key: 'online',
+          icon: '🔗',
+          title: 'Online : Link',
+          subtitle: 'Tap to join the online meeting',
+          url: meetingLink,
+          a11y: 'Open online meeting link',
+        }
+      : null,
+  ].filter(Boolean) as {
+    key: string;
+    icon: string;
+    title: string;
+    subtitle: string;
+    url: string;
+    a11y: string;
+  }[];
+
+  if (actions.length === 0) return null;
+
+  return (
+    <View style={[styles.footerActionsWrap, { borderColor: dividerColor }]}>
+      {actions.map((action, idx) => (
+        <Pressable
+          key={action.key}
+          onPress={() => openLink(action.url)}
+          style={({ pressed }) => [
+            styles.footerActionTile,
+            idx > 0 ? [styles.footerActionTileSplit, { borderLeftColor: dividerColor }] : null,
+            { opacity: pressed ? 0.8 : 1 },
+          ]}
+          accessibilityRole="link"
+          accessibilityLabel={action.a11y}
+        >
+          <View style={[styles.footerActionIconDisc, { borderColor: dividerColor }]}>
+            <Text style={[styles.footerActionIcon, { color: textColor }]}>{action.icon}</Text>
+          </View>
+          <View style={styles.footerActionTextCol}>
+            <Text style={[styles.footerActionTitle, { color: titleColor }]} numberOfLines={1}>
+              {action.title}
+            </Text>
+            <Text style={[styles.footerActionSubtitle, { color: mutedColor }]} numberOfLines={1}>
+              {action.subtitle}
+            </Text>
+          </View>
+          <Text style={[styles.footerActionChevron, { color: textColor }]}>›</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
 }
 
 function MinimalAgendaItemCard({
@@ -1141,16 +1224,15 @@ function DefaultLayout({
           <Text style={[styles.defFooterTitle, { color: headerFooterText }]}>
             {club.club_name} - {new Date().getFullYear()}
           </Text>
-          {mapUrl ? (
-            <Pressable onPress={() => openLink(mapUrl)} style={styles.defFooterLinkWrap}>
-              <Text style={[styles.defFooterLink, { color: headerFooterSoftText }]}>📍 Open map</Text>
-            </Pressable>
-          ) : null}
-          {meetingLink ? (
-            <Pressable onPress={() => openLink(meetingLink)} style={styles.defFooterLinkWrap}>
-              <Text style={[styles.defFooterLink, { color: headerFooterSoftText }]}>🔗 Online : Link</Text>
-            </Pressable>
-          ) : null}
+          <AgendaFooterActions
+            mapUrl={mapUrl}
+            meetingLink={meetingLink}
+            openLink={openLink}
+            titleColor={headerFooterText}
+            textColor={headerFooterText}
+            mutedColor={headerFooterSoftText}
+            dividerColor={headerFooterDivider}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1198,10 +1280,6 @@ function MinimalLayout({
     theme.colors.background.toLowerCase() === '#fff';
 
   const meetingLink = meeting.meeting_link?.trim() || '';
-  const vpeName = club.vpe_name?.trim() || '';
-  const vpeNumber = club.vpe_phone_number?.trim() || '';
-  const vpmName = club.vpm_name?.trim() || '';
-  const vpmNumber = club.vpm_phone_number?.trim() || '';
   const minFooterLine = `${club.club_name} - 2026`;
   const meetingLocation = meeting.meeting_location?.trim() || '';
   const mapUrl = meetingLocation
@@ -1368,38 +1446,15 @@ function MinimalLayout({
             <Text style={[styles.minFooter, { color: docInk.inkSoft }]} numberOfLines={1}>
               {minFooterLine}
             </Text>
-            {vpeName ? (
-              <Text style={[styles.minFooterDetail, { color: docInk.inkMuted }]} numberOfLines={1}>
-                <Text style={styles.minFooterDetailLabel}>VPE Name : </Text>
-                <Text style={styles.minFooterDetailValue}>{vpeName}{vpeNumber ? ` : ${vpeNumber}` : ''}</Text>
-              </Text>
-            ) : null}
-            {vpmName ? (
-              <Text style={[styles.minFooterDetail, { color: docInk.inkMuted }]} numberOfLines={1}>
-                <Text style={styles.minFooterDetailLabel}>VPM Name : </Text>
-                <Text style={styles.minFooterDetailValue}>{vpmName}{vpmNumber ? ` : ${vpmNumber}` : ''}</Text>
-              </Text>
-            ) : null}
-            {mapUrl ? (
-              <Pressable
-                onPress={() => openLink(mapUrl)}
-                style={({ pressed }) => [styles.minFooterLinkWrap, { opacity: pressed ? 0.75 : 1 }]}
-                accessibilityRole="link"
-                accessibilityLabel="Open map location"
-              >
-                <Text style={[styles.minFooterLinkText, { color: docInk.inkMuted }]}>📍 Open map</Text>
-              </Pressable>
-            ) : null}
-            {meetingLink ? (
-              <Pressable
-                onPress={() => openLink(meetingLink)}
-                style={({ pressed }) => [styles.minFooterLinkWrap, { opacity: pressed ? 0.75 : 1 }]}
-                accessibilityRole="link"
-                accessibilityLabel="Open online meeting link"
-              >
-                <Text style={[styles.minFooterLinkText, { color: docInk.inkMuted }]}>🔗 Online : Link</Text>
-              </Pressable>
-            ) : null}
+            <AgendaFooterActions
+              mapUrl={mapUrl}
+              meetingLink={meetingLink}
+              openLink={openLink}
+              titleColor={docInk.ink}
+              textColor={docInk.ink}
+              mutedColor={docInk.inkMuted}
+              dividerColor={theme.colors.borderLight}
+            />
           </View>
         </View>
       </ScrollView>
@@ -1490,16 +1545,15 @@ function VibrantLayout({
 
         <View style={[styles.vibFooterBlock, { backgroundColor: headerColor }]}>
           <Text style={styles.vibFooterTitle}>{club.club_name} - {new Date().getFullYear()}</Text>
-          {mapUrl ? (
-            <Pressable onPress={() => openLink(mapUrl)} style={styles.vibFooterLinkWrap}>
-              <Text style={styles.vibFooterLink}>📍 Open map</Text>
-            </Pressable>
-          ) : null}
-          {meetingLink ? (
-            <Pressable onPress={() => openLink(meetingLink)} style={styles.vibFooterLinkWrap}>
-              <Text style={styles.vibFooterLink}>🔗 Online : Link</Text>
-            </Pressable>
-          ) : null}
+          <AgendaFooterActions
+            mapUrl={mapUrl}
+            meetingLink={meetingLink}
+            openLink={openLink}
+            titleColor="#f3f3f3"
+            textColor="#f3f3f3"
+            mutedColor="#d9d9d9"
+            dividerColor="rgba(255,255,255,0.25)"
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1573,7 +1627,7 @@ function VibrantAgendaItemCard({
             onPress={() => Linking.openURL(formUrl).catch(() => {})}
             style={({ pressed }) => [styles.vibEvalFormBtn, { opacity: pressed ? 0.9 : 1 }]}
           >
-            <Text style={styles.vibEvalFormBtnText}>📄 Evaluation form — Open</Text>
+            <Text style={styles.vibEvalFormBtnText}>📄 Open - Evaluation Form</Text>
           </Pressable>
         ) : null}
       </View>
@@ -1729,7 +1783,7 @@ function AgendaSectionCard({
                   accessibilityRole="link"
                   accessibilityLabel="Open evaluation form"
                 >
-                  <Text style={styles.defEvalFormBtnText}>📄 Evaluation form — Open</Text>
+                  <Text style={styles.defEvalFormBtnText}>📄 Open - Evaluation Form</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -1778,7 +1832,7 @@ function AgendaSectionCard({
                     accessibilityRole="link"
                     accessibilityLabel="Open evaluation form"
                   >
-                    <Text style={styles.defEvalFormBtnText}>📄 Evaluation form — Open</Text>
+                    <Text style={styles.defEvalFormBtnText}>📄 Open - Evaluation Form</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -1907,8 +1961,8 @@ const styles = StyleSheet.create({
   },
   defFooterTitle: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: 11.5,
-    lineHeight: 15,
+    fontSize: 6,
+    lineHeight: 8,
     fontWeight: '600',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     textAlign: 'center',
@@ -2609,7 +2663,7 @@ const styles = StyleSheet.create({
   },
   minFooter: {
     textAlign: 'center',
-    fontSize: 11.5,
+    fontSize: 6,
     marginTop: 0,
     paddingHorizontal: 24,
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
@@ -2832,8 +2886,8 @@ const styles = StyleSheet.create({
   vibFooterTitle: {
     color: '#f3f3f3',
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: 11.5,
-    lineHeight: 15,
+    fontSize: 6,
+    lineHeight: 8,
     fontWeight: '600',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     textAlign: 'center',
@@ -2850,6 +2904,64 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   vibFooter: { textAlign: 'center', fontSize: 12, marginTop: 8, paddingHorizontal: 16 },
+  footerActionsWrap: {
+    marginTop: 8,
+    width: '100%',
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  footerActionTile: {
+    flex: 1,
+    minHeight: 48,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  footerActionTileSplit: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+  },
+  footerActionIconDisc: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  footerActionIcon: {
+    fontSize: 6,
+    lineHeight: 7,
+  },
+  footerActionTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  footerActionTitle: {
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 6,
+    lineHeight: 8,
+    fontWeight: '700',
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  footerActionSubtitle: {
+    marginTop: 2,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 5.5,
+    lineHeight: 7,
+    fontWeight: '400',
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+  },
+  footerActionChevron: {
+    fontSize: 10,
+    lineHeight: 10,
+    fontWeight: '700',
+    marginLeft: 4,
+    flexShrink: 0,
+  },
   defBannerTopFlat: {
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
