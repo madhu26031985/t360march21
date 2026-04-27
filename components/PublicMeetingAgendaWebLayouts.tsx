@@ -82,20 +82,7 @@ function formatClubMetaToken(value: string | null | undefined): string {
 
 /** Premium soft shell — no fill color; web shadow + native elevation. */
 function minimalHeaderShellShadow(): ViewStyle {
-  if (Platform.OS === 'web') {
-    return {
-      boxShadow: '0 1px 2px rgba(15,15,15,0.05), 0 10px 32px rgba(15,15,15,0.06)',
-    } as ViewStyle;
-  }
-  if (Platform.OS === 'ios') {
-    return {
-      shadowColor: '#000',
-      shadowOpacity: 0.06,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-    };
-  }
-  return { elevation: 2 };
+  return {};
 }
 
 function vibrantCardExtra(): ViewStyle {
@@ -707,11 +694,6 @@ function MinimalAgendaInnerSlotWell({
 }
 
 function minimalCardWebShadow(): ViewStyle {
-  if (Platform.OS === 'web') {
-    return {
-      boxShadow: '0 1px 2px rgba(15,15,15,0.06), 0 4px 14px rgba(15,15,15,0.06)',
-    } as ViewStyle;
-  }
   return {};
 }
 
@@ -1858,8 +1840,8 @@ const styles = StyleSheet.create({
     marginTop: 0,
     paddingHorizontal: 22,
     paddingVertical: 18,
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
     alignItems: 'center',
   },
   defBannerClub: {
@@ -1912,7 +1894,7 @@ const styles = StyleSheet.create({
   defFooterBlock: {
     marginTop: 2,
     marginHorizontal: 0,
-    borderRadius: 14,
+    borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -2055,7 +2037,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingHorizontal: 18,
     paddingVertical: 16,
-    borderRadius: 14,
+    borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
   },
   minItemCardHeaderRow: {
@@ -2660,8 +2642,8 @@ const styles = StyleSheet.create({
     marginTop: 0,
     paddingHorizontal: 22,
     paddingVertical: 18,
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
     alignItems: 'center',
   },
   vibBannerClub: {
@@ -2729,7 +2711,7 @@ const styles = StyleSheet.create({
   vibCardSimple: {
     marginHorizontal: 0,
     marginBottom: 8,
-    borderRadius: 14,
+    borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 22,
     paddingVertical: 14,
@@ -2785,7 +2767,7 @@ const styles = StyleSheet.create({
   vibInnerWell: {
     marginTop: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 12,
     backgroundColor: 'rgba(255,255,255,0.03)',
   },
@@ -2833,7 +2815,7 @@ const styles = StyleSheet.create({
   },
   vibFooterBlock: {
     marginTop: 2,
-    borderRadius: 14,
+    borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
