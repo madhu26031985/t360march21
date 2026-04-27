@@ -731,11 +731,13 @@ function MinimalAgendaItemCard({
   theme,
   meetingTheme,
   speechEvaluationFallbackSlots,
+  flatCorners,
 }: {
   item: PublicAgendaItemRow;
   theme: AppTheme;
   meetingTheme?: string | null;
   speechEvaluationFallbackSlots?: MinimalSlotDisplay[];
+  flatCorners?: boolean;
 }) {
   const docInk = minimalDocTextColors(theme);
   const timeRangeOnly = formatMinimalAgendaTimeRange(item.start_time, item.end_time).trim();
@@ -803,6 +805,7 @@ function MinimalAgendaItemCard({
     <View
       style={[
         styles.minItemCard,
+        flatCorners ? styles.minItemCardFlat : null,
         {
           backgroundColor: theme.colors.background,
           borderColor: theme.colors.borderLight,
@@ -1090,6 +1093,7 @@ function DefaultLayout({
           style={[
             styles.defBannerTop,
             { backgroundColor: headerFooterMaroon, borderBottomColor: headerFooterDivider },
+            styles.defBannerTopFlat,
           ]}
         >
           <Text style={[styles.defBannerClub, { color: headerFooterText }]} numberOfLines={2}>
@@ -1114,7 +1118,7 @@ function DefaultLayout({
           </View>
         </View>
 
-        <View style={{ backgroundColor: contentBg }}>
+        <View style={{ backgroundColor: contentBg, paddingTop: 12 }}>
           {normalizedItems.map((item) => (
             <MinimalAgendaItemCard
               key={`${item.section_order}-${item.section_name}`}
@@ -1122,6 +1126,7 @@ function DefaultLayout({
               theme={themedDefault}
               meetingTheme={meetingTheme}
               speechEvaluationFallbackSlots={preparedSpeechSlotsForSpeechEvalFallback}
+              flatCorners
             />
           ))}
         </View>
@@ -1130,6 +1135,7 @@ function DefaultLayout({
           style={[
             styles.defFooterBlock,
             { backgroundColor: headerFooterMaroon, borderColor: headerFooterDivider },
+            styles.defFooterBlockFlat,
           ]}
         >
           <Text style={[styles.defFooterTitle, { color: headerFooterText }]}>
@@ -2040,6 +2046,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  minItemCardFlat: {
+    borderRadius: 0,
+  },
   minItemCardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2841,4 +2850,11 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   vibFooter: { textAlign: 'center', fontSize: 12, marginTop: 8, paddingHorizontal: 16 },
+  defBannerTopFlat: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  defFooterBlockFlat: {
+    borderRadius: 0,
+  },
 });
