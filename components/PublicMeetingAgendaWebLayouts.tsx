@@ -1407,6 +1407,7 @@ function MinimalLayout({
                 backgroundColor: theme.colors.background,
                 borderTopColor: theme.colors.borderLight,
               },
+              styles.minFooterBannerFlat,
             ]}
           >
             <Text style={[styles.minFooter, { color: docInk.inkSoft }]} numberOfLines={1}>
@@ -1508,7 +1509,7 @@ function VibrantLayout({
           ))}
         </View>
 
-        <View style={[styles.vibFooterBlock, { backgroundColor: headerColor }]}>
+        <View style={[styles.vibFooterBlock, { backgroundColor: headerColor }, styles.vibFooterBlockFlat]}>
           <Text style={styles.vibFooterTitle}>{club.club_name} - {new Date().getFullYear()}</Text>
           <View style={[styles.footerTopDivider, { backgroundColor: 'rgba(255,255,255,0.25)' }]} />
           <AgendaFooterInlineLinks
@@ -1847,7 +1848,7 @@ function AgendaSectionCard({
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { paddingBottom: 40 },
+  scrollContent: { paddingBottom: 0 },
   banner: {
     paddingHorizontal: 20,
     paddingVertical: 16,
@@ -1978,7 +1979,7 @@ const styles = StyleSheet.create({
   notes: { fontSize: 13, marginTop: 10, fontStyle: 'italic' },
   footer: { textAlign: 'center', fontSize: 12, marginTop: 20, paddingHorizontal: 16 },
 
-  minScroll: { paddingBottom: 48 },
+  minScroll: { paddingBottom: 0 },
   // Centered “document” look with visible left/right borders.
   minFrame: {
     width: '100%',
@@ -2055,6 +2056,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
+  },
+  minFooterBannerFlat: {
+    borderRadius: 0,
   },
   minItemCard: {
     marginHorizontal: 14,
@@ -2664,7 +2668,7 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 
-  vibScroll: { paddingBottom: 40 },
+  vibScroll: { paddingBottom: 0 },
   vibBannerTop: {
     marginHorizontal: 0,
     marginTop: 0,
@@ -2847,6 +2851,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
+  },
+  vibFooterBlockFlat: {
+    borderRadius: 0,
   },
   vibFooterTitle: {
     color: '#f3f3f3',
