@@ -826,6 +826,10 @@ function MinimalAgendaItemCard({
       : isLightDoc
         ? '#fafafa'
         : theme.colors.surfaceSecondary;
+  const minimalCardBorderColor = isLightDoc ? '#d4d4d8' : theme.colors.borderLight;
+  const minimalCardBg = isLightDoc ? '#f7f7f8' : theme.colors.background;
+  const minimalInnerWellBorder = isLightDoc ? '#d1d5db' : innerWellBorder;
+  const minimalInnerWellBg = isLightDoc ? '#f0f0f1' : innerWellBg;
 
   const preparedSlots = isPreparedSpeechesMinimalSection(item.section_name)
     ? preparedSlotsForPublic(item)
@@ -857,8 +861,8 @@ function MinimalAgendaItemCard({
         styles.minItemCard,
         flatCorners ? styles.minItemCardFlat : null,
         {
-          backgroundColor: theme.colors.background,
-          borderColor: theme.colors.borderLight,
+          backgroundColor: minimalCardBg,
+          borderColor: minimalCardBorderColor,
         },
         minimalCardWebShadow(),
         minimalCardWebPrintFlow(item.section_name),
@@ -946,8 +950,8 @@ function MinimalAgendaItemCard({
           <MinimalAgendaInnerSlotWell
             slot={slotToDisplayShape(s)}
             docInk={docInk}
-            borderColor={innerWellBorder}
-            wellBg={innerWellBg}
+            borderColor={minimalInnerWellBorder}
+            wellBg={minimalInnerWellBg}
             variant="prepared"
           />
         </View>
@@ -961,8 +965,8 @@ function MinimalAgendaItemCard({
           <MinimalAgendaInnerSlotWell
             slot={slot}
             docInk={docInk}
-            borderColor={innerWellBorder}
-            wellBg={innerWellBg}
+            borderColor={minimalInnerWellBorder}
+            wellBg={minimalInnerWellBg}
             variant="evaluation"
           />
         </View>
@@ -2058,19 +2062,19 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     paddingHorizontal: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderTopWidth: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 0,
   },
   minFooterBannerFlat: {
-    borderRadius: 8,
+    borderRadius: 0,
   },
   minItemCard: {
     marginHorizontal: 14,
     marginBottom: 12,
     paddingHorizontal: 18,
     paddingVertical: 16,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
   },
   minItemCardFlat: {
@@ -2197,7 +2201,7 @@ const styles = StyleSheet.create({
   },
   minItemInnerWell: {
     marginTop: 0,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 12,
     paddingVertical: 12,
