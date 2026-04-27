@@ -726,85 +726,50 @@ function minimalInnerBlockWebPrintKeepTogether(): ViewStyle {
   return {};
 }
 
-type FooterActionsProps = {
+type FooterInlineLinksProps = {
   mapUrl: string;
   meetingLink: string;
   openLink: (u: string) => void;
-  titleColor: string;
-  textColor: string;
-  mutedColor: string;
-  dividerColor: string;
+  linkColor: string;
+  pipeColor: string;
 };
 
-function AgendaFooterActions({
+function AgendaFooterInlineLinks({
   mapUrl,
   meetingLink,
   openLink,
-  titleColor,
-  textColor,
-  mutedColor,
-  dividerColor,
-}: FooterActionsProps) {
-  const actions = [
-    mapUrl
-      ? {
-          key: 'map',
-          icon: '📍',
-          title: 'Open in Maps',
-          subtitle: 'Get directions to the venue',
-          url: mapUrl,
-          a11y: 'Open map location',
-        }
-      : null,
-    meetingLink
-      ? {
-          key: 'online',
-          icon: '🔗',
-          title: 'Online : Link',
-          subtitle: 'Tap to join the online meeting',
-          url: meetingLink,
-          a11y: 'Open online meeting link',
-        }
-      : null,
-  ].filter(Boolean) as {
-    key: string;
-    icon: string;
-    title: string;
-    subtitle: string;
-    url: string;
-    a11y: string;
-  }[];
-
-  if (actions.length === 0) return null;
+  linkColor,
+  pipeColor,
+}: FooterInlineLinksProps) {
+  const hasMap = Boolean(mapUrl);
+  const hasOnline = Boolean(meetingLink);
+  if (!hasMap && !hasOnline) return null;
 
   return (
-    <View style={[styles.footerActionsWrap, { borderColor: dividerColor }]}>
-      {actions.map((action, idx) => (
+    <View style={styles.footerInlineLinksRow}>
+      {hasMap ? (
         <Pressable
-          key={action.key}
-          onPress={() => openLink(action.url)}
-          style={({ pressed }) => [
-            styles.footerActionTile,
-            idx > 0 ? [styles.footerActionTileSplit, { borderLeftColor: dividerColor }] : null,
-            { opacity: pressed ? 0.8 : 1 },
-          ]}
+          onPress={() => openLink(mapUrl)}
+          style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
           accessibilityRole="link"
-          accessibilityLabel={action.a11y}
+          accessibilityLabel="Open map location"
         >
-          <View style={[styles.footerActionIconDisc, { borderColor: dividerColor }]}>
-            <Text style={[styles.footerActionIcon, { color: textColor }]}>{action.icon}</Text>
-          </View>
-          <View style={styles.footerActionTextCol}>
-            <Text style={[styles.footerActionTitle, { color: titleColor }]} numberOfLines={1}>
-              {action.title}
-            </Text>
-            <Text style={[styles.footerActionSubtitle, { color: mutedColor }]} numberOfLines={1}>
-              {action.subtitle}
-            </Text>
-          </View>
-          <Text style={[styles.footerActionChevron, { color: textColor }]}>›</Text>
+          <Text style={[styles.footerInlineLinkText, { color: linkColor }]}>📍Location</Text>
         </Pressable>
-      ))}
+      ) : null}
+      {hasMap && hasOnline ? (
+        <Text style={[styles.footerInlinePipe, { color: pipeColor }]}>|</Text>
+      ) : null}
+      {hasOnline ? (
+        <Pressable
+          onPress={() => openLink(meetingLink)}
+          style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+          accessibilityRole="link"
+          accessibilityLabel="Open online meeting link"
+        >
+          <Text style={[styles.footerInlineLinkText, { color: linkColor }]}>🔗Online meeting link</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -1224,14 +1189,13 @@ function DefaultLayout({
           <Text style={[styles.defFooterTitle, { color: headerFooterText }]}>
             {club.club_name} - {new Date().getFullYear()}
           </Text>
-          <AgendaFooterActions
+          <View style={[styles.footerTopDivider, { backgroundColor: headerFooterDivider }]} />
+          <AgendaFooterInlineLinks
             mapUrl={mapUrl}
             meetingLink={meetingLink}
             openLink={openLink}
-            titleColor={headerFooterText}
-            textColor={headerFooterText}
-            mutedColor={headerFooterSoftText}
-            dividerColor={headerFooterDivider}
+            linkColor={headerFooterSoftText}
+            pipeColor={headerFooterSoftText}
           />
         </View>
       </ScrollView>
@@ -1446,14 +1410,13 @@ function MinimalLayout({
             <Text style={[styles.minFooter, { color: docInk.inkSoft }]} numberOfLines={1}>
               {minFooterLine}
             </Text>
-            <AgendaFooterActions
+            <View style={[styles.footerTopDivider, { backgroundColor: theme.colors.borderLight }]} />
+            <AgendaFooterInlineLinks
               mapUrl={mapUrl}
               meetingLink={meetingLink}
               openLink={openLink}
-              titleColor={docInk.ink}
-              textColor={docInk.ink}
-              mutedColor={docInk.inkMuted}
-              dividerColor={theme.colors.borderLight}
+              linkColor={docInk.inkMuted}
+              pipeColor={docInk.inkMuted}
             />
           </View>
         </View>
@@ -1545,14 +1508,13 @@ function VibrantLayout({
 
         <View style={[styles.vibFooterBlock, { backgroundColor: headerColor }]}>
           <Text style={styles.vibFooterTitle}>{club.club_name} - {new Date().getFullYear()}</Text>
-          <AgendaFooterActions
+          <View style={[styles.footerTopDivider, { backgroundColor: 'rgba(255,255,255,0.25)' }]} />
+          <AgendaFooterInlineLinks
             mapUrl={mapUrl}
             meetingLink={meetingLink}
             openLink={openLink}
-            titleColor="#f3f3f3"
-            textColor="#f3f3f3"
-            mutedColor="#d9d9d9"
-            dividerColor="rgba(255,255,255,0.25)"
+            linkColor="#d9d9d9"
+            pipeColor="#d9d9d9"
           />
         </View>
       </ScrollView>
@@ -1961,8 +1923,8 @@ const styles = StyleSheet.create({
   },
   defFooterTitle: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: 6,
-    lineHeight: 8,
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
     fontWeight: '600',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     textAlign: 'center',
@@ -2663,7 +2625,8 @@ const styles = StyleSheet.create({
   },
   minFooter: {
     textAlign: 'center',
-    fontSize: 6,
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
     marginTop: 0,
     paddingHorizontal: 24,
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
@@ -2886,8 +2849,8 @@ const styles = StyleSheet.create({
   vibFooterTitle: {
     color: '#f3f3f3',
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: 6,
-    lineHeight: 8,
+    fontSize: ms(IS_MOBILE ? 12.35 : 12.35),
+    lineHeight: IS_MOBILE ? 18 : 16,
     fontWeight: '600',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
     textAlign: 'center',
@@ -2904,63 +2867,32 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   vibFooter: { textAlign: 'center', fontSize: 12, marginTop: 8, paddingHorizontal: 16 },
-  footerActionsWrap: {
-    marginTop: 8,
+  footerTopDivider: {
+    height: StyleSheet.hairlineWidth,
     width: '100%',
-    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  footerInlineLinksRow: {
+    width: '100%',
     flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  footerActionTile: {
-    flex: 1,
-    minHeight: 48,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  footerActionTileSplit: {
-    borderLeftWidth: StyleSheet.hairlineWidth,
-  },
-  footerActionIconDisc: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+    flexWrap: 'wrap',
   },
-  footerActionIcon: {
-    fontSize: 6,
-    lineHeight: 7,
-  },
-  footerActionTextCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  footerActionTitle: {
+  footerInlineLinkText: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: 6,
-    lineHeight: 8,
-    fontWeight: '700',
+    fontSize: 13,
+    lineHeight: 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textDecorationLine: 'underline',
   },
-  footerActionSubtitle: {
-    marginTop: 2,
+  footerInlinePipe: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: 5.5,
-    lineHeight: 7,
-    fontWeight: '400',
+    fontSize: 13,
+    lineHeight: 17,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
-  },
-  footerActionChevron: {
-    fontSize: 10,
-    lineHeight: 10,
-    fontWeight: '700',
-    marginLeft: 4,
-    flexShrink: 0,
+    marginHorizontal: 0,
   },
   defBannerTopFlat: {
     borderBottomLeftRadius: 0,
