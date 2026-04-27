@@ -43,8 +43,15 @@ function resolveSupabaseAuthUrl(): string {
 
   if (directAuthEnv) return directAuthEnv;
   if (directAuthExtra) return directAuthExtra;
-  if (/\.supabase\.co$/i.test(new URL(base).host)) return base;
-  if (webOverride && /\.supabase\.co$/i.test(new URL(webOverride).host)) return webOverride;
+  const hostFrom = (value: string): string => {
+    try {
+      return new URL(value).host;
+    } catch {
+      return '';
+    }
+  };
+  if (/\.supabase\.co$/i.test(hostFrom(base))) return base;
+  if (webOverride && /\.supabase\.co$/i.test(hostFrom(webOverride))) return webOverride;
   return base;
 }
 

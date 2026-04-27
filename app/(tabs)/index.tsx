@@ -39,7 +39,6 @@ import {
   Trophy,
   Settings,
   Briefcase,
-  LayoutPanelLeft,
 } from 'lucide-react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import ClubSwitcher from '@/components/ClubSwitcher';
@@ -1533,14 +1532,6 @@ export default function MyJourney() {
     router.push(`/live-voting?meetingId=${currentOpenMeetingId}`);
   }, [currentOpenMeetingId, user?.currentClubId]);
 
-  const handleLiveAgendaDashboardPress = useCallback(() => {
-    if (!currentOpenMeetingId) {
-      Alert.alert('No open meeting', 'There is no current open meeting for the live dashboard.');
-      return;
-    }
-    router.push(`/live-agenda-dashboard?meetingId=${currentOpenMeetingId}`);
-  }, [currentOpenMeetingId]);
-
   useEffect(() => {
     if (!allowBackgroundPrefetch) return;
     if (!currentOpenMeetingId) return;
@@ -2255,33 +2246,6 @@ export default function MyJourney() {
                   ) : (
                     <ChevronRight size={20} color={theme.colors.textSecondary} />
                   )}
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.liveVotingHeroCard, { backgroundColor: N.surface, borderColor: N.border }]}
-                onPress={handleLiveAgendaDashboardPress}
-                activeOpacity={0.85}
-              >
-                <View style={styles.liveVotingHeroContent}>
-                  <View style={[styles.liveVotingHeroIconWrap, { backgroundColor: '#E0E7FF' }]}>
-                    <LayoutPanelLeft size={18} color="#4338CA" />
-                  </View>
-                  <View style={styles.liveVotingHeroTextWrap}>
-                    <View style={styles.liveVotingHeroTitleRow}>
-                      <Text style={[styles.liveVotingHeroTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        Live dashboard
-                      </Text>
-                    </View>
-                    <Text
-                      style={[styles.liveVotingHeroSubtitle, { color: theme.colors.textSecondary, marginTop: 2 }]}
-                      maxFontSizeMultiplier={1.3}
-                      numberOfLines={2}
-                    >
-                      Toastmaster agenda — tap a role to see who is assigned
-                    </Text>
-                  </View>
-                  <ChevronRight size={20} color={theme.colors.textSecondary} />
                 </View>
               </TouchableOpacity>
 
