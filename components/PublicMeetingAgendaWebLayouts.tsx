@@ -750,11 +750,12 @@ function AgendaFooterInlineLinks({
       {hasMap ? (
         <Pressable
           onPress={() => openLink(mapUrl)}
-          style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+          style={({ pressed }) => [styles.footerInlineItem, { opacity: pressed ? 0.8 : 1 }]}
           accessibilityRole="link"
           accessibilityLabel="Open map location"
         >
-          <Text style={[styles.footerInlineLinkText, { color: linkColor }]}>📍Location</Text>
+          <Text style={[styles.footerInlineTitle, { color: linkColor }]}>📍 Open in Maps</Text>
+          <Text style={[styles.footerInlineSubtitle, { color: linkColor }]}>Get directions to the venue</Text>
         </Pressable>
       ) : null}
       {hasMap && hasOnline ? (
@@ -763,11 +764,12 @@ function AgendaFooterInlineLinks({
       {hasOnline ? (
         <Pressable
           onPress={() => openLink(meetingLink)}
-          style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+          style={({ pressed }) => [styles.footerInlineItem, { opacity: pressed ? 0.8 : 1 }]}
           accessibilityRole="link"
           accessibilityLabel="Open online meeting link"
         >
-          <Text style={[styles.footerInlineLinkText, { color: linkColor }]}>🔗Online meeting link</Text>
+          <Text style={[styles.footerInlineTitle, { color: linkColor }]}>🔗 Online : Link</Text>
+          <Text style={[styles.footerInlineSubtitle, { color: linkColor }]}>Tap to join the online meeting</Text>
         </Pressable>
       ) : null}
     </View>
@@ -2876,23 +2878,38 @@ const styles = StyleSheet.create({
   footerInlineLinksRow: {
     width: '100%',
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
   },
-  footerInlineLinkText: {
+  footerInlineItem: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+  },
+  footerInlineTitle: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
     fontSize: 13,
     lineHeight: 17,
+    fontWeight: '600',
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
-    textDecorationLine: 'underline',
+    textAlign: 'center',
+  },
+  footerInlineSubtitle: {
+    marginTop: 3,
+    fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
+    fontSize: 10,
+    lineHeight: 13,
+    letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
+    textAlign: 'center',
   },
   footerInlinePipe: {
     fontFamily: MINIMAL_AGENDA_FONT_FAMILY,
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 14,
+    lineHeight: 18,
     letterSpacing: MINIMAL_AGENDA_BODY_TRACKING,
-    marginHorizontal: 0,
+    marginHorizontal: 16,
+    marginTop: 6,
   },
   defBannerTopFlat: {
     borderBottomLeftRadius: 0,
