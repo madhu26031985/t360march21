@@ -1405,7 +1405,7 @@ function MinimalLayout({
               styles.minFooterBanner,
               {
                 backgroundColor: theme.colors.background,
-                borderTopColor: theme.colors.borderLight,
+                borderColor: theme.colors.borderLight,
               },
               styles.minFooterBannerFlat,
             ]}
@@ -2050,15 +2050,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   minFooterBanner: {
-    width: '100%',
+    width: 'auto',
+    alignSelf: 'stretch',
+    marginHorizontal: 14,
+    marginBottom: 12,
     paddingTop: 14,
     paddingBottom: 16,
-    paddingHorizontal: 6,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 0,
     alignItems: 'center',
+    borderRadius: 8,
   },
   minFooterBannerFlat: {
-    borderRadius: 0,
+    borderRadius: 8,
   },
   minItemCard: {
     marginHorizontal: 14,
