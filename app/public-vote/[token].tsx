@@ -308,14 +308,14 @@ export default function PublicVoteScreen() {
             </Text>
           ) : null}
           <Text style={[styles.pollMeta, { color: N.textTertiary }]} maxFontSizeMultiplier={1.2}>
-            {hasVoted ? 'Anonymous vote received' : isOpen ? 'Anonymous voting is open' : 'This poll is closed'}
+            {hasVoted ? 'Vote received' : isOpen ? 'Voting is open' : 'This poll is closed'}
           </Text>
         </View>
 
         {hasVoted ? (
           renderEmptyState(
             'Thanks for voting',
-            'This browser/device session has already submitted an anonymous response for this poll.'
+            'This browser/device session has already submitted a response for this poll.'
           )
         ) : !isOpen ? (
           renderEmptyState('Poll closed', 'This public voting link is no longer accepting responses.')
@@ -388,7 +388,7 @@ export default function PublicVoteScreen() {
               disabled={!allAnswered || disabled}
             >
               <Text style={styles.submitButtonText} maxFontSizeMultiplier={1.3}>
-                {isSubmitting ? 'Submitting...' : 'Submit vote'}
+                {isSubmitting ? 'Submitting...' : 'Submit Vote'}
               </Text>
             </TouchableOpacity>
           </>

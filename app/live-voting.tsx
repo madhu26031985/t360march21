@@ -571,7 +571,7 @@ export default function LiveVoting() {
                 {isVoting
                   ? 'Submitting…'
                   : allQuestionsAnswered()
-                    ? 'Submit votes'
+                    ? 'Submit Vote'
                     : `${userVotes.length} of ${getAllQuestionIds().size} answered`}
               </Text>
             </TouchableOpacity>
