@@ -3,7 +3,12 @@ const { withAppBuildGradle } = require('@expo/config-plugins');
 const SNIPPET = `
 afterEvaluate {
     tasks.matching { it.name == "createBundleReleaseJsAndAssets" }.configureEach {
-        dependsOn("compileReleaseAidl", "generateReleaseBuildConfig", "javaPreCompileRelease")
+        ["compileReleaseAidl", "generateReleaseBuildConfig", "javaPreCompileRelease"].each { depName ->
+            def depTask = tasks.findByName(depName)
+            if (depTask != null) {
+                dependsOn(depTask)
+            }
+        }
     }
 }
 `;

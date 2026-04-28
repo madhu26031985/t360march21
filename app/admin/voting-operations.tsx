@@ -723,7 +723,13 @@ export default function VotingOperations() {
           clubDisplayName: clubInfo?.name,
         })
       );
-      Alert.alert('Public link copied', 'Share it with guests. The link stops accepting votes as soon as the poll is closed.');
+      const title = 'Link copied';
+      const message = 'Voting link copied successfully.';
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(`${title}\n\n${message}`);
+      } else {
+        Alert.alert(title, message);
+      }
     } catch (error) {
       console.error('Error copying public poll link:', error);
       Alert.alert('Copy failed', 'Unable to copy the public voting link right now.');
@@ -742,11 +748,11 @@ export default function VotingOperations() {
       clubDisplayName: clubInfo?.name,
     });
     const clubName = clubInfo?.name?.trim() || 'our club';
-    const message = `Vote anonymously for "${poll.title}" on T360.\n\n${clubName}\n${url}`;
+    const message = `Vote for "${poll.title}" on T360.\n\n${clubName}\n${url}`;
 
     try {
       await Share.share({
-        title: `${poll.title} - Public voting`,
+        title: `Vote for ${poll.title}`,
         message,
         url,
       });

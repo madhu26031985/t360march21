@@ -262,6 +262,13 @@ export default function LiveVoting() {
       
       // Clear local votes
       setUserVotes([]);
+      const title = 'Vote submitted';
+      const message = 'Your vote has been submitted successfully.';
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(`${title}\n\n${message}`);
+      } else {
+        Alert.alert(title, message);
+      }
     } catch (error) {
       console.error('Error submitting votes:', error);
       Alert.alert('Error', 'Failed to submit votes. Please try again.');

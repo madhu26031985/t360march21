@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -218,7 +219,13 @@ export default function PublicVoteScreen() {
       }
 
       setHasVoted(true);
-      Alert.alert('Vote submitted', 'Thanks for participating.');
+      const title = 'Vote submitted';
+      const message = 'Your vote has been submitted successfully.';
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(`${title}\n\n${message}`);
+      } else {
+        Alert.alert(title, message);
+      }
     } catch (e) {
       console.error('Error submitting public votes:', e);
       Alert.alert('Unable to submit', 'Please try again.');
@@ -381,7 +388,7 @@ export default function PublicVoteScreen() {
               disabled={!allAnswered || disabled}
             >
               <Text style={styles.submitButtonText} maxFontSizeMultiplier={1.3}>
-                {isSubmitting ? 'Submitting...' : 'Submit anonymous vote'}
+                {isSubmitting ? 'Submitting...' : 'Submit vote'}
               </Text>
             </TouchableOpacity>
           </>
