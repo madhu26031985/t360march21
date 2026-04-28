@@ -1441,48 +1441,119 @@ export function MeetingAgendaViewContent({
                     : [];
                   return speechEvalSpeakers.length > 0 && (
                   <>
-                  <View style={[styles.agendaItemDivider, { backgroundColor: theme.colors.border }]} />
-                  {speechEvalSpeakers.map((speaker, idx) => (
-                    <View key={speaker.id}>
-                    {idx > 0 && <View style={[styles.agendaItemDivider, { backgroundColor: theme.colors.border, marginVertical: 6 }]} />}
-                    <View style={styles.themeSection}>
-                      <View style={styles.themeSectionHeader}>
-                        <Text style={styles.themeIcon} maxFontSizeMultiplier={1.3}>📋</Text>
-                        <Text style={[styles.themeSectionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                          Speech Title
-                        </Text>
-                      </View>
-                      <View style={[styles.themeBox, {
-                        backgroundColor: theme.dark ? AGENDA_HERO_TILE.bgDark : AGENDA_HERO_TILE.bgLight
-                      }]}>
-                        <Text style={[styles.themeText, {
-                          color: theme.dark ? AGENDA_HERO_TILE.textDark : AGENDA_HERO_TILE.textLight
-                        }]} maxFontSizeMultiplier={1.3}>
-                          {(speaker.speech_title || '').trim() || 'TBA'}
-                        </Text>
-                      </View>
-                      <View style={styles.speechEvalMetaRow}>
+                  <View style={styles.preparedSpeakersContainer}>
+                  {speechEvalSpeakers.map((speaker) => (
+                    <View
+                      key={speaker.id}
+                      style={[styles.newSpeakerCard, {
+                        backgroundColor: '#ffffff',
+                        shadowColor: theme.dark ? 'transparent' : '#000',
+                      }]}
+                    >
+                      <View style={styles.newSpeakerEvaluatorRow}>
                         <TouchableOpacity
-                          style={styles.speechEvalMetaItem}
-                          onPress={() => speaker.speaker_id && router.push(`/member-profile?memberId=${speaker.speaker_id}`)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.speechEvalMetaLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Speaker</Text>
-                          <Text style={[styles.speechEvalMetaValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{speaker.speaker_name}</Text>
-                        </TouchableOpacity>
-                        <View style={[styles.speechEvalMetaDivider, { backgroundColor: theme.colors.border }]} />
-                        <TouchableOpacity
-                          style={styles.speechEvalMetaItem}
+                          style={[styles.newSpeakerSection, styles.newSpeakerEvaluatorHalf]}
                           onPress={() => speaker.evaluator_id && router.push(`/member-profile?memberId=${speaker.evaluator_id}`)}
                           activeOpacity={0.7}
                         >
-                          <Text style={[styles.speechEvalMetaLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Evaluator</Text>
-                          <Text style={[styles.speechEvalMetaValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{speaker.evaluator_name || 'TBA'}</Text>
+                          {speaker.evaluator_name ? (
+                            <>
+                              <AgendaRoleAvatar
+                                uri={speaker.evaluator_avatar}
+                                name={speaker.evaluator_name}
+                                imageStyle={styles.newEvaluatorAvatar}
+                                placeholderStyle={[styles.newEvaluatorAvatarPlaceholder, { backgroundColor: '#C7D2FE' }]}
+                                textStyle={[styles.newEvaluatorAvatarText, { color: '#4F46E5' }]}
+                              />
+                              <View style={styles.newEvaluatorTextContainer}>
+                                <Text style={styles.newEvaluatorName} maxFontSizeMultiplier={1.3}>{speaker.evaluator_name}</Text>
+                                <Text style={styles.newEvaluatorLabel} maxFontSizeMultiplier={1.3}>Evaluator</Text>
+                              </View>
+                            </>
+                          ) : (
+                            <View style={styles.newEvaluatorTextContainer}>
+                              <Text style={[styles.newEvaluatorName, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>TBA</Text>
+                              <Text style={styles.newEvaluatorLabel} maxFontSizeMultiplier={1.3}>Evaluator</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                        <View style={[styles.newSpeakerEvaluatorDivider, { backgroundColor: theme.colors.border }]} />
+                        <TouchableOpacity
+                          style={[styles.newEvaluatorContent, styles.newSpeakerEvaluatorHalf]}
+                          onPress={() => speaker.speaker_id && router.push(`/member-profile?memberId=${speaker.speaker_id}`)}
+                          activeOpacity={0.7}
+                        >
+                          <AgendaRoleAvatar
+                            uri={speaker.speaker_avatar}
+                            name={speaker.speaker_name}
+                            imageStyle={styles.newSpeakerAvatar}
+                            placeholderStyle={[styles.newSpeakerAvatarPlaceholder, { backgroundColor: '#C7D2FE' }]}
+                            textStyle={[styles.newSpeakerAvatarText, { color: '#4F46E5' }]}
+                          />
+                          <View style={styles.newSpeakerTextContainer}>
+                            <Text style={styles.newSpeakerName} maxFontSizeMultiplier={1.3}>{speaker.speaker_name}</Text>
+                            <Text style={styles.newSpeakerLabel} maxFontSizeMultiplier={1.3}>Speaker</Text>
+                          </View>
                         </TouchableOpacity>
                       </View>
-                    </View>
+
+                      <View style={[styles.newDivider, { marginVertical: 4 }]} />
+                      <View style={styles.newSpeechDetailsSection}>
+                        {speaker.speech_title && (
+                          <View style={styles.newDetailRow}>
+                            <FileText size={14} color={SPEECH_DETAIL_ORANGE} />
+                            <Text style={styles.newDetailText} maxFontSizeMultiplier={1.3}>
+                              <Text style={styles.newSpeechTitleLabel}>Title : </Text>
+                              <Text style={styles.newSpeechTitleInline}>{speaker.speech_title}</Text>
+                            </Text>
+                          </View>
+                        )}
+                        {speaker.pathway_name && (
+                          <View style={styles.newDetailRow}>
+                            <Compass size={14} color={SPEECH_DETAIL_ORANGE} />
+                            <Text style={styles.newDetailText} maxFontSizeMultiplier={1.3}>Pathway: {speaker.pathway_name}</Text>
+                          </View>
+                        )}
+                        {speaker.project_title && (
+                          <View style={styles.newDetailRow}>
+                            <FileText size={14} color={SPEECH_DETAIL_ORANGE} />
+                            <Text style={styles.newDetailText} maxFontSizeMultiplier={1.3}>Project: {speaker.project_title}</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {speaker.pathway_level && (
+                        <View style={styles.newStatusContainer}>
+                          <View style={styles.newStatusItem}>
+                            <CheckCircle2 size={14} color={SPEECH_DETAIL_ORANGE} fill={SPEECH_DETAIL_ORANGE} />
+                            <Text style={styles.newStatusText} maxFontSizeMultiplier={1.3}>Level {speaker.pathway_level}</Text>
+                          </View>
+                          {speaker.project_number && (
+                            <View style={styles.newStatusItem}>
+                              <CheckCircle2 size={14} color={SPEECH_DETAIL_ORANGE} fill={SPEECH_DETAIL_ORANGE} />
+                              <Text style={styles.newStatusText} maxFontSizeMultiplier={1.3}>Project {speaker.project_number}</Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      {(speaker.pathway_name || speaker.project_title) && speaker.evaluation_form && (
+                        <TouchableOpacity
+                          style={[styles.evaluationFormButton, { backgroundColor: theme.colors.primary }]}
+                          onPress={() => {
+                            handleViewEvaluationForm(speaker.evaluation_form!);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <FileText size={14} color="#FFFFFF" />
+                          <Text style={styles.evaluationFormButtonText} maxFontSizeMultiplier={1.3}>
+                            Open - Evaluation Form
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ))}
+                  </View>
                   </>
                   );
                 })()}
@@ -1599,7 +1670,7 @@ export function MeetingAgendaViewContent({
                           >
                             <FileText size={14} color="#FFFFFF" />
                             <Text style={styles.evaluationFormButtonText} maxFontSizeMultiplier={1.3}>
-                              Evaluation Form - Open
+                              Open - Evaluation Form
                             </Text>
                           </TouchableOpacity>
                         )}
@@ -1744,7 +1815,7 @@ export function MeetingAgendaViewContent({
                           >
                             <FileText size={14} color="#FFFFFF" />
                             <Text style={styles.evaluationFormButtonText} maxFontSizeMultiplier={1.3}>
-                              Evaluation Form - Open
+                              Open - Evaluation Form
                             </Text>
                           </TouchableOpacity>
                         )}
