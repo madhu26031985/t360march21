@@ -16,11 +16,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
-import { ArrowLeft, Plus, Vote, Calendar, Users, X, Save, Trash2, ChartBar as BarChart3, Building2, Crown, User, Shield, Eye, UserCheck, Search, Sparkles } from 'lucide-react-native';
+import { buildPublicVoteUrl } from '@/lib/publicVoteLinks';
+import { ArrowLeft, Plus, Vote, Calendar, Users, X, Save, Trash2, ChartBar as BarChart3, Building2, Crown, User, Shield, Eye, UserCheck, Search, Sparkles, Link as LinkIcon } from 'lucide-react-native';
 
 /** Notion-like palette: flat surfaces, hairline borders, muted text, accent blue (aligned with Book a Role primary chips). */
 const N = {
@@ -72,6 +74,8 @@ interface Poll {
   status: string;
   created_at: string;
   end_time: string | null;
+  public_token?: string | null;
+  is_public?: boolean;
 }
 
 interface PollQuestion {
@@ -226,7 +230,7 @@ export default function VotingOperations() {
     try {
       const { data, error } = await supabase
         .from('polls')
-        .select('id, title, description, status, created_at, end_time')
+        .select('id, title, description, status, created_at, end_time, public_token, is_public')
         .eq('club_id', user.currentClubId)
         .order('created_at', { ascending: false });
 
@@ -638,6 +642,9 @@ export default function VotingOperations() {
           club_id: user.currentClubId,
           created_by: user.id,
           status: 'published',
+          is_public: true,
+          is_anonymous: true,
+          allow_multiple_votes: false,
         } as any)
         .select()
         .single();
@@ -699,6 +706,27 @@ export default function VotingOperations() {
 
   const handleClosePollClick = (poll: Poll) => {
     setClosePollConfirm(poll);
+  };
+
+  const handleCopyPublicLink = async (poll: Poll) => {
+    if (!poll.public_token || poll.is_public === false) {
+      Alert.alert('Link unavailable', 'This poll does not have a public voting link yet.');
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(
+        buildPublicVoteUrl({
+          token: poll.public_token,
+          clubId: clubInfo?.id || user?.currentClubId,
+          clubDisplayName: clubInfo?.name,
+        })
+      );
+      Alert.alert('Public link copied', 'Share it with guests. The link stops accepting votes as soon as the poll is closed.');
+    } catch (error) {
+      console.error('Error copying public poll link:', error);
+      Alert.alert('Copy failed', 'Unable to copy the public voting link right now.');
+    }
   };
 
   const confirmClosePoll = async () => {
@@ -824,13 +852,22 @@ export default function VotingOperations() {
           </TouchableOpacity>
         )}
         {poll.status === 'published' && (
-          <TouchableOpacity
-            style={[styles.closePollsButton, { backgroundColor: N.page, borderColor: N.borderStrong }]}
-            onPress={() => handleClosePollClick(poll)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.closePollsButtonText, { color: N.textSecondary }]}>Close</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: N.accentSoft, borderWidth: 1, borderColor: N.accentSoftBorder }]}
+              onPress={() => handleCopyPublicLink(poll)}
+              activeOpacity={0.7}
+            >
+              <LinkIcon size={14} color={N.accent} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.closePollsButton, { backgroundColor: N.page, borderColor: N.borderStrong }]}
+              onPress={() => handleClosePollClick(poll)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.closePollsButtonText, { color: N.textSecondary }]}>Close</Text>
+            </TouchableOpacity>
+          </>
         )}
       </View>
     </View>
@@ -1275,7 +1312,7 @@ export default function VotingOperations() {
               Close Poll
             </Text>
             <Text style={[styles.closePollModalMessage, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Are you sure you want to close "{closePollConfirm?.title}"? This will stop accepting new votes.
+              Are you sure you want to close &quot;{closePollConfirm?.title}&quot;? This will stop accepting new votes.
             </Text>
             <View style={styles.closePollModalButtons}>
               <TouchableOpacity

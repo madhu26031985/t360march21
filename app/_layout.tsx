@@ -55,6 +55,8 @@ function AppContent() {
         <Stack.Screen name="timer-role-assign" options={{ headerShown: false }} />
         <Stack.Screen name="grammarian-wotd-member-pick" options={{ headerShown: false }} />
         <Stack.Screen name="[clubId]/agenda/[meetingNo]/[meetingId]" options={{ headerShown: false }} />
+        <Stack.Screen name="[clubId]/public-vote/[token]" options={{ headerShown: false }} />
+        <Stack.Screen name="public-vote/[token]" options={{ headerShown: false }} />
         <Stack.Screen name="[clubId]/a/[meetingId]" options={{ headerShown: false }} />
         <Stack.Screen name="a/[meetingId]" options={{ headerShown: false }} />
         <Stack.Screen name="version-debug" options={{ headerShown: false }} />
