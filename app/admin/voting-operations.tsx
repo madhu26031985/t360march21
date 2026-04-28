@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
   InteractionManager,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
@@ -22,7 +23,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { buildPublicVoteUrl } from '@/lib/publicVoteLinks';
-import { ArrowLeft, Plus, Vote, Calendar, Users, X, Save, Trash2, ChartBar as BarChart3, Building2, Crown, User, Shield, Eye, UserCheck, Search, Sparkles, Link as LinkIcon } from 'lucide-react-native';
+import { ArrowLeft, Plus, Vote, Calendar, Users, X, Save, Trash2, ChartBar as BarChart3, Building2, Crown, User, Shield, Eye, UserCheck, Search, Sparkles, Link as LinkIcon, Share2 } from 'lucide-react-native';
 
 /** Notion-like palette: flat surfaces, hairline borders, muted text, accent blue (aligned with Book a Role primary chips). */
 const N = {
@@ -729,6 +730,32 @@ export default function VotingOperations() {
     }
   };
 
+  const handleSharePublicLink = async (poll: Poll) => {
+    if (!poll.public_token || poll.is_public === false) {
+      Alert.alert('Link unavailable', 'This poll does not have a public voting link yet.');
+      return;
+    }
+
+    const url = buildPublicVoteUrl({
+      token: poll.public_token,
+      clubId: clubInfo?.id || user?.currentClubId,
+      clubDisplayName: clubInfo?.name,
+    });
+    const clubName = clubInfo?.name?.trim() || 'our club';
+    const message = `Vote anonymously for "${poll.title}" on T360.\n\n${clubName}\n${url}`;
+
+    try {
+      await Share.share({
+        title: `${poll.title} - Public voting`,
+        message,
+        url,
+      });
+    } catch (error) {
+      console.error('Error sharing public poll link:', error);
+      Alert.alert('Share failed', 'Unable to open the share options right now.');
+    }
+  };
+
   const confirmClosePoll = async () => {
     const poll = closePollConfirm;
     if (!poll) return;
@@ -859,6 +886,13 @@ export default function VotingOperations() {
               activeOpacity={0.7}
             >
               <LinkIcon size={14} color={N.accent} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: N.accentSoft, borderWidth: 1, borderColor: N.accentSoftBorder }]}
+              onPress={() => handleSharePublicLink(poll)}
+              activeOpacity={0.7}
+            >
+              <Share2 size={14} color={N.accent} strokeWidth={2} />
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.closePollsButton, { backgroundColor: N.page, borderColor: N.borderStrong }]}
