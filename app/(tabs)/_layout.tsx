@@ -46,21 +46,35 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
     const meta = TAB_META[routeName];
     if (!meta) return null;
     const isFocused = focusedRoute === routeName;
-    const { Icon, color, label } = meta;
+    const { Icon, label } = meta;
+    const inactiveColor = theme.colors.textSecondary;
+    const activeColor = '#004165';
     return (
       <TouchableOpacity
         key={routeName}
-        style={styles.footerNavItem}
+        style={[
+          styles.footerNavItem,
+          isFocused && { backgroundColor: `${theme.colors.primary}18` },
+        ]}
         onPress={() => navigation.navigate(routeName as 'index' | 'club' | 'meetings' | 'admin' | 'settings')}
         activeOpacity={0.75}
       >
-        <View style={[styles.footerNavIcon, { opacity: isFocused ? 1 : 0.5 }]}>
-          <Icon size={FOOTER_NAV_ICON_SIZE} color={color} />
+        <View
+          style={[
+            styles.footerNavIcon,
+            {
+              opacity: isFocused ? 1 : 0.55,
+              backgroundColor: isFocused ? `${theme.colors.primary}22` : 'transparent',
+            },
+          ]}
+        >
+          <Icon size={FOOTER_NAV_ICON_SIZE} color={isFocused ? activeColor : inactiveColor} />
         </View>
         <Text
           style={[
             styles.footerNavLabel,
-            { color: isFocused ? theme.colors.primary : theme.colors.textSecondary },
+            { color: isFocused ? activeColor : inactiveColor },
+            isFocused && styles.footerNavLabelActive,
           ]}
           maxFontSizeMultiplier={1.3}
           numberOfLines={1}
@@ -171,6 +185,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 10,
     paddingVertical: 2,
     paddingHorizontal: 2,
   },
@@ -186,5 +201,8 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  footerNavLabelActive: {
+    fontWeight: '700',
   },
 });
