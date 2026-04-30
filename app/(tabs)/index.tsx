@@ -1262,7 +1262,10 @@ export default function MyJourney() {
       });
     }
 
-    if (isVPEForCurrentClub && !isOpenMeetingLiveNow) {
+    const openMeetingsCount = Math.max(journeyHomeSnapshot?.open_meetings_count ?? 0, 0);
+
+    // Hide Smart Daily Insights on Home when there is no open meeting.
+    if (isVPEForCurrentClub && !isOpenMeetingLiveNow && openMeetingsCount > 0) {
       const smart = computeVpeSmartDailyHomeReminder(vpeNudgesSnapshot ?? undefined);
       if (smart) {
         out.push({
@@ -1271,15 +1274,10 @@ export default function MyJourney() {
         });
       }
     }
-
-    const openMeetingsCount = Math.max(
-      journeyHomeSnapshot?.open_meetings_count ?? 0,
-      currentOpenMeetingId ? 1 : 0
-    );
     if (isVPEForCurrentClub && !isOpenMeetingLiveNow) {
       const bucket = Math.min(openMeetingsCount, 3) as 0 | 1 | 2 | 3;
       const vpeTexts: Record<0 | 1 | 2 | 3, string> = {
-        0: `Hi ${name}, it's time to get started! 🚀\nLet's kick things off by creating your first meeting.`,
+        0: 'Create a New Meeting.',
         1: '💡 Smart tip: Open 2 more meetings to stay ahead.',
         2: `Hi ${name}, you're doing great! 🎯\nYou already have 2 meetings open — would you like to add the third?`,
         3: `Hi ${name}, excellent planning! 🌟\nMembers can see several dates — keep filling the pipeline when you can.`,
