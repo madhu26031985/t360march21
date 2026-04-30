@@ -1263,9 +1263,11 @@ export default function MyJourney() {
     }
 
     const openMeetingsCount = Math.max(journeyHomeSnapshot?.open_meetings_count ?? 0, 0);
+    // Home "My Tasks" should reflect currently open meeting availability, not just pipeline count.
+    const effectiveOpenMeetingsCount = currentOpenMeetingId ? Math.max(openMeetingsCount, 1) : 0;
 
     // Hide Smart Daily Insights on Home when there is no open meeting.
-    if (isVPEForCurrentClub && !isOpenMeetingLiveNow && openMeetingsCount > 0) {
+    if (isVPEForCurrentClub && !isOpenMeetingLiveNow && effectiveOpenMeetingsCount > 0) {
       const smart = computeVpeSmartDailyHomeReminder(vpeNudgesSnapshot ?? undefined);
       if (smart) {
         out.push({
@@ -1275,7 +1277,7 @@ export default function MyJourney() {
       }
     }
     if (isVPEForCurrentClub && !isOpenMeetingLiveNow) {
-      const bucket = Math.min(openMeetingsCount, 3) as 0 | 1 | 2 | 3;
+      const bucket = Math.min(effectiveOpenMeetingsCount, 3) as 0 | 1 | 2 | 3;
       const vpeTexts: Record<0 | 1 | 2 | 3, string> = {
         0: 'Create a New Meeting.',
         1: '💡 Smart tip: Open 2 more meetings to stay ahead.',

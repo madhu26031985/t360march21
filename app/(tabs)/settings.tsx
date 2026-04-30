@@ -569,7 +569,7 @@ Welcome to a seamless digital experience! 🚀`;
               We Salute Toastmasters
             </Text>
             <Text style={[styles.footerSubtext, { color: N.textTertiary }]} maxFontSizeMultiplier={1.3}>
-              {`Version ${Constants.expoConfig?.version ?? '88'}`}
+              {`Version ${Constants.expoConfig?.version ?? '92'}`}
             </Text>
           </View>
         </ScrollView>
