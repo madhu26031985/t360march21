@@ -47,24 +47,22 @@ function MeetingStyleTabBar({ state, navigation }: BottomTabBarProps) {
     if (!meta) return null;
     const isFocused = focusedRoute === routeName;
     const { Icon, label } = meta;
-    const inactiveColor = theme.colors.textSecondary;
-    const activeColor = '#004165';
+    const inactiveColor = '#9CA3AF';
+    const activeColor = '#003B73';
     return (
       <TouchableOpacity
         key={routeName}
-        style={[
-          styles.footerNavItem,
-          isFocused && { backgroundColor: `${theme.colors.primary}18` },
-        ]}
+        style={styles.footerNavItem}
         onPress={() => navigation.navigate(routeName as 'index' | 'club' | 'meetings' | 'admin' | 'settings')}
         activeOpacity={0.75}
+        focusable={false}
       >
         <View
           style={[
             styles.footerNavIcon,
             {
               opacity: isFocused ? 1 : 0.55,
-              backgroundColor: isFocused ? `${theme.colors.primary}22` : 'transparent',
+              backgroundColor: 'transparent',
             },
           ]}
         >
@@ -186,8 +184,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
+    borderWidth: 0,
     paddingVertical: 2,
     paddingHorizontal: 2,
+    outlineWidth: 0,
+    outlineStyle: 'none',
   },
   footerNavIcon: {
     width: 30,
@@ -199,7 +200,7 @@ const styles = StyleSheet.create({
   },
   footerNavLabel: {
     fontSize: 9,
-    fontWeight: '500',
+    fontWeight: '600',
     textAlign: 'center',
   },
   footerNavLabelActive: {

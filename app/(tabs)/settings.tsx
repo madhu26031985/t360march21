@@ -19,7 +19,6 @@ import {
   Trash2,
   MessageCircle,
   Share2,
-  DollarSign,
   Video,
   Calendar,
   AlertTriangle,
@@ -260,10 +259,6 @@ Welcome to a seamless digital experience! 🚀`;
     }
   };
 
-  const handleBuyUsACoffee = () => {
-    router.push('/buy-us-a-coffee');
-  };
-
   const handleDeleteAccount = async () => {
     if (deleteConfirmation !== 'DELETE') {
       showAlert('Error', 'Please type DELETE to confirm');
@@ -436,13 +431,6 @@ Welcome to a seamless digital experience! 🚀`;
               Support
             </Text>
             <View style={[styles.notionGroup, { borderColor: N.border }]}>
-              <SettingItem
-                icon={themedIcon(DollarSign, '#92400E')}
-                iconBackgroundColor="#FEF3C7"
-                title="Buy a coffee!"
-                description="Proudly built for the community."
-                onPress={handleBuyUsACoffee}
-              />
               <SettingItem
                 icon={themedIcon(Share2, '#16A34A')}
                 iconBackgroundColor="#F0FDF4"
