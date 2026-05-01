@@ -17,13 +17,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { buildPublicVoteUrl } from '@/lib/publicVoteLinks';
-import { ArrowLeft, Plus, Vote, Calendar, Users, X, Save, Trash2, ChartBar as BarChart3, Building2, Crown, User, Shield, Eye, UserCheck, Search, Sparkles, Link as LinkIcon, Share2 } from 'lucide-react-native';
+import { ArrowLeft, Plus, Vote, Calendar, Users, X, Save, Trash2, ChartBar as BarChart3, Building2, Crown, User, Shield, Eye, UserCheck, Search, Sparkles, Share2 } from 'lucide-react-native';
 
 /** Notion-like palette: flat surfaces, hairline borders, muted text, accent blue (aligned with Book a Role primary chips). */
 const N = {
@@ -709,33 +708,6 @@ export default function VotingOperations() {
     setClosePollConfirm(poll);
   };
 
-  const handleCopyPublicLink = async (poll: Poll) => {
-    if (!poll.public_token || poll.is_public === false) {
-      Alert.alert('Link unavailable', 'This poll does not have a public voting link yet.');
-      return;
-    }
-
-    try {
-      await Clipboard.setStringAsync(
-        buildPublicVoteUrl({
-          token: poll.public_token,
-          clubId: clubInfo?.id || user?.currentClubId,
-          clubDisplayName: clubInfo?.name,
-        })
-      );
-      const title = 'Link copied';
-      const message = 'Voting link copied successfully.';
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
-        window.alert(`${title}\n\n${message}`);
-      } else {
-        Alert.alert(title, message);
-      }
-    } catch (error) {
-      console.error('Error copying public poll link:', error);
-      Alert.alert('Copy failed', 'Unable to copy the public voting link right now.');
-    }
-  };
-
   const handleSharePublicLink = async (poll: Poll) => {
     if (!poll.public_token || poll.is_public === false) {
       Alert.alert('Link unavailable', 'This poll does not have a public voting link yet.');
@@ -886,13 +858,6 @@ export default function VotingOperations() {
         )}
         {poll.status === 'published' && (
           <>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: N.accentSoft, borderWidth: 1, borderColor: N.accentSoftBorder }]}
-              onPress={() => handleCopyPublicLink(poll)}
-              activeOpacity={0.7}
-            >
-              <LinkIcon size={14} color={N.accent} strokeWidth={2} />
-            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: N.accentSoft, borderWidth: 1, borderColor: N.accentSoftBorder }]}
               onPress={() => handleSharePublicLink(poll)}
