@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, Share, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, Share, Platform, KeyboardAvoidingView, Switch } from 'react-native';
 import { Linking } from 'react-native';
 import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -44,6 +44,7 @@ const N = {
 /** User asked to keep sign-out and delete styling; keep these as-is. */
 const SIGN_OUT_BLUE = '#3b82f6';
 const DELETE_RED = '#ef4444';
+const WIDGET_PREF_KEY = 'settings_home_widget_enabled';
 
 interface SettingItemProps {
   icon: React.ReactNode;
@@ -124,6 +125,7 @@ export default function Settings() {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isWidgetEnabled, setIsWidgetEnabled] = useState(false);
   const avatarAbortRef = React.useRef<AbortController | null>(null);
 
   const mutedIcon = (Icon: typeof User, size = 18) => <Icon size={size} color={N.iconMuted} strokeWidth={1.75} />;
@@ -161,6 +163,10 @@ Welcome to a seamless digital experience! 🚀`;
       console.error('Error opening WhatsApp URL:', error);
       showAlert('Error', 'Failed to open WhatsApp');
     }
+  };
+
+  const handleT360TrainingPlaceholder = () => {
+    router.push('/t360-training');
   };
 
   const handleHelpSupport = async () => {
@@ -311,6 +317,28 @@ Welcome to a seamless digital experience! 🚀`;
     };
   }, [user?.id]);
 
+  useEffect(() => {
+    const loadWidgetPreference = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(WIDGET_PREF_KEY);
+        setIsWidgetEnabled(saved === 'true');
+      } catch (error) {
+        console.error('Error loading widget preference:', error);
+      }
+    };
+    void loadWidgetPreference();
+  }, []);
+
+  const handleToggleWidget = async (value: boolean) => {
+    setIsWidgetEnabled(value);
+    try {
+      await AsyncStorage.setItem(WIDGET_PREF_KEY, value ? 'true' : 'false');
+    } catch (error) {
+      console.error('Error saving widget preference:', error);
+      showAlert('Error', 'Failed to update widget preference. Please try again.');
+    }
+  };
+
   const loadUserAvatar = async (signal: AbortSignal) => {
     if (!user) return;
 
@@ -444,6 +472,33 @@ Welcome to a seamless digital experience! 🚀`;
                 title="Web login"
                 description="Access T360 on your browser"
                 onPress={() => Linking.openURL('https://t360.in/weblogin')}
+              />
+              <SettingItem
+                icon={themedIcon(RefreshCw, '#0EA5E9')}
+                iconBackgroundColor="#ECFEFF"
+                title="Home screen widget"
+                description="Turn widget on/off for open meetings"
+                onPress={() => {
+                  void handleToggleWidget(!isWidgetEnabled);
+                }}
+                showChevron={false}
+                rightElement={
+                  <Switch
+                    value={isWidgetEnabled}
+                    onValueChange={(value) => {
+                      void handleToggleWidget(value);
+                    }}
+                    trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
+                    thumbColor={isWidgetEnabled ? '#2563EB' : '#FFFFFF'}
+                  />
+                }
+              />
+              <SettingItem
+                icon={themedIcon(Video, '#7C3AED')}
+                iconBackgroundColor="#F5F3FF"
+                title="T360 training"
+                description="Placeholder"
+                onPress={handleT360TrainingPlaceholder}
               />
               <SettingItem
                 icon={themedIcon(MessageCircle, '#22C55E')}

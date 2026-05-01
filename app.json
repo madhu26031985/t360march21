@@ -74,6 +74,7 @@
       "expo-router",
       "expo-sharing",
       "./plugins/withBundleHermesTaskDeps",
+      "./plugins/withAndroidHomeWidget",
       [
         "expo-image-picker",
         {
