@@ -13,7 +13,7 @@ function normalize(value, fallback) {
   return trimmed.slice(0, 80);
 }
 
-/** Compact square OG image: vertical stack (LinkedIn-style thumbnail), not a wide banner. */
+/** Compact square OG image: vertical stack. PNG output for WhatsApp (SVG og:image is often ignored). */
 exports.handler = async function handler(event) {
   const qs = event.queryStringParameters || {};
   const clubName = normalize(qs.clubName, 'T360 Club');
@@ -51,12 +51,31 @@ exports.handler = async function handler(event) {
   <text x="44" y="${poweredY}" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="500" fill="#64748b">${safePowered}</text>
 </svg>`;
 
-  return {
-    statusCode: 200,
-    headers: {
-      'Content-Type': 'image/svg+xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=300',
-    },
-    body: svg,
+  const cacheHeaders = {
+    'Cache-Control': 'public, max-age=300',
   };
+
+  try {
+    const sharp = require('sharp');
+    const pngBuffer = await sharp(Buffer.from(svg, 'utf8')).png().toBuffer();
+    return {
+      statusCode: 200,
+      headers: {
+        ...cacheHeaders,
+        'Content-Type': 'image/png',
+      },
+      body: pngBuffer.toString('base64'),
+      isBase64Encoded: true,
+    };
+  } catch (err) {
+    console.error('[agenda-preview-image] PNG render failed, falling back to SVG:', err);
+    return {
+      statusCode: 200,
+      headers: {
+        ...cacheHeaders,
+        'Content-Type': 'image/svg+xml; charset=utf-8',
+      },
+      body: svg,
+    };
+  }
 };

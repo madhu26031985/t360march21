@@ -2,6 +2,11 @@
   command = "npm run build:web"
   publish = "dist"
 
+# sharp uses native bindings; do not bundle into the function zip incorrectly.
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["sharp"]
+
 # Supabase anon key is public-by-design (RLS protects data). Disable scan for this project.
 [build.environment]
   SECRETS_SCAN_ENABLED = "false"
