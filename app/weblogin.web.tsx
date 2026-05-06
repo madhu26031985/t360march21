@@ -24,8 +24,11 @@ export default function WebloginWeb() {
     if (__DEV__) {
       if (!pathname.startsWith('/weblogin')) return;
       // Netlify local dev serves the app under /weblogin via redirects.
-      // Rewriting back to "/" causes a redirect loop with the "/" -> "/weblogin/" rule.
-      if (window.location.port === '8888') return;
+      // Full-page navigation to "/" would hit "/" -> "/weblogin/" and loop; use client-side routing instead.
+      if (window.location.port === '8888') {
+        router.replace('/');
+        return;
+      }
       let path = pathname.slice('/weblogin'.length);
       if (path === '' || path === '/') path = '/';
       else if (!path.startsWith('/')) path = `/${path}`;
@@ -86,7 +89,19 @@ export default function WebloginWeb() {
   }, [hasInitialized, isLoading, isAuthenticated]);
 
   if (__DEV__) {
-    return <View style={{ flex: 1, backgroundColor: '#0f1419' }} />;
+    const isNetlifyDev = typeof window !== 'undefined' && window.location.port === '8888';
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: isNetlifyDev ? '#ffffff' : '#0f1419',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {isNetlifyDev ? <ActivityIndicator size="small" color="#6B7280" /> : null}
+      </View>
+    );
   }
 
   return (

@@ -210,8 +210,8 @@ exports.handler = async function handler(event) {
   const siteOrigin = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.replace(/\/$/, '') || 'https://app.t360.in';
   const targetUrl = `${siteOrigin}${targetPath}`;
 
-  let title = `${fallbackClubName} - Meeting Agenda`;
-  let description = `${fallbackMeetingLabel} | Powered by app.t360.in`;
+  let title = fallbackClubName;
+  let description = `${fallbackMeetingLabel}\nPowered by app.t360.in`;
   let previewClubName = fallbackClubName;
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
@@ -230,10 +230,10 @@ exports.handler = async function handler(event) {
           ? `Meeting ${payload.meeting.meeting_number}`
           : fallbackMeetingLabel;
 
-      title = `${clubName} - Meeting Agenda`;
-      const parts = [dateText, meetingNoText, timeText].filter(Boolean);
-      const details = parts.length > 0 ? parts.join(' | ') : clubName;
-      description = `${details} | Powered by app.t360.in`;
+      title = clubName;
+      const detailsLines = [dateText, meetingNoText, timeText].filter(Boolean);
+      const details = detailsLines.length > 0 ? detailsLines.join('\n') : clubName;
+      description = `${details}\nPowered by app.t360.in`;
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
@@ -241,7 +241,7 @@ exports.handler = async function handler(event) {
       // Keep fallback title/description.
     }
   } else {
-    description = `${fallbackMeetingLabel} | Powered by app.t360.in`;
+    description = `${fallbackMeetingLabel}\nPowered by app.t360.in`;
   }
 
   const previewImageUrl = buildPreviewImageUrl({
@@ -269,8 +269,8 @@ exports.handler = async function handler(event) {
     <meta property="og:url" content="${escapedTargetUrl}" />
     <meta property="og:image" content="${escapedPreviewImageUrl}" />
     <meta property="og:image:alt" content="${escapedDescription}" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="1200" />
+    <meta property="og:image:width" content="600" />
+    <meta property="og:image:height" content="600" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="${escapedTitle}" />
     <meta name="twitter:description" content="${escapedDescription}" />

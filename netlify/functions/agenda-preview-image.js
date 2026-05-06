@@ -23,20 +23,20 @@ exports.handler = async function handler(event) {
   const safeMeetingDate = escapeXml(meetingDate);
   const safeMeetingLabel = escapeXml(meetingLabel);
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" aria-label="Meeting preview">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600" role="img" aria-label="Meeting preview">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#0d47a1" />
       <stop offset="100%" stop-color="#1976d2" />
     </linearGradient>
   </defs>
-  <rect width="1200" height="1200" fill="url(#bg)" />
-  <rect x="120" y="120" width="960" height="960" rx="40" fill="#ffffff" />
-  <text x="180" y="280" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="400" fill="#0f172a">${safeClubName}</text>
-  <text x="180" y="365" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="500" fill="#334155">${safeMeetingDate}</text>
-  <rect x="180" y="470" width="840" height="180" rx="20" fill="#e8f0ff" stroke="#0d47a1" stroke-width="3" />
-  <text x="230" y="585" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="700" fill="#0d47a1">${safeMeetingLabel}</text>
-  <text x="180" y="760" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="500" fill="#475569">Powered by app.t360.in</text>
+  <rect width="600" height="600" fill="url(#bg)" />
+  <rect x="48" y="48" width="504" height="504" rx="24" fill="#ffffff" />
+  <text x="76" y="128" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="400" fill="#0f172a">${safeClubName}</text>
+  <rect x="76" y="168" width="448" height="120" rx="12" fill="#e8f0ff" stroke="#0d47a1" stroke-width="2" />
+  <text x="96" y="242" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" fill="#0d47a1">${safeMeetingLabel}</text>
+  <text x="76" y="332" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="500" fill="#334155">${safeMeetingDate}</text>
+  <text x="76" y="388" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="500" fill="#475569">Powered by app.t360.in</text>
 </svg>`;
 
   return {
