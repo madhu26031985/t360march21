@@ -6,6 +6,7 @@
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["sharp"]
+  included_files = ["assets/images/icon.png"]
 
 # Supabase anon key is public-by-design (RLS protects data). Disable scan for this project.
 [build.environment]

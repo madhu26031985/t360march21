@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 function escapeXml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -13,7 +16,26 @@ function normalize(value, fallback) {
   return trimmed.slice(0, 80);
 }
 
-/** Compact square OG image: vertical stack. PNG output for WhatsApp (SVG og:image is often ignored). */
+function readT360LogoBuffer() {
+  const candidates = [
+    path.join(__dirname, '../../assets/images/icon.png'),
+    path.join(process.cwd(), 'assets/images/icon.png'),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return fs.readFileSync(p);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+/** Left column reserves space for T360 logo (composited PNG). Text starts at TX. */
+const TX = 148;
+const CARD_INNER_LEFT = 44;
+
+/** Compact square OG image: logo left + text stack; PNG for WhatsApp. */
 exports.handler = async function handler(event) {
   const qs = event.queryStringParameters || {};
   const clubName = normalize(qs.clubName, 'T360 Club');
@@ -29,10 +51,10 @@ exports.handler = async function handler(event) {
 
   const timeLine =
     meetingTime !== ''
-      ? `<text x="44" y="222" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#475569">${safeTime}</text>`
+      ? `<text x="${TX}" y="218" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#475569">${safeTime}</text>`
       : '';
 
-  const poweredY = meetingTime !== '' ? 268 : 222;
+  const poweredY = meetingTime !== '' ? 258 : 218;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Meeting preview">
   <defs>
@@ -43,12 +65,13 @@ exports.handler = async function handler(event) {
   </defs>
   <rect width="480" height="480" fill="url(#bg)" />
   <rect x="20" y="20" width="440" height="440" rx="20" fill="#ffffff" />
-  <text x="44" y="58" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#0f172a">${safeClub}</text>
-  <text x="44" y="94" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#64748b">${safeDate}</text>
-  <rect x="44" y="108" width="392" height="48" rx="10" fill="#e8f0ff" stroke="#0d47a1" stroke-width="1.5" />
-  <text x="56" y="140" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0d47a1">${safeMeeting}</text>
+  <rect x="${CARD_INNER_LEFT}" y="52" width="88" height="88" rx="12" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="1" />
+  <text x="${TX}" y="58" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#0f172a">${safeClub}</text>
+  <text x="${TX}" y="94" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#64748b">${safeDate}</text>
+  <rect x="${TX}" y="148" width="292" height="48" rx="10" fill="#e8f0ff" stroke="#0d47a1" stroke-width="1.5" />
+  <text x="${TX + 12}" y="180" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0d47a1">${safeMeeting}</text>
   ${timeLine}
-  <text x="44" y="${poweredY}" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="500" fill="#64748b">${safePowered}</text>
+  <text x="${TX}" y="${poweredY}" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="500" fill="#64748b">${safePowered}</text>
 </svg>`;
 
   const cacheHeaders = {
@@ -57,8 +80,22 @@ exports.handler = async function handler(event) {
 
   try {
     const sharp = require('sharp');
-    /* 240px square: smaller thumb encourages compact preview layout on some clients; matches og:image width/height. */
-    const pngBuffer = await sharp(Buffer.from(svg, 'utf8')).resize(240, 240).png().toBuffer();
+    let raster = await sharp(Buffer.from(svg, 'utf8')).png().toBuffer();
+
+    const logoFile = readT360LogoBuffer();
+    if (logoFile) {
+      const logoPng = await sharp(logoFile)
+        .resize(80, 80, { fit: 'inside', withoutEnlargement: true })
+        .png()
+        .toBuffer();
+      raster = await sharp(raster)
+        .composite([{ input: logoPng, left: 48, top: 56 }])
+        .png()
+        .toBuffer();
+    }
+
+    const pngBuffer = await sharp(raster).resize(240, 240).png().toBuffer();
+
     return {
       statusCode: 200,
       headers: {
