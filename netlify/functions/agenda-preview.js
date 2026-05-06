@@ -51,9 +51,47 @@ function formatTimeRange(startTime, endTime) {
 
 function parsePathFallback(pathname) {
   const path = String(pathname || '');
+  // Original public long agenda paths:
+  // /{brand}/agenda/{meetingNo}/{meetingId}
+  // /weblogin/{brand}/agenda/{meetingNo}/{meetingId}
+  let m = path.match(/^\/(?:weblogin\/)?([^/]+)\/agenda\/([^/]+)\/([^/?#]+)/i);
+  if (m) {
+    return {
+      brand: decodeURIComponent(m[1] || ''),
+      meetingNo: decodeURIComponent(m[2] || ''),
+      meetingId: decodeURIComponent(m[3] || ''),
+      mode: 'agenda',
+    };
+  }
+
+  // Original branded short paths:
+  // /{brand}/a/{meetingId}
+  // /weblogin/{brand}/a/{meetingId}
+  m = path.match(/^\/(?:weblogin\/)?([^/]+)\/a\/([^/?#]+)/i);
+  if (m) {
+    return {
+      brand: decodeURIComponent(m[1] || ''),
+      meetingNo: '',
+      meetingId: decodeURIComponent(m[2] || ''),
+      mode: '',
+    };
+  }
+
+  // Original short path:
+  // /a/{meetingId}
+  m = path.match(/^\/a\/([^/?#]+)/i);
+  if (m) {
+    return {
+      brand: '',
+      meetingNo: '',
+      meetingId: decodeURIComponent(m[1] || ''),
+      mode: '',
+    };
+  }
+
   // Function-routed long agenda path:
   // /.netlify/functions/agenda-preview/agenda/{brand}/{meetingNo}/{meetingId}
-  let m = path.match(/\/\.netlify\/functions\/agenda-preview\/agenda\/([^/]+)\/([^/]+)\/([^/?#]+)/i);
+  m = path.match(/\/\.netlify\/functions\/agenda-preview\/agenda\/([^/]+)\/([^/]+)\/([^/?#]+)/i);
   if (m) {
     return {
       brand: decodeURIComponent(m[1] || ''),
