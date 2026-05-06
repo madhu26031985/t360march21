@@ -49,6 +49,14 @@ function formatTimeRange(startTime, endTime) {
   return a || b || '';
 }
 
+/** Single line — WhatsApp truncates long/multi-line og:description with "...". */
+const POWERED_BY = 'Powered by app.t360.in';
+
+function buildCompactOgDescription(segments) {
+  const main = segments.filter(Boolean).join(' · ');
+  return main ? `${main} · ${POWERED_BY}` : `${POWERED_BY}`;
+}
+
 function parsePathFallback(pathname) {
   const path = String(pathname || '');
   // Original public long agenda paths:
@@ -211,7 +219,7 @@ exports.handler = async function handler(event) {
   const targetUrl = `${siteOrigin}${targetPath}`;
 
   let title = fallbackClubName;
-  let description = `${fallbackMeetingLabel}\nPowered by app.t360.in`;
+  let description = buildCompactOgDescription([fallbackMeetingLabel]);
   let previewClubName = fallbackClubName;
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
@@ -231,9 +239,8 @@ exports.handler = async function handler(event) {
           : fallbackMeetingLabel;
 
       title = clubName;
-      const detailsLines = [dateText, meetingNoText, timeText].filter(Boolean);
-      const details = detailsLines.length > 0 ? detailsLines.join('\n') : clubName;
-      description = `${details}\nPowered by app.t360.in`;
+      const parts = [dateText, meetingNoText, timeText].filter(Boolean);
+      description = parts.length > 0 ? buildCompactOgDescription(parts) : `${clubName} · ${POWERED_BY}`;
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
@@ -241,7 +248,7 @@ exports.handler = async function handler(event) {
       // Keep fallback title/description.
     }
   } else {
-    description = `${fallbackMeetingLabel}\nPowered by app.t360.in`;
+    description = buildCompactOgDescription([fallbackMeetingLabel]);
   }
 
   const previewImageUrl = buildPreviewImageUrl({
