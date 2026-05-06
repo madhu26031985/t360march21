@@ -5,11 +5,17 @@
 /a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId  200
 
 # Keep already-prefixed short links stable (avoid matching branded rule below).
-/weblogin/a/:meetingId  /weblogin/a/:meetingId  200
+/weblogin/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId  200
+
+# Support already-shared prefixed branded short links.
+/weblogin/:brand/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:brand  200
+
+# Support already-shared prefixed full agenda links.
+/weblogin/:clubId/agenda/:meetingNo/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:clubId&meetingNo=:meetingNo&mode=agenda  200
 
 # Branded short agenda: /{club-slug}/a/{meetingId}
 /:brand/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:brand  200
 
 # Netlify redirects for SPA routing at /weblogin
-/weblogin    /weblogin/    301
+/weblogin    /weblogin/index.html    200
 /weblogin/*  /weblogin/index.html  200

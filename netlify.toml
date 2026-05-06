@@ -24,7 +24,19 @@
 # Keep already-prefixed short links stable (avoid matching branded rule below).
 [[redirects]]
   from = "/weblogin/a/:meetingId"
-  to = "/weblogin/a/:meetingId"
+  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId"
+  status = 200
+
+# Support already-shared prefixed branded short links.
+[[redirects]]
+  from = "/weblogin/:brand/a/:meetingId"
+  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:brand"
+  status = 200
+
+# Support already-shared prefixed full agenda links.
+[[redirects]]
+  from = "/weblogin/:clubId/agenda/:meetingNo/:meetingId"
+  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:clubId&meetingNo=:meetingNo&mode=agenda"
   status = 200
 
 # Branded short agenda: /{club-slug}/a/{meetingId}
@@ -42,8 +54,8 @@
 # SPA routing for /weblogin
 [[redirects]]
   from = "/weblogin"
-  to = "/weblogin/"
-  status = 301
+  to = "/weblogin/index.html"
+  status = 200
 
 [[redirects]]
   from = "/weblogin/*"

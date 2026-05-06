@@ -23,6 +23,9 @@ export default function WebloginWeb() {
 
     if (__DEV__) {
       if (!pathname.startsWith('/weblogin')) return;
+      // Netlify local dev serves the app under /weblogin via redirects.
+      // Rewriting back to "/" causes a redirect loop with the "/" -> "/weblogin/" rule.
+      if (window.location.port === '8888') return;
       let path = pathname.slice('/weblogin'.length);
       if (path === '' || path === '/') path = '/';
       else if (!path.startsWith('/')) path = `/${path}`;

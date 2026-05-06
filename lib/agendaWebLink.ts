@@ -6,7 +6,8 @@
  * Short share link (same agenda): /{club-slug}/a/{meetingId} when a display name is known,
  * or /a/{meetingId}. These URLs are routed through a server-side preview endpoint for WhatsApp/OG.
  *
- * Shorter URLs without /weblogin still work: Netlify redirects them to this path.
+ * These share URLs intentionally avoid /weblogin so social crawlers hit the
+ * server-side preview endpoint first.
  *
  * Default host is https://app.t360.in (same as Netlify web builds via EXPO_PUBLIC_AGENDA_WEB_HOST).
  * Override with EXPO_PUBLIC_AGENDA_WEB_HOST if needed (e.g. https://t360.in once apex serves the app).
@@ -88,7 +89,7 @@ export function buildAgendaWebUrl(params: {
   const trimmed = params.clubDisplayName?.trim();
   const clubSegment =
     trimmed && trimmed.length > 0 ? slugifyClubNameForAgendaUrl(trimmed) : params.clubId;
-  const path = `${AGENDA_WEB_PATH_PREFIX}/${clubSegment}/agenda/${num}/${params.meetingId}`;
+  const path = `/${clubSegment}/agenda/${num}/${params.meetingId}`;
   let url = `${agendaWebHost()}${path}`;
   if (params.skin === 'minimal' || params.skin === 'vibrant') {
     url += `?skin=${params.skin}`;
@@ -99,7 +100,7 @@ export function buildAgendaWebUrl(params: {
 /** Compact public agenda URL; resolves the same payload as the long path (meeting UUID is authoritative). */
 export function buildShortAgendaWebUrl(params: {
   meetingId: string;
-  /** Club profile or club table name — adds a readable segment: /weblogin/{slug}/a/{meetingId}. */
+  /** Club profile or club table name — adds a readable segment: /{slug}/a/{meetingId}. */
   clubDisplayName?: string | null;
   skin?: PublicAgendaSkinId;
 }): string {
@@ -107,8 +108,8 @@ export function buildShortAgendaWebUrl(params: {
   const slug = trimmed ? slugifyClubNameForAgendaUrl(trimmed) : '';
   const path =
     trimmed && slug.length > 0
-      ? `${AGENDA_WEB_PATH_PREFIX}/${slug}/a/${params.meetingId}`
-      : `${AGENDA_WEB_PATH_PREFIX}/a/${params.meetingId}`;
+      ? `/${slug}/a/${params.meetingId}`
+      : `/a/${params.meetingId}`;
   let url = `${agendaWebHost()}${path}`;
   if (params.skin === 'minimal' || params.skin === 'vibrant') {
     url += `?skin=${params.skin}`;

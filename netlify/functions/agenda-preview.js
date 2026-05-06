@@ -49,6 +49,14 @@ function formatTimeRange(startTime, endTime) {
   return a || b || '';
 }
 
+function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel }) {
+  const qs = new URLSearchParams();
+  if (clubName) qs.set('clubName', clubName);
+  if (dateText) qs.set('meetingDate', dateText);
+  if (meetingLabel) qs.set('meetingLabel', meetingLabel);
+  return `${siteOrigin}/.netlify/functions/agenda-preview-image?${qs.toString()}`;
+}
+
 function resolveTargetPath({ meetingId, brand, skin, meetingNo, mode }) {
   if (!meetingId || !isUuid(meetingId)) return '/weblogin/';
   const safeMeetingId = encodeURIComponent(meetingId);
@@ -65,8 +73,8 @@ function resolveTargetPath({ meetingId, brand, skin, meetingNo, mode }) {
   return base;
 }
 
-async function loadPublicAgendaPayload({ meetingId, supabaseUrl, supabaseAnonKey }) {
-  const endpoint = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/rpc/get_public_meeting_agenda_by_club`;
+async function callAgendaRpc({ supabaseUrl, supabaseAnonKey, rpcName, body }) {
+  const endpoint = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/rpc/${rpcName}`;
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -74,17 +82,38 @@ async function loadPublicAgendaPayload({ meetingId, supabaseUrl, supabaseAnonKey
       Authorization: `Bearer ${supabaseAnonKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      p_club_id: PLACEHOLDER_CLUB_ID,
-      p_meeting_no: '0',
-      p_meeting_id: meetingId,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) return null;
   const data = await response.json();
   if (!data || typeof data !== 'object') return null;
   return data;
+}
+
+async function loadPublicAgendaPayload({ meetingId, supabaseUrl, supabaseAnonKey }) {
+  const byClubPayload = await callAgendaRpc({
+    supabaseUrl,
+    supabaseAnonKey,
+    rpcName: 'get_public_meeting_agenda_by_club',
+    body: {
+      p_club_id: PLACEHOLDER_CLUB_ID,
+      p_meeting_no: '0',
+      p_meeting_id: meetingId,
+    },
+  });
+  if (byClubPayload) return byClubPayload;
+
+  // Backward-compatible fallback: some environments expose this RPC variant.
+  const byMeetingPayload = await callAgendaRpc({
+    supabaseUrl,
+    supabaseAnonKey,
+    rpcName: 'get_public_meeting_agenda',
+    body: {
+      p_meeting_id: meetingId,
+    },
+  });
+  return byMeetingPayload;
 }
 
 exports.handler = async function handler(event) {
@@ -95,13 +124,17 @@ exports.handler = async function handler(event) {
   const mode = String(qs.mode || '').trim().toLowerCase();
   const skin = String(qs.skin || '').trim().toLowerCase();
   const fallbackClubName = prettifyBrandSlug(brand) || 'Club';
+  const fallbackMeetingLabel = meetingNo ? `Meeting ${meetingNo}` : 'Meeting Agenda';
 
   const targetPath = resolveTargetPath({ meetingId, brand, skin, meetingNo, mode });
   const siteOrigin = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.replace(/\/$/, '') || 'https://app.t360.in';
   const targetUrl = `${siteOrigin}${targetPath}`;
 
   let title = `${fallbackClubName} - Meeting Agenda`;
-  let description = 'Public meeting agenda';
+  let description = `${fallbackMeetingLabel} | Powered by app.t360.in`;
+  let previewClubName = fallbackClubName;
+  let previewDateText = '';
+  let previewMeetingLabel = fallbackMeetingLabel;
 
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_WEB_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -112,21 +145,36 @@ exports.handler = async function handler(event) {
       const clubName = payload?.club?.club_name?.trim() || fallbackClubName;
       const dateText = formatDateShort(payload?.meeting?.meeting_date);
       const timeText = formatTimeRange(payload?.meeting?.meeting_start_time, payload?.meeting?.meeting_end_time);
-      const meetingNo = payload?.meeting?.meeting_number ? `Meeting ${payload.meeting.meeting_number}` : '';
+      const meetingNoText =
+        payload?.meeting?.meeting_number != null && String(payload.meeting.meeting_number).trim() !== ''
+          ? `Meeting ${payload.meeting.meeting_number}`
+          : fallbackMeetingLabel;
 
       title = `${clubName} - Meeting Agenda`;
-      const parts = [dateText, timeText, meetingNo].filter(Boolean);
-      description = parts.length > 0 ? parts.join(' | ') : clubName;
+      const parts = [dateText, meetingNoText, timeText].filter(Boolean);
+      const details = parts.length > 0 ? parts.join(' | ') : clubName;
+      description = `${details} | Powered by app.t360.in`;
+      previewClubName = clubName;
+      previewDateText = dateText;
+      previewMeetingLabel = meetingNoText;
     } catch {
       // Keep fallback title/description.
     }
   } else {
-    description = fallbackClubName;
+    description = `${fallbackMeetingLabel} | Powered by app.t360.in`;
   }
+
+  const previewImageUrl = buildPreviewImageUrl({
+    siteOrigin,
+    clubName: previewClubName,
+    dateText: previewDateText,
+    meetingLabel: previewMeetingLabel,
+  });
 
   const escapedTitle = escapeHtml(title);
   const escapedDescription = escapeHtml(description);
   const escapedTargetUrl = escapeHtml(targetUrl);
+  const escapedPreviewImageUrl = escapeHtml(previewImageUrl);
 
   const html = `<!doctype html>
 <html lang="en">
@@ -139,9 +187,14 @@ exports.handler = async function handler(event) {
     <meta property="og:title" content="${escapedTitle}" />
     <meta property="og:description" content="${escapedDescription}" />
     <meta property="og:url" content="${escapedTargetUrl}" />
+    <meta property="og:image" content="${escapedPreviewImageUrl}" />
+    <meta property="og:image:alt" content="${escapedDescription}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="1200" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="${escapedTitle}" />
     <meta name="twitter:description" content="${escapedDescription}" />
+    <meta name="twitter:image" content="${escapedPreviewImageUrl}" />
     <meta http-equiv="refresh" content="0;url=${escapedTargetUrl}" />
   </head>
   <body>
