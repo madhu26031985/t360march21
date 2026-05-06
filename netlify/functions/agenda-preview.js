@@ -136,11 +136,12 @@ function parsePathFallback(pathname) {
   return { brand: '', meetingNo: '', meetingId: '', mode: '' };
 }
 
-function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel }) {
+function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   const qs = new URLSearchParams();
   if (clubName) qs.set('clubName', clubName);
   if (dateText) qs.set('meetingDate', dateText);
   if (meetingLabel) qs.set('meetingLabel', meetingLabel);
+  if (timeText) qs.set('meetingTime', timeText);
   return `${siteOrigin}/.netlify/functions/agenda-preview-image?${qs.toString()}`;
 }
 
@@ -223,6 +224,7 @@ exports.handler = async function handler(event) {
   let previewClubName = fallbackClubName;
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
+  let previewTimeText = '';
 
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_WEB_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -244,6 +246,7 @@ exports.handler = async function handler(event) {
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
+      previewTimeText = timeText;
     } catch {
       // Keep fallback title/description.
     }
@@ -256,6 +259,7 @@ exports.handler = async function handler(event) {
     clubName: previewClubName,
     dateText: previewDateText,
     meetingLabel: previewMeetingLabel,
+    timeText: previewTimeText,
   });
 
   const escapedTitle = escapeHtml(title);
@@ -276,8 +280,8 @@ exports.handler = async function handler(event) {
     <meta property="og:url" content="${escapedTargetUrl}" />
     <meta property="og:image" content="${escapedPreviewImageUrl}" />
     <meta property="og:image:alt" content="${escapedDescription}" />
-    <meta property="og:image:width" content="600" />
-    <meta property="og:image:height" content="600" />
+    <meta property="og:image:width" content="480" />
+    <meta property="og:image:height" content="480" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="${escapedTitle}" />
     <meta name="twitter:description" content="${escapedDescription}" />

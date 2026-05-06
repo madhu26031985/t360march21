@@ -13,30 +13,42 @@ function normalize(value, fallback) {
   return trimmed.slice(0, 80);
 }
 
+/** Compact square OG image: vertical stack (LinkedIn-style thumbnail), not a wide banner. */
 exports.handler = async function handler(event) {
   const qs = event.queryStringParameters || {};
   const clubName = normalize(qs.clubName, 'T360 Club');
   const meetingDate = normalize(qs.meetingDate, 'Upcoming Meeting');
   const meetingLabel = normalize(qs.meetingLabel, 'Meeting Agenda');
+  const meetingTime = String(qs.meetingTime || '').trim().slice(0, 40);
 
-  const safeClubName = escapeXml(clubName);
-  const safeMeetingDate = escapeXml(meetingDate);
-  const safeMeetingLabel = escapeXml(meetingLabel);
+  const safeClub = escapeXml(clubName);
+  const safeDate = escapeXml(meetingDate);
+  const safeMeeting = escapeXml(meetingLabel);
+  const safeTime = escapeXml(meetingTime);
+  const safePowered = 'Powered by app.t360.in';
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600" role="img" aria-label="Meeting preview">
+  const timeLine =
+    meetingTime !== ''
+      ? `<text x="44" y="222" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#475569">${safeTime}</text>`
+      : '';
+
+  const poweredY = meetingTime !== '' ? 268 : 222;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Meeting preview">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#0d47a1" />
       <stop offset="100%" stop-color="#1976d2" />
     </linearGradient>
   </defs>
-  <rect width="600" height="600" fill="url(#bg)" />
-  <rect x="48" y="48" width="504" height="504" rx="24" fill="#ffffff" />
-  <text x="76" y="128" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="400" fill="#0f172a">${safeClubName}</text>
-  <rect x="76" y="168" width="448" height="120" rx="12" fill="#e8f0ff" stroke="#0d47a1" stroke-width="2" />
-  <text x="96" y="242" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" fill="#0d47a1">${safeMeetingLabel}</text>
-  <text x="76" y="332" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="500" fill="#334155">${safeMeetingDate}</text>
-  <text x="76" y="388" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="500" fill="#475569">Powered by app.t360.in</text>
+  <rect width="480" height="480" fill="url(#bg)" />
+  <rect x="20" y="20" width="440" height="440" rx="20" fill="#ffffff" />
+  <text x="44" y="58" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#0f172a">${safeClub}</text>
+  <text x="44" y="94" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#64748b">${safeDate}</text>
+  <rect x="44" y="108" width="392" height="48" rx="10" fill="#e8f0ff" stroke="#0d47a1" stroke-width="1.5" />
+  <text x="56" y="140" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0d47a1">${safeMeeting}</text>
+  ${timeLine}
+  <text x="44" y="${poweredY}" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="500" fill="#64748b">${safePowered}</text>
 </svg>`;
 
   return {
