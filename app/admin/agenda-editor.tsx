@@ -23,7 +23,7 @@ import { supabase } from '@/lib/supabase';
 import * as Clipboard from 'expo-clipboard';
 import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import { normalizeStoredPublicAgendaSkin } from '@/lib/publicAgendaSkin';
-import { buildAgendaWebUrl, buildShortAgendaWebUrl } from '@/lib/agendaWebLink';
+import { buildAgendaWebUrl } from '@/lib/agendaWebLink';
 import {
   ChevronLeft,
   Save,
@@ -2860,18 +2860,9 @@ export default function AgendaEditor() {
         })
       : null;
 
-  const publicWebAgendaShortUrl =
-    meetingClubIdForWeb && meetingId
-      ? buildShortAgendaWebUrl({
-          meetingId,
-          skin: publicAgendaSkin,
-          clubDisplayName: meetingClubDisplayNameForWeb,
-        })
-      : null;
-
   const handleOpenPublicWebAgenda = async () => {
     // Open with the canonical full URL to avoid short-link crawler/redirect edge cases.
-    const url = publicWebAgendaUrl ?? publicWebAgendaShortUrl;
+    const url = publicWebAgendaUrl;
     if (!url) return;
     try {
       const supported = await Linking.canOpenURL(url);
@@ -2896,18 +2887,14 @@ export default function AgendaEditor() {
   };
 
   const handleCopyPublicWebAgendaLink = async () => {
-    const url = publicWebAgendaUrl?.trim() ?? publicWebAgendaShortUrl?.trim();
+    const url = publicWebAgendaUrl?.trim();
     if (!url) {
       Alert.alert('Nothing to copy', 'The public link is not available yet.');
       return;
     }
 
     const flashCopied = () => {
-      flashPublicWebLinkCopied(
-        publicWebAgendaUrl
-          ? 'Agenda link copied to clipboard.'
-          : 'Public agenda link copied to clipboard.'
-      );
+      flashPublicWebLinkCopied('Agenda link copied to clipboard.');
     };
 
     try {
@@ -3939,7 +3926,7 @@ export default function AgendaEditor() {
                   maxFontSizeMultiplier={1.15}
                   selectable
                 >
-                  {publicWebAgendaUrl ?? publicWebAgendaShortUrl}
+                  {publicWebAgendaUrl}
                 </Text>
                 {isAgendaVisible === false ? (
                   <Text style={[styles.publicWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.1}>
