@@ -49,18 +49,13 @@ function formatTimeRange(startTime, endTime) {
   return a || b || '';
 }
 
-function resolveTargetPath({ meetingId, brand, skin, meetingNo, mode }) {
+function resolveTargetPath({ meetingId, brand, skin, meetingNo }) {
   if (!meetingId || !isUuid(meetingId)) return '/weblogin/';
   const safeMeetingId = encodeURIComponent(meetingId);
   const normalizedBrand = brand && brand.toLowerCase() === 'weblogin' ? '' : brand;
   const safeBrand = normalizedBrand ? encodeURIComponent(normalizedBrand) : '';
   const safeMeetingNo = encodeURIComponent(String(meetingNo || '0').trim() || '0');
-  const isAgendaMode = String(mode || '').toLowerCase() === 'agenda';
-  const base = isAgendaMode
-    ? `/weblogin/${safeBrand || 'club'}/agenda/${safeMeetingNo}/${safeMeetingId}`
-    : safeBrand
-      ? `/weblogin/${safeBrand}/a/${safeMeetingId}`
-      : `/weblogin/a/${safeMeetingId}`;
+  const base = `/weblogin/${safeBrand || 'club'}/agenda/${safeMeetingNo}/${safeMeetingId}`;
   if (skin === 'minimal' || skin === 'vibrant') return `${base}?skin=${skin}`;
   return base;
 }
@@ -92,11 +87,10 @@ exports.handler = async function handler(event) {
   const meetingId = String(qs.meetingId || '').trim().toLowerCase();
   const brand = String(qs.brand || '').trim();
   const meetingNo = String(qs.meetingNo || '').trim();
-  const mode = String(qs.mode || '').trim().toLowerCase();
   const skin = String(qs.skin || '').trim().toLowerCase();
   const fallbackClubName = prettifyBrandSlug(brand) || 'Club';
 
-  const targetPath = resolveTargetPath({ meetingId, brand, skin, meetingNo, mode });
+  const targetPath = resolveTargetPath({ meetingId, brand, skin, meetingNo });
   const siteOrigin = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.replace(/\/$/, '') || 'https://app.t360.in';
   const targetUrl = `${siteOrigin}${targetPath}`;
 
