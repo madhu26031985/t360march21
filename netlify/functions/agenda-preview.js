@@ -9,6 +9,16 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+/** Escape text for meta attributes; newlines as &#10; for multi-line OG descriptions (e.g. WhatsApp). */
+function escapeOgDescription(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\r\n|\n|\r/g, '&#10;');
+}
+
 function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
@@ -49,12 +59,12 @@ function formatTimeRange(startTime, endTime) {
   return a || b || '';
 }
 
-/** Single line — WhatsApp truncates long/multi-line og:description with "...". */
-const POWERED_BY = 'Powered by app.t360.in';
+/** Avoid repeating the URL host — WhatsApp always shows app.t360.in on its own line. */
+const POWERED_BY = 'Powered by T360';
 
-function buildCompactOgDescription(segments) {
-  const main = segments.filter(Boolean).join(' · ');
-  return main ? `${main} · ${POWERED_BY}` : `${POWERED_BY}`;
+function buildVerticalOgDescription(lines) {
+  const body = lines.filter(Boolean).join('\n');
+  return body ? `${body}\n${POWERED_BY}` : POWERED_BY;
 }
 
 function parsePathFallback(pathname) {
@@ -220,7 +230,7 @@ exports.handler = async function handler(event) {
   const targetUrl = `${siteOrigin}${targetPath}`;
 
   let title = fallbackClubName;
-  let description = buildCompactOgDescription([fallbackMeetingLabel]);
+  let description = buildVerticalOgDescription([fallbackMeetingLabel]);
   let previewClubName = fallbackClubName;
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
@@ -242,7 +252,7 @@ exports.handler = async function handler(event) {
 
       title = clubName;
       const parts = [dateText, meetingNoText, timeText].filter(Boolean);
-      description = parts.length > 0 ? buildCompactOgDescription(parts) : `${clubName} · ${POWERED_BY}`;
+      description = parts.length > 0 ? buildVerticalOgDescription(parts) : `${clubName}\n${POWERED_BY}`;
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
@@ -251,7 +261,7 @@ exports.handler = async function handler(event) {
       // Keep fallback title/description.
     }
   } else {
-    description = buildCompactOgDescription([fallbackMeetingLabel]);
+    description = buildVerticalOgDescription([fallbackMeetingLabel]);
   }
 
   const previewImageUrl = buildPreviewImageUrl({
@@ -263,7 +273,7 @@ exports.handler = async function handler(event) {
   });
 
   const escapedTitle = escapeHtml(title);
-  const escapedDescription = escapeHtml(description);
+  const escapedDescription = escapeOgDescription(description);
   const escapedTargetUrl = escapeHtml(targetUrl);
   const escapedPreviewImageUrl = escapeHtml(previewImageUrl);
 
@@ -280,8 +290,8 @@ exports.handler = async function handler(event) {
     <meta property="og:url" content="${escapedTargetUrl}" />
     <meta property="og:image" content="${escapedPreviewImageUrl}" />
     <meta property="og:image:alt" content="${escapedDescription}" />
-    <meta property="og:image:width" content="480" />
-    <meta property="og:image:height" content="480" />
+    <meta property="og:image:width" content="240" />
+    <meta property="og:image:height" content="240" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="${escapedTitle}" />
     <meta name="twitter:description" content="${escapedDescription}" />

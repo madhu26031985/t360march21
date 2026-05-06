@@ -25,7 +25,7 @@ exports.handler = async function handler(event) {
   const safeDate = escapeXml(meetingDate);
   const safeMeeting = escapeXml(meetingLabel);
   const safeTime = escapeXml(meetingTime);
-  const safePowered = 'Powered by app.t360.in';
+  const safePowered = 'Powered by T360';
 
   const timeLine =
     meetingTime !== ''
@@ -57,7 +57,8 @@ exports.handler = async function handler(event) {
 
   try {
     const sharp = require('sharp');
-    const pngBuffer = await sharp(Buffer.from(svg, 'utf8')).png().toBuffer();
+    /* 240px square: smaller thumb encourages compact preview layout on some clients; matches og:image width/height. */
+    const pngBuffer = await sharp(Buffer.from(svg, 'utf8')).resize(240, 240).png().toBuffer();
     return {
       statusCode: 200,
       headers: {
