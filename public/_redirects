@@ -1,20 +1,20 @@
 # /{club-segment}/agenda/{meetingNo}/{meetingId} → Expo baseUrl (slug or legacy club UUID)
-/:clubId/agenda/:meetingNo/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:clubId&meetingNo=:meetingNo&mode=agenda  200
+/:clubId/agenda/:meetingNo/:meetingId  /.netlify/functions/agenda-preview/agenda/:clubId/:meetingNo/:meetingId?mode=agenda  200
 
 # Short public agenda: /a/{meetingId}
-/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId  200
+/a/:meetingId  /.netlify/functions/agenda-preview/short/:meetingId  200
 
 # Keep already-prefixed short links stable (avoid matching branded rule below).
-/weblogin/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId  200
+/weblogin/a/:meetingId  /.netlify/functions/agenda-preview/short/:meetingId  200
 
 # Support already-shared prefixed branded short links.
-/weblogin/:brand/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:brand  200
+/weblogin/:brand/a/:meetingId  /.netlify/functions/agenda-preview/brand/:brand/:meetingId  200
 
 # Support already-shared prefixed full agenda links.
-/weblogin/:clubId/agenda/:meetingNo/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:clubId&meetingNo=:meetingNo&mode=agenda  200
+/weblogin/:clubId/agenda/:meetingNo/:meetingId  /.netlify/functions/agenda-preview/agenda/:clubId/:meetingNo/:meetingId?mode=agenda  200
 
 # Branded short agenda: /{club-slug}/a/{meetingId}
-/:brand/a/:meetingId  /.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:brand  200
+/:brand/a/:meetingId  /.netlify/functions/agenda-preview/brand/:brand/:meetingId  200
 
 # Netlify redirects for SPA routing at /weblogin
 /weblogin    /weblogin/index.html    200

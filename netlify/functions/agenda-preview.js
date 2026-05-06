@@ -49,6 +49,47 @@ function formatTimeRange(startTime, endTime) {
   return a || b || '';
 }
 
+function parsePathFallback(pathname) {
+  const path = String(pathname || '');
+  // Function-routed long agenda path:
+  // /.netlify/functions/agenda-preview/agenda/{brand}/{meetingNo}/{meetingId}
+  let m = path.match(/\/\.netlify\/functions\/agenda-preview\/agenda\/([^/]+)\/([^/]+)\/([^/?#]+)/i);
+  if (m) {
+    return {
+      brand: decodeURIComponent(m[1] || ''),
+      meetingNo: decodeURIComponent(m[2] || ''),
+      meetingId: decodeURIComponent(m[3] || ''),
+      mode: 'agenda',
+    };
+  }
+
+  // Function-routed branded short path:
+  // /.netlify/functions/agenda-preview/brand/{brand}/{meetingId}
+  m = path.match(/\/\.netlify\/functions\/agenda-preview\/brand\/([^/]+)\/([^/?#]+)/i);
+  if (m) {
+    return {
+      brand: decodeURIComponent(m[1] || ''),
+      meetingNo: '',
+      meetingId: decodeURIComponent(m[2] || ''),
+      mode: '',
+    };
+  }
+
+  // Function-routed short path:
+  // /.netlify/functions/agenda-preview/short/{meetingId}
+  m = path.match(/\/\.netlify\/functions\/agenda-preview\/short\/([^/?#]+)/i);
+  if (m) {
+    return {
+      brand: '',
+      meetingNo: '',
+      meetingId: decodeURIComponent(m[1] || ''),
+      mode: '',
+    };
+  }
+
+  return { brand: '', meetingNo: '', meetingId: '', mode: '' };
+}
+
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel }) {
   const qs = new URLSearchParams();
   if (clubName) qs.set('clubName', clubName);
@@ -118,10 +159,11 @@ async function loadPublicAgendaPayload({ meetingId, supabaseUrl, supabaseAnonKey
 
 exports.handler = async function handler(event) {
   const qs = event.queryStringParameters || {};
-  const meetingId = String(qs.meetingId || '').trim().toLowerCase();
-  const brand = String(qs.brand || '').trim();
-  const meetingNo = String(qs.meetingNo || '').trim();
-  const mode = String(qs.mode || '').trim().toLowerCase();
+  const fromPath = parsePathFallback(event.path);
+  const meetingId = String(qs.meetingId || fromPath.meetingId || '').trim().toLowerCase();
+  const brand = String(qs.brand || fromPath.brand || '').trim();
+  const meetingNo = String(qs.meetingNo || fromPath.meetingNo || '').trim();
+  const mode = String(qs.mode || fromPath.mode || '').trim().toLowerCase();
   const skin = String(qs.skin || '').trim().toLowerCase();
   const fallbackClubName = prettifyBrandSlug(brand) || 'Club';
   const fallbackMeetingLabel = meetingNo ? `Meeting ${meetingNo}` : 'Meeting Agenda';

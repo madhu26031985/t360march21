@@ -12,37 +12,37 @@
 # Public agenda: /{club-segment}/agenda/{meetingNo}/{meetingId} (slug or legacy UUID; no /weblogin in shared URL)
 [[redirects]]
   from = "/:clubId/agenda/:meetingNo/:meetingId"
-  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:clubId&meetingNo=:meetingNo&mode=agenda"
+  to = "/.netlify/functions/agenda-preview/agenda/:clubId/:meetingNo/:meetingId?mode=agenda"
   status = 200
 
 # Short public agenda: /a/{meetingId}
 [[redirects]]
   from = "/a/:meetingId"
-  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId"
+  to = "/.netlify/functions/agenda-preview/short/:meetingId"
   status = 200
 
 # Keep already-prefixed short links stable (avoid matching branded rule below).
 [[redirects]]
   from = "/weblogin/a/:meetingId"
-  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId"
+  to = "/.netlify/functions/agenda-preview/short/:meetingId"
   status = 200
 
 # Support already-shared prefixed branded short links.
 [[redirects]]
   from = "/weblogin/:brand/a/:meetingId"
-  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:brand"
+  to = "/.netlify/functions/agenda-preview/brand/:brand/:meetingId"
   status = 200
 
 # Support already-shared prefixed full agenda links.
 [[redirects]]
   from = "/weblogin/:clubId/agenda/:meetingNo/:meetingId"
-  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:clubId&meetingNo=:meetingNo&mode=agenda"
+  to = "/.netlify/functions/agenda-preview/agenda/:clubId/:meetingNo/:meetingId?mode=agenda"
   status = 200
 
 # Branded short agenda: /{club-slug}/a/{meetingId}
 [[redirects]]
   from = "/:brand/a/:meetingId"
-  to = "/.netlify/functions/agenda-preview?meetingId=:meetingId&brand=:brand"
+  to = "/.netlify/functions/agenda-preview/brand/:brand/:meetingId"
   status = 200
 
 # Root → app lives under /weblogin (Expo baseUrl)
