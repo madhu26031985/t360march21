@@ -21,23 +21,8 @@
   to = "/.netlify/functions/agenda-preview/short/:meetingId"
   status = 200
 
-# Keep already-prefixed short links stable (avoid matching branded rule below).
-[[redirects]]
-  from = "/weblogin/a/:meetingId"
-  to = "/.netlify/functions/agenda-preview/short/:meetingId"
-  status = 200
-
-# Support already-shared prefixed branded short links.
-[[redirects]]
-  from = "/weblogin/:brand/a/:meetingId"
-  to = "/.netlify/functions/agenda-preview/brand/:brand/:meetingId"
-  status = 200
-
-# Support already-shared prefixed full agenda links.
-[[redirects]]
-  from = "/weblogin/:clubId/agenda/:meetingNo/:meetingId"
-  to = "/.netlify/functions/agenda-preview/agenda/:clubId/:meetingNo/:meetingId?mode=agenda"
-  status = 200
+# Do NOT rewrite /weblogin/... agenda URLs to agenda-preview — browsers must load the SPA.
+# Share/crawler previews use paths without /weblogin: /:club/agenda/... and /a/:id (see above).
 
 # Branded short agenda: /{club-slug}/a/{meetingId}
 [[redirects]]
