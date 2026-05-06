@@ -62,6 +62,8 @@ function AppContent() {
         <Stack.Screen name="version-debug" options={{ headerShown: false }} />
         <Stack.Screen name="t360-training" options={{ headerShown: false }} />
         <Stack.Screen name="t360-training-excomm" options={{ headerShown: false }} />
+        <Stack.Screen name="t360-training-excomm-create-club" options={{ headerShown: false }} />
+        <Stack.Screen name="t360-training-excomm-invite-members" options={{ headerShown: false }} />
       </Stack>
 
       {updateInfo && (() => {

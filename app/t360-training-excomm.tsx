@@ -17,11 +17,16 @@ type PlaceholderRowProps = {
   title: string;
   hideBottomBorder?: boolean;
   icon: React.ReactNode;
+  onPress?: () => void;
 };
 
-function PlaceholderRow({ title, hideBottomBorder, icon }: PlaceholderRowProps) {
+function PlaceholderRow({ title, hideBottomBorder, icon, onPress }: PlaceholderRowProps) {
   return (
-    <TouchableOpacity style={[styles.row, hideBottomBorder && styles.rowNoBorder]} activeOpacity={0.7} onPress={() => {}}>
+    <TouchableOpacity
+      style={[styles.row, hideBottomBorder && styles.rowNoBorder]}
+      activeOpacity={0.7}
+      onPress={onPress ?? (() => {})}
+    >
       <View style={styles.rowLeft}>
         <View style={styles.iconTile}>{icon}</View>
         <View style={styles.textWrap}>
@@ -52,8 +57,16 @@ export default function T360TrainingExcommScreen() {
       </View>
 
       <View style={styles.group}>
-        <PlaceholderRow title="Create a club" icon={<Building2 size={18} color="#2563EB" strokeWidth={1.8} />} />
-        <PlaceholderRow title="Invite members" icon={<UserPlus size={18} color="#16A34A" strokeWidth={1.8} />} />
+        <PlaceholderRow
+          title="Create a club"
+          icon={<Building2 size={18} color="#2563EB" strokeWidth={1.8} />}
+          onPress={() => router.push('/t360-training-excomm-create-club')}
+        />
+        <PlaceholderRow
+          title="Invite members"
+          icon={<UserPlus size={18} color="#16A34A" strokeWidth={1.8} />}
+          onPress={() => router.push('/t360-training-excomm-invite-members')}
+        />
         <PlaceholderRow title="Manage meetings" icon={<Calendar size={18} color="#0EA5E9" strokeWidth={1.8} />} />
         <PlaceholderRow title="Agenda creation" icon={<ListChecks size={18} color="#D97706" strokeWidth={1.8} />} />
         <PlaceholderRow
