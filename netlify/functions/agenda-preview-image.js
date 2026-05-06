@@ -18,6 +18,7 @@ function normalize(value, fallback) {
 
 function readT360LogoBuffer() {
   const candidates = [
+    path.join(__dirname, 'assets/images/icon.png'),
     path.join(__dirname, '../../assets/images/icon.png'),
     path.join(process.cwd(), 'assets/images/icon.png'),
   ];
@@ -29,6 +30,31 @@ function readT360LogoBuffer() {
     }
   }
   return null;
+}
+
+/**
+ * App store icons are often square with large empty margins. Cropping the central
+ * ~53% (typical logo bounds) before resize makes colors fill the OG thumbnail; otherwise
+ * WhatsApp's small preview looks like a plain white box.
+ */
+async function buildLogoTilePng(sharp, logoBuffer, tileSize) {
+  const meta = await sharp(logoBuffer).metadata();
+  const w = meta.width || tileSize;
+  const h = meta.height || tileSize;
+  let pipeline = sharp(logoBuffer);
+  if (w === h && w >= 128) {
+    const frac = 0.53;
+    const side = (1 - frac) / 2;
+    const left = Math.floor(w * side);
+    const top = Math.floor(h * side);
+    const cw = w - 2 * left;
+    const ch = h - 2 * top;
+    pipeline = pipeline.extract({ left, top, width: cw, height: ch });
+  }
+  return pipeline
+    .resize(tileSize, tileSize, { fit: 'fill' })
+    .png()
+    .toBuffer();
 }
 
 /** Left column reserves space for T360 logo (composited PNG). Text starts at TX. */
@@ -65,7 +91,7 @@ exports.handler = async function handler(event) {
   </defs>
   <rect width="480" height="480" fill="url(#bg)" />
   <rect x="20" y="20" width="440" height="440" rx="20" fill="#ffffff" />
-  <rect x="${CARD_INNER_LEFT}" y="52" width="88" height="88" rx="12" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="1" />
+  <rect x="${CARD_INNER_LEFT}" y="52" width="88" height="88" rx="12" fill="#0d47a1" stroke="#0a3a82" stroke-width="1" />
   <text x="${TX}" y="58" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#0f172a">${safeClub}</text>
   <text x="${TX}" y="94" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#64748b">${safeDate}</text>
   <rect x="${TX}" y="148" width="292" height="48" rx="10" fill="#e8f0ff" stroke="#0d47a1" stroke-width="1.5" />
@@ -84,12 +110,11 @@ exports.handler = async function handler(event) {
 
     const logoFile = readT360LogoBuffer();
     if (logoFile) {
-      const logoPng = await sharp(logoFile)
-        .resize(80, 80, { fit: 'inside', withoutEnlargement: true })
-        .png()
-        .toBuffer();
+      const inset = 2;
+      const tilePx = 88 - inset * 2;
+      const logoPng = await buildLogoTilePng(sharp, logoFile, tilePx);
       raster = await sharp(raster)
-        .composite([{ input: logoPng, left: 48, top: 56 }])
+        .composite([{ input: logoPng, left: CARD_INNER_LEFT + inset, top: 52 + inset }])
         .png()
         .toBuffer();
     }
