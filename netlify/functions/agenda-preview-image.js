@@ -1,3 +1,5 @@
+const sharp = require('sharp');
+
 function escapeXml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -9,61 +11,61 @@ function escapeXml(value) {
 
 function normalize(value, fallback) {
   const trimmed = String(value || '').trim();
-  if (!trimmed) return fallback;
-  return trimmed.slice(0, 80);
+  return trimmed ? trimmed.slice(0, 90) : fallback;
 }
 
-/** Compact square OG image thumbnail used by WhatsApp card. */
 exports.handler = async function handler(event) {
   const qs = event.queryStringParameters || {};
-  const clubName = normalize(qs.clubName, 'T360 Club');
-  const meetingDate = normalize(qs.meetingDate, 'Upcoming Meeting');
-  const meetingLabel = normalize(qs.meetingLabel, 'Meeting Agenda');
-  const meetingTime = String(qs.meetingTime || '').trim().slice(0, 40);
 
-  const safeClub = escapeXml(clubName);
-  const safeDate = escapeXml(meetingDate);
-  const safeMeeting = escapeXml(meetingLabel);
-  const safeTime = escapeXml(meetingTime || 'Time TBD');
-  const safePowered = 'Powered by T360';
+  const clubName = normalize(qs.club, 'T-360 Training Club');
+  const date = normalize(qs.date, 'May 7, 2026');
+  const meetingNo = normalize(qs.no, '0205');
+  const time = normalize(qs.time, '20:30 - 21:30');
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Meeting preview">
-  <rect width="480" height="480" fill="#f3f4f6" />
-  <text x="26" y="82" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="700" fill="#111827">${safeClub}</text>
-  <text x="26" y="150" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="500" fill="#4b5563">${safeDate}</text>
-  <text x="26" y="212" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="700" fill="#374151">${safeMeeting}</text>
-  <text x="26" y="274" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="500" fill="#4b5563">${safeTime}</text>
-  <text x="26" y="336" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="600" fill="#374151">${safePowered}</text>
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#ffffff"/>
+  
+  <text x="60" y="130" font-family="Arial Black, Arial, sans-serif" font-size="58" font-weight="700" fill="#111827">
+    ${escapeXml(clubName)}
+  </text>
+  
+  <text x="60" y="210" font-family="Arial, Helvetica, sans-serif" font-size="42" fill="#374151">
+    ${escapeXml(date)}
+  </text>
+  
+  <text x="60" y="290" font-family="Arial, Helvetica, sans-serif" font-size="50" font-weight="700" fill="#1e40af">
+    Meeting ${escapeXml(meetingNo)}
+  </text>
+  
+  <text x="60" y="370" font-family="Arial, Helvetica, sans-serif" font-size="42" fill="#374151">
+    ${escapeXml(time)}
+  </text>
+  
+  <text x="60" y="480" font-family="Arial, Helvetica, sans-serif" font-size="36" font-weight="600" fill="#374151">
+    Powered by T360
+  </text>
 </svg>`;
 
-  const cacheHeaders = {
-    'Cache-Control': 'public, max-age=300',
-  };
-
   try {
-    const sharp = require('sharp');
-    let raster = await sharp(Buffer.from(svg, 'utf8')).png().toBuffer();
-
-    const pngBuffer = await sharp(raster).resize(240, 240).png().toBuffer();
+    const pngBuffer = await sharp(Buffer.from(svg, 'utf8'))
+      .png({ quality: 90 })
+      .toBuffer();
 
     return {
       statusCode: 200,
       headers: {
-        ...cacheHeaders,
         'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=3600',
       },
       body: pngBuffer.toString('base64'),
       isBase64Encoded: true,
     };
   } catch (err) {
-    console.error('[agenda-preview-image] PNG render failed, falling back to SVG:', err);
+    console.error(err);
     return {
-      statusCode: 200,
-      headers: {
-        ...cacheHeaders,
-        'Content-Type': 'image/svg+xml; charset=utf-8',
-      },
-      body: svg,
+      statusCode: 500,
+      body: 'Error generating preview image',
     };
   }
 };
