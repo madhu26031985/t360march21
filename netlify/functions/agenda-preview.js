@@ -148,12 +148,14 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-u6';
-  const meetingNoToken = String(meetingLabel || '')
-    .replace(/^Meeting\s+/i, '')
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]/g, '') || '1505';
-  return `${siteOrigin}/og/meeting-${encodeURIComponent(meetingNoToken)}.jpg?v=${OG_IMAGE_REV}`;
+  const OG_IMAGE_REV = '2026-05-07-u7';
+  const qs = new URLSearchParams();
+  if (clubName) qs.set('club', clubName);
+  if (dateText) qs.set('date', dateText);
+  if (meetingLabel) qs.set('no', String(meetingLabel).replace(/^Meeting\s+/i, '').trim() || meetingLabel);
+  if (timeText) qs.set('time', timeText);
+  qs.set('v', OG_IMAGE_REV);
+  return `${siteOrigin}/.netlify/functions/og-meeting-image?${qs.toString()}`;
 }
 
 function resolveTargetPath({ meetingId, brand, skin, meetingNo, mode, pv }) {
