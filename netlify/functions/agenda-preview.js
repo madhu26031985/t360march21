@@ -60,11 +60,11 @@ function formatTimeRange(startTime, endTime) {
 }
 
 /** Match the requested preview style text line. */
-const POWERED_BY = 'Powered by T360';
+const APP_T360 = 'app.t360.in';
 
 function buildVerticalOgDescription(lines) {
   const body = lines.filter(Boolean).join('\n');
-  return body ? `${body}\n${POWERED_BY}` : POWERED_BY;
+  return body ? `${body}\n${APP_T360}` : APP_T360;
 }
 
 function parsePathFallback(pathname) {
@@ -148,7 +148,7 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-u';
+  const OG_IMAGE_REV = '2026-05-07-x';
   const qs = new URLSearchParams();
   if (clubName) qs.set('club', clubName);
   if (dateText) qs.set('date', dateText);
@@ -259,18 +259,16 @@ exports.handler = async function handler(event) {
           : fallbackMeetingLabel;
 
       title = clubName;
-      const timeTextOrFallback = timeText || 'Time TBD';
-      description =
-        buildVerticalOgDescription([dateText, meetingNoText, timeTextOrFallback]) || 'Upcoming meeting';
+      description = [dateText, meetingNoText, APP_T360].filter(Boolean).join(' • ') || 'Upcoming meeting';
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
-      previewTimeText = timeTextOrFallback;
+      previewTimeText = APP_T360;
     } catch {
       // Keep fallback title/description.
     }
   } else {
-    description = buildVerticalOgDescription([fallbackMeetingLabel, 'Time TBD']);
+    description = [fallbackMeetingLabel, APP_T360].filter(Boolean).join(' • ');
   }
 
   const previewImageUrl = buildPreviewImageUrl({

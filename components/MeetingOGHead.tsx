@@ -41,7 +41,7 @@ export default function MeetingOGHead({
     const safePageUrl = pageUrl || window.location.href;
     const imageOrigin = imageBaseUrl || window.location.origin;
 
-    const OG_IMAGE_REV = '2026-05-07-u';
+    const OG_IMAGE_REV = '2026-05-07-x';
     const imageParams = new URLSearchParams({
       club: safeClubName,
       date: safeDate,
@@ -52,7 +52,7 @@ export default function MeetingOGHead({
     const ogImageUrl = `${imageOrigin}/.netlify/functions/agenda-preview-image?${imageParams.toString()}`;
 
     ensureMetaTag('og:title', `${safeClubName} - Meeting ${safeMeetingNo}`);
-    ensureMetaTag('og:description', `${safeDate} • ${safeTime}`);
+    ensureMetaTag('og:description', `${safeDate} • Meeting ${safeMeetingNo} • app.t360.in`);
     ensureMetaTag('og:url', safePageUrl);
     ensureMetaTag('og:image', ogImageUrl);
     ensureMetaTag('og:image:secure_url', ogImageUrl);
