@@ -148,7 +148,7 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-d';
+  const OG_IMAGE_REV = '2026-05-07-e';
   const qs = new URLSearchParams();
   if (clubName) qs.set('clubName', clubName);
   if (dateText) qs.set('meetingDate', dateText);
