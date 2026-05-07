@@ -1,6 +1,15 @@
 // netlify/functions/agenda-preview-image.js
 const sharp = require('sharp');
 
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 exports.handler = async function (event) {
   const qs = event.queryStringParameters || {};
 
@@ -14,19 +23,19 @@ exports.handler = async function (event) {
   <rect width="1200" height="630" fill="#ffffff" />
   
   <!-- Club Name -->
-  <text x="70" y="135" font-family="Arial Black, sans-serif" font-size="58" font-weight="700" fill="#111827">${clubName}</text>
+  <text x="40" y="66" font-family="Arial Black, Arial, sans-serif" font-size="58" font-weight="700" fill="#111827">${escapeXml(clubName)}</text>
   
   <!-- Date -->
-  <text x="70" y="225" font-family="Arial, sans-serif" font-size="44" fill="#374151">${date}</text>
+  <text x="40" y="140" font-family="Arial, sans-serif" font-size="44" fill="#374151">${escapeXml(date)}</text>
   
   <!-- Meeting Number -->
-  <text x="70" y="305" font-family="Arial, sans-serif" font-size="52" font-weight="700" fill="#1e40af">Meeting ${meetingNo}</text>
+  <text x="40" y="210" font-family="Arial, sans-serif" font-size="52" font-weight="700" fill="#1e40af">Meeting ${escapeXml(meetingNo)}</text>
   
   <!-- Time -->
-  <text x="70" y="385" font-family="Arial, sans-serif" font-size="44" fill="#374151">${time}</text>
+  <text x="40" y="280" font-family="Arial, sans-serif" font-size="44" fill="#374151">${escapeXml(time)}</text>
   
   <!-- Powered by T360 -->
-  <text x="70" y="490" font-family="Arial, sans-serif" font-size="38" font-weight="600" fill="#374151">Powered by T360</text>
+  <text x="40" y="600" font-family="Arial, sans-serif" font-size="38" font-weight="600" fill="#374151">Powered by T360</text>
 </svg>`;
 
   try {
