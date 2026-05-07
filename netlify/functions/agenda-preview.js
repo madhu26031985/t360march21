@@ -148,7 +148,7 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-i';
+  const OG_IMAGE_REV = '2026-05-07-j';
   const qs = new URLSearchParams();
   if (clubName) qs.set('clubName', clubName);
   if (dateText) qs.set('meetingDate', dateText);
@@ -233,7 +233,7 @@ exports.handler = async function handler(event) {
   const targetUrl = `${siteOrigin}${targetPath}`;
 
   let title = fallbackClubName;
-  let description = buildVerticalOgDescription([fallbackMeetingLabel]);
+  let description = POWERED_BY;
   let previewClubName = fallbackClubName;
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
@@ -255,8 +255,7 @@ exports.handler = async function handler(event) {
 
       title = clubName;
       const timeTextOrFallback = timeText || 'Time TBD';
-      const parts = [dateText, meetingNoText, timeTextOrFallback].filter(Boolean);
-      description = parts.length > 0 ? buildVerticalOgDescription(parts) : `${clubName}\n${POWERED_BY}`;
+      description = POWERED_BY;
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
@@ -265,7 +264,7 @@ exports.handler = async function handler(event) {
       // Keep fallback title/description.
     }
   } else {
-    description = buildVerticalOgDescription([fallbackMeetingLabel]);
+    description = POWERED_BY;
   }
 
   const previewImageUrl = buildPreviewImageUrl({
@@ -294,9 +293,9 @@ exports.handler = async function handler(event) {
     <meta property="og:url" content="${escapedTargetUrl}" />
     <meta property="og:image" content="${escapedPreviewImageUrl}" />
     <meta property="og:image:alt" content="${escapedDescription}" />
-    <meta property="og:image:width" content="240" />
-    <meta property="og:image:height" content="240" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapedTitle}" />
     <meta name="twitter:description" content="${escapedDescription}" />
     <meta name="twitter:image" content="${escapedPreviewImageUrl}" />
