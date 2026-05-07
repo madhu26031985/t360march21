@@ -233,7 +233,7 @@ exports.handler = async function handler(event) {
   const targetUrl = `${siteOrigin}${targetPath}`;
 
   let title = fallbackClubName;
-  let description = POWERED_BY;
+  let description = buildVerticalOgDescription([fallbackMeetingLabel]);
   let previewClubName = fallbackClubName;
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
@@ -255,7 +255,8 @@ exports.handler = async function handler(event) {
 
       title = clubName;
       const timeTextOrFallback = timeText || 'Time TBD';
-      description = POWERED_BY;
+      const parts = [dateText, meetingNoText, timeTextOrFallback].filter(Boolean);
+      description = parts.length > 0 ? buildVerticalOgDescription(parts) : `${clubName}\n${POWERED_BY}`;
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
@@ -264,7 +265,7 @@ exports.handler = async function handler(event) {
       // Keep fallback title/description.
     }
   } else {
-    description = POWERED_BY;
+    description = buildVerticalOgDescription([fallbackMeetingLabel]);
   }
 
   const previewImageUrl = buildPreviewImageUrl({
