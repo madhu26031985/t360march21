@@ -18,11 +18,17 @@ exports.handler = async function handler(event) {
 
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <style>
+    .base { font-family: monospace; }
+    .club { font-size: 64px; font-weight: 700; fill: #111827; }
+    .meta { font-size: 52px; fill: #374151; }
+    .meeting { font-size: 56px; font-weight: 700; fill: #1e40af; }
+  </style>
   <rect width="1200" height="630" fill="#dff0dc" />
-  <text x="36" y="92" font-family="Arial Black, Arial, sans-serif" font-size="62" font-weight="700" fill="#111827">${escapeXml(clubName)}</text>
-  <text x="36" y="188" font-family="Arial, sans-serif" font-size="52" fill="#374151">${escapeXml(date)}</text>
-  <text x="36" y="284" font-family="Arial, sans-serif" font-size="56" font-weight="700" fill="#1e40af">Meeting ${escapeXml(meetingNo)}</text>
-  <text x="36" y="380" font-family="Arial, sans-serif" font-size="50" fill="#374151">${escapeXml(appText)}</text>
+  <text x="36" y="92" class="base club">${escapeXml(clubName)}</text>
+  <text x="36" y="188" class="base meta">${escapeXml(date)}</text>
+  <text x="36" y="284" class="base meeting">Meeting ${escapeXml(meetingNo)}</text>
+  <text x="36" y="380" class="base meta">${escapeXml(appText)}</text>
 </svg>`;
 
   try {
