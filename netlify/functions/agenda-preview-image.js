@@ -57,9 +57,8 @@ async function buildLogoTilePng(sharp, logoBuffer, tileSize) {
     .toBuffer();
 }
 
-/** Left column reserves space for T360 logo (composited PNG). Text starts at TX. */
-const TX = 136;
-const CARD_INNER_LEFT = 36;
+/** Text-only compact OG card (no left logo/square). */
+const TX = 52;
 
 /** Compact square OG image: logo left + text stack; PNG for WhatsApp. */
 exports.handler = async function handler(event) {
@@ -77,10 +76,10 @@ exports.handler = async function handler(event) {
 
   const timeLine =
     meetingTime !== ''
-      ? `<text x="${TX}" y="218" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#475569">${safeTime}</text>`
+      ? `<text x="${TX}" y="164" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#475569">${safeTime}</text>`
       : '';
-
-  const poweredY = meetingTime !== '' ? 258 : 218;
+  const meetingY = meetingTime !== '' ? 204 : 164;
+  const poweredY = meetingTime !== '' ? 244 : 204;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Meeting preview">
   <defs>
@@ -90,13 +89,11 @@ exports.handler = async function handler(event) {
     </linearGradient>
   </defs>
   <rect width="480" height="480" fill="url(#bg)" />
-  <rect x="14" y="20" width="452" height="440" rx="20" fill="#ffffff" />
-  <rect x="${CARD_INNER_LEFT}" y="52" width="88" height="88" rx="12" fill="#0d47a1" stroke="#0a3a82" stroke-width="1" />
+  <rect x="24" y="24" width="432" height="432" rx="20" fill="#ffffff" />
   <text x="${TX}" y="58" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#0f172a">${safeClub}</text>
   <text x="${TX}" y="94" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#64748b">${safeDate}</text>
-  <rect x="${TX}" y="148" width="314" height="48" rx="10" fill="#e8f0ff" stroke="#0d47a1" stroke-width="1.5" />
-  <text x="${TX + 12}" y="180" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0d47a1">${safeMeeting}</text>
   ${timeLine}
+  <text x="${TX}" y="${meetingY}" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0d47a1">${safeMeeting}</text>
   <text x="${TX}" y="${poweredY}" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="500" fill="#64748b">${safePowered}</text>
 </svg>`;
 
@@ -107,17 +104,6 @@ exports.handler = async function handler(event) {
   try {
     const sharp = require('sharp');
     let raster = await sharp(Buffer.from(svg, 'utf8')).png().toBuffer();
-
-    const logoFile = readT360LogoBuffer();
-    if (logoFile) {
-      const inset = 2;
-      const tilePx = 88 - inset * 2;
-      const logoPng = await buildLogoTilePng(sharp, logoFile, tilePx);
-      raster = await sharp(raster)
-        .composite([{ input: logoPng, left: CARD_INNER_LEFT + inset, top: 52 + inset }])
-        .png()
-        .toBuffer();
-    }
 
     const pngBuffer = await sharp(raster).resize(240, 240).png().toBuffer();
 
