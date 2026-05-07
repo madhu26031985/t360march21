@@ -148,7 +148,7 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-o';
+  const OG_IMAGE_REV = '2026-05-07-p';
   const qs = new URLSearchParams();
   if (clubName) qs.set('club', clubName);
   if (dateText) qs.set('date', dateText);
@@ -234,7 +234,7 @@ exports.handler = async function handler(event) {
   const targetUrl = `${siteOrigin}${targetPath}`;
 
   let title = fallbackClubName;
-  let description = POWERED_BY;
+  let description = `${fallbackMeetingLabel} • ${POWERED_BY}`;
   let previewClubName = fallbackClubName;
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
@@ -256,7 +256,8 @@ exports.handler = async function handler(event) {
 
       title = clubName;
       const timeTextOrFallback = timeText || 'Time TBD';
-      description = POWERED_BY;
+      const parts = [dateText, meetingNoText, timeTextOrFallback].filter(Boolean);
+      description = parts.length > 0 ? `${parts.join(' • ')} • ${POWERED_BY}` : `${clubName} • ${POWERED_BY}`;
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
@@ -265,7 +266,7 @@ exports.handler = async function handler(event) {
       // Keep fallback title/description.
     }
   } else {
-    description = POWERED_BY;
+    description = `${fallbackMeetingLabel} • ${POWERED_BY}`;
   }
 
   const previewImageUrl = buildPreviewImageUrl({
