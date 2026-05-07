@@ -28,7 +28,6 @@ exports.handler = async function handler(event) {
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Meeting preview">
   <rect width="480" height="480" fill="#ffffff" />
-  <rect x="22" y="22" width="436" height="436" rx="20" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5" />
   <text x="44" y="90" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#0f172a">${safeClub}</text>
   <text x="44" y="138" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="500" fill="#475569">${safeDate}</text>
   <text x="44" y="178" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600" fill="#0d47a1">${safeMeeting}</text>
