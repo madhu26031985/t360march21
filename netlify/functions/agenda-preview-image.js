@@ -16,26 +16,23 @@ exports.handler = async function (event) {
   const clubName = (qs.club || 'T-360 Training Club').trim();
   const date = (qs.date || 'May 7, 2026').trim();
   const meetingNo = (qs.no || '0205').trim();
-  const time = (qs.time || '20:30 - 21:30').trim();
+  const appText = 'app.t360.in';
 
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <rect width="1200" height="630" fill="#ffffff" />
+  <rect width="1200" height="630" fill="#e5f4e2" />
   
   <!-- Club Name -->
-  <text x="32" y="58" font-family="Arial Black, Arial, sans-serif" font-size="60" font-weight="700" fill="#111827">${escapeXml(clubName)}</text>
+  <text x="40" y="92" font-family="Arial Black, Arial, sans-serif" font-size="62" font-weight="700" fill="#111827">${escapeXml(clubName)}</text>
   
   <!-- Date -->
-  <text x="32" y="132" font-family="Arial, sans-serif" font-size="46" fill="#374151">${escapeXml(date)}</text>
+  <text x="40" y="188" font-family="Arial, sans-serif" font-size="52" fill="#374151">${escapeXml(date)}</text>
   
   <!-- Meeting Number -->
-  <text x="32" y="204" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#1e40af">Meeting ${escapeXml(meetingNo)}</text>
+  <text x="40" y="284" font-family="Arial, sans-serif" font-size="56" font-weight="700" fill="#1e40af">Meeting ${escapeXml(meetingNo)}</text>
   
-  <!-- Time -->
-  <text x="32" y="278" font-family="Arial, sans-serif" font-size="46" fill="#374151">${escapeXml(time)}</text>
-  
-  <!-- Powered by T360 -->
-  <text x="32" y="604" font-family="Arial, sans-serif" font-size="40" font-weight="600" fill="#374151">Powered by T360</text>
+  <!-- App -->
+  <text x="40" y="380" font-family="Arial, sans-serif" font-size="50" fill="#374151">${escapeXml(appText)}</text>
 </svg>`;
 
   try {
