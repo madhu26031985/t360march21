@@ -148,7 +148,7 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-u';
+  const OG_IMAGE_REV = '2026-05-07-u2';
   const qs = new URLSearchParams();
   if (clubName) qs.set('club', clubName);
   if (dateText) qs.set('date', dateText);
@@ -260,8 +260,7 @@ exports.handler = async function handler(event) {
 
       title = clubName;
       const timeTextOrFallback = timeText || 'Time TBD';
-      description =
-        buildVerticalOgDescription([dateText, meetingNoText, timeTextOrFallback]) || 'Upcoming meeting';
+      description = [meetingNoText, dateText].filter(Boolean).join(' • ') || 'Upcoming meeting';
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
@@ -270,7 +269,7 @@ exports.handler = async function handler(event) {
       // Keep fallback title/description.
     }
   } else {
-    description = buildVerticalOgDescription([fallbackMeetingLabel, 'Time TBD']);
+    description = fallbackMeetingLabel || 'Upcoming meeting';
   }
 
   const previewImageUrl = buildPreviewImageUrl({
@@ -296,6 +295,7 @@ exports.handler = async function handler(event) {
     <meta property="og:type" content="website" />
     <meta property="og:title" content="${escapedTitle}" />
     <meta property="og:description" content="${escapedDescription}" />
+    <meta property="og:site_name" content="T360" />
     <meta property="og:url" content="${escapedTargetUrl}" />
     <meta property="og:image" content="${escapedPreviewImageUrl}" />
     <meta property="og:image:secure_url" content="${escapedPreviewImageUrl}" />
@@ -309,8 +309,7 @@ exports.handler = async function handler(event) {
     <meta name="twitter:image" content="${escapedPreviewImageUrl}" />
     <meta http-equiv="refresh" content="0;url=${escapedTargetUrl}" />
   </head>
-  <body>
-    <p>Redirecting to agenda... <a href="${escapedTargetUrl}">Open</a></p>
+  <body style="margin:0;background:#fff;">
     <script>window.location.replace(${JSON.stringify(targetUrl)});</script>
   </body>
 </html>`;
