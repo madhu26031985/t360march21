@@ -1,3 +1,6 @@
+# Serve OG image path through binary image function (must be before SPA rewrites)
+/og/meeting-:meetingNo.jpg  /.netlify/functions/og-meeting-image?no=:meetingNo  200!
+
 # /{club-segment}/agenda/{meetingNo}/{meetingId} → Expo baseUrl (slug or legacy club UUID)
 /:clubId/agenda/:meetingNo/:meetingId  /.netlify/functions/agenda-preview/agenda/:clubId/:meetingNo/:meetingId?mode=agenda  200
 
