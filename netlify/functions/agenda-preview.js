@@ -148,7 +148,7 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-s';
+  const OG_IMAGE_REV = '2026-05-07-u';
   const qs = new URLSearchParams();
   if (clubName) qs.set('club', clubName);
   if (dateText) qs.set('date', dateText);
@@ -256,7 +256,8 @@ exports.handler = async function handler(event) {
 
       title = clubName;
       const timeTextOrFallback = timeText || 'Time TBD';
-      description = [dateText, timeTextOrFallback].filter(Boolean).join(' • ') || 'Upcoming meeting';
+      description =
+        buildVerticalOgDescription([dateText, meetingNoText, timeTextOrFallback]) || 'Upcoming meeting';
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
@@ -265,7 +266,7 @@ exports.handler = async function handler(event) {
       // Keep fallback title/description.
     }
   } else {
-    description = 'Upcoming meeting';
+    description = buildVerticalOgDescription([fallbackMeetingLabel, 'Time TBD']);
   }
 
   const previewImageUrl = buildPreviewImageUrl({
@@ -293,6 +294,8 @@ exports.handler = async function handler(event) {
     <meta property="og:description" content="${escapedDescription}" />
     <meta property="og:url" content="${escapedTargetUrl}" />
     <meta property="og:image" content="${escapedPreviewImageUrl}" />
+    <meta property="og:image:secure_url" content="${escapedPreviewImageUrl}" />
+    <meta property="og:image:type" content="image/png" />
     <meta property="og:image:alt" content="${escapedDescription}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />

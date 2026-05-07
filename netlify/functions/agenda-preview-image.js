@@ -23,19 +23,19 @@ exports.handler = async function (event) {
   <rect width="1200" height="630" fill="#ffffff" />
   
   <!-- Club Name -->
-  <text x="40" y="66" font-family="Arial Black, Arial, sans-serif" font-size="58" font-weight="700" fill="#111827">${escapeXml(clubName)}</text>
+  <text x="32" y="58" font-family="Arial Black, Arial, sans-serif" font-size="60" font-weight="700" fill="#111827">${escapeXml(clubName)}</text>
   
   <!-- Date -->
-  <text x="40" y="140" font-family="Arial, sans-serif" font-size="44" fill="#374151">${escapeXml(date)}</text>
+  <text x="32" y="132" font-family="Arial, sans-serif" font-size="46" fill="#374151">${escapeXml(date)}</text>
   
   <!-- Meeting Number -->
-  <text x="40" y="210" font-family="Arial, sans-serif" font-size="52" font-weight="700" fill="#1e40af">Meeting ${escapeXml(meetingNo)}</text>
+  <text x="32" y="204" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#1e40af">Meeting ${escapeXml(meetingNo)}</text>
   
   <!-- Time -->
-  <text x="40" y="280" font-family="Arial, sans-serif" font-size="44" fill="#374151">${escapeXml(time)}</text>
+  <text x="32" y="278" font-family="Arial, sans-serif" font-size="46" fill="#374151">${escapeXml(time)}</text>
   
   <!-- Powered by T360 -->
-  <text x="40" y="600" font-family="Arial, sans-serif" font-size="38" font-weight="600" fill="#374151">Powered by T360</text>
+  <text x="32" y="604" font-family="Arial, sans-serif" font-size="40" font-weight="600" fill="#374151">Powered by T360</text>
 </svg>`;
 
   try {

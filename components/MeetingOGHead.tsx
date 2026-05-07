@@ -41,7 +41,7 @@ export default function MeetingOGHead({
     const safePageUrl = pageUrl || window.location.href;
     const imageOrigin = imageBaseUrl || window.location.origin;
 
-    const OG_IMAGE_REV = '2026-05-07-s';
+    const OG_IMAGE_REV = '2026-05-07-u';
     const imageParams = new URLSearchParams({
       club: safeClubName,
       date: safeDate,
@@ -55,6 +55,8 @@ export default function MeetingOGHead({
     ensureMetaTag('og:description', `${safeDate} • ${safeTime}`);
     ensureMetaTag('og:url', safePageUrl);
     ensureMetaTag('og:image', ogImageUrl);
+    ensureMetaTag('og:image:secure_url', ogImageUrl);
+    ensureMetaTag('og:image:type', 'image/png');
     ensureMetaTag('og:image:width', '1200');
     ensureMetaTag('og:image:height', '630');
   }, [clubName, date, meetingNo, time, pageUrl, imageBaseUrl]);
