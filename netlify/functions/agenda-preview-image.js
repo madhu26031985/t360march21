@@ -73,7 +73,7 @@ exports.handler = async function handler(event) {
   const safeDate = escapeXml(meetingDate);
   const safeMeeting = escapeXml(meetingLabel);
   const safeTime = escapeXml(meetingTime);
-  const safePowered = 'Powered by T360';
+  const safePowered = 'app.t360.in';
 
   const timeLine =
     meetingTime !== ''

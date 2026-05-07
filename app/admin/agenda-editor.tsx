@@ -2896,7 +2896,7 @@ export default function AgendaEditor() {
   };
 
   const handleCopyPublicWebAgendaLink = async () => {
-    const url = publicWebAgendaUrl?.trim() ?? publicWebAgendaShortUrl?.trim();
+    const url = publicWebAgendaShortUrl?.trim() ?? publicWebAgendaUrl?.trim();
     if (!url) {
       Alert.alert('Nothing to copy', 'The public link is not available yet.');
       return;
@@ -2904,8 +2904,8 @@ export default function AgendaEditor() {
 
     const flashCopied = () => {
       flashPublicWebLinkCopied(
-        publicWebAgendaUrl
-          ? 'Agenda link copied to clipboard.'
+        publicWebAgendaShortUrl
+          ? 'Short agenda link copied to clipboard.'
           : 'Public agenda link copied to clipboard.'
       );
     };
@@ -3939,7 +3939,7 @@ export default function AgendaEditor() {
                   maxFontSizeMultiplier={1.15}
                   selectable
                 >
-                  {publicWebAgendaUrl ?? publicWebAgendaShortUrl}
+                  {publicWebAgendaShortUrl ?? publicWebAgendaUrl}
                 </Text>
                 {isAgendaVisible === false ? (
                   <Text style={[styles.publicWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.1}>

@@ -60,7 +60,7 @@ function formatTimeRange(startTime, endTime) {
 }
 
 /** Avoid repeating the URL host — WhatsApp always shows app.t360.in on its own line. */
-const POWERED_BY = 'Powered by T360';
+const POWERED_BY = 'app.t360.in';
 
 function buildVerticalOgDescription(lines) {
   const body = lines.filter(Boolean).join('\n');
