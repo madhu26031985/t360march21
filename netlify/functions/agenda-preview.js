@@ -147,11 +147,14 @@ function parsePathFallback(pathname) {
 }
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
+  // Bump this when OG image layout changes to force social crawlers to refresh image cache.
+  const OG_IMAGE_REV = '2026-05-07-c';
   const qs = new URLSearchParams();
   if (clubName) qs.set('clubName', clubName);
   if (dateText) qs.set('meetingDate', dateText);
   if (meetingLabel) qs.set('meetingLabel', meetingLabel);
   if (timeText) qs.set('meetingTime', timeText);
+  qs.set('v', OG_IMAGE_REV);
   return `${siteOrigin}/.netlify/functions/agenda-preview-image?${qs.toString()}`;
 }
 
@@ -251,12 +254,13 @@ exports.handler = async function handler(event) {
           : fallbackMeetingLabel;
 
       title = clubName;
-      const parts = [dateText, meetingNoText, timeText].filter(Boolean);
+      const timeTextOrFallback = timeText || 'Time TBD';
+      const parts = [dateText, meetingNoText, timeTextOrFallback].filter(Boolean);
       description = parts.length > 0 ? buildVerticalOgDescription(parts) : `${clubName}\n${POWERED_BY}`;
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
-      previewTimeText = timeText;
+      previewTimeText = timeTextOrFallback;
     } catch {
       // Keep fallback title/description.
     }

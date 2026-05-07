@@ -1,6 +1,3 @@
-const fs = require('fs');
-const path = require('path');
-
 function escapeXml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -14,47 +11,6 @@ function normalize(value, fallback) {
   const trimmed = String(value || '').trim();
   if (!trimmed) return fallback;
   return trimmed.slice(0, 80);
-}
-
-function readT360LogoBuffer() {
-  const candidates = [
-    path.join(__dirname, 'assets/images/icon.png'),
-    path.join(__dirname, '../../assets/images/icon.png'),
-    path.join(process.cwd(), 'assets/images/icon.png'),
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.existsSync(p)) return fs.readFileSync(p);
-    } catch (_) {
-      /* ignore */
-    }
-  }
-  return null;
-}
-
-/**
- * App store icons are often square with large empty margins. Cropping the central
- * ~53% (typical logo bounds) before resize makes colors fill the OG thumbnail; otherwise
- * WhatsApp's small preview looks like a plain white box.
- */
-async function buildLogoTilePng(sharp, logoBuffer, tileSize) {
-  const meta = await sharp(logoBuffer).metadata();
-  const w = meta.width || tileSize;
-  const h = meta.height || tileSize;
-  let pipeline = sharp(logoBuffer);
-  if (w === h && w >= 128) {
-    const frac = 0.53;
-    const side = (1 - frac) / 2;
-    const left = Math.floor(w * side);
-    const top = Math.floor(h * side);
-    const cw = w - 2 * left;
-    const ch = h - 2 * top;
-    pipeline = pipeline.extract({ left, top, width: cw, height: ch });
-  }
-  return pipeline
-    .resize(tileSize, tileSize, { fit: 'fill' })
-    .png()
-    .toBuffer();
 }
 
 /** Text-only compact OG card (no left logo/square). */
@@ -71,15 +27,12 @@ exports.handler = async function handler(event) {
   const safeClub = escapeXml(clubName);
   const safeDate = escapeXml(meetingDate);
   const safeMeeting = escapeXml(meetingLabel);
-  const safeTime = escapeXml(meetingTime);
+  const safeTime = escapeXml(meetingTime || 'Time TBD');
   const safePowered = 'app.t360.in';
 
-  const timeLine =
-    meetingTime !== ''
-      ? `<text x="${TX}" y="164" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#475569">${safeTime}</text>`
-      : '';
-  const meetingY = meetingTime !== '' ? 204 : 164;
-  const poweredY = meetingTime !== '' ? 244 : 204;
+  const meetingY = 164;
+  const timeLine = `<text x="${TX}" y="204" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#475569">${safeTime}</text>`;
+  const poweredY = 244;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Meeting preview">
   <defs>
