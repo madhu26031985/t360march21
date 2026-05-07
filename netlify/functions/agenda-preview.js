@@ -159,7 +159,7 @@ function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, ti
   return `${siteOrigin}/.netlify/functions/agenda-preview-image?${qs.toString()}`;
 }
 
-function resolveTargetPath({ meetingId, brand, skin, meetingNo, mode }) {
+function resolveTargetPath({ meetingId, brand, skin, meetingNo, mode, pv }) {
   if (!meetingId || !isUuid(meetingId)) return '/weblogin/';
   const safeMeetingId = encodeURIComponent(meetingId);
   const normalizedBrand = brand && brand.toLowerCase() === 'weblogin' ? '' : brand;
@@ -171,7 +171,10 @@ function resolveTargetPath({ meetingId, brand, skin, meetingNo, mode }) {
     : safeBrand
       ? `/weblogin/${safeBrand}/a/${safeMeetingId}`
       : `/weblogin/a/${safeMeetingId}`;
-  if (skin === 'minimal' || skin === 'vibrant') return `${base}?skin=${skin}`;
+  const qp = new URLSearchParams();
+  if (skin === 'minimal' || skin === 'vibrant') qp.set('skin', skin);
+  if (pv) qp.set('pv', String(pv));
+  if (qp.toString()) return `${base}?${qp.toString()}`;
   return base;
 }
 
@@ -226,10 +229,11 @@ exports.handler = async function handler(event) {
   const meetingNo = String(qs.meetingNo || fromPath.meetingNo || '').trim();
   const mode = String(qs.mode || fromPath.mode || '').trim().toLowerCase();
   const skin = String(qs.skin || '').trim().toLowerCase();
+  const pv = String(qs.pv || '').trim();
   const fallbackClubName = prettifyBrandSlug(brand) || 'Club';
   const fallbackMeetingLabel = meetingNo ? `Meeting ${meetingNo}` : 'Meeting Agenda';
 
-  const targetPath = resolveTargetPath({ meetingId, brand, skin, meetingNo, mode });
+  const targetPath = resolveTargetPath({ meetingId, brand, skin, meetingNo, mode, pv });
   const siteOrigin = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.replace(/\/$/, '') || 'https://app.t360.in';
   const targetUrl = `${siteOrigin}${targetPath}`;
 
