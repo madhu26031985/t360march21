@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { getMeetingOgPayload } from '@/lib/meetingOgPayload';
-import type { MeetingOgTheme } from '@/lib/meetingOgUrl';
-import { meetingOgImageUrl } from '@/lib/meetingOgUrl';
+import type { OgTheme } from '@/lib/meetingOg';
+import { generateOgImageUrl } from '@/lib/meetingOg';
 
 const SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_ORIGIN ?? 'https://app.t360.in';
 
@@ -11,9 +11,9 @@ interface MeetingPageProps {
 
 /**
  * Prefer matching your real theme from `?skin=` or persisted club preference —
- * defaults to WhatsApp-safe `default`; override by passing MeetingOgTheme.
+ * defaults to WhatsApp-safe `default`; override by passing OgTheme.
  */
-async function preferredOgTheme(meetingId: string): Promise<MeetingOgTheme> {
+async function preferredOgTheme(meetingId: string): Promise<OgTheme> {
   void meetingId;
   return 'default';
 }
@@ -24,16 +24,18 @@ export async function generateMetadata({ params }: MeetingPageProps): Promise<Me
   const payload = await getMeetingOgPayload(id);
   const theme = await preferredOgTheme(id);
 
-  const pageUrl = `${SITE_ORIGIN.replace(/\/$/, '')}/meeting/${encodeURIComponent(id)}`;
-  const ogImageAbsolute = meetingOgImageUrl(id, {
-    theme,
-  });
+  const pageUrl = `${SITE_ORIGIN.replace(/\/$/, '')}/agenda/${encodeURIComponent(id)}`;
+  const meeting = {
+    id,
+    formattedDate: payload.meetingDate,
+    formattedTime: payload.meetingTime,
+    meetingNumber: payload.meetingNumberLabel.replace(/^Meeting\s+/i, ''),
+  };
+  const club = { name: payload.clubName };
+  const ogImageAbsolute = generateOgImageUrl(meeting, club, theme as OgTheme);
 
-  // WhatsApp shows OG title/description to the right of the thumbnail.
-  // We want that area to be domain-only, so keep OG text effectively blank
-  // and render details inside the OG image.
-  const title = ' ';
-  const description = ' ';
+  const title = `${club.name} - Meeting ${meeting.meetingNumber || 'Agenda'}`;
+  const description = `${meeting.formattedDate} • ${meeting.formattedTime || '20:30 - 21:30'}`;
 
   return {
     metadataBase: new URL(SITE_ORIGIN.replace(/\/$/, '') || 'https://app.t360.in'),
@@ -49,14 +51,14 @@ export async function generateMetadata({ params }: MeetingPageProps): Promise<Me
       images: [
         {
           url: ogImageAbsolute,
-          width: 600,
-          height: 600,
+          width: 1200,
+          height: 630,
           alt: title,
         },
       ],
     },
     twitter: {
-      card: 'summary',
+      card: 'summary_large_image',
       title,
       description,
       images: [ogImageAbsolute],
@@ -83,7 +85,16 @@ export default async function MeetingPublicPage({ params }: MeetingPageProps) {
         {/* eslint-disable-next-line @next/next/no-img-element -- static preview */}
         <img
           alt="Open Graph preview"
-          src={meetingOgImageUrl(id, { theme: 'default' })}
+          src={generateOgImageUrl(
+            {
+              id,
+              formattedDate: payload.meetingDate,
+              formattedTime: payload.meetingTime,
+              meetingNumber: payload.meetingNumberLabel.replace(/^Meeting\s+/i, ''),
+            },
+            { name: payload.clubName },
+            'default',
+          )}
           width={600}
           style={{ marginTop: 8, borderRadius: 8, border: '1px solid #e2e8f0', maxWidth: '100%' }}
         />

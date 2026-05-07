@@ -3,6 +3,7 @@ export interface MeetingOgPayload {
   meetingTitle: string;
   meetingDate: string;
   meetingNumberLabel: string;
+  meetingTime?: string;
 }
 
 /**
@@ -20,5 +21,6 @@ export async function getMeetingOgPayload(meetingId: string): Promise<MeetingOgP
     meetingTitle: 'Club Meeting Agenda',
     meetingDate: 'Wednesday, Jun 25, 2025',
     meetingNumberLabel: 'Meeting 12',
+    meetingTime: '20:30 - 21:30',
   };
 }
