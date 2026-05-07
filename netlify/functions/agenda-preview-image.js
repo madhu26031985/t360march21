@@ -35,14 +35,8 @@ exports.handler = async function handler(event) {
   const poweredY = 244;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Meeting preview">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0d47a1" />
-      <stop offset="100%" stop-color="#1976d2" />
-    </linearGradient>
-  </defs>
-  <rect width="480" height="480" fill="url(#bg)" />
-  <rect x="24" y="24" width="432" height="432" rx="20" fill="#ffffff" />
+  <rect width="480" height="480" fill="#ffffff" />
+  <rect x="16" y="16" width="448" height="448" rx="20" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
   <text x="${TX}" y="58" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#0f172a">${safeClub}</text>
   <text x="${TX}" y="94" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#64748b">${safeDate}</text>
   ${timeLine}
