@@ -28,19 +28,12 @@ exports.handler = async function handler(event) {
   const safePowered = 'Powered by T360';
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Meeting preview">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f8fafc" />
-      <stop offset="100%" stop-color="#e2e8f0" />
-    </linearGradient>
-  </defs>
-  <rect width="480" height="480" fill="url(#bg)" />
-  <rect x="20" y="20" width="440" height="440" rx="20" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" />
-  <text x="36" y="108" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#0f172a">${safeClub}</text>
-  <text x="36" y="174" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="500" fill="#334155">${safeDate}</text>
-  <text x="36" y="232" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" fill="#0d47a1">${safeMeeting}</text>
-  <text x="36" y="290" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="500" fill="#334155">${safeTime}</text>
-  <text x="36" y="352" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="600" fill="#475569">${safePowered}</text>
+  <rect width="480" height="480" fill="#f3f4f6" />
+  <text x="26" y="82" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="700" fill="#111827">${safeClub}</text>
+  <text x="26" y="150" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="500" fill="#4b5563">${safeDate}</text>
+  <text x="26" y="212" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="700" fill="#374151">${safeMeeting}</text>
+  <text x="26" y="274" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="500" fill="#4b5563">${safeTime}</text>
+  <text x="26" y="336" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="600" fill="#374151">${safePowered}</text>
 </svg>`;
 
   const cacheHeaders = {
