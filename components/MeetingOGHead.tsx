@@ -41,7 +41,7 @@ export default function MeetingOGHead({
     const safePageUrl = pageUrl || window.location.href;
     const imageOrigin = imageBaseUrl || window.location.origin;
 
-    const OG_IMAGE_REV = '2026-05-07-u3';
+    const OG_IMAGE_REV = '2026-05-07-u';
     const imageParams = new URLSearchParams({
       club: safeClubName,
       date: safeDate,

@@ -148,7 +148,7 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-u3';
+  const OG_IMAGE_REV = '2026-05-07-u2';
   const qs = new URLSearchParams();
   if (clubName) qs.set('club', clubName);
   if (dateText) qs.set('date', dateText);
@@ -264,7 +264,7 @@ exports.handler = async function handler(event) {
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
-      previewTimeText = 'app.t360.in';
+      previewTimeText = timeTextOrFallback;
     } catch {
       // Keep fallback title/description.
     }
