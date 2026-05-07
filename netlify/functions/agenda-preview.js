@@ -59,8 +59,8 @@ function formatTimeRange(startTime, endTime) {
   return a || b || '';
 }
 
-/** Avoid repeating the URL host — WhatsApp always shows app.t360.in on its own line. */
-const POWERED_BY = 'app.t360.in';
+/** Text line included in preview details (matches requested screenshot style). */
+const POWERED_BY = 'Powered by T360';
 
 function buildVerticalOgDescription(lines) {
   const body = lines.filter(Boolean).join('\n');
@@ -148,7 +148,7 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-j';
+  const OG_IMAGE_REV = '2026-05-07-k';
   const qs = new URLSearchParams();
   if (clubName) qs.set('clubName', clubName);
   if (dateText) qs.set('meetingDate', dateText);
@@ -233,7 +233,7 @@ exports.handler = async function handler(event) {
   const targetUrl = `${siteOrigin}${targetPath}`;
 
   let title = fallbackClubName;
-  let description = POWERED_BY;
+  let description = buildVerticalOgDescription([fallbackMeetingLabel]);
   let previewClubName = fallbackClubName;
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
@@ -255,7 +255,8 @@ exports.handler = async function handler(event) {
 
       title = clubName;
       const timeTextOrFallback = timeText || 'Time TBD';
-      description = POWERED_BY;
+      const parts = [dateText, meetingNoText, timeTextOrFallback].filter(Boolean);
+      description = parts.length > 0 ? buildVerticalOgDescription(parts) : `${clubName}\n${POWERED_BY}`;
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
@@ -264,7 +265,7 @@ exports.handler = async function handler(event) {
       // Keep fallback title/description.
     }
   } else {
-    description = POWERED_BY;
+    description = buildVerticalOgDescription([fallbackMeetingLabel]);
   }
 
   const previewImageUrl = buildPreviewImageUrl({
@@ -293,9 +294,9 @@ exports.handler = async function handler(event) {
     <meta property="og:url" content="${escapedTargetUrl}" />
     <meta property="og:image" content="${escapedPreviewImageUrl}" />
     <meta property="og:image:alt" content="${escapedDescription}" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:image:width" content="240" />
+    <meta property="og:image:height" content="240" />
+    <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="${escapedTitle}" />
     <meta name="twitter:description" content="${escapedDescription}" />
     <meta name="twitter:image" content="${escapedPreviewImageUrl}" />
