@@ -148,7 +148,11 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-u2';
+  const OG_IMAGE_REV = '2026-05-07-u4';
+  const meetingNoToken = String(meetingLabel || '')
+    .replace(/^Meeting\s+/i, '')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/g, '') || '1505';
   const qs = new URLSearchParams();
   if (clubName) qs.set('club', clubName);
   if (dateText) qs.set('date', dateText);
@@ -156,7 +160,7 @@ function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, ti
   if (meetingLabel) qs.set('no', String(meetingLabel).replace(/^Meeting\s+/i, '').trim() || meetingLabel);
   if (timeText) qs.set('time', timeText);
   qs.set('v', OG_IMAGE_REV);
-  return `${siteOrigin}/.netlify/functions/agenda-preview-image?${qs.toString()}`;
+  return `${siteOrigin}/og/meeting-${encodeURIComponent(meetingNoToken)}.jpg?${qs.toString()}`;
 }
 
 function resolveTargetPath({ meetingId, brand, skin, meetingNo, mode, pv }) {
@@ -299,7 +303,7 @@ exports.handler = async function handler(event) {
     <meta property="og:url" content="${escapedTargetUrl}" />
     <meta property="og:image" content="${escapedPreviewImageUrl}" />
     <meta property="og:image:secure_url" content="${escapedPreviewImageUrl}" />
-    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:alt" content="${escapedDescription}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />

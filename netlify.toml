@@ -36,6 +36,11 @@
   to = "/.netlify/functions/agenda-preview/brand/:brand/:meetingId"
   status = 200
 
+[[redirects]]
+  from = "/og/meeting-:meetingNo.jpg"
+  to = "/.netlify/functions/og-meeting-image?no=:meetingNo"
+  status = 200
+
 # Root → app lives under /weblogin (Expo baseUrl)
 [[redirects]]
   from = "/"

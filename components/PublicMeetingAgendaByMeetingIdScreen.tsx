@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MeetingOGHead from '@/components/MeetingOGHead';
 import { PublicMeetingAgendaLoadedView } from '@/components/PublicMeetingAgendaWebLayouts';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePublicAgendaSkinQuery } from '@/hooks/usePublicAgendaSkinQuery';
 import { extractUuidFromRouteParam } from '@/lib/agendaWebLink';
-import {
-  formatPublicAgendaBannerDateShort,
-  formatPublicAgendaBannerTimePart,
-} from '@/lib/publicAgendaFormat';
 import {
   normalizeStoredPublicAgendaSkin,
   publicAgendaSkinFromUrlParam,
@@ -97,26 +92,7 @@ export default function PublicMeetingAgendaByMeetingIdScreen({ meetingIdParam }:
   const skin =
     publicAgendaSkinFromUrlParam(skinQuery) ??
     normalizeStoredPublicAgendaSkin(payload.meeting.public_agenda_skin);
-  const dateText = formatPublicAgendaBannerDateShort(payload.meeting.meeting_date) || 'Date TBD';
-  const startTimeText = formatPublicAgendaBannerTimePart(payload.meeting.meeting_start_time);
-  const endTimeText = formatPublicAgendaBannerTimePart(payload.meeting.meeting_end_time);
-  const timeText =
-    startTimeText && endTimeText
-      ? `${startTimeText} - ${endTimeText}`
-      : startTimeText || endTimeText || 'Time TBD';
-  const meetingNo = payload.meeting.meeting_number?.trim() || '0000';
-
-  return (
-    <>
-      <MeetingOGHead
-        clubName={payload.club.club_name}
-        date={dateText}
-        meetingNo={meetingNo}
-        time={timeText}
-      />
-      <PublicMeetingAgendaLoadedView skin={skin} payload={payload} theme={theme} />
-    </>
-  );
+  return <PublicMeetingAgendaLoadedView skin={skin} payload={payload} theme={theme} />;
 }
 
 const styles = StyleSheet.create({
