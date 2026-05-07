@@ -17,6 +17,8 @@ import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 export const AGENDA_WEB_PATH_PREFIX = '/weblogin';
 /** Must match production web so share links from iOS/Android open the same URL as the browser. */
 const DEFAULT_AGENDA_WEB_HOST = 'https://app.t360.in';
+/** Share-link revision to force social preview refresh on clients that cache OG responses aggressively. */
+const SHARE_PREVIEW_REV = '2026-05-07-d';
 
 function agendaWebHost(): string {
   const h = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.trim();
@@ -91,9 +93,12 @@ export function buildAgendaWebUrl(params: {
     trimmed && trimmed.length > 0 ? slugifyClubNameForAgendaUrl(trimmed) : params.clubId;
   const path = `/${clubSegment}/agenda/${num}/${params.meetingId}`;
   let url = `${agendaWebHost()}${path}`;
+  const qp = new URLSearchParams();
   if (params.skin === 'minimal' || params.skin === 'vibrant') {
-    url += `?skin=${params.skin}`;
+    qp.set('skin', params.skin);
   }
+  qp.set('pv', SHARE_PREVIEW_REV);
+  url += `?${qp.toString()}`;
   return url;
 }
 
@@ -111,8 +116,11 @@ export function buildShortAgendaWebUrl(params: {
       ? `/${slug}/a/${params.meetingId}`
       : `/a/${params.meetingId}`;
   let url = `${agendaWebHost()}${path}`;
+  const qp = new URLSearchParams();
   if (params.skin === 'minimal' || params.skin === 'vibrant') {
-    url += `?skin=${params.skin}`;
+    qp.set('skin', params.skin);
   }
+  qp.set('pv', SHARE_PREVIEW_REV);
+  url += `?${qp.toString()}`;
   return url;
 }
