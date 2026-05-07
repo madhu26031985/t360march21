@@ -16,7 +16,7 @@ exports.handler = async function (event) {
   const clubName = (qs.club || 'T-360 Training Club').trim();
   const date = (qs.date || 'May 7, 2026').trim();
   const meetingNo = (qs.no || '0205').trim();
-  const appText = 'app.t360.in';
+  const time = (qs.time || '20:30 - 21:30').trim();
 
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
@@ -31,23 +31,25 @@ exports.handler = async function (event) {
   <!-- Meeting Number -->
   <text x="32" y="204" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#1e40af">Meeting ${escapeXml(meetingNo)}</text>
   
-  <!-- App -->
-  <text x="32" y="278" font-family="Arial, sans-serif" font-size="46" fill="#374151">${appText}</text>
+  <!-- Time -->
+  <text x="32" y="278" font-family="Arial, sans-serif" font-size="46" fill="#374151">${escapeXml(time)}</text>
+  
+  <!-- Powered by T360 -->
+  <text x="32" y="604" font-family="Arial, sans-serif" font-size="40" font-weight="600" fill="#374151">Powered by T360</text>
 </svg>`;
 
   try {
-    const jpegBuffer = await sharp(Buffer.from(svg, 'utf8'))
-      .flatten({ background: '#ffffff' })
-      .jpeg({ quality: 84, mozjpeg: true })
+    const pngBuffer = await sharp(Buffer.from(svg, 'utf8'))
+      .png({ quality: 95 })
       .toBuffer();
 
     return {
       statusCode: 200,
       headers: {
-        'Content-Type': 'image/jpeg',
+        'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=300',
       },
-      body: jpegBuffer.toString('base64'),
+      body: pngBuffer.toString('base64'),
       isBase64Encoded: true,
     };
   } catch (error) {
