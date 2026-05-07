@@ -148,7 +148,7 @@ function parsePathFallback(pathname) {
 
 function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, timeText }) {
   // Bump this when OG image layout changes to force social crawlers to refresh image cache.
-  const OG_IMAGE_REV = '2026-05-07-g';
+  const OG_IMAGE_REV = '2026-05-07-i';
   const qs = new URLSearchParams();
   if (clubName) qs.set('clubName', clubName);
   if (dateText) qs.set('meetingDate', dateText);
@@ -237,7 +237,7 @@ exports.handler = async function handler(event) {
   let previewClubName = fallbackClubName;
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
-  let previewTimeText = '';
+  let previewTimeText = 'Time TBD';
 
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_WEB_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';

@@ -14,7 +14,7 @@ function normalize(value, fallback) {
 }
 
 /** Text-only compact OG card (no left logo/square). */
-const TX = 52;
+const TX = 28;
 
 /** Compact square OG image: logo left + text stack; PNG for WhatsApp. */
 exports.handler = async function handler(event) {
@@ -36,7 +36,6 @@ exports.handler = async function handler(event) {
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Meeting preview">
   <rect width="480" height="480" fill="#ffffff" />
-  <rect x="16" y="16" width="448" height="448" rx="20" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
   <text x="${TX}" y="58" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#0f172a">${safeClub}</text>
   <text x="${TX}" y="94" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#64748b">${safeDate}</text>
   ${timeLine}
