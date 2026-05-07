@@ -11,17 +11,22 @@ exports.handler = async function (event) {
 
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <rect width="1200" height="630" fill="#ffffff"/>
+  <rect width="1200" height="630" fill="#ffffff" />
   
-  <text x="65" y="130" font-family="Arial Black, sans-serif" font-size="58" font-weight="700" fill="#111827">${clubName}</text>
+  <!-- Club Name -->
+  <text x="70" y="135" font-family="Arial Black, sans-serif" font-size="58" font-weight="700" fill="#111827">${clubName}</text>
   
-  <text x="65" y="205" font-family="Arial, sans-serif" font-size="42" fill="#374151">${date}</text>
+  <!-- Date -->
+  <text x="70" y="225" font-family="Arial, sans-serif" font-size="44" fill="#374151">${date}</text>
   
-  <text x="65" y="280" font-family="Arial, sans-serif" font-size="50" font-weight="700" fill="#1e40af">Meeting ${meetingNo}</text>
+  <!-- Meeting Number -->
+  <text x="70" y="305" font-family="Arial, sans-serif" font-size="52" font-weight="700" fill="#1e40af">Meeting ${meetingNo}</text>
   
-  <text x="65" y="355" font-family="Arial, sans-serif" font-size="42" fill="#374151">${time}</text>
+  <!-- Time -->
+  <text x="70" y="385" font-family="Arial, sans-serif" font-size="44" fill="#374151">${time}</text>
   
-  <text x="65" y="460" font-family="Arial, sans-serif" font-size="36" font-weight="600" fill="#374151">Powered by T360</text>
+  <!-- Powered by T360 -->
+  <text x="70" y="490" font-family="Arial, sans-serif" font-size="38" font-weight="600" fill="#374151">Powered by T360</text>
 </svg>`;
 
   try {
