@@ -58,8 +58,8 @@ async function buildLogoTilePng(sharp, logoBuffer, tileSize) {
 }
 
 /** Left column reserves space for T360 logo (composited PNG). Text starts at TX. */
-const TX = 148;
-const CARD_INNER_LEFT = 44;
+const TX = 136;
+const CARD_INNER_LEFT = 36;
 
 /** Compact square OG image: logo left + text stack; PNG for WhatsApp. */
 exports.handler = async function handler(event) {
@@ -90,11 +90,11 @@ exports.handler = async function handler(event) {
     </linearGradient>
   </defs>
   <rect width="480" height="480" fill="url(#bg)" />
-  <rect x="20" y="20" width="440" height="440" rx="20" fill="#ffffff" />
+  <rect x="14" y="20" width="452" height="440" rx="20" fill="#ffffff" />
   <rect x="${CARD_INNER_LEFT}" y="52" width="88" height="88" rx="12" fill="#0d47a1" stroke="#0a3a82" stroke-width="1" />
   <text x="${TX}" y="58" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#0f172a">${safeClub}</text>
   <text x="${TX}" y="94" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" fill="#64748b">${safeDate}</text>
-  <rect x="${TX}" y="148" width="292" height="48" rx="10" fill="#e8f0ff" stroke="#0d47a1" stroke-width="1.5" />
+  <rect x="${TX}" y="148" width="314" height="48" rx="10" fill="#e8f0ff" stroke="#0d47a1" stroke-width="1.5" />
   <text x="${TX + 12}" y="180" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0d47a1">${safeMeeting}</text>
   ${timeLine}
   <text x="${TX}" y="${poweredY}" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="500" fill="#64748b">${safePowered}</text>
