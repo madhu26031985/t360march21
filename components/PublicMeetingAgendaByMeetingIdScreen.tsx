@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PublicMeetingAgendaLoadedView } from '@/components/PublicMeetingAgendaWebLayouts';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePublicAgendaSkinQuery } from '@/hooks/usePublicAgendaSkinQuery';
-import { buildShortAgendaWebUrl, extractUuidFromRouteParam } from '@/lib/agendaWebLink';
+import { extractUuidFromRouteParam } from '@/lib/agendaWebLink';
 import {
   normalizeStoredPublicAgendaSkin,
   publicAgendaSkinFromUrlParam,
@@ -92,24 +92,6 @@ export default function PublicMeetingAgendaByMeetingIdScreen({ meetingIdParam }:
   const skin =
     publicAgendaSkinFromUrlParam(skinQuery) ??
     normalizeStoredPublicAgendaSkin(payload.meeting.public_agenda_skin);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-    const currentPath = window.location.pathname;
-    if (!currentPath.startsWith('/weblogin/')) return;
-    const canonicalUrl = buildShortAgendaWebUrl({
-      meetingId: payload.meeting.id,
-      clubDisplayName: payload.club.club_name,
-      skin,
-    });
-    const canonical = new URL(canonicalUrl);
-    const nextPathWithQuery = `${canonical.pathname}${canonical.search}`;
-    const currentPathWithQuery = `${window.location.pathname}${window.location.search}`;
-    if (nextPathWithQuery !== currentPathWithQuery) {
-      window.history.replaceState(null, '', nextPathWithQuery);
-    }
-  }, [payload, skin]);
-
   return <PublicMeetingAgendaLoadedView skin={skin} payload={payload} theme={theme} />;
 }
 
