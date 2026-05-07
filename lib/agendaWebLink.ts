@@ -18,7 +18,7 @@ export const AGENDA_WEB_PATH_PREFIX = '/weblogin';
 /** Must match production web so share links from iOS/Android open the same URL as the browser. */
 const DEFAULT_AGENDA_WEB_HOST = 'https://app.t360.in';
 /** Share-link revision to force social preview refresh on clients that cache OG responses aggressively. */
-const SHARE_PREVIEW_REV = '2026-05-07-l';
+const SHARE_PREVIEW_REV = '2026-05-07-n';
 
 function agendaWebHost(): string {
   const h = process.env.EXPO_PUBLIC_AGENDA_WEB_HOST?.trim();
