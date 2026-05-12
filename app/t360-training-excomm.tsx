@@ -87,7 +87,13 @@ export default function T360TrainingExcommScreen() {
           icon={<UserPlus size={18} color="#16A34A" strokeWidth={1.8} />}
           onPress={() => router.push('/t360-training-excomm-invite-members')}
         />
-        <PlaceholderRow title="Manage meetings" icon={<Calendar size={18} color="#0EA5E9" strokeWidth={1.8} />} />
+        <PlaceholderRow
+          title="Manage Meetings"
+          description="Create, edit, close, and reopen meetings."
+          descriptionEmphasized
+          icon={<Calendar size={18} color="#0EA5E9" strokeWidth={1.8} />}
+          onPress={() => router.push('/t360-training-excomm-manage-meetings')}
+        />
         <PlaceholderRow title="Agenda creation" icon={<ListChecks size={18} color="#D97706" strokeWidth={1.8} />} />
         <PlaceholderRow
           title="Voting operations"
