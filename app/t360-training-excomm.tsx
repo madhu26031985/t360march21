@@ -81,7 +81,9 @@ export default function T360TrainingExcommScreen() {
           onPress={() => router.push('/t360-training-excomm-create-club')}
         />
         <PlaceholderRow
-          title="Invite members"
+          title="Member Onboarding"
+          description="Invite members and assign the right roles."
+          descriptionEmphasized
           icon={<UserPlus size={18} color="#16A34A" strokeWidth={1.8} />}
           onPress={() => router.push('/t360-training-excomm-invite-members')}
         />

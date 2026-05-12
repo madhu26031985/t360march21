@@ -1,8 +1,8 @@
 import React from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { router } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
+import { goBackOrReplace } from '@/lib/trainingBackNavigation';
 
 const N = {
   page: '#FBFBFA',
@@ -12,34 +12,98 @@ const N = {
   textSecondary: '#787774',
 };
 
-const STEPS = [
-  'Go to Admin → Invite new club members',
-  'Enter Full Name',
-  'Enter Email ID',
-  'Select Role (Member / ExComm / Guest / Visiting Toastmaster / Club Leader)',
-  'Tap Send invitation',
+/** Match Club Set Up training doc typography (10% smaller than base scale). */
+const FS = 0.9;
+
+const BENEFITS: { title: string; body: string }[] = [
+  {
+    title: 'Easy Member Onboarding',
+    body: 'Invite members quickly using email.',
+  },
+  {
+    title: 'Role-Based Access',
+    body: 'Assign Member, ExComm, Guest, Visiting Toastmaster, or Club Leader roles.',
+  },
+  {
+    title: 'Instant Access for Existing Users',
+    body: 'Existing T360 users are added immediately.',
+  },
+  {
+    title: 'Seamless Experience for New Users',
+    body: 'New users receive guided email invitations.',
+  },
+  {
+    title: 'Improved Club Collaboration',
+    body: 'Members can participate in club activities.',
+  },
+];
+
+const ROLES: { name: string; body: string }[] = [
+  {
+    name: 'Member',
+    body: 'A regular club member who can participate in meetings, take roles, and track personal progress.',
+  },
+  {
+    name: 'ExComm',
+    body: 'An Executive Committee member responsible for managing club operations and administration.',
+  },
+  {
+    name: 'Guest',
+    body: 'A visitor who can attend meetings and explore club activities without full access.',
+  },
+  {
+    name: 'Visiting Toastmaster',
+    body: 'A Toastmaster from another club visiting for participation or networking.',
+  },
+  {
+    name: 'Club Leader',
+    body: 'A leadership role with elevated club-level responsibilities.',
+  },
+];
+
+const HOW_TO_BULLETS = [
+  'Go to Admin → Invite New Club Members',
+  'Enter the member’s Full Name',
+  'Enter the member’s Email ID',
+  'Select the appropriate Role',
+  'Tap Send Invitation',
+];
+
+const SCENARIOS: { title: string; body: string }[] = [
+  {
+    title: 'Scenario 1: Existing T360 User',
+    body: 'If the invited user already belongs to any club in T360, they will be added instantly based on the selected role.',
+  },
+  {
+    title: 'Scenario 2: New User',
+    body: 'If the invited user is new to T360, an invitation email will be sent. The user must sign up using the same email address.',
+  },
 ];
 
 const FAQS: { q: string; a: string }[] = [
   {
-    q: 'What happens after sending an invite?',
-    a: 'The user receives an email invitation and can join your club.',
+    q: 'Who can invite members?',
+    a: 'Only users with ExComm access can invite members.',
   },
   {
     q: 'Can I assign roles while inviting?',
-    a: 'Yes, you can select roles like Member, ExComm, Guest, Visiting Toastmaster, Club Leader, etc.',
+    a: 'Yes, roles such as Member, ExComm, Guest, Visiting Toastmaster, and Club Leader can be assigned.',
   },
   {
     q: 'Can I track invitations?',
-    a: 'Yes, pending invites are shown under the invitation section.',
+    a: 'Yes, pending invitations are visible under the Invitation section.',
   },
   {
     q: 'Can I resend an invite?',
-    a: 'You can send a new invite again if the user hasn’t joined.',
+    a: 'Yes, invitations can be resent if the user has not joined.',
   },
   {
-    q: 'Who can invite members?',
-    a: 'Only users with ExComm access can invite members.',
+    q: 'What happens if the user already exists in T360?',
+    a: 'They will be added instantly to your club.',
+  },
+  {
+    q: 'What happens if the user is new to T360?',
+    a: 'They will receive an email invitation and must sign up using the same email address.',
   },
 ];
 
@@ -47,11 +111,15 @@ export default function T360TrainingExcommInviteMembersScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
-          <ArrowLeft size={22} color={N.text} />
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => goBackOrReplace('/t360-training-excomm')}
+          activeOpacity={0.7}
+        >
+          <ArrowLeft size={Math.round(22 * FS)} color={N.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} maxFontSizeMultiplier={1.3}>
-          Invite members
+          Member Onboarding
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -63,29 +131,95 @@ export default function T360TrainingExcommInviteMembersScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.card}>
-          <Text style={styles.title} maxFontSizeMultiplier={1.35}>
-            How to Invite Club Members?
+          <Text style={styles.docTitle} maxFontSizeMultiplier={1.35}>
+            Member Onboarding
+          </Text>
+          <Text style={styles.lead} maxFontSizeMultiplier={1.3}>
+            Invite members and assign the right roles.
           </Text>
 
-          {STEPS.map((step, i) => (
-            <View key={step} style={styles.stepRow}>
-              <Text style={styles.stepNum} maxFontSizeMultiplier={1.25}>
-                {i + 1}.
+          <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
+            Why Invite Members?
+          </Text>
+          <Text style={styles.body} maxFontSizeMultiplier={1.25}>
+            Inviting members in T360 helps bring your club community together by giving members access to meetings,
+            roles, attendance, voting, and club activities in one place.
+          </Text>
+
+          <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
+            Purpose of Inviting Members
+          </Text>
+          <Text style={styles.body} maxFontSizeMultiplier={1.25}>
+            Member invitations allow your club to build collaboration, assign responsibilities, track participation, and
+            ensure smooth club operations.
+          </Text>
+
+          <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
+            Benefits of Inviting Members
+          </Text>
+          {BENEFITS.map(({ title, body }) => (
+            <View key={title} style={styles.benefitBlock}>
+              <Text style={styles.benefitTitle} maxFontSizeMultiplier={1.25}>
+                ✔ {title}
               </Text>
-              <Text style={styles.stepText} maxFontSizeMultiplier={1.25}>
-                {step}
+              <Text style={styles.benefitBody} maxFontSizeMultiplier={1.25}>
+                {body}
               </Text>
             </View>
           ))}
 
-          <Text style={styles.done} maxFontSizeMultiplier={1.25}>
-            ✅ Invitation sent! The member will receive an email to join.
+          <Text style={styles.calloutLabel} maxFontSizeMultiplier={1.3}>
+            ■ What You Gain
           </Text>
+          <Text style={styles.body} maxFontSizeMultiplier={1.25}>
+            By inviting members, your club becomes more connected, organized, and collaborative.
+          </Text>
+
+          <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
+            Understanding Member Roles
+          </Text>
+          {ROLES.map(({ name, body }) => (
+            <View key={name} style={styles.roleBlock}>
+              <Text style={styles.roleName} maxFontSizeMultiplier={1.25}>
+                {name}
+              </Text>
+              <Text style={styles.roleBody} maxFontSizeMultiplier={1.25}>
+                {body}
+              </Text>
+            </View>
+          ))}
+
+          <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
+            How to Invite Club Members
+          </Text>
+          {HOW_TO_BULLETS.map((line) => (
+            <View key={line} style={styles.bulletRow}>
+              <Text style={styles.bulletMark} maxFontSizeMultiplier={1.25}>
+                •
+              </Text>
+              <Text style={styles.bulletText} maxFontSizeMultiplier={1.25}>
+                {line}
+              </Text>
+            </View>
+          ))}
+
+          <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
+            How Member Invitation Works
+          </Text>
+          {SCENARIOS.map(({ title, body }) => (
+            <View key={title} style={styles.scenarioBlock}>
+              <Text style={styles.subHeading} maxFontSizeMultiplier={1.25}>
+                {title}
+              </Text>
+              <Text style={styles.bodyTight} maxFontSizeMultiplier={1.25}>
+                {body}
+              </Text>
+            </View>
+          ))}
 
           <Text style={styles.faqHeading} maxFontSizeMultiplier={1.3}>
-            ❓ FAQs
+            Frequently Asked Questions
           </Text>
-
           {FAQS.map(({ q, a }) => (
             <View key={q} style={styles.faqBlock}>
               <Text style={styles.faqQ} maxFontSizeMultiplier={1.25}>
@@ -128,7 +262,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     color: N.text,
-    fontSize: 20,
+    fontSize: 20 * FS,
     fontWeight: '700',
   },
   headerSpacer: {
@@ -139,65 +273,137 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: 32,
   },
   card: {
     backgroundColor: N.surface,
     borderWidth: 1,
     borderColor: N.border,
     borderRadius: 14,
-    padding: 18,
+    padding: 20,
   },
-  title: {
-    fontSize: 17,
+  docTitle: {
+    fontSize: 22 * FS,
     fontWeight: '700',
     color: N.text,
-    marginBottom: 16,
+    marginBottom: 8,
+    letterSpacing: -0.3 * FS,
   },
-  stepRow: {
+  lead: {
+    fontSize: 15 * FS,
+    lineHeight: 22 * FS,
+    color: N.textSecondary,
+    marginBottom: 22,
+  },
+  sectionHeading: {
+    fontSize: 16 * FS,
+    fontWeight: '700',
+    color: N.text,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  body: {
+    fontSize: 15 * FS,
+    lineHeight: 23 * FS,
+    color: N.text,
+    marginBottom: 18,
+  },
+  bodyTight: {
+    fontSize: 15 * FS,
+    lineHeight: 23 * FS,
+    color: N.text,
+    marginBottom: 14,
+  },
+  benefitBlock: {
+    marginBottom: 12,
+    paddingLeft: 2,
+  },
+  benefitTitle: {
+    fontSize: 15 * FS,
+    fontWeight: '600',
+    lineHeight: 22 * FS,
+    color: N.text,
+    marginBottom: 2,
+  },
+  benefitBody: {
+    fontSize: 14 * FS,
+    lineHeight: 21 * FS,
+    color: N.textSecondary,
+    paddingLeft: 18,
+  },
+  calloutLabel: {
+    fontSize: 16 * FS,
+    fontWeight: '700',
+    color: N.text,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  roleBlock: {
+    marginBottom: 12,
+  },
+  roleName: {
+    fontSize: 15 * FS,
+    fontWeight: '600',
+    lineHeight: 22 * FS,
+    color: N.text,
+    marginBottom: 2,
+  },
+  roleBody: {
+    fontSize: 14 * FS,
+    lineHeight: 21 * FS,
+    color: N.textSecondary,
+    marginBottom: 4,
+    paddingLeft: 2,
+  },
+  bulletRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  stepNum: {
-    fontSize: 15,
-    fontWeight: '600',
+  bulletMark: {
+    fontSize: 15 * FS,
+    lineHeight: 22 * FS,
     color: N.textSecondary,
-    minWidth: 22,
+    minWidth: 18 * FS,
+    marginTop: 1,
   },
-  stepText: {
+  bulletText: {
     flex: 1,
-    marginLeft: 6,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 15 * FS,
+    lineHeight: 22 * FS,
     color: N.text,
   },
-  done: {
-    marginTop: 14,
-    marginBottom: 20,
-    fontSize: 15,
-    lineHeight: 22,
+  scenarioBlock: {
+    marginBottom: 4,
+  },
+  subHeading: {
+    fontSize: 15 * FS,
+    fontWeight: '600',
+    lineHeight: 22 * FS,
     color: N.text,
+    marginBottom: 4,
+    marginTop: 2,
   },
   faqHeading: {
-    fontSize: 16,
+    fontSize: 16 * FS,
     fontWeight: '700',
     color: N.text,
+    marginTop: 8,
     marginBottom: 12,
   },
   faqBlock: {
     marginBottom: 14,
   },
   faqQ: {
-    fontSize: 15,
+    fontSize: 15 * FS,
     fontWeight: '600',
-    lineHeight: 22,
+    lineHeight: 22 * FS,
     color: N.text,
     marginBottom: 4,
   },
   faqA: {
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 14 * FS,
+    lineHeight: 21 * FS,
     color: N.textSecondary,
   },
 });
