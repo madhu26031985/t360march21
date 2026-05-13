@@ -91,7 +91,7 @@ export default function T360TrainingExcommAgendaCreationScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => goBackOrReplace('/t360-training-excomm')}
+          onPress={() => goBackOrReplace('/t360-training')}
           activeOpacity={0.7}
         >
           <ArrowLeft size={Math.round(22 * FS)} color={N.text} />

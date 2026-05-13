@@ -4,14 +4,18 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import {
   ArrowLeft,
+  Building2,
+  Calendar,
   CalendarDays,
   ChevronRight,
   GraduationCap,
   Home,
   Landmark,
+  ListChecks,
   Settings,
   Shield,
-  Users,
+  UserPlus,
+  Vote,
 } from 'lucide-react-native';
 import { goBackOrReplace } from '@/lib/trainingBackNavigation';
 
@@ -85,11 +89,39 @@ export default function T360TrainingScreen() {
 
       <View style={styles.group}>
         <TrainingRow
-          icon={<Users size={18} color="#2563EB" strokeWidth={1.8} />}
-          title="Excomm Training"
-          description="Guides and resources for ExComm members."
+          icon={<Building2 size={18} color="#2563EB" strokeWidth={1.8} />}
+          title="Create a Club"
+          description="Follow this quick guide to set up your club in T360, manage roles, and get your members onboard."
           descriptionEmphasized
-          onPress={() => router.push('/t360-training-excomm')}
+          onPress={() => router.push('/t360-training-excomm-create-club')}
+        />
+        <TrainingRow
+          icon={<UserPlus size={18} color="#16A34A" strokeWidth={1.8} />}
+          title="Member Onboarding"
+          description="Invite members and assign the right roles."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-excomm-invite-members')}
+        />
+        <TrainingRow
+          icon={<Calendar size={18} color="#0EA5E9" strokeWidth={1.8} />}
+          title="Manage Meetings"
+          description="Create, edit, close, and reopen meetings."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-excomm-manage-meetings')}
+        />
+        <TrainingRow
+          icon={<ListChecks size={18} color="#D97706" strokeWidth={1.8} />}
+          title="Agenda creation"
+          description="Create, customize, manage, and share meeting agendas with ease."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-excomm-agenda-creation')}
+        />
+        <TrainingRow
+          icon={<Vote size={18} color="#7C3AED" strokeWidth={1.8} />}
+          title="Voting operations"
+          description="Fair, structured, anonymous voting from poll creation to results."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-excomm-voting-operations')}
         />
         <TrainingRow
           icon={<GraduationCap size={18} color="#7C3AED" strokeWidth={1.8} />}

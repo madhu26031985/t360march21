@@ -12,80 +12,74 @@ const N = {
   textSecondary: '#787774',
 };
 
-/** Page typography: 10% smaller than base training scale. */
 const FS = 0.9;
 
-const STEPS = [
-  'Go to Settings',
-  'Tap Create New Club',
-  'Enter the Club Name',
-  'Enter the Club Number and Charter Date',
-  'Tap Create Club',
-];
+const hlStyle = {
+  fontWeight: '700' as const,
+  color: N.text,
+  backgroundColor: 'rgba(249, 115, 22, 0.18)',
+  paddingHorizontal: 4,
+  borderRadius: 4,
+  overflow: 'hidden' as const,
+};
 
-const BENEFITS: { title: string; body: string }[] = [
+const STEPS: { title: string; body: React.ReactNode }[] = [
   {
-    title: 'Centralized Club Management',
-    body: 'Manage meetings, agendas, attendance, and member engagement from a single platform.',
+    title: 'Open Settings',
+    body: (
+      <>
+        Navigate to the <Text style={hlStyle}>Settings</Text> tab from the main navigation bar.
+      </>
+    ),
   },
   {
-    title: 'Member Collaboration',
-    body: 'Invite members and assign roles with ease.',
+    title: "Click 'Create Club'",
+    body: (
+      <>
+        Locate and click the <Text style={hlStyle}>Create Club</Text> button on the Settings page.
+      </>
+    ),
   },
   {
-    title: 'Meeting Management',
-    body: 'Create, edit, close, and track club meetings seamlessly.',
+    title: 'Fill in Club Details',
+    body: (
+      <>
+        {"Enter your club's "}
+        <Text style={hlStyle}>name</Text>, <Text style={hlStyle}>number</Text>, and <Text style={hlStyle}>charter date</Text>{' '}
+        in the form provided.
+      </>
+    ),
   },
   {
-    title: 'Track Club Growth',
-    body: 'Monitor participation, attendance, awards, and role insights.',
-  },
-  {
-    title: 'Multi-Club Support',
-    body: 'Manage and switch between multiple clubs from one account.',
+    title: 'Confirm Creation',
+    body: (
+      <>
+        Click <Text style={hlStyle}>Create</Text> to finalize. Your club is now live.
+      </>
+    ),
   },
 ];
 
 const FAQS: { q: string; a: string }[] = [
   {
-    q: 'Who can create a club?',
-    a: 'Users with the required access can create a club.',
+    q: 'Can I create multiple clubs?',
+    a: 'Yes, when your account allows it. You can create additional clubs from Settings and manage each one separately.',
   },
   {
-    q: 'Is Club Name mandatory?',
-    a: 'Yes, Club Name is required.',
-  },
-  {
-    q: 'What is a Club Number?',
-    a: 'The official Toastmasters Club ID (if available).',
-  },
-  {
-    q: 'Can I create a club without a Club Number?',
-    a: 'Yes, you can update it later.',
-  },
-  {
-    q: 'What is a Charter Date?',
-    a: 'The official date the club was formed or chartered.',
-  },
-  {
-    q: 'Can I edit club details later?',
-    a: 'Yes, based on your permissions.',
-  },
-  {
-    q: 'Why can’t I create a club?',
-    a: 'Check whether all required fields are filled and ensure you have access permissions.',
-  },
-  {
-    q: 'Can I manage multiple clubs?',
-    a: 'Yes, T360 supports multiple clubs.',
-  },
-  {
-    q: 'How do I switch between clubs?',
-    a: 'Use the Club Switch option in the app to move between clubs.',
+    q: 'How do I switch between different clubs?',
+    a: 'Use the Club Switcher (club name / icon) in the app header to select the club you want to work in.',
   },
   {
     q: 'What should I do after creating a club?',
-    a: 'Invite members, configure settings, and schedule meetings.',
+    a: 'Invite members, assign ExComm roles, configure club preferences, and schedule your first meeting.',
+  },
+  {
+    q: 'Can the same person be an ExComm in multiple clubs?',
+    a: 'Yes. ExComm (admin) access is per club, so you can hold that role in more than one club.',
+  },
+  {
+    q: 'Can I be an ExComm in one club and a member in another?',
+    a: 'Yes. Your role is defined separately in each club.',
   },
 ];
 
@@ -95,13 +89,13 @@ export default function T360TrainingExcommCreateClubScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => goBackOrReplace('/t360-training-excomm')}
+          onPress={() => goBackOrReplace('/t360-training')}
           activeOpacity={0.7}
         >
           <ArrowLeft size={Math.round(22 * FS)} color={N.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} maxFontSizeMultiplier={1.3}>
-          Club Set Up
+          Create a Club
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -113,81 +107,66 @@ export default function T360TrainingExcommCreateClubScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.card}>
+          <View style={styles.kbBadge}>
+            <Text style={styles.kbBadgeText} maxFontSizeMultiplier={1.2}>
+              T360 · Knowledge base
+            </Text>
+          </View>
           <Text style={styles.docTitle} maxFontSizeMultiplier={1.35}>
-            Club Set Up
+            Creating a Club
           </Text>
           <Text style={styles.lead} maxFontSizeMultiplier={1.3}>
-            Set up your club and configure essential club information in just a few steps.
-          </Text>
-
-          <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
-            Why Create a Club?
-          </Text>
-          <Text style={styles.body} maxFontSizeMultiplier={1.25}>
-            Creating a club in T360 helps you establish a dedicated digital space to manage all your club activities in
-            one place.
-          </Text>
-
-          <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
-            Purpose of Creating a Club
-          </Text>
-          <Text style={styles.body} maxFontSizeMultiplier={1.25}>
-            A club acts as the foundation for managing meetings, members, roles, attendance, awards, voting, and club
-            operations efficiently.
-          </Text>
-
-          <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
-            Benefits of Creating a Club
-          </Text>
-          {BENEFITS.map(({ title, body }) => (
-            <View key={title} style={styles.benefitBlock}>
-              <Text style={styles.benefitTitle} maxFontSizeMultiplier={1.25}>
-                ✔ {title}
-              </Text>
-              <Text style={styles.benefitBody} maxFontSizeMultiplier={1.25}>
-                {body}
-              </Text>
-            </View>
-          ))}
-
-          <Text style={styles.calloutLabel} maxFontSizeMultiplier={1.3}>
-            🚀 What You Gain
-          </Text>
-          <Text style={styles.body} maxFontSizeMultiplier={1.25}>
-            Once a club is created, your ExComm team can collaborate more effectively, reduce manual work, and run
-            meetings in a structured and organized manner.
+            Follow this quick guide to set up your club in T360, manage roles, and get your members onboard.
           </Text>
 
           <Text style={styles.sectionHeading} maxFontSizeMultiplier={1.3}>
             How to Create a Club
           </Text>
-          {STEPS.map((step, i) => (
-            <View key={step} style={styles.stepRow}>
-              <Text style={styles.stepNum} maxFontSizeMultiplier={1.25}>
-                {i + 1}.
-              </Text>
-              <Text style={styles.stepText} maxFontSizeMultiplier={1.25}>
-                {step}
+          <Text style={styles.sectionSub} maxFontSizeMultiplier={1.2}>
+            4 simple steps · Takes less than 2 minutes
+          </Text>
+
+          {STEPS.map(({ title, body }, i) => (
+            <View key={title} style={styles.lifecycleBlock}>
+              <View style={styles.lifecycleHead}>
+                <View style={styles.lifecycleNum}>
+                  <Text style={styles.lifecycleNumText} maxFontSizeMultiplier={1.2}>
+                    {i + 1}
+                  </Text>
+                </View>
+                <Text style={styles.lifecycleTitle} maxFontSizeMultiplier={1.25}>
+                  {title}
+                </Text>
+              </View>
+              <Text style={styles.lifecycleBody} maxFontSizeMultiplier={1.25}>
+                {body}
               </Text>
             </View>
           ))}
 
-          <Text style={styles.done} maxFontSizeMultiplier={1.25}>
-            ✅ Your club is now ready to use!
-          </Text>
-
-          <Text style={styles.tip} maxFontSizeMultiplier={1.25}>
-            💡 After creating a club, you can invite members, configure settings, and start scheduling meetings.
-          </Text>
+          <View style={styles.calloutExcomm}>
+            <Text style={styles.calloutExcommText} maxFontSizeMultiplier={1.25}>
+              {"You'll automatically be assigned as "}
+              <Text style={styles.calloutExcommStrong}>ExComm (admin)</Text>
+              {' of your newly created club.'}
+            </Text>
+          </View>
 
           <Text style={styles.faqHeading} maxFontSizeMultiplier={1.3}>
-            ❓ Frequently Asked Questions
+            Frequently asked questions
           </Text>
-          {FAQS.map(({ q, a }) => (
-            <View key={q} style={styles.faqBlock}>
-              <Text style={styles.faqQ} maxFontSizeMultiplier={1.25}>
-                {q}
-              </Text>
+          {FAQS.map(({ q, a }, i) => (
+            <View key={q} style={[styles.faqBlock, i > 0 && styles.faqBlockBorder]}>
+              <View style={styles.faqQRow}>
+                <View style={styles.faqQBadge}>
+                  <Text style={styles.faqQBadgeText} maxFontSizeMultiplier={1.1}>
+                    Q{i + 1}
+                  </Text>
+                </View>
+                <Text style={styles.faqQ} maxFontSizeMultiplier={1.25}>
+                  {q}
+                </Text>
+              </View>
               <Text style={styles.faqA} maxFontSizeMultiplier={1.25}>
                 {a}
               </Text>
@@ -232,18 +211,27 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
   },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 32 },
   card: {
     backgroundColor: N.surface,
     borderWidth: 1,
     borderColor: N.border,
     borderRadius: 14,
     padding: 20,
+  },
+  kbBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(234, 88, 12, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    marginBottom: 12,
+  },
+  kbBadgeText: {
+    fontSize: 12 * FS,
+    fontWeight: '600',
+    color: '#C2410C',
   },
   docTitle: {
     fontSize: 22 * FS,
@@ -262,86 +250,106 @@ const styles = StyleSheet.create({
     fontSize: 16 * FS,
     fontWeight: '700',
     color: N.text,
-    marginTop: 4,
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 4,
   },
-  body: {
+  sectionSub: {
+    fontSize: 13 * FS,
+    lineHeight: 18 * FS,
+    color: N.textSecondary,
+    marginBottom: 14,
+  },
+  lifecycleBlock: {
+    marginBottom: 16,
+  },
+  lifecycleHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  lifecycleNum: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(234, 88, 12, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  lifecycleNumText: {
+    fontSize: 14 * FS,
+    fontWeight: '700',
+    color: '#C2410C',
+  },
+  lifecycleTitle: {
+    flex: 1,
     fontSize: 15 * FS,
-    lineHeight: 23 * FS,
+    fontWeight: '700',
     color: N.text,
-    marginBottom: 18,
   },
-  benefitBlock: {
-    marginBottom: 12,
-    paddingLeft: 2,
-  },
-  benefitTitle: {
-    fontSize: 15 * FS,
-    fontWeight: '600',
-    lineHeight: 22 * FS,
-    color: N.text,
-    marginBottom: 2,
-  },
-  benefitBody: {
+  lifecycleBody: {
     fontSize: 14 * FS,
     lineHeight: 21 * FS,
     color: N.textSecondary,
-    paddingLeft: 18,
+    paddingLeft: 38,
   },
-  calloutLabel: {
-    fontSize: 16 * FS,
-    fontWeight: '700',
+  calloutExcomm: {
+    backgroundColor: 'rgba(254, 215, 170, 0.35)',
+    borderLeftWidth: 4,
+    borderLeftColor: '#EA580C',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  calloutExcommText: {
+    fontSize: 14 * FS,
+    lineHeight: 21 * FS,
     color: N.text,
-    marginTop: 6,
-    marginBottom: 8,
+    fontWeight: '500',
   },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  stepNum: {
-    fontSize: 15 * FS,
-    fontWeight: '600',
-    color: N.textSecondary,
-    minWidth: 22 * FS,
-  },
-  stepText: {
-    flex: 1,
-    marginLeft: 6,
-    fontSize: 15 * FS,
-    lineHeight: 22 * FS,
-    color: N.text,
-  },
-  done: {
-    marginTop: 14,
-    fontSize: 15 * FS,
-    lineHeight: 22 * FS,
-    color: N.text,
-    fontWeight: '600',
-  },
-  tip: {
-    marginTop: 14,
-    marginBottom: 20,
-    fontSize: 15 * FS,
-    lineHeight: 22 * FS,
-    color: N.text,
+  calloutExcommStrong: {
+    fontWeight: '800',
+    color: '#C2410C',
   },
   faqHeading: {
     fontSize: 16 * FS,
     fontWeight: '700',
     color: N.text,
+    marginTop: 12,
     marginBottom: 12,
   },
   faqBlock: {
-    marginBottom: 14,
+    paddingVertical: 12,
+  },
+  faqBlockBorder: {
+    borderTopWidth: 1,
+    borderTopColor: N.border,
+  },
+  faqQRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  faqQBadge: {
+    backgroundColor: 'rgba(234, 88, 12, 0.18)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  faqQBadgeText: {
+    fontSize: 11 * FS,
+    fontWeight: '800',
+    color: '#C2410C',
   },
   faqQ: {
+    flex: 1,
     fontSize: 15 * FS,
-    fontWeight: '600',
+    fontWeight: '700',
     lineHeight: 22 * FS,
     color: N.text,
-    marginBottom: 4,
   },
   faqA: {
     fontSize: 14 * FS,
