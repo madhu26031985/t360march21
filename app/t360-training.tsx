@@ -99,8 +99,8 @@ export default function T360TrainingScreen() {
         />
         <TrainingRow
           icon={<UserPlus size={18} color="#16A34A" strokeWidth={1.8} />}
-          title="Member Onboarding"
-          description="Invite members and assign the right roles."
+          title="Invite New Club Members"
+          description="Knowledge base: who can invite, roles, sending invites, and what invitees do next."
           descriptionEmphasized
           onPress={() => router.push('/t360-training-excomm-invite-members')}
         />
