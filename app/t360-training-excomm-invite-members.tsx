@@ -189,9 +189,6 @@ export default function T360TrainingExcommInviteMembersScreen() {
                   {PATH_LINE}
                 </Text>
               </View>
-              <Text style={styles.body} maxFontSizeMultiplier={1.25}>
-                Then click <Text style={styles.inlineBold}>Invite Member</Text>.
-              </Text>
             </View>
           </View>
 
