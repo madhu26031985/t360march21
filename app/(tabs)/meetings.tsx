@@ -68,9 +68,12 @@ export default function ClubMeetings() {
   const [meetingHistory, setMeetingHistory] = useState<Meeting[]>([]);
   const [expandedHistoryMeetingId, setExpandedHistoryMeetingId] = useState<string | null>(null);
   const [expandedNextMeeting, setExpandedNextMeeting] = useState<string | null>(null);
+  const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [openMeetingTab, setOpenMeetingTab] = useState<'actions' | 'roles' | 'evaluation'>('actions');
   /** Tabs for expanded "Next meetings" cards (separate from open meeting so both sections can differ). */
   const [nextMeetingTab, setNextMeetingTab] = useState<'actions' | 'roles' | 'evaluation'>('actions');
+  /** Expand/collapse the open meeting card (tabs + actions) to reduce scrolling */
+  const [openMeetingDetailExpanded, setOpenMeetingDetailExpanded] = useState(true);
   const [isLoading, setIsLoading] = useState(() => {
     const cid = user?.currentClubId;
     if (!cid) return false;
@@ -124,6 +127,10 @@ export default function ClubMeetings() {
       setIsLoading(false);
     }
   }, [user?.currentClubId]);
+
+  useEffect(() => {
+    setOpenMeetingDetailExpanded(true);
+  }, [currentMeeting?.id]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -182,7 +189,7 @@ export default function ClubMeetings() {
       if (user?.currentClubId) {
         const tasks: Promise<void>[] = [loadOpenMeetings(), loadVPEInfo()];
         if (isAuthenticated) tasks.push(refreshUserProfile());
-        Promise.all(tasks);
+        void Promise.all(tasks);
       }
     }, [user?.currentClubId, isAuthenticated, refreshUserProfile])
   );
@@ -618,6 +625,7 @@ export default function ClubMeetings() {
     meetingHistory.forEach((m) => {
       if (m?.id && !m?.isPlaceholder && !String(m.id).startsWith('placeholder')) ids.add(m.id);
     });
+    if (selectedMeeting?.id && !selectedMeeting.isPlaceholder) ids.add(selectedMeeting.id);
     if (expandedNextMeeting && !String(expandedNextMeeting).startsWith('placeholder')) {
       ids.add(expandedNextMeeting);
     }
@@ -658,6 +666,7 @@ export default function ClubMeetings() {
       nextMeetings.forEach((m) => {
         if (m?.id && !m?.isPlaceholder) meetingById.set(m.id, m);
       });
+      if (selectedMeeting?.id && !selectedMeeting.isPlaceholder) meetingById.set(selectedMeeting.id, selectedMeeting);
       if (expandedNextMeeting && !String(expandedNextMeeting).startsWith('placeholder')) {
         // We may not have the full object here, so completion-by-time only applies when meetingById has it.
       }
@@ -683,7 +692,7 @@ export default function ClubMeetings() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.currentClubId, user?.clubRole, user?.role, currentMeeting, nextMeetings, meetingHistory, expandedNextMeeting, expandedHistoryMeetingId]);
+  }, [user?.id, user?.currentClubId, user?.clubRole, user?.role, currentMeeting, nextMeetings, meetingHistory, selectedMeeting, expandedNextMeeting, expandedHistoryMeetingId]);
 
   useEffect(() => {
     const cleanup = refreshBookRoleAttention();
@@ -1028,9 +1037,81 @@ export default function ClubMeetings() {
 
                   return (
                     <View key={currentMeeting.id}>
-                      {/* Always expanded: tabs + flow stay visible; Open jumps back to Actions */}
-                      <View style={[styles.unifiedExpandedMeetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                        <View style={styles.unifiedMeetingBar}>
+                      {openMeetingDetailExpanded ? (
+                        <View style={[styles.unifiedExpandedMeetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                          <View style={styles.unifiedMeetingBar}>
+                            <View style={styles.heroCardContent}>
+                              <View style={[styles.dateBadge, { backgroundColor: theme.colors.primary + '15' }]}>
+                                <Text style={[styles.dateBadgeDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{dayNum}</Text>
+                                <Text style={[styles.dateBadgeMonth, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>{month}</Text>
+                              </View>
+                              <View style={styles.heroMeetingInfo}>
+                                <Text style={[styles.heroMeetingTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{currentMeeting.meeting_title}</Text>
+                                <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                  Day: {meetingDate.toLocaleDateString('default', { weekday: 'long' })}
+                                </Text>
+                                {currentMeeting.meeting_start_time && (
+                                  <Text style={[styles.heroMeetingTime, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                    Time: {formatTime(currentMeeting.meeting_start_time)}
+                                    {currentMeeting.meeting_end_time && ` - ${formatTime(currentMeeting.meeting_end_time)}`}
+                                  </Text>
+                                )}
+                                <Text style={[styles.heroMeetingMode, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                                  Mode: {formatMeetingMode(currentMeeting.meeting_mode)}
+                                </Text>
+                              </View>
+                              <TouchableOpacity
+                                style={[styles.enterMeetingButton, { backgroundColor: theme.colors.primary }]}
+                                onPress={() => {
+                                  setOpenMeetingDetailExpanded(false);
+                                  setSelectedMeeting(null);
+                                }}
+                                activeOpacity={0.8}
+                                accessibilityLabel="Collapse meeting details"
+                              >
+                                <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>
+                                  Close
+                                </Text>
+                                <ChevronUp size={12} color="#ffffff" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
+                          <View style={[styles.openMeetingTabs, { backgroundColor: theme.colors.textSecondary + '08', borderColor: theme.colors.border }]}>
+                            {(['actions', 'roles', 'evaluation'] as const).map((tab) => (
+                              <TouchableOpacity
+                                key={tab}
+                                style={[
+                                  styles.openMeetingTab,
+                                  openMeetingTab === tab && styles.openMeetingTabActive,
+                                  openMeetingTab === tab && { backgroundColor: theme.colors.textSecondary + '15' },
+                                ]}
+                                onPress={() => setOpenMeetingTab(tab)}
+                                activeOpacity={0.7}
+                              >
+                                <Text
+                                  style={[
+                                    styles.openMeetingTabText,
+                                    { color: openMeetingTab === tab ? theme.colors.text : theme.colors.textSecondary },
+                                    openMeetingTab === tab ? styles.openMeetingTabTextActive : undefined,
+                                  ]}
+                                  maxFontSizeMultiplier={1.3}
+                                >
+                                  {tab === 'actions' ? 'Actions' : tab === 'roles' ? 'Roles' : 'Evaluation'}
+                                </Text>
+                                {openMeetingTab === tab && <View style={[styles.openMeetingTabIndicator, { backgroundColor: theme.colors.primary }]} />}
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                          <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
+                          <View style={styles.unifiedMeetingContent}>
+                            {openMeetingTab === 'actions' && renderActionsTabContent(currentMeeting.id)}
+                            {openMeetingTab === 'roles' && renderRolesTabContent(currentMeeting.id)}
+                            {openMeetingTab === 'evaluation' && renderEvaluationTabContent(currentMeeting.id)}
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={[styles.heroMeetingCard, { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border }]}>
                           <View style={styles.heroCardContent}>
                             <View style={[styles.dateBadge, { backgroundColor: theme.colors.primary + '15' }]}>
                               <Text style={[styles.dateBadgeDay, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>{dayNum}</Text>
@@ -1053,52 +1134,21 @@ export default function ClubMeetings() {
                             </View>
                             <TouchableOpacity
                               style={[styles.enterMeetingButton, { backgroundColor: theme.colors.primary }]}
-                              onPress={() => setOpenMeetingTab('actions')}
+                              onPress={() => {
+                                setOpenMeetingDetailExpanded(true);
+                                setSelectedMeeting(currentMeeting);
+                                setOpenMeetingTab('actions');
+                              }}
                               activeOpacity={0.8}
-                              accessibilityLabel="Open meeting actions"
-                              accessibilityHint="Shows the Actions tab with Book a Role, agenda, and meeting tools"
+                              accessibilityLabel="Expand meeting details"
                             >
-                              <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>
-                                Open
-                              </Text>
+                              <Text style={styles.enterMeetingButtonText} maxFontSizeMultiplier={1.3}>Open</Text>
                               <ChevronDown size={12} color="#ffffff" />
                             </TouchableOpacity>
                           </View>
+                          <View style={styles.heroCardDecoration} />
                         </View>
-                        <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
-                        <View style={[styles.openMeetingTabs, { backgroundColor: theme.colors.textSecondary + '08', borderColor: theme.colors.border }]}>
-                          {(['actions', 'roles', 'evaluation'] as const).map((tab) => (
-                            <TouchableOpacity
-                              key={tab}
-                              style={[
-                                styles.openMeetingTab,
-                                openMeetingTab === tab && styles.openMeetingTabActive,
-                                openMeetingTab === tab && { backgroundColor: theme.colors.textSecondary + '15' },
-                              ]}
-                              onPress={() => setOpenMeetingTab(tab)}
-                              activeOpacity={0.7}
-                            >
-                              <Text
-                                style={[
-                                  styles.openMeetingTabText,
-                                  { color: openMeetingTab === tab ? theme.colors.text : theme.colors.textSecondary },
-                                  openMeetingTab === tab ? styles.openMeetingTabTextActive : undefined,
-                                ]}
-                                maxFontSizeMultiplier={1.3}
-                              >
-                                {tab === 'actions' ? 'Actions' : tab === 'roles' ? 'Roles' : 'Evaluation'}
-                              </Text>
-                              {openMeetingTab === tab && <View style={[styles.openMeetingTabIndicator, { backgroundColor: theme.colors.primary }]} />}
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                        <View style={[styles.unifiedMeetingDivider, { backgroundColor: theme.colors.border }]} />
-                        <View style={styles.unifiedMeetingContent}>
-                          {openMeetingTab === 'actions' && renderActionsTabContent(currentMeeting.id)}
-                          {openMeetingTab === 'roles' && renderRolesTabContent(currentMeeting.id)}
-                          {openMeetingTab === 'evaluation' && renderEvaluationTabContent(currentMeeting.id)}
-                        </View>
-                      </View>
+                      )}
                     </View>
                   );
                 })()}
