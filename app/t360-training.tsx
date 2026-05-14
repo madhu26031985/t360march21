@@ -12,6 +12,7 @@ import {
   Info,
   Landmark,
   ListChecks,
+  Mic2,
   Settings,
   Shield,
   UserCog,
@@ -125,6 +126,13 @@ export default function T360TrainingScreen() {
           description="Knowledge base: Open, Mine, and Taken sections; how to book; after booking; FAQs."
           descriptionEmphasized
           onPress={() => router.push('/t360-training-book-a-role')}
+        />
+        <TrainingRow
+          icon={<Mic2 size={18} color="#7C2D12" strokeWidth={1.8} />}
+          title="Toastmaster of the Day Role"
+          description="Knowledge base: book from Home or Book a Role, withdraw, Toastmaster Corner, Theme of the Day, FAQs."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-toastmaster-of-the-day')}
         />
         <TrainingRow
           icon={<ListChecks size={18} color="#D97706" strokeWidth={1.8} />}
