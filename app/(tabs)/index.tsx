@@ -699,10 +699,6 @@ export default function MyJourney() {
       setCurrentOpenMeetingStartTime(null);
       setCurrentOpenMeetingEndTime(null);
       setCurrentOpenMeetingMode(null);
-      setMeetingAttendedCount(0);
-      setRolesCompletedCount(0);
-      setSpeechesGivenCount(0);
-      setEvaluationsGivenCount(0);
       setHasActivePoll(false);
       setHasVotedInActivePoll(false);
       setIsVPEForCurrentClub(false);

@@ -1,61 +1,56 @@
-import { View, StyleSheet, Image, Text, Animated, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { View, StyleSheet, Image, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { WifiOff, RefreshCw } from 'lucide-react-native';
+import { T360PremiumLaunchSplash } from '@/components/T360PremiumLaunchSplash';
 
 export default function Index() {
   const { isLoading, isAuthenticated, hasInitialized, connectionError, retryConnection } = useAuth();
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const [minSplashTimeElapsed, setMinSplashTimeElapsed] = useState(false);
+  const [launchSequenceDone, setLaunchSequenceDone] = useState(false);
 
-  useEffect(() => {
-    // Web: shorter splash so auth + first shell can show sooner; native keeps branded pause.
-    const ms = Platform.OS === 'web' ? 400 : 2500;
-    const minTimer = setTimeout(() => {
-      setMinSplashTimeElapsed(true);
-    }, ms);
-
-    return () => clearTimeout(minTimer);
+  const handleLaunchComplete = useCallback(() => {
+    setLaunchSequenceDone(true);
   }, []);
 
   useEffect(() => {
-    if (!isLoading && hasInitialized && minSplashTimeElapsed && !connectionError) {
-      const navTimer = setTimeout(() => {
-        if (isAuthenticated) {
-          router.replace('/(tabs)');
-        } else {
-          router.replace('/login');
-        }
-      }, 100);
-
-      return () => {
-        clearTimeout(navTimer);
-      };
+    if (!launchSequenceDone || !hasInitialized || isLoading || connectionError) {
+      return;
     }
-  }, [isLoading, isAuthenticated, hasInitialized, minSplashTimeElapsed, connectionError]);
+    const navTimer = setTimeout(() => {
+      if (isAuthenticated) {
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/login');
+      }
+    }, 1100);
+
+    return () => {
+      clearTimeout(navTimer);
+    };
+  }, [launchSequenceDone, isLoading, isAuthenticated, hasInitialized, connectionError]);
 
   if (connectionError) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
           <View style={styles.topSection}>
-            <Image
-              source={require('../assets/images/yy.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
+            <Image source={require('../assets/images/yy.png')} style={styles.logo} resizeMode="contain" />
           </View>
           <View style={styles.errorSection}>
             <WifiOff size={48} color="#9CA3AF" strokeWidth={1.5} />
-            <Text style={styles.errorTitle} maxFontSizeMultiplier={1.2}>No Connection</Text>
+            <Text style={styles.errorTitle} maxFontSizeMultiplier={1.2}>
+              No Connection
+            </Text>
             <Text style={styles.errorMessage} maxFontSizeMultiplier={1.2}>
               Unable to connect to the server.{'\n'}Please check your internet connection and try again.
             </Text>
             <TouchableOpacity style={styles.retryButton} onPress={retryConnection} activeOpacity={0.8}>
               <RefreshCw size={18} color="#FFFFFF" strokeWidth={2} />
-              <Text style={styles.retryButtonText} maxFontSizeMultiplier={1.2}>Try Again</Text>
+              <Text style={styles.retryButtonText} maxFontSizeMultiplier={1.2}>
+                Try Again
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -63,32 +58,57 @@ export default function Index() {
     );
   }
 
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: '#F8F9FA' }]}>
-      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-        <View style={styles.topSection}>
-          <Image
-            source={require('../assets/images/yy.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={styles.tagline} maxFontSizeMultiplier={1.3}>We Salute Toastmasters!</Text>
+  if (!launchSequenceDone) {
+    return <T360PremiumLaunchSplash onSequenceComplete={handleLaunchComplete} />;
+  }
+
+  if (!hasInitialized || isLoading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.connectingBg]}>
+        <View style={styles.connectingWrap}>
+          <Image source={require('../assets/images/yy.png')} style={styles.logoSmall} resizeMode="contain" />
+          <ActivityIndicator size="small" color="#64748B" style={styles.spinner} />
+          <Text style={styles.connectingText} maxFontSizeMultiplier={1.2}>
+            Connecting…
+          </Text>
         </View>
-        {isLoading && (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color="#6B7280" />
-            <Text style={styles.loadingText} maxFontSizeMultiplier={1.2}>Connecting...</Text>
-          </View>
-        )}
-      </Animated.View>
-    </SafeAreaView>
-  );
+      </SafeAreaView>
+    );
+  }
+
+  return <View style={styles.bridge} />;
 }
 
 const styles = StyleSheet.create({
+  bridge: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F8FAFC',
+  },
+  connectingBg: {
+    backgroundColor: '#F8FAFC',
+  },
+  connectingWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  logoSmall: {
+    width: 100,
+    height: 100,
+    marginBottom: 20,
+  },
+  spinner: {
+    marginBottom: 12,
+  },
+  connectingText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#64748B',
   },
   content: {
     flex: 1,
@@ -106,25 +126,6 @@ const styles = StyleSheet.create({
     height: 154,
     marginBottom: 16,
     alignSelf: 'center',
-  },
-  tagline: {
-    fontSize: 24,
-    fontWeight: '700',
-    textAlign: 'center',
-    color: '#1F2937',
-    letterSpacing: -0.5,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 32,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#6B7280',
   },
   errorSection: {
     alignItems: 'center',
