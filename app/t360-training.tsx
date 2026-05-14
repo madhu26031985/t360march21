@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Building2,
   Calendar,
+  ClipboardList,
   CalendarDays,
   ChevronRight,
   GraduationCap,
@@ -149,6 +150,13 @@ export default function T360TrainingScreen() {
           description="Knowledge base: Meetings tab only, Book a Role or Roles tab, Keynote Title, responsibilities, FAQs."
           descriptionEmphasized
           onPress={() => router.push('/t360-training-keynote-speaker-role')}
+        />
+        <TrainingRow
+          icon={<ClipboardList size={18} color="#1d4ed8" strokeWidth={1.8} />}
+          title="General Evaluator Role"
+          description="Knowledge base: book the role, GE Corner vs GE Summary, Eye toggle, publish workflow, benefits."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-general-evaluator-role')}
         />
         <TrainingRow
           icon={<ListChecks size={18} color="#D97706" strokeWidth={1.8} />}
