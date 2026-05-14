@@ -8,12 +8,14 @@ import {
   Calendar,
   CalendarDays,
   ChevronRight,
+  GraduationCap,
   Home,
   Info,
   Landmark,
   ListChecks,
   Mic2,
   Settings,
+  Sparkles,
   Shield,
   UserCog,
   UserCheck,
@@ -133,6 +135,20 @@ export default function T360TrainingScreen() {
           description="Knowledge base: book from Home or Book a Role, withdraw, Toastmaster Corner, Theme of the Day, FAQs."
           descriptionEmphasized
           onPress={() => router.push('/t360-training-toastmaster-of-the-day')}
+        />
+        <TrainingRow
+          icon={<GraduationCap size={18} color="#2563EB" strokeWidth={1.8} />}
+          title="Educational Speaker Role"
+          description="Knowledge base: book from Home or Book a Role, withdraw, Educational Corner, speech title, permissions, FAQs."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-educational-speaker-role')}
+        />
+        <TrainingRow
+          icon={<Sparkles size={18} color="#C8873A" strokeWidth={1.8} />}
+          title="Keynote Speaker Role"
+          description="Knowledge base: Meetings tab only, Book a Role or Roles tab, Keynote Title, responsibilities, FAQs."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-keynote-speaker-role')}
         />
         <TrainingRow
           icon={<ListChecks size={18} color="#D97706" strokeWidth={1.8} />}
