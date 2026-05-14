@@ -158,6 +158,57 @@ function buildPreviewImageUrl({ siteOrigin, clubName, dateText, meetingLabel, ti
   return `${siteOrigin}/.netlify/functions/agenda-preview-image?${qs.toString()}`;
 }
 
+/** Static OG card (1200×630 JPEG) generated at build → /images/og-images/agenda-preview.jpg */
+function resolveStaticOgImageUrl(siteOrigin) {
+  const fromEnv = process.env.PUBLIC_AGENDA_OG_IMAGE_URL?.trim();
+  if (fromEnv) return fromEnv;
+  return `${String(siteOrigin).replace(/\/$/, '')}/images/og-images/agenda-preview.jpg`;
+}
+
+function findToastmasterOfDayName(items) {
+  if (!Array.isArray(items)) return '';
+  const row = items.find((it) => {
+    const n = String(it.section_name || '').toLowerCase();
+    return n.includes('toastmaster') && n.includes('day');
+  });
+  return row && row.assigned_user_name ? String(row.assigned_user_name).trim() : '';
+}
+
+function buildDistrictDivisionAreaLine(club) {
+  if (!club || typeof club !== 'object') return '';
+  const parts = [club.district, club.division, club.area]
+    .map((v) => (v == null ? '' : String(v).trim()))
+    .filter(Boolean);
+  if (parts.length === 0) return '';
+  return parts.join(' · ');
+}
+
+function buildAgendaHighlightsSnippet(items, maxParts = 4) {
+  if (!Array.isArray(items)) return '';
+  const labels = [];
+  const push = (label) => {
+    if (!label || labels.includes(label)) return;
+    labels.push(label);
+  };
+  for (const it of items) {
+    if (labels.length >= maxParts) break;
+    const low = String(it.section_name || '').toLowerCase();
+    if (low.includes('toastmaster of the day')) push('TMOD');
+    else if (low.includes('prepared speech')) push('Prepared speeches');
+    else if (low.includes('table topic')) push('Table Topics');
+    else if (low.includes('general evaluator') && !low.includes('feedback')) push('General Evaluator');
+    else if (low.includes('tag team')) push('Tag team');
+    else if (low.includes('speech evaluation')) push('Evaluations');
+  }
+  return labels.join(' · ');
+}
+
+function truncateOgText(s, maxLen) {
+  const t = String(s || '').trim();
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, maxLen - 1)}…`;
+}
+
 function resolveTargetPath({ meetingId, brand, skin, meetingNo, mode, pv }) {
   if (!meetingId || !isUuid(meetingId)) return '/weblogin/';
   const safeMeetingId = encodeURIComponent(meetingId);
@@ -242,6 +293,11 @@ exports.handler = async function handler(event) {
   let previewDateText = '';
   let previewMeetingLabel = fallbackMeetingLabel;
   let previewTimeText = 'Time TBD';
+  let toastmasterName = '';
+  let districtLine = '';
+  let highlightsLine = '';
+  /** When true, use per-request dynamic PNG from agenda-preview-image (e.g. if static JPEG not deployed). */
+  const useDynamicOgImage = String(process.env.PUBLIC_AGENDA_USE_DYNAMIC_OG_IMAGE || '').trim() === '1';
 
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_WEB_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -252,18 +308,35 @@ exports.handler = async function handler(event) {
       const clubName = payload?.club?.club_name?.trim() || fallbackClubName;
       const dateText = formatDateShort(payload?.meeting?.meeting_date);
       const timeText = formatTimeRange(payload?.meeting?.meeting_start_time, payload?.meeting?.meeting_end_time);
-      const meetingNoText =
+      const meetingNumRaw =
         payload?.meeting?.meeting_number != null && String(payload.meeting.meeting_number).trim() !== ''
-          ? `Meeting ${payload.meeting.meeting_number}`
-          : fallbackMeetingLabel;
+          ? String(payload.meeting.meeting_number).trim()
+          : meetingNo && meetingNo !== '0'
+            ? meetingNo
+            : '';
+      const meetingNoText = meetingNumRaw ? `Meeting ${meetingNumRaw}` : fallbackMeetingLabel;
 
-      title = clubName;
-      const timeTextOrFallback = timeText || 'Time TBD';
-      description = [meetingNoText, dateText].filter(Boolean).join(' • ') || 'Upcoming meeting';
+      toastmasterName = findToastmasterOfDayName(payload?.items);
+      districtLine = buildDistrictDivisionAreaLine(payload?.club);
+      highlightsLine = buildAgendaHighlightsSnippet(payload?.items);
+
       previewClubName = clubName;
       previewDateText = dateText;
       previewMeetingLabel = meetingNoText;
-      previewTimeText = timeTextOrFallback;
+      previewTimeText = timeText || 'Time TBD';
+
+      if (meetingNumRaw && dateText) {
+        title = `${clubName} - Meeting ${meetingNumRaw} | ${dateText}`;
+      } else if (meetingNumRaw) {
+        title = `${clubName} - Meeting ${meetingNumRaw}`;
+      } else {
+        title = clubName;
+      }
+
+      const tmodPart = toastmasterName ? `Toastmaster of the Day: ${toastmasterName}` : 'Toastmaster of the Day: TBA';
+      const metaParts = [districtLine, highlightsLine].filter(Boolean);
+      const tail = metaParts.length ? metaParts.join(' · ') : 'Full meeting agenda';
+      description = truncateOgText(`${tmodPart} | ${tail}`, 320);
     } catch {
       // Keep fallback title/description.
     }
@@ -271,35 +344,44 @@ exports.handler = async function handler(event) {
     description = fallbackMeetingLabel || 'Upcoming meeting';
   }
 
-  const previewImageUrl = buildPreviewImageUrl({
-    siteOrigin,
-    clubName: previewClubName,
-    dateText: previewDateText,
-    meetingLabel: previewMeetingLabel,
-    timeText: previewTimeText,
-  });
+  const staticOgUrl = resolveStaticOgImageUrl(siteOrigin);
+  const previewImageUrl = useDynamicOgImage
+    ? buildPreviewImageUrl({
+        siteOrigin,
+        clubName: previewClubName,
+        dateText: previewDateText,
+        meetingLabel: previewMeetingLabel,
+        timeText: previewTimeText,
+      })
+    : staticOgUrl;
+  const ogImageMime = useDynamicOgImage ? 'image/png' : 'image/jpeg';
 
   const escapedTitle = escapeHtml(title);
   const escapedDescription = escapeOgDescription(description);
   const escapedTargetUrl = escapeHtml(targetUrl);
   const escapedPreviewImageUrl = escapeHtml(previewImageUrl);
+  const escapedOgAlt = escapeHtml(
+    truncateOgText(`${previewClubName} — ${previewMeetingLabel}${previewDateText ? ` · ${previewDateText}` : ''}`, 200)
+  );
 
   const html = `<!doctype html>
-<html lang="en">
+<html lang="en-IN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapedTitle}</title>
     <meta name="description" content="${escapedDescription}" />
+    <link rel="canonical" href="${escapedTargetUrl}" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="${escapedTitle}" />
     <meta property="og:description" content="${escapedDescription}" />
-    <meta property="og:site_name" content="T360" />
+    <meta property="og:site_name" content="T-360" />
     <meta property="og:url" content="${escapedTargetUrl}" />
+    <meta property="og:locale" content="en_IN" />
     <meta property="og:image" content="${escapedPreviewImageUrl}" />
     <meta property="og:image:secure_url" content="${escapedPreviewImageUrl}" />
-    <meta property="og:image:type" content="image/jpeg" />
-    <meta property="og:image:alt" content="${escapedDescription}" />
+    <meta property="og:image:type" content="${ogImageMime}" />
+    <meta property="og:image:alt" content="${escapedOgAlt}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -317,7 +399,7 @@ exports.handler = async function handler(event) {
     statusCode: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, max-age=120',
+      'Cache-Control': 'public, max-age=300',
     },
     body: html,
   };

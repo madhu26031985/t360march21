@@ -1,13 +1,16 @@
 # Serve OG image path through binary image function (must be before SPA rewrites)
 /og/meeting-:meetingNo.jpg  /.netlify/functions/og-meeting-image?no=:meetingNo  200!
 
-# /{club-segment}/agenda/{meetingNo}/{meetingId} → Expo baseUrl (slug or legacy club UUID)
+# /{club-segment}/agenda/{meetingNo}/{meetingId} → SSR OG shell then SPA (slug or legacy club UUID)
 /:clubId/agenda/:meetingNo/:meetingId  /.netlify/functions/agenda-preview/agenda/:clubId/:meetingNo/:meetingId?mode=agenda  200
 
 # Short public agenda: /a/{meetingId}
 /a/:meetingId  /.netlify/functions/agenda-preview/short/:meetingId  200
 
-# /weblogin/* agenda URLs are served by the SPA (see /weblogin/* below), not agenda-preview.
+# Same agenda routes under /weblogin (shared links) — SSR for social crawlers + meta refresh for humans
+/weblogin/:club/agenda/:meetingNo/:meetingId  /.netlify/functions/agenda-preview/agenda/:club/:meetingNo/:meetingId?mode=agenda  200
+/weblogin/:brand/a/:meetingId  /.netlify/functions/agenda-preview/brand/:brand/:meetingId  200
+/weblogin/a/:meetingId  /.netlify/functions/agenda-preview/short/:meetingId  200
 
 # Branded short agenda: /{club-slug}/a/{meetingId}
 /:brand/a/:meetingId  /.netlify/functions/agenda-preview/brand/:brand/:meetingId  200

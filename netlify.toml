@@ -27,13 +27,26 @@
   to = "/.netlify/functions/agenda-preview/short/:meetingId"
   status = 200
 
-# Do NOT rewrite /weblogin/... agenda URLs to agenda-preview — browsers must load the SPA.
-# Share/crawler previews use paths without /weblogin: /:club/agenda/... and /a/:id (see above).
-
 # Branded short agenda: /{club-slug}/a/{meetingId}
 [[redirects]]
   from = "/:brand/a/:meetingId"
   to = "/.netlify/functions/agenda-preview/brand/:brand/:meetingId"
+  status = 200
+
+# Public agenda under /weblogin (many share URLs) — SSR Open Graph + redirect to same path in SPA
+[[redirects]]
+  from = "/weblogin/:club/agenda/:meetingNo/:meetingId"
+  to = "/.netlify/functions/agenda-preview/agenda/:club/:meetingNo/:meetingId?mode=agenda"
+  status = 200
+
+[[redirects]]
+  from = "/weblogin/:brand/a/:meetingId"
+  to = "/.netlify/functions/agenda-preview/brand/:brand/:meetingId"
+  status = 200
+
+[[redirects]]
+  from = "/weblogin/a/:meetingId"
+  to = "/.netlify/functions/agenda-preview/short/:meetingId"
   status = 200
 
 # Root → app lives under /weblogin (Expo baseUrl)
@@ -75,3 +88,8 @@
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/images/og-images/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
