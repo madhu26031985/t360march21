@@ -17,6 +17,7 @@ import {
   UserCheck,
   Users,
   ChevronRight,
+  Info,
   Home,
   Calendar,
   Settings,
@@ -58,6 +59,8 @@ function NotionActionRow({
   icon,
   iconBackground,
   onPress,
+  onHelpPress,
+  helpAccessibilityLabel,
   isLast,
 }: {
   title: string;
@@ -65,27 +68,40 @@ function NotionActionRow({
   icon: ReactNode;
   iconBackground: string;
   onPress: () => void;
+  onHelpPress?: () => void;
+  helpAccessibilityLabel?: string;
   isLast?: boolean;
 }) {
   return (
-    <TouchableOpacity
-      style={[styles.notionRow, !isLast && { borderBottomWidth: 1, borderBottomColor: N.border }]}
-      onPress={onPress}
-      activeOpacity={0.65}
-    >
-      <View style={[styles.notionRowIconWrap, { backgroundColor: iconBackground }]}>{icon}</View>
-      <View style={styles.notionRowTextCol}>
-        <Text style={[styles.notionRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.25} numberOfLines={2}>
-          {title}
-        </Text>
-        {description ? (
-          <Text style={[styles.notionRowDesc, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2} numberOfLines={2}>
-            {description}
+    <View style={[styles.notionRow, !isLast && { borderBottomWidth: 1, borderBottomColor: N.border }]}>
+      <TouchableOpacity style={styles.notionRowMain} onPress={onPress} activeOpacity={0.65}>
+        <View style={[styles.notionRowIconWrap, { backgroundColor: iconBackground }]}>{icon}</View>
+        <View style={styles.notionRowTextCol}>
+          <Text style={[styles.notionRowTitle, { color: N.text }]} maxFontSizeMultiplier={1.25} numberOfLines={2}>
+            {title}
           </Text>
-        ) : null}
-      </View>
-      <ChevronRight size={16} color={N.textTertiary} strokeWidth={2} />
-    </TouchableOpacity>
+          {description ? (
+            <Text style={[styles.notionRowDesc, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2} numberOfLines={2}>
+              {description}
+            </Text>
+          ) : null}
+        </View>
+      </TouchableOpacity>
+      {onHelpPress ? (
+        <TouchableOpacity
+          onPress={onHelpPress}
+          style={styles.rowHelpButton}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityLabel={helpAccessibilityLabel ?? `${title} help`}
+          accessibilityRole="button"
+        >
+          <Info size={18} color={N.accent} strokeWidth={2} />
+        </TouchableOpacity>
+      ) : null}
+      <TouchableOpacity onPress={onPress} style={styles.rowChevronButton} activeOpacity={0.65} accessibilityRole="button">
+        <ChevronRight size={16} color={N.textTertiary} strokeWidth={2} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -263,6 +279,8 @@ export default function ManageClubUsers() {
               icon={<UserPlus size={18} color={ICON_TILE.invite.fg} strokeWidth={1.75} />}
               iconBackground={ICON_TILE.invite.bg}
               onPress={() => router.push('/admin/invite-new-user')}
+              onHelpPress={() => router.push('/t360-training-excomm-invite-members')}
+              helpAccessibilityLabel="Invite members help"
             />
             <NotionActionRow
               title="Manage club members"
@@ -270,6 +288,8 @@ export default function ManageClubUsers() {
               icon={<Users size={18} color={ICON_TILE.manage.fg} strokeWidth={1.75} />}
               iconBackground={ICON_TILE.manage.bg}
               onPress={() => router.push('/admin/manage-existing-users')}
+              onHelpPress={() => router.push('/t360-training-excomm-manage-club-members')}
+              helpAccessibilityLabel="Manage club members help"
               isLast
             />
           </View>
@@ -455,7 +475,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 12,
+    gap: 8,
+  },
+  notionRowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
+    minWidth: 0,
+  },
+  rowHelpButton: {
+    padding: 4,
+  },
+  rowChevronButton: {
+    padding: 2,
   },
   notionRowIconWrap: {
     width: 32,
