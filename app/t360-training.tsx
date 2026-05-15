@@ -161,7 +161,7 @@ export default function T360TrainingScreen() {
         />
         <TrainingRow
           icon={<ListChecks size={18} color="#D97706" strokeWidth={1.8} />}
-          title="Agenda Creation"
+          title="Agenda Creator"
           description="Knowledge base: Agenda Creator—visibility, layouts, auto fill, sharing, live updates, and FAQs for ExComm."
           descriptionEmphasized
           onPress={() => router.push('/t360-training-excomm-agenda-creation')}

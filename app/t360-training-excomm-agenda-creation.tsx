@@ -169,7 +169,7 @@ export default function T360TrainingExcommAgendaCreationScreen() {
           <ArrowLeft size={Math.round(22 * FS)} color={N.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} maxFontSizeMultiplier={1.3}>
-          Agenda Creation
+          Agenda Creator
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -187,7 +187,7 @@ export default function T360TrainingExcommAgendaCreationScreen() {
             </Text>
           </View>
           <Text style={styles.docTitle} maxFontSizeMultiplier={1.35}>
-            Agenda Creation
+            Agenda Creator
           </Text>
           <Text style={styles.lead} maxFontSizeMultiplier={1.3}>
             Create a complete, professional Toastmasters meeting agenda in minutes. Replace 30–45 minutes of manual
