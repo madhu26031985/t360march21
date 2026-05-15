@@ -52,6 +52,7 @@ import {
   Calendar,
   Shield,
   Settings,
+  Info,
 } from 'lucide-react-native';
 import { useCallback } from 'react';
 
@@ -3659,6 +3660,14 @@ export default function AgendaEditor() {
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Edit Agenda</Text>
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => router.push('/t360-training-excomm-agenda-creation')}
+            style={styles.saveButton}
+            accessibilityLabel="Agenda Creator help"
+            accessibilityRole="button"
+          >
+            <Info size={20} color={theme.colors.primary} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSaveAll}
             disabled={saving}

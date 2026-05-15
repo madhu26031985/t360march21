@@ -9,7 +9,6 @@ import {
   Alert,
   Image,
   Linking,
-  Modal,
   Platform,
   type ImageStyle,
   type StyleProp,
@@ -22,8 +21,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users, Home, Shield, Settings, Info, X } from 'lucide-react-native';
-import { AgendaCreatorKnowledgeBaseContent } from '@/components/AgendaCreatorKnowledgeBaseContent';
+import { ChevronLeft, Calendar, Clock, MapPin, Sparkles, Edit3, Compass, FileText, CheckCircle2, Download, Users, Home, Shield, Settings, Info } from 'lucide-react-native';
 import { exportAgendaToPDF, generatePDFFilename } from '@/lib/pdfExportUtils';
 import { parseMemberPreparedAgenda } from '@/lib/preparedSpeechesAgendaParse';
 import {
@@ -600,7 +598,6 @@ export function MeetingAgendaViewContent({
   const [isExcomm, setIsExcomm] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
-  const [agendaKbVisible, setAgendaKbVisible] = useState(false);
   const isInitialMount = useRef(true);
 
   useEffect(() => {
@@ -1090,7 +1087,7 @@ export function MeetingAgendaViewContent({
         <View style={styles.headerActions}>
           {meeting && (isExcomm || meeting.is_agenda_visible !== false) && (
             <TouchableOpacity
-              onPress={() => setAgendaKbVisible(true)}
+              onPress={() => router.push('/t360-training-excomm-agenda-creation')}
               style={styles.headerButton}
               accessibilityLabel="Agenda Creator help"
               accessibilityRole="button"
@@ -2168,39 +2165,6 @@ export function MeetingAgendaViewContent({
         </View>
       )}
 
-      <Modal
-        visible={agendaKbVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setAgendaKbVisible(false)}
-      >
-        <View style={styles.agendaKbOverlay}>
-          <View style={[styles.agendaKbSheet, { backgroundColor: theme.colors.background }]}>
-            <View style={[styles.agendaKbHeader, { borderBottomColor: theme.colors.border }]}>
-              <Text style={[styles.agendaKbHeaderTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                Agenda Creator
-              </Text>
-              <TouchableOpacity
-                onPress={() => setAgendaKbVisible(false)}
-                style={styles.agendaKbClose}
-                accessibilityLabel="Close help"
-                accessibilityRole="button"
-              >
-                <X size={22} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.agendaKbScroll}
-              contentContainerStyle={styles.agendaKbScrollContent}
-              showsVerticalScrollIndicator
-              keyboardShouldPersistTaps="handled"
-            >
-              <AgendaCreatorKnowledgeBaseContent />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
       {/* Export Progress Overlay */}
       {isExporting && (
         <View style={styles.exportOverlay}>
@@ -2310,45 +2274,6 @@ const styles = StyleSheet.create({
   headerEditAgendaText: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  agendaKbOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    justifyContent: 'flex-end',
-  },
-  agendaKbSheet: {
-    flex: 1,
-    maxHeight: '92%',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    overflow: 'hidden',
-    ...Platform.select({
-      web: { maxWidth: 560, width: '100%', alignSelf: 'center' },
-    }),
-  },
-  agendaKbHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  agendaKbHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    flex: 1,
-  },
-  agendaKbClose: {
-    padding: 8,
-    marginRight: -8,
-  },
-  agendaKbScroll: {
-    flex: 1,
-  },
-  agendaKbScrollContent: {
-    padding: 16,
-    paddingBottom: 32,
   },
   content: {
     flex: 1,
