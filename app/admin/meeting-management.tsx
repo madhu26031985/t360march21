@@ -25,6 +25,7 @@ import {
   Settings,
   ChevronRight,
   RotateCcw,
+  Info,
 } from 'lucide-react-native';
 
 const FOOTER_NAV_ICON_SIZE = 15;
@@ -539,7 +540,14 @@ export default function MeetingManagement() {
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
             Meeting Management
           </Text>
-          <View style={styles.headerRightSpacer} />
+          <TouchableOpacity
+            style={styles.headerHelpButton}
+            onPress={() => router.push('/t360-training-excomm-manage-meetings')}
+            accessibilityLabel="Meeting Management help"
+            accessibilityRole="button"
+          >
+            <Info size={20} color={theme.colors.primary} />
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -859,9 +867,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerRightSpacer: {
+  headerHelpButton: {
     width: 40,
     height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pageMain: {
     flex: 1,

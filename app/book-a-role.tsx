@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import PremiumBookingSuccessModal from '@/components/PremiumBookingSuccessModal';
-import { ArrowLeft, Calendar, Users, User, Crown, Shield, Eye, UserCheck, Building2, X, Save, BookOpen, GraduationCap, MessageSquare, Lightbulb, CreditCard as Edit, Clock, MapPin, FileText, CreditCard as Edit2, ChevronDown, Layers, Tag, Mic, Briefcase, Star, MousePointerClick, Filter, Check, Home, Settings } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Users, User, Crown, Shield, Eye, UserCheck, Building2, X, Save, BookOpen, GraduationCap, MessageSquare, Lightbulb, CreditCard as Edit, Clock, MapPin, FileText, CreditCard as Edit2, ChevronDown, Layers, Tag, Mic, Briefcase, Star, MousePointerClick, Filter, Check, Home, Settings, Info } from 'lucide-react-native';
 
 const BOOK_ROLE_DOCK_ICON_SIZE = 15;
 
@@ -1232,7 +1232,14 @@ export default function BookARole() {
             <ArrowLeft size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book a Role</Text>
-          <View style={styles.headerSpacer} />
+          <TouchableOpacity
+            style={styles.headerHelpButton}
+            onPress={() => router.push('/t360-training-book-a-role')}
+            accessibilityLabel="Book a Role help"
+            accessibilityRole="button"
+          >
+            <Info size={20} color={theme.colors.primary} />
+          </TouchableOpacity>
         </View>
         
         <View style={styles.noMeetingsContainer}>
@@ -1255,7 +1262,14 @@ export default function BookARole() {
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Book a Role</Text>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity
+          style={styles.headerHelpButton}
+          onPress={() => router.push('/t360-training-book-a-role')}
+          accessibilityLabel="Book a Role help"
+          accessibilityRole="button"
+        >
+          <Info size={20} color={theme.colors.primary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -1873,8 +1887,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 16,
   },
-  headerSpacer: {
+  headerHelpButton: {
     width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,
