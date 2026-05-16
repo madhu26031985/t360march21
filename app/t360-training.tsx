@@ -14,7 +14,9 @@ import {
   Info,
   Landmark,
   ListChecks,
+  MessageCircle,
   MessageSquare,
+  Mic,
   Mic2,
   Settings,
   Sparkles,
@@ -160,6 +162,20 @@ export default function T360TrainingScreen() {
           description="Knowledge base: book the role, GE Corner vs GE Summary, Eye toggle, publish workflow, benefits."
           descriptionEmphasized
           onPress={() => router.push('/t360-training-general-evaluator-role')}
+        />
+        <TrainingRow
+          icon={<Mic size={18} color="#2563EB" strokeWidth={1.8} />}
+          title="Prepared Speaker Role"
+          description="Knowledge base: book via Book a Role or Prepared Speeches, speech details, evaluation form, and FAQs."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-prepared-speaker-role')}
+        />
+        <TrainingRow
+          icon={<MessageCircle size={18} color="#00B4A0" strokeWidth={1.8} />}
+          title="Table Topics Speaker Role"
+          description="Knowledge base: book via Table Topic Corner or Book a Role, why book early, benefits, and best practices."
+          descriptionEmphasized
+          onPress={() => router.push('/t360-training-table-topics-speaker-role')}
         />
         <TrainingRow
           icon={<ListChecks size={18} color="#D97706" strokeWidth={1.8} />}
