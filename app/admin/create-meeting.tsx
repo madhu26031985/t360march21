@@ -31,15 +31,20 @@ export default function CreateMeeting() {
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [activeTab, setActiveTab] = useState<'info' | 'mode' | 'datetime'>('info');
 
-  const [meetingForm, setMeetingForm] = useState<MeetingForm>({
-    title: '',
-    date: new Date(),
-    number: '',
-    startTime: new Date(),
-    endTime: new Date(),
-    mode: 'in_person',
-    location: '',
-    link: '',
+  const [meetingForm, setMeetingForm] = useState<MeetingForm>(() => {
+    const startTime = new Date();
+    const endTime = new Date(startTime);
+    endTime.setHours(endTime.getHours() + 1);
+    return {
+      title: '',
+      date: new Date(),
+      number: '',
+      startTime,
+      endTime,
+      mode: 'in_person',
+      location: '',
+      link: '',
+    };
   });
 
   const modeOptions = [
@@ -88,12 +93,54 @@ export default function CreateMeeting() {
     });
   };
 
-  const formatTime = (date: Date) => {
+  const formatTimeDisplay = (date: Date) => {
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false
+      hour12: true,
     });
+  };
+
+  /** HTML `<input type="time">` requires HH:mm (24h), not locale strings */
+  const formatTimeForWebInput = (date: Date) => {
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
+  const formatDateForDb = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  /** Postgres `time` — explicit 24h */
+  const formatTimeForDb = (date: Date) => {
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const s = String(date.getSeconds()).padStart(2, '0');
+    return `${h}:${min}:${s}`;
+  };
+
+  const timeToMinutes = (date: Date) => date.getHours() * 60 + date.getMinutes();
+
+  const applyWebTimeChange = (field: 'startTime' | 'endTime', value: string) => {
+    const [hours, minutes] = value.split(':');
+    if (hours === undefined || minutes === undefined) return;
+    const next = new Date(meetingForm.date);
+    next.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+    if (!Number.isNaN(next.getTime())) {
+      updateFormField(field, next);
+    }
+  };
+
+  const alertWebSafe = (title: string, message?: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.alert(message ? `${title}\n\n${message}` : title);
+      return;
+    }
+    Alert.alert(title, message || '');
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -125,35 +172,57 @@ export default function CreateMeeting() {
 
   const validateForm = (): boolean => {
     if (!meetingForm.title.trim()) {
-      Alert.alert('Error', 'Please enter a meeting title');
+      alertWebSafe('Error', 'Please enter a meeting title');
       return false;
     }
 
     if (!meetingForm.number.trim()) {
-      Alert.alert('Error', 'Please enter a meeting number');
+      alertWebSafe('Error', 'Please enter a meeting number');
       return false;
     }
 
-    if (meetingForm.endTime <= meetingForm.startTime) {
-      Alert.alert('Time Error', 'Looks like the time is incorrect—please update it. The end time must be after the start time.');
+    if (timeToMinutes(meetingForm.endTime) <= timeToMinutes(meetingForm.startTime)) {
+      alertWebSafe(
+        'Time Error',
+        'The end time must be after the start time. Please update Start Time or End Time on the Date & Time tab.'
+      );
       return false;
     }
 
     if (meetingForm.mode === 'online' && !meetingForm.link.trim()) {
-      Alert.alert('Error', 'Please provide a meeting link for online meetings');
+      alertWebSafe('Error', 'Please provide a meeting link for online meetings');
       return false;
     }
 
     if (meetingForm.mode === 'in_person' && !meetingForm.location.trim()) {
-      Alert.alert('Error', 'Please provide a location for in-person meetings');
+      alertWebSafe('Error', 'Please provide a location for in-person meetings');
       return false;
+    }
+
+    if (meetingForm.mode === 'hybrid') {
+      if (!meetingForm.location.trim()) {
+        alertWebSafe('Error', 'Please provide a location for hybrid meetings');
+        return false;
+      }
+      if (!meetingForm.link.trim()) {
+        alertWebSafe('Error', 'Please provide a meeting link for hybrid meetings');
+        return false;
+      }
     }
 
     return true;
   };
 
   const handleSaveMeeting = async () => {
-    if (!validateForm() || !user?.currentClubId) return;
+    if (!validateForm()) return;
+
+    if (!user?.currentClubId) {
+      alertWebSafe(
+        'Error',
+        'No active club selected. Open the app from your club context or switch clubs, then try again.'
+      );
+      return;
+    }
 
     setIsSaving(true);
 
@@ -161,10 +230,10 @@ export default function CreateMeeting() {
       const saveData = {
         club_id: user.currentClubId,
         meeting_title: meetingForm.title.trim(),
-        meeting_date: meetingForm.date.toISOString().split('T')[0],
+        meeting_date: formatDateForDb(meetingForm.date),
         meeting_number: meetingForm.number.trim() || null,
-        meeting_start_time: formatTime(meetingForm.startTime),
-        meeting_end_time: formatTime(meetingForm.endTime),
+        meeting_start_time: formatTimeForDb(meetingForm.startTime),
+        meeting_end_time: formatTimeForDb(meetingForm.endTime),
         meeting_mode: meetingForm.mode,
         meeting_location: meetingForm.mode === 'in_person' || meetingForm.mode === 'hybrid'
           ? meetingForm.location.trim() || null
@@ -225,14 +294,14 @@ export default function CreateMeeting() {
 
         if (error.message && (error.message.includes('time') || error.message.includes('club_id'))) {
           if (error.message.includes('time')) {
-            Alert.alert('Time Error', 'Looks like the time is incorrect—please update it.');
+            alertWebSafe('Time Error', 'Looks like the time is incorrect—please update it.');
           } else if (error.message.includes('club_id')) {
-            Alert.alert('Error', 'Club information is missing. Please try logging out and back in.');
+            alertWebSafe('Error', 'Club information is missing. Please try logging out and back in.');
           } else {
-            Alert.alert('Error', `Failed to create meeting: ${error.message}`);
+            alertWebSafe('Error', `Failed to create meeting: ${error.message}`);
           }
         } else {
-          Alert.alert('Error', `Failed to create meeting: ${error.message || 'Unknown error'}`);
+          alertWebSafe('Error', `Failed to create meeting: ${error.message || 'Unknown error'}`);
         }
         return;
       }
@@ -240,7 +309,7 @@ export default function CreateMeeting() {
       setShowSuccessModal(true);
     } catch (error) {
       console.error('Error saving meeting:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      alertWebSafe('Error', 'An unexpected error occurred');
     } finally {
       setIsSaving(false);
     }
@@ -416,11 +485,14 @@ export default function CreateMeeting() {
               {Platform.OS === 'web' ? (
                 <input
                   type="date"
-                  value={meetingForm.date.toISOString().split('T')[0]}
+                  value={formatDateForDb(meetingForm.date)}
                   onChange={(e: any) => {
-                    const newDate = new Date(e.target.value);
-                    if (!isNaN(newDate.getTime())) {
-                      updateFormField('date', newDate);
+                    const [y, m, d] = e.target.value.split('-').map(Number);
+                    if (y && m && d) {
+                      const newDate = new Date(y, m - 1, d);
+                      if (!Number.isNaN(newDate.getTime())) {
+                        updateFormField('date', newDate);
+                      }
                     }
                   }}
                   style={{
@@ -476,13 +548,8 @@ export default function CreateMeeting() {
               {Platform.OS === 'web' ? (
                 <input
                   type="time"
-                  value={formatTime(meetingForm.startTime)}
-                  onChange={(e: any) => {
-                    const [hours, minutes] = e.target.value.split(':');
-                    const newTime = new Date();
-                    newTime.setHours(parseInt(hours, 10), parseInt(minutes, 10));
-                    updateFormField('startTime', newTime);
-                  }}
+                  value={formatTimeForWebInput(meetingForm.startTime)}
+                  onChange={(e: any) => applyWebTimeChange('startTime', e.target.value)}
                   style={{
                     fontSize: 15,
                     padding: 10,
@@ -504,7 +571,7 @@ export default function CreateMeeting() {
                     onPress={() => setShowStartTimePicker(true)}
                   >
                     <Text style={[styles.dateTimeText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      {formatTime(meetingForm.startTime)}
+                      {formatTimeDisplay(meetingForm.startTime)}
                     </Text>
                   </TouchableOpacity>
                   {(showStartTimePicker || Platform.OS === 'ios') && (
@@ -536,13 +603,8 @@ export default function CreateMeeting() {
               {Platform.OS === 'web' ? (
                 <input
                   type="time"
-                  value={formatTime(meetingForm.endTime)}
-                  onChange={(e: any) => {
-                    const [hours, minutes] = e.target.value.split(':');
-                    const newTime = new Date();
-                    newTime.setHours(parseInt(hours, 10), parseInt(minutes, 10));
-                    updateFormField('endTime', newTime);
-                  }}
+                  value={formatTimeForWebInput(meetingForm.endTime)}
+                  onChange={(e: any) => applyWebTimeChange('endTime', e.target.value)}
                   style={{
                     fontSize: 15,
                     padding: 10,
@@ -564,7 +626,7 @@ export default function CreateMeeting() {
                     onPress={() => setShowEndTimePicker(true)}
                   >
                     <Text style={[styles.dateTimeText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      {formatTime(meetingForm.endTime)}
+                      {formatTimeDisplay(meetingForm.endTime)}
                     </Text>
                   </TouchableOpacity>
                   {(showEndTimePicker || Platform.OS === 'ios') && (
