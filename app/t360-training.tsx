@@ -129,7 +129,8 @@ function TrainingSection({
 
 const EXCOMM_COUNT = 6;
 const CLUB_OPS_COUNT = 3;
-const MEMBER_COUNT = 16;
+const ROLE_BOOKING_COUNT = 8;
+const MEMBER_COUNT = 8;
 
 export default function T360TrainingScreen() {
   return (
@@ -239,14 +240,7 @@ export default function T360TrainingScreen() {
           />
         </TrainingSection>
 
-        <TrainingSection label="For All Other Users" count={MEMBER_COUNT}>
-          <TrainingRow
-            icon={<History size={17} color="#0284C7" strokeWidth={2} />}
-            iconBackgroundColor="#F0F9FF"
-            title="Meeting History"
-            description="Completed meetings, agendas, role records, and historical club data."
-            onPress={() => router.push('/t360-training-meeting-history')}
-          />
+        <TrainingSection label="Role Booking and Responsibility" count={ROLE_BOOKING_COUNT}>
           <TrainingRow
             icon={<UserCheck size={17} color="#15803D" strokeWidth={2} />}
             iconBackgroundColor="#F0FDF4"
@@ -257,44 +251,16 @@ export default function T360TrainingScreen() {
           <TrainingRow
             icon={<Mic2 size={17} color="#9A3412" strokeWidth={2} />}
             iconBackgroundColor="#FFF7ED"
-            title="Toastmaster of the Day Role"
+            title="Toastmaster of the Day"
             description="Book from Home or Book a Role, Toastmaster Corner, Theme of the Day."
             onPress={() => router.push('/t360-training-toastmaster-of-the-day')}
           />
           <TrainingRow
-            icon={<GraduationCap size={17} color="#2563EB" strokeWidth={2} />}
-            iconBackgroundColor="#EFF6FF"
-            title="Educational Speaker Role"
-            description="Educational Corner, speech title, permissions, and FAQs."
-            onPress={() => router.push('/t360-training-educational-speaker-role')}
-          />
-          <TrainingRow
-            icon={<Sparkles size={17} color="#B45309" strokeWidth={2} />}
-            iconBackgroundColor="#FFFBEB"
-            title="Keynote Speaker Role"
-            description="Meetings tab, Book a Role, Keynote Title, responsibilities."
-            onPress={() => router.push('/t360-training-keynote-speaker-role')}
-          />
-          <TrainingRow
             icon={<ClipboardList size={17} color="#1D4ED8" strokeWidth={2} />}
             iconBackgroundColor="#EFF6FF"
-            title="General Evaluator Role"
+            title="General Evaluator"
             description="GE Corner vs GE Summary, Eye toggle, publish workflow."
             onPress={() => router.push('/t360-training-general-evaluator-role')}
-          />
-          <TrainingRow
-            icon={<Mic size={17} color="#2563EB" strokeWidth={2} />}
-            iconBackgroundColor="#EFF6FF"
-            title="Prepared Speaker Role"
-            description="Book a Role or Prepared Speeches, speech details, evaluation form."
-            onPress={() => router.push('/t360-training-prepared-speaker-role')}
-          />
-          <TrainingRow
-            icon={<MessageCircle size={17} color="#0D9488" strokeWidth={2} />}
-            iconBackgroundColor="#F0FDFA"
-            title="Table Topics Speaker Role"
-            description="Table Topic Corner or Book a Role, benefits, and best practices."
-            onPress={() => router.push('/t360-training-table-topics-speaker-role')}
           />
           <TrainingRow
             icon={<MessageSquare size={17} color="#0F766E" strokeWidth={2} />}
@@ -302,6 +268,45 @@ export default function T360TrainingScreen() {
             title="Table Topic Master"
             description="Table Topic Corner & Summary, question repository, digital workflow."
             onPress={() => router.push('/t360-training-table-topic-master')}
+          />
+          <TrainingRow
+            icon={<MessageCircle size={17} color="#0D9488" strokeWidth={2} />}
+            iconBackgroundColor="#F0FDFA"
+            title="Table Topics Speaker"
+            description="Table Topic Corner or Book a Role, benefits, and best practices."
+            onPress={() => router.push('/t360-training-table-topics-speaker-role')}
+          />
+          <TrainingRow
+            icon={<Mic size={17} color="#2563EB" strokeWidth={2} />}
+            iconBackgroundColor="#EFF6FF"
+            title="Prepared Speaker"
+            description="Book a Role or Prepared Speeches, speech details, evaluation form."
+            onPress={() => router.push('/t360-training-prepared-speaker-role')}
+          />
+          <TrainingRow
+            icon={<GraduationCap size={17} color="#2563EB" strokeWidth={2} />}
+            iconBackgroundColor="#EFF6FF"
+            title="Educational Speaker"
+            description="Educational Corner, speech title, permissions, and FAQs."
+            onPress={() => router.push('/t360-training-educational-speaker-role')}
+          />
+          <TrainingRow
+            icon={<Sparkles size={17} color="#B45309" strokeWidth={2} />}
+            iconBackgroundColor="#FFFBEB"
+            title="Keynote Speaker"
+            description="Meetings tab, Book a Role, Keynote Title, responsibilities."
+            hideBottomBorder
+            onPress={() => router.push('/t360-training-keynote-speaker-role')}
+          />
+        </TrainingSection>
+
+        <TrainingSection label="For All Other Users" count={MEMBER_COUNT}>
+          <TrainingRow
+            icon={<History size={17} color="#0284C7" strokeWidth={2} />}
+            iconBackgroundColor="#F0F9FF"
+            title="Meeting History"
+            description="Completed meetings, agendas, role records, and historical club data."
+            onPress={() => router.push('/t360-training-meeting-history')}
           />
           <TrainingRow
             icon={<User size={17} color="#BE185D" strokeWidth={2} />}
