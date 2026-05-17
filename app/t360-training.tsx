@@ -23,6 +23,9 @@ import {
   Settings,
   Share2,
   Sparkles,
+  Timer,
+  MessageSquareQuote,
+  SpellCheck,
   TrendingUp,
   Shield,
   UserCog,
@@ -129,7 +132,7 @@ function TrainingSection({
 
 const EXCOMM_COUNT = 6;
 const CLUB_OPS_COUNT = 3;
-const ROLE_BOOKING_COUNT = 8;
+const ROLE_BOOKING_COUNT = 11;
 const MEMBER_COUNT = 8;
 
 export default function T360TrainingScreen() {
@@ -295,8 +298,29 @@ export default function T360TrainingScreen() {
             iconBackgroundColor="#FFFBEB"
             title="Keynote Speaker"
             description="Meetings tab, Book a Role, Keynote Title, responsibilities."
-            hideBottomBorder
             onPress={() => router.push('/t360-training-keynote-speaker-role')}
+          />
+          <TrainingRow
+            icon={<Timer size={17} color="#D97706" strokeWidth={2} />}
+            iconBackgroundColor="#FFFBEB"
+            title="The Timer Role"
+            description="Book the role, Timer Corner, stopwatch, qualifications, guest management, and publishing the report."
+            onPress={() => router.push('/t360-training-timer-role')}
+          />
+          <TrainingRow
+            icon={<MessageSquareQuote size={17} color="#7C3AED" strokeWidth={2} />}
+            iconBackgroundColor="#F5F3FF"
+            title="The Ah Counter Role"
+            description="Track filler words, manage attendees, Ah Counter Corner, summary report, and publishing."
+            onPress={() => router.push('/t360-training-ah-counter-role')}
+          />
+          <TrainingRow
+            icon={<SpellCheck size={17} color="#15803D" strokeWidth={2} />}
+            iconBackgroundColor="#F0FDF4"
+            title="The Grammarian Role"
+            description="Word/quote/idiom of the day, Good Usage, Opportunities, stats, and Grammarian Summary."
+            hideBottomBorder
+            onPress={() => router.push('/t360-training-grammarian-role')}
           />
         </TrainingSection>
 
