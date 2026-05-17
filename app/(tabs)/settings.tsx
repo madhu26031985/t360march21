@@ -18,13 +18,15 @@ import {
   FileText,
   Trash2,
   MessageCircle,
+  Phone,
   Share2,
-  Video,
+  BookOpen,
   Calendar,
   AlertTriangle,
   Globe,
   Linkedin,
   RefreshCw,
+  Tag,
 } from 'lucide-react-native';
 
 /** Notion-like neutrals (match admin / invite flow). Sign out & delete keep explicit brand colours below. */
@@ -199,16 +201,8 @@ Welcome to a seamless digital experience! 🚀`;
     router.push('/t360-training');
   };
 
-  const handlePricing = async () => {
-    try {
-      const url = 'https://t360.in/pricing';
-      const supported = await Linking.canOpenURL(url);
-      if (supported) await Linking.openURL(url);
-      else showAlert('Error', 'Cannot open pricing page');
-    } catch (error) {
-      console.error('Error opening pricing URL:', error);
-      showAlert('Error', 'Failed to open pricing page');
-    }
+  const handlePricing = () => {
+    router.push('/pricing');
   };
 
   const handlePrivacyPolicy = async () => {
@@ -244,6 +238,15 @@ Welcome to a seamless digital experience! 🚀`;
     } catch (error) {
       console.error('Error opening Calendly URL:', error);
       showAlert('Error', 'Failed to open Calendly');
+    }
+  };
+
+  const handlePhoneSupport = async () => {
+    try {
+      await Linking.openURL('tel:9176091419');
+    } catch (error) {
+      console.error('Error opening phone dialer:', error);
+      showAlert('Error', 'Failed to open phone dialer');
     }
   };
 
@@ -441,53 +444,81 @@ Welcome to a seamless digital experience! 🚀`;
             </Text>
             <View style={[styles.notionGroup, { borderColor: N.border }]}>
               <SettingItem
-                icon={themedIcon(Share2, '#16A34A')}
-                iconBackgroundColor="#F0FDF4"
-                title="Share app"
-                description="Invite members to download T360"
-                onPress={handleShareApp}
-              />
-              <SettingItem
-                icon={themedIcon(Globe, '#334155')}
-                iconBackgroundColor="#F1F5F9"
-                title="Web login"
-                description="Access T360 on your browser"
-                onPress={() => Linking.openURL('https://t360.in/weblogin')}
-              />
-              <SettingItem
-                icon={themedIcon(Video, '#7C3AED')}
-                iconBackgroundColor="#F5F3FF"
-                title="T360 training"
-                description="Placeholder"
+                icon={themedIcon(BookOpen, '#2383E2')}
+                iconBackgroundColor={N.accentSoft}
+                title="T360 User Guide"
+                description="Learn how to use T360 step by step"
                 onPress={handleT360TrainingPlaceholder}
+              />
+              <SettingItem
+                icon={themedIcon(Phone, '#2563EB')}
+                iconBackgroundColor="#EFF6FF"
+                title="Phone Support"
+                description="Dial 9176091419 for phone support"
+                onPress={handlePhoneSupport}
               />
               <SettingItem
                 icon={themedIcon(MessageCircle, '#22C55E')}
                 iconBackgroundColor="#ECFDF5"
-                title="WhatsApp support 24/7"
+                title="WhatsApp Support"
                 description="Get instant help on WhatsApp"
                 onPress={handleWhatsAppSupport}
               />
               <SettingItem
                 icon={themedIcon(Calendar, '#D97706')}
                 iconBackgroundColor="#FEF3C7"
-                title="Talk to us"
+                title="Book a Call"
                 description="Schedule a call with our team"
                 onPress={handleTalkToUs}
               />
               <SettingItem
-                icon={themedIcon(FileText, '#475569')}
-                iconBackgroundColor="#F8FAFC"
-                title="Privacy policy"
-                description="Read our privacy policy"
-                onPress={handlePrivacyPolicy}
+                icon={themedIcon(Globe, '#334155')}
+                iconBackgroundColor="#F1F5F9"
+                title="Web Login"
+                description="Access T360 on your browser"
+                onPress={() => Linking.openURL('https://t360.in/weblogin')}
               />
+              <SettingItem
+                icon={themedIcon(Share2, '#16A34A')}
+                iconBackgroundColor="#F0FDF4"
+                title="Share the App"
+                description="Invite members to download T360"
+                onPress={handleShareApp}
+                hideBottomBorder
+              />
+            </View>
+
+            <Text style={[styles.sectionLabel, { color: N.textSecondary, marginTop: 20 }]} maxFontSizeMultiplier={1.2}>
+              Pricing
+            </Text>
+            <View style={[styles.notionGroup, { borderColor: N.border }]}>
+              <SettingItem
+                icon={themedIcon(Tag, '#7C3AED')}
+                iconBackgroundColor="#F5F3FF"
+                title="Pricing"
+                description="Beta pricing and subscription plans"
+                onPress={handlePricing}
+                hideBottomBorder
+              />
+            </View>
+
+            <Text style={[styles.sectionLabel, { color: N.textSecondary, marginTop: 20 }]} maxFontSizeMultiplier={1.2}>
+              Privacy & security
+            </Text>
+            <View style={[styles.notionGroup, { borderColor: N.border }]}>
               <SettingItem
                 icon={themedIcon(Shield, '#0891B2')}
                 iconBackgroundColor="#ECFEFF"
                 title="Data protection"
                 description="Learn more about data protection"
                 onPress={handleDataProtection}
+              />
+              <SettingItem
+                icon={themedIcon(FileText, '#475569')}
+                iconBackgroundColor="#F8FAFC"
+                title="Privacy"
+                description="Read our privacy policy"
+                onPress={handlePrivacyPolicy}
               />
               <SettingItem
                 icon={themedIcon(RefreshCw, '#7C3AED')}
