@@ -13,7 +13,14 @@ import {
   Platform,
   Keyboard,
   InputAccessoryView,
+  Pressable,
 } from 'react-native';
+import {
+  DraggableFlatList,
+  NestableDraggableFlatList,
+  NestableScrollContainer,
+  ScaleDecorator,
+} from '@/components/admin/agendaDragReorder';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -36,6 +43,7 @@ import {
   X,
   ChevronUp,
   ChevronDown,
+  GripVertical,
   RotateCcw,
   FileText,
   Zap,
@@ -3500,62 +3508,40 @@ export default function AgendaEditor() {
   const isSectionSelected = (name: string) =>
     sectionFilter === 'all' || sectionFilter.has(name);
 
+  const reorderAgendaItems = async (orderedItems: AgendaItem[]) => {
+    const reorderedItems = orderedItems.map((item, idx) => ({
+      ...item,
+      section_order: idx + 1,
+    }));
+
+    setAgendaItems(reorderedItems);
+
+    for (let i = 0; i < reorderedItems.length; i++) {
+      await supabase
+        .from('meeting_agenda_items')
+        .update({ section_order: reorderedItems[i].section_order })
+        .eq('id', reorderedItems[i].id);
+    }
+
+    recalculateAllTimes(reorderedItems);
+  };
+
   const moveItemUp = async (index: number) => {
     if (index === 0) return;
-
     const newItems = [...agendaItems];
     const temp = newItems[index];
     newItems[index] = newItems[index - 1];
     newItems[index - 1] = temp;
-
-    // Update section_order for both items
-    const reorderedItems = newItems.map((item, idx) => ({
-      ...item,
-      section_order: idx + 1,
-    }));
-
-    // Update local state immediately
-    setAgendaItems(reorderedItems);
-
-    // Update database
-    for (let i = 0; i < reorderedItems.length; i++) {
-      await supabase
-        .from('meeting_agenda_items')
-        .update({ section_order: reorderedItems[i].section_order })
-        .eq('id', reorderedItems[i].id);
-    }
-
-    // Always recalculate from the beginning when reordering
-    recalculateAllTimes(reorderedItems);
+    await reorderAgendaItems(newItems);
   };
 
   const moveItemDown = async (index: number) => {
     if (index === agendaItems.length - 1) return;
-
     const newItems = [...agendaItems];
     const temp = newItems[index];
     newItems[index] = newItems[index + 1];
     newItems[index + 1] = temp;
-
-    // Update section_order for both items
-    const reorderedItems = newItems.map((item, idx) => ({
-      ...item,
-      section_order: idx + 1,
-    }));
-
-    // Update local state immediately
-    setAgendaItems(reorderedItems);
-
-    // Update database
-    for (let i = 0; i < reorderedItems.length; i++) {
-      await supabase
-        .from('meeting_agenda_items')
-        .update({ section_order: reorderedItems[i].section_order })
-        .eq('id', reorderedItems[i].id);
-    }
-
-    // Always recalculate from the beginning when reordering
-    recalculateAllTimes(reorderedItems);
+    await reorderAgendaItems(newItems);
   };
 
   /** Display-only: HH:MM (24-hour), aligned with member agenda view. */
@@ -3634,560 +3620,23 @@ export default function AgendaEditor() {
     }
   };
 
-  if (loading) {
+  const renderAgendaSectionRow = (
+    item: AgendaItem,
+    rowIndex: number,
+    listLength: number,
+    dragHandle?: { drag: () => void; isActive: boolean },
+  ) => {
+    const index =
+      dragHandle != null ? rowIndex : agendaItems.findIndex((i) => i.id === item.id);
+    const isLastRow = rowIndex === listLength - 1;
+    const drag = dragHandle?.drag;
+    const isActive = dragHandle?.isActive ?? false;
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-            Loading agenda items...
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-      edges={['top', 'left', 'right']}
-    >
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-      <View style={styles.agendaEditorPageBody}>
-      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ChevronLeft size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Edit Agenda</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            onPress={() => router.push('/t360-training-excomm-agenda-creation')}
-            style={styles.saveButton}
-            accessibilityLabel="Agenda Creator help"
-            accessibilityRole="button"
-          >
-            <Info size={20} color={theme.colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSaveAll}
-            disabled={saving}
-            style={styles.saveButton}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color={theme.colors.primary} />
-            ) : (
-              <Save size={20} color={theme.colors.primary} />
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View
-        style={[
-          styles.editorTabRow,
-          { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface },
-        ]}
-      >
-        <TouchableOpacity
-          style={[
-            styles.editorTab,
-            {
-              backgroundColor: agendaEditorTab === 'settings' ? theme.colors.primary : 'transparent',
-              borderColor: agendaEditorTab === 'settings' ? theme.colors.primary : theme.colors.border,
-            },
-          ]}
-          onPress={() => setAgendaEditorTab('settings')}
-          activeOpacity={0.85}
-        >
-          <Text
-            style={[
-              styles.editorTabText,
-              { color: agendaEditorTab === 'settings' ? '#ffffff' : theme.colors.text },
-            ]}
-            maxFontSizeMultiplier={1.12}
-          >
-            Agenda Settings
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.editorTab,
-            {
-              backgroundColor: agendaEditorTab === 'sections' ? theme.colors.primary : 'transparent',
-              borderColor: agendaEditorTab === 'sections' ? theme.colors.primary : theme.colors.border,
-            },
-          ]}
-          onPress={() => setAgendaEditorTab('sections')}
-          activeOpacity={0.85}
-        >
-          <Text
-            style={[
-              styles.editorTabText,
-              { color: agendaEditorTab === 'sections' ? '#ffffff' : theme.colors.text },
-            ]}
-            maxFontSizeMultiplier={1.12}
-          >
-            Agenda Section
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={{ paddingBottom: 88 + footerNavBottomPad }}
-        showsVerticalScrollIndicator={false}
-      >
-        {agendaEditorTab === 'settings' ? (
-        <>
-        <View
-          style={[
-            styles.notionAgendaVisibilitySheet,
-            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-          ]}
-        >
           <View
-            style={[
-              styles.notionVisibilitySheetHeader,
-              { borderBottomColor: theme.colors.border },
-            ]}
-          >
-            <Text style={[styles.notionVisibilitySheetTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Agenda Visibility
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.notionVisibilityMemberRow,
-              agendaItems.length > 0 && {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: theme.colors.border,
-              },
-            ]}
-          >
-            <View style={styles.agendaMemberVisibilityLeft}>
-              {isAgendaVisible ? (
-                <Eye size={20} color={theme.colors.primary} />
-              ) : (
-                <EyeOff size={20} color={theme.colors.textSecondary} />
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.agendaMemberVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
-                  Show meeting agenda to members
-                </Text>
-                <Text style={[styles.agendaMemberVisibilityHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
-                  {isAgendaVisible ? 'Visible to members' : 'Hidden from members'}
-                </Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.agendaMemberVisibilityToggle,
-                {
-                  backgroundColor: isAgendaVisible ? theme.colors.primary : theme.colors.background,
-                  borderColor: isAgendaVisible ? theme.colors.primary : theme.colors.border,
-                },
-              ]}
-              onPress={toggleAgendaVisibility}
-              activeOpacity={0.75}
-              accessibilityRole="button"
-              accessibilityLabel={isAgendaVisible ? 'Hide agenda from members' : 'Show agenda to members'}
-            >
-              {isAgendaVisible ? (
-                <Eye size={16} color="#ffffff" />
-              ) : (
-                <EyeOff size={16} color={theme.colors.textSecondary} />
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {agendaItems.length > 0 && (
-            <>
-              <View
-                style={[
-                  styles.notionVisibilityMetaRow,
-                  { borderBottomColor: theme.colors.border },
-                ]}
-              >
-                <Text style={[styles.notionVisibilityMetaText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.25}>
-                  {sectionBulkVisibilityState.visibleCount} visible · {sectionBulkVisibilityState.hiddenCount} hidden
-                </Text>
-              </View>
-              <View style={styles.notionVisibilitySegmentRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.notionVisibilitySegmentHalf,
-                    sectionBulkVisibilityState.allVisible && { backgroundColor: theme.colors.primary },
-                  ]}
-                  onPress={() => setAllSectionsVisibility(true)}
-                  activeOpacity={0.75}
-                >
-                  <Eye
-                    size={16}
-                    color={
-                      sectionBulkVisibilityState.allVisible
-                        ? '#ffffff'
-                        : sectionBulkVisibilityState.allHidden
-                          ? theme.colors.textSecondary
-                          : theme.colors.primary
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.sectionVisibilityButtonText,
-                      {
-                        color: sectionBulkVisibilityState.allVisible
-                          ? '#ffffff'
-                          : sectionBulkVisibilityState.allHidden
-                            ? theme.colors.textSecondary
-                            : theme.colors.primary,
-                      },
-                    ]}
-                    maxFontSizeMultiplier={1.3}
-                  >
-                    Show all
-                  </Text>
-                </TouchableOpacity>
-                <View
-                  style={[
-                    styles.notionVisibilitySegmentDivider,
-                    { backgroundColor: theme.colors.border },
-                  ]}
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.notionVisibilitySegmentHalf,
-                    sectionBulkVisibilityState.allHidden && { backgroundColor: theme.colors.primary },
-                  ]}
-                  onPress={() => setAllSectionsVisibility(false)}
-                  activeOpacity={0.75}
-                >
-                  <EyeOff
-                    size={16}
-                    color={sectionBulkVisibilityState.allHidden ? '#ffffff' : theme.colors.textSecondary}
-                  />
-                  <Text
-                    style={[
-                      styles.sectionVisibilityButtonText,
-                      {
-                        color: sectionBulkVisibilityState.allHidden ? '#ffffff' : theme.colors.textSecondary,
-                      },
-                    ]}
-                    maxFontSizeMultiplier={1.3}
-                  >
-                    Hide all
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </View>
-
-        <View
-          style={[
-            styles.notionAgendaVisibilitySheet,
-            { marginTop: 0, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-          ]}
-        >
-          <View
-            style={[
-              styles.notionVisibilitySheetHeader,
-              { borderBottomColor: theme.colors.border },
-            ]}
-          >
-            <Text style={[styles.notionVisibilitySheetTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Public web layout
-            </Text>
-          </View>
-          {(
-            [
-              { id: 'default' as const, title: 'Default', subtitle: 'Banners and section cards' },
-              { id: 'minimal' as const, title: 'Minimal', subtitle: 'Simple list' },
-              { id: 'vibrant' as const, title: 'Vibrant', subtitle: 'Bold cards' },
-            ] as const
-          ).map((opt) => {
-            const selected = publicAgendaSkin === opt.id;
-            return (
-              <TouchableOpacity
-                key={opt.id}
-                style={[
-                  styles.notionPublicWebSkinRow,
-                  {
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: theme.colors.border,
-                    backgroundColor: selected ? theme.colors.primary + '14' : 'transparent',
-                    borderLeftWidth: selected ? 3 : 0,
-                    borderLeftColor: theme.colors.primary,
-                  },
-                ]}
-                onPress={() => persistPublicAgendaSkin(opt.id)}
-                activeOpacity={0.75}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.publicWebSkinOptionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-                    {opt.title}
-                  </Text>
-                  <Text style={[styles.publicWebSkinOptionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
-                    {opt.subtitle}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-          {publicWebAgendaUrl ? (
-            <>
-              <View
-                style={[
-                  styles.notionPublicWebMetaBlock,
-                  { borderBottomColor: theme.colors.border },
-                ]}
-              >
-                <Text
-                  style={[styles.publicWebLinkText, { color: theme.colors.textSecondary }]}
-                  numberOfLines={4}
-                  maxFontSizeMultiplier={1.15}
-                  selectable
-                >
-                  {publicWebAgendaShortUrl ?? publicWebAgendaUrl}
-                </Text>
-                {isAgendaVisible === false ? (
-                  <Text style={[styles.publicWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.1}>
-                    Public web link will not open until Agenda Visibility is set to Visible to members.
-                  </Text>
-                ) : null}
-              </View>
-              <View style={styles.notionPublicWebActionsRow}>
-                <TouchableOpacity
-                  style={[styles.notionPublicWebActionPrimary, { backgroundColor: theme.colors.primary }]}
-                  onPress={handleOpenPublicWebAgenda}
-                  activeOpacity={0.85}
-                >
-                  <ExternalLink size={16} color="#ffffff" />
-                  <Text style={styles.publicWebLinkPrimaryButtonLabel} maxFontSizeMultiplier={1.1}>
-                    Open
-                  </Text>
-                </TouchableOpacity>
-                <View
-                  style={[
-                    styles.notionPublicWebActionDivider,
-                    { backgroundColor: theme.colors.border },
-                  ]}
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.notionPublicWebActionOutline,
-                    { backgroundColor: theme.colors.surface },
-                  ]}
-                  onPress={() => {
-                    void handleCopyPublicWebAgendaLink();
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Copy size={16} color={theme.colors.primary} />
-                  <Text style={[styles.publicWebLinkOutlineButtonLabel, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.1}>
-                    {publicWebLinkCopied ? 'Copied!' : 'Copy agenda link'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.notionPublicWebCopyFullRow,
-                  {
-                    borderTopColor: theme.colors.border,
-                    backgroundColor: theme.colors.surface,
-                  },
-                ]}
-                onPress={() => {
-                  void handleCopyFullPublicWebAgendaLink();
-                }}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.notionPublicWebCopyFullLabel, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.1}>
-                  Copy full URL (club path)
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <View style={styles.notionPublicWebEmptyRow}>
-              <Text style={[styles.publicWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
-                Save meeting details first to generate a public web link.
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View
-          style={[
-            styles.notionAgendaVisibilitySheet,
-            { marginTop: 0, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-          ]}
-        >
-          <View
-            style={[
-              styles.notionVisibilitySheetHeader,
-              { borderBottomColor: theme.colors.border },
-            ]}
-          >
-            <Text style={[styles.notionVisibilitySheetTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Banner Colors
-            </Text>
-            <Text style={[styles.notionBannerColorsSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
-              Used on the public web agenda banners.
-            </Text>
-          </View>
-          {(
-            [
-              { id: 'club_info' as const, label: 'Club Info Banner', value: clubInfoBannerColor },
-              { id: 'datetime' as const, label: 'Date/Time Banner', value: datetimeBannerColor },
-              { id: 'footer1' as const, label: 'Footer Banner 1', value: footerBanner1Color },
-              { id: 'footer2' as const, label: 'Footer Banner 2', value: footerBanner2Color },
-            ] as const
-          ).map((row, index, arr) => (
-            <TouchableOpacity
-              key={row.id}
-              style={[
-                styles.notionBannerColorRow,
-                {
-                  borderBottomWidth: index < arr.length - 1 ? StyleSheet.hairlineWidth : 0,
-                  borderBottomColor: theme.colors.border,
-                },
-              ]}
-              onPress={() => openColorPicker(row.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.notionBannerColorRowLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                {row.label}
-              </Text>
-              <View style={[styles.colorPreview, { backgroundColor: row.value, borderColor: theme.colors.border }]} />
-              <View
-                style={[
-                  styles.colorInput,
-                  {
-                    backgroundColor: theme.colors.background,
-                    borderColor: theme.colors.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.colorInputText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                  {row.value}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-        </>
-        ) : null}
-
-        {agendaEditorTab === 'sections' ? (
-        <View
-          style={[
-            styles.notionSectionsSheet,
-            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-          ]}
-        >
-        <TouchableOpacity
-          style={[
-            styles.notionSectionsToolbarRow,
-            {
-              backgroundColor: theme.colors.primary + '18',
-              borderBottomColor: theme.colors.border,
-              opacity: masterAutoFillLoading ? 0.6 : 1,
-              justifyContent: masterAutoFillLoading ? 'center' : 'flex-start',
-            },
-          ]}
-          onPress={autoFillEntireAgenda}
-          disabled={masterAutoFillLoading}
-          activeOpacity={0.7}
-        >
-          {masterAutoFillLoading ? (
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-          ) : (
-            <>
-              <Zap size={20} color={theme.colors.primary} />
-              <Text style={[styles.manageSequenceButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                Auto Fill Entire Agenda
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        {agendaItems.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setManageSequenceModalVisible(true)}
-            style={[
-              styles.notionSectionsToolbarRow,
-              {
-                backgroundColor: theme.colors.primary + '18',
-                borderBottomColor: theme.colors.border,
-              },
-            ]}
-            activeOpacity={0.7}
-          >
-            <ListOrdered size={20} color={theme.colors.primary} />
-            <Text style={[styles.manageSequenceButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-              Manage sequence ({agendaItems.length} sections)
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {agendaItems.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSectionFilterModalVisible(true)}
-            style={[
-              styles.notionSectionsToolbarRow,
-              {
-                backgroundColor: theme.colors.surface,
-                borderBottomColor: theme.colors.border,
-              },
-            ]}
-            activeOpacity={0.7}
-          >
-            <Filter size={18} color={theme.colors.primary} />
-            <Text style={[styles.notionSectionsToolbarRowText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              {sectionFilter === 'all'
-                ? `Showing all ${agendaItems.length} sections`
-                : `Showing ${filteredAgendaItems.length} of ${agendaItems.length} sections`}
-            </Text>
-            <ChevronDown size={18} color={theme.colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-
-        {agendaItems.length === 0 ? (
-          <View style={styles.notionSectionsEmptyState}>
-            <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              No Agenda Sections Found
-            </Text>
-            <Text style={[styles.emptyStateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Agenda sections should be created automatically when a meeting is created. Click the button below to create them now.
-            </Text>
-            <TouchableOpacity
-              style={[styles.createSectionsButton, { backgroundColor: theme.colors.primary }]}
-              onPress={createAgendaSections}
-            >
-              <Text style={styles.createSectionsButtonText} maxFontSizeMultiplier={1.3}>
-                Create Agenda Sections
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : filteredAgendaItems.length === 0 ? (
-          <View style={styles.notionSectionsEmptyState}>
-            <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              No sections selected
-            </Text>
-            <Text style={[styles.emptyStateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Use the filter above to select which sections to display.
-            </Text>
-          </View>
-        ) : (
-          filteredAgendaItems.map((item, rowIndex) => {
-          const index = agendaItems.findIndex((i) => i.id === item.id);
-          const isLastRow = rowIndex === filteredAgendaItems.length - 1;
-          return (
-          <View
-            key={item.id}
             style={[
               styles.agendaCard,
               { backgroundColor: theme.colors.surface },
+              isActive && styles.agendaCardDragging,
               !isLastRow && {
                 borderBottomWidth: StyleSheet.hairlineWidth,
                 borderBottomColor: theme.colors.border,
@@ -4195,6 +3644,18 @@ export default function AgendaEditor() {
             ]}
           >
             <View style={styles.cardHeader}>
+              {drag ? (
+                <Pressable
+                  onPressIn={drag}
+                  disabled={isActive}
+                  style={[styles.sectionDragHandle, isActive && styles.sectionDragHandleActive]}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Drag to reorder ${item.section_name}`}
+                >
+                  <GripVertical size={22} color={theme.colors.textSecondary} />
+                </Pressable>
+              ) : null}
               <View style={styles.cardTitleRow}>
                 {item.section_name.toLowerCase().includes('tag team') ? (
                   <View style={[styles.tagTeamIconWrap, { backgroundColor: '#f59e0b18' }]}>
@@ -4233,28 +3694,30 @@ export default function AgendaEditor() {
               </View>
 
               <View style={styles.headerActions}>
-                <View style={styles.reorderButtons}>
-                  <TouchableOpacity
-                    onPress={() => moveItemUp(index)}
-                    disabled={index === 0}
-                    style={[styles.reorderButton, index === 0 && styles.reorderButtonDisabled]}
-                  >
-                    <ChevronUp
-                      size={18}
-                      color={index === 0 ? theme.colors.border : theme.colors.primary}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => moveItemDown(index)}
-                    disabled={index === agendaItems.length - 1}
-                    style={[styles.reorderButton, index === agendaItems.length - 1 && styles.reorderButtonDisabled]}
-                  >
-                    <ChevronDown
-                      size={18}
-                      color={index === agendaItems.length - 1 ? theme.colors.border : theme.colors.primary}
-                    />
-                  </TouchableOpacity>
-                </View>
+                {!drag ? (
+                  <View style={styles.reorderButtons}>
+                    <TouchableOpacity
+                      onPress={() => moveItemUp(index)}
+                      disabled={index === 0}
+                      style={[styles.reorderButton, index === 0 && styles.reorderButtonDisabled]}
+                    >
+                      <ChevronUp
+                        size={18}
+                        color={index === 0 ? theme.colors.border : theme.colors.primary}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => moveItemDown(index)}
+                      disabled={index === agendaItems.length - 1}
+                      style={[styles.reorderButton, index === agendaItems.length - 1 && styles.reorderButtonDisabled]}
+                    >
+                      <ChevronDown
+                        size={18}
+                        color={index === agendaItems.length - 1 ? theme.colors.border : theme.colors.primary}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
                 <TouchableOpacity
                   onPress={() => {
                     toggleVisibility(item.id, item.is_visible);
@@ -6007,13 +5470,588 @@ export default function AgendaEditor() {
             </View>
           </View>
           );
-        })
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+            Loading agenda items...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      edges={['top', 'left', 'right']}
+    >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <View style={styles.agendaEditorPageBody}>
+      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <ChevronLeft size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Edit Agenda</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => router.push('/t360-training-excomm-agenda-creation')}
+            style={styles.saveButton}
+            accessibilityLabel="Agenda Creator help"
+            accessibilityRole="button"
+          >
+            <Info size={20} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleSaveAll}
+            disabled={saving}
+            style={styles.saveButton}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : (
+              <Save size={20} color={theme.colors.primary} />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View
+        style={[
+          styles.editorTabRow,
+          { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface },
+        ]}
+      >
+        <TouchableOpacity
+          style={[
+            styles.editorTab,
+            {
+              backgroundColor: agendaEditorTab === 'settings' ? theme.colors.primary : 'transparent',
+              borderColor: agendaEditorTab === 'settings' ? theme.colors.primary : theme.colors.border,
+            },
+          ]}
+          onPress={() => setAgendaEditorTab('settings')}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.editorTabText,
+              { color: agendaEditorTab === 'settings' ? '#ffffff' : theme.colors.text },
+            ]}
+            maxFontSizeMultiplier={1.12}
+          >
+            Agenda Settings
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.editorTab,
+            {
+              backgroundColor: agendaEditorTab === 'sections' ? theme.colors.primary : 'transparent',
+              borderColor: agendaEditorTab === 'sections' ? theme.colors.primary : theme.colors.border,
+            },
+          ]}
+          onPress={() => setAgendaEditorTab('sections')}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.editorTabText,
+              { color: agendaEditorTab === 'sections' ? '#ffffff' : theme.colors.text },
+            ]}
+            maxFontSizeMultiplier={1.12}
+          >
+            Agenda Section
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <NestableScrollContainer
+        style={styles.content}
+        contentContainerStyle={{ paddingBottom: 88 + footerNavBottomPad }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {agendaEditorTab === 'settings' ? (
+        <>
+        <View
+          style={[
+            styles.notionAgendaVisibilitySheet,
+            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+          <View
+            style={[
+              styles.notionVisibilitySheetHeader,
+              { borderBottomColor: theme.colors.border },
+            ]}
+          >
+            <Text style={[styles.notionVisibilitySheetTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Agenda Visibility
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.notionVisibilityMemberRow,
+              agendaItems.length > 0 && {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: theme.colors.border,
+              },
+            ]}
+          >
+            <View style={styles.agendaMemberVisibilityLeft}>
+              {isAgendaVisible ? (
+                <Eye size={20} color={theme.colors.primary} />
+              ) : (
+                <EyeOff size={20} color={theme.colors.textSecondary} />
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.agendaMemberVisibilityTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Show meeting agenda to members
+                </Text>
+                <Text style={[styles.agendaMemberVisibilityHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                  {isAgendaVisible ? 'Visible to members' : 'Hidden from members'}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.agendaMemberVisibilityToggle,
+                {
+                  backgroundColor: isAgendaVisible ? theme.colors.primary : theme.colors.background,
+                  borderColor: isAgendaVisible ? theme.colors.primary : theme.colors.border,
+                },
+              ]}
+              onPress={toggleAgendaVisibility}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={isAgendaVisible ? 'Hide agenda from members' : 'Show agenda to members'}
+            >
+              {isAgendaVisible ? (
+                <Eye size={16} color="#ffffff" />
+              ) : (
+                <EyeOff size={16} color={theme.colors.textSecondary} />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {agendaItems.length > 0 && (
+            <>
+              <View
+                style={[
+                  styles.notionVisibilityMetaRow,
+                  { borderBottomColor: theme.colors.border },
+                ]}
+              >
+                <Text style={[styles.notionVisibilityMetaText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.25}>
+                  {sectionBulkVisibilityState.visibleCount} visible · {sectionBulkVisibilityState.hiddenCount} hidden
+                </Text>
+              </View>
+              <View style={styles.notionVisibilitySegmentRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.notionVisibilitySegmentHalf,
+                    sectionBulkVisibilityState.allVisible && { backgroundColor: theme.colors.primary },
+                  ]}
+                  onPress={() => setAllSectionsVisibility(true)}
+                  activeOpacity={0.75}
+                >
+                  <Eye
+                    size={16}
+                    color={
+                      sectionBulkVisibilityState.allVisible
+                        ? '#ffffff'
+                        : sectionBulkVisibilityState.allHidden
+                          ? theme.colors.textSecondary
+                          : theme.colors.primary
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.sectionVisibilityButtonText,
+                      {
+                        color: sectionBulkVisibilityState.allVisible
+                          ? '#ffffff'
+                          : sectionBulkVisibilityState.allHidden
+                            ? theme.colors.textSecondary
+                            : theme.colors.primary,
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
+                    Show all
+                  </Text>
+                </TouchableOpacity>
+                <View
+                  style={[
+                    styles.notionVisibilitySegmentDivider,
+                    { backgroundColor: theme.colors.border },
+                  ]}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.notionVisibilitySegmentHalf,
+                    sectionBulkVisibilityState.allHidden && { backgroundColor: theme.colors.primary },
+                  ]}
+                  onPress={() => setAllSectionsVisibility(false)}
+                  activeOpacity={0.75}
+                >
+                  <EyeOff
+                    size={16}
+                    color={sectionBulkVisibilityState.allHidden ? '#ffffff' : theme.colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.sectionVisibilityButtonText,
+                      {
+                        color: sectionBulkVisibilityState.allHidden ? '#ffffff' : theme.colors.textSecondary,
+                      },
+                    ]}
+                    maxFontSizeMultiplier={1.3}
+                  >
+                    Hide all
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+
+        <View
+          style={[
+            styles.notionAgendaVisibilitySheet,
+            { marginTop: 0, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+          <View
+            style={[
+              styles.notionVisibilitySheetHeader,
+              { borderBottomColor: theme.colors.border },
+            ]}
+          >
+            <Text style={[styles.notionVisibilitySheetTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Public web layout
+            </Text>
+          </View>
+          {(
+            [
+              { id: 'default' as const, title: 'Default', subtitle: 'Banners and section cards' },
+              { id: 'minimal' as const, title: 'Minimal', subtitle: 'Simple list' },
+              { id: 'vibrant' as const, title: 'Vibrant', subtitle: 'Bold cards' },
+            ] as const
+          ).map((opt) => {
+            const selected = publicAgendaSkin === opt.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                style={[
+                  styles.notionPublicWebSkinRow,
+                  {
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: theme.colors.border,
+                    backgroundColor: selected ? theme.colors.primary + '14' : 'transparent',
+                    borderLeftWidth: selected ? 3 : 0,
+                    borderLeftColor: theme.colors.primary,
+                  },
+                ]}
+                onPress={() => persistPublicAgendaSkin(opt.id)}
+                activeOpacity={0.75}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.publicWebSkinOptionTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                    {opt.title}
+                  </Text>
+                  <Text style={[styles.publicWebSkinOptionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.15}>
+                    {opt.subtitle}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+          {publicWebAgendaUrl ? (
+            <>
+              <View
+                style={[
+                  styles.notionPublicWebMetaBlock,
+                  { borderBottomColor: theme.colors.border },
+                ]}
+              >
+                <Text
+                  style={[styles.publicWebLinkText, { color: theme.colors.textSecondary }]}
+                  numberOfLines={4}
+                  maxFontSizeMultiplier={1.15}
+                  selectable
+                >
+                  {publicWebAgendaShortUrl ?? publicWebAgendaUrl}
+                </Text>
+                {isAgendaVisible === false ? (
+                  <Text style={[styles.publicWebLinkHint, { color: theme.colors.warningDark }]} maxFontSizeMultiplier={1.1}>
+                    Public web link will not open until Agenda Visibility is set to Visible to members.
+                  </Text>
+                ) : null}
+              </View>
+              <View style={styles.notionPublicWebActionsRow}>
+                <TouchableOpacity
+                  style={[styles.notionPublicWebActionPrimary, { backgroundColor: theme.colors.primary }]}
+                  onPress={handleOpenPublicWebAgenda}
+                  activeOpacity={0.85}
+                >
+                  <ExternalLink size={16} color="#ffffff" />
+                  <Text style={styles.publicWebLinkPrimaryButtonLabel} maxFontSizeMultiplier={1.1}>
+                    Open
+                  </Text>
+                </TouchableOpacity>
+                <View
+                  style={[
+                    styles.notionPublicWebActionDivider,
+                    { backgroundColor: theme.colors.border },
+                  ]}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.notionPublicWebActionOutline,
+                    { backgroundColor: theme.colors.surface },
+                  ]}
+                  onPress={() => {
+                    void handleCopyPublicWebAgendaLink();
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Copy size={16} color={theme.colors.primary} />
+                  <Text style={[styles.publicWebLinkOutlineButtonLabel, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.1}>
+                    {publicWebLinkCopied ? 'Copied!' : 'Copy agenda link'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.notionPublicWebCopyFullRow,
+                  {
+                    borderTopColor: theme.colors.border,
+                    backgroundColor: theme.colors.surface,
+                  },
+                ]}
+                onPress={() => {
+                  void handleCopyFullPublicWebAgendaLink();
+                }}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.notionPublicWebCopyFullLabel, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.1}>
+                  Copy full URL (club path)
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <View style={styles.notionPublicWebEmptyRow}>
+              <Text style={[styles.publicWebLinkHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                Save meeting details first to generate a public web link.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View
+          style={[
+            styles.notionAgendaVisibilitySheet,
+            { marginTop: 0, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+          <View
+            style={[
+              styles.notionVisibilitySheetHeader,
+              { borderBottomColor: theme.colors.border },
+            ]}
+          >
+            <Text style={[styles.notionVisibilitySheetTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              Banner Colors
+            </Text>
+            <Text style={[styles.notionBannerColorsSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+              Used on the public web agenda banners.
+            </Text>
+          </View>
+          {(
+            [
+              { id: 'club_info' as const, label: 'Club Info Banner', value: clubInfoBannerColor },
+              { id: 'datetime' as const, label: 'Date/Time Banner', value: datetimeBannerColor },
+              { id: 'footer1' as const, label: 'Footer Banner 1', value: footerBanner1Color },
+              { id: 'footer2' as const, label: 'Footer Banner 2', value: footerBanner2Color },
+            ] as const
+          ).map((row, index, arr) => (
+            <TouchableOpacity
+              key={row.id}
+              style={[
+                styles.notionBannerColorRow,
+                {
+                  borderBottomWidth: index < arr.length - 1 ? StyleSheet.hairlineWidth : 0,
+                  borderBottomColor: theme.colors.border,
+                },
+              ]}
+              onPress={() => openColorPicker(row.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.notionBannerColorRowLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                {row.label}
+              </Text>
+              <View style={[styles.colorPreview, { backgroundColor: row.value, borderColor: theme.colors.border }]} />
+              <View
+                style={[
+                  styles.colorInput,
+                  {
+                    backgroundColor: theme.colors.background,
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.colorInputText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  {row.value}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+        </>
+        ) : null}
+
+        {agendaEditorTab === 'sections' ? (
+        <View
+          style={[
+            styles.notionSectionsSheet,
+            { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+          ]}
+        >
+        <TouchableOpacity
+          style={[
+            styles.notionSectionsToolbarRow,
+            {
+              backgroundColor: theme.colors.primary + '18',
+              borderBottomColor: theme.colors.border,
+              opacity: masterAutoFillLoading ? 0.6 : 1,
+              justifyContent: masterAutoFillLoading ? 'center' : 'flex-start',
+            },
+          ]}
+          onPress={autoFillEntireAgenda}
+          disabled={masterAutoFillLoading}
+          activeOpacity={0.7}
+        >
+          {masterAutoFillLoading ? (
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          ) : (
+            <>
+              <Zap size={20} color={theme.colors.primary} />
+              <Text style={[styles.manageSequenceButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+                Auto Fill Entire Agenda
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {agendaItems.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setManageSequenceModalVisible(true)}
+            style={[
+              styles.notionSectionsToolbarRow,
+              {
+                backgroundColor: theme.colors.primary + '18',
+                borderBottomColor: theme.colors.border,
+              },
+            ]}
+            activeOpacity={0.7}
+          >
+            <ListOrdered size={20} color={theme.colors.primary} />
+            <Text style={[styles.manageSequenceButtonText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
+              Manage sequence ({agendaItems.length} sections)
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {agendaItems.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setSectionFilterModalVisible(true)}
+            style={[
+              styles.notionSectionsToolbarRow,
+              {
+                backgroundColor: theme.colors.surface,
+                borderBottomColor: theme.colors.border,
+              },
+            ]}
+            activeOpacity={0.7}
+          >
+            <Filter size={18} color={theme.colors.primary} />
+            <Text style={[styles.notionSectionsToolbarRowText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {sectionFilter === 'all'
+                ? `Showing all ${agendaItems.length} sections`
+                : `Showing ${filteredAgendaItems.length} of ${agendaItems.length} sections`}
+            </Text>
+            <ChevronDown size={18} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+        )}
+
+        {agendaItems.length > 0 && sectionFilter === 'all' && (
+          <View
+            style={[
+              styles.sectionDragHintRow,
+              { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.background },
+            ]}
+          >
+            <GripVertical size={16} color={theme.colors.textSecondary} />
+            <Text style={[styles.sectionDragHintText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Press and hold the grip on a section, then drag up or down to reorder.
+            </Text>
+          </View>
+        )}
+
+        {agendaItems.length === 0 ? (
+          <View style={styles.notionSectionsEmptyState}>
+            <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              No Agenda Sections Found
+            </Text>
+            <Text style={[styles.emptyStateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Agenda sections should be created automatically when a meeting is created. Click the button below to create them now.
+            </Text>
+            <TouchableOpacity
+              style={[styles.createSectionsButton, { backgroundColor: theme.colors.primary }]}
+              onPress={createAgendaSections}
+            >
+              <Text style={styles.createSectionsButtonText} maxFontSizeMultiplier={1.3}>
+                Create Agenda Sections
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : filteredAgendaItems.length === 0 ? (
+          <View style={styles.notionSectionsEmptyState}>
+            <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              No sections selected
+            </Text>
+            <Text style={[styles.emptyStateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Use the filter above to select which sections to display.
+            </Text>
+          </View>
+        ) : sectionFilter === 'all' ? (
+          <NestableDraggableFlatList
+            data={agendaItems}
+            keyExtractor={(item) => item.id}
+            onDragEnd={({ data }) => reorderAgendaItems(data)}
+            renderItem={({ item, drag, isActive, getIndex }) => (
+              <ScaleDecorator>
+                {renderAgendaSectionRow(item, getIndex() ?? 0, agendaItems.length, { drag, isActive })}
+              </ScaleDecorator>
+            )}
+          />
+        ) : (
+          filteredAgendaItems.map((item, rowIndex) =>
+            renderAgendaSectionRow(item, rowIndex, filteredAgendaItems.length)
+          )
         )}
         </View>
         ) : null}
 
         <View style={styles.bottomSpace} />
-      </ScrollView>
+      </NestableScrollContainer>
 
       <View
         style={[
@@ -6238,65 +6276,69 @@ export default function AgendaEditor() {
               </TouchableOpacity>
             </View>
             <Text style={[styles.manageSequenceSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Reorder the full list of {agendaItems.length} sections. Changes save automatically.
+              Drag sections by the grip to reorder all {agendaItems.length} sections. Changes save automatically.
             </Text>
-            <ScrollView
+            <DraggableFlatList
+              data={agendaItems}
+              keyExtractor={(item) => item.id}
+              onDragEnd={({ data }) => reorderAgendaItems(data)}
               style={styles.manageSequenceList}
-              showsVerticalScrollIndicator={true}
               contentContainerStyle={{ paddingBottom: 24 }}
-              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
-            >
-              {agendaItems.map((item, index) => (
-                <View
-                  key={item.id}
-                  style={[styles.manageSequenceRow, { borderBottomColor: theme.colors.border }]}
-                >
-                  <Text style={[styles.manageSequenceOrder, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                    {index + 1}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.manageSequenceName,
-                      {
-                        color: item.is_visible ? theme.colors.text : theme.colors.textSecondary,
-                        textDecorationLine: item.is_visible ? 'none' : 'line-through',
-                      },
-                    ]}
-                    numberOfLines={2}
-                    maxFontSizeMultiplier={1.3}
-                  >
-                    {item.section_name}
-                  </Text>
-                  <View style={styles.manageSequenceActions}>
-                    <TouchableOpacity
-                      onPress={() => toggleVisibility(item.id)}
-                      style={styles.manageSequenceEye}
+              renderItem={({ item, drag, isActive, getIndex }) => {
+                const index = getIndex() ?? 0;
+                return (
+                  <ScaleDecorator>
+                    <View
+                      style={[
+                        styles.manageSequenceRow,
+                        isActive && styles.agendaCardDragging,
+                        { borderBottomColor: theme.colors.border },
+                      ]}
                     >
-                      {item.is_visible ? (
-                        <Eye size={18} color={theme.colors.primary} />
-                      ) : (
-                        <EyeOff size={18} color={theme.colors.textSecondary} />
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => moveItemUp(index)}
-                      disabled={index === 0}
-                      style={[styles.manageSequenceArrow, index === 0 && styles.reorderButtonDisabled]}
-                    >
-                      <ChevronUp size={20} color={index === 0 ? theme.colors.border : theme.colors.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => moveItemDown(index)}
-                      disabled={index === agendaItems.length - 1}
-                      style={[styles.manageSequenceArrow, index === agendaItems.length - 1 && styles.reorderButtonDisabled]}
-                    >
-                      <ChevronDown size={20} color={index === agendaItems.length - 1 ? theme.colors.border : theme.colors.primary} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
+                      <Pressable
+                        onPressIn={drag}
+                        disabled={isActive}
+                        style={styles.sectionDragHandle}
+                        hitSlop={10}
+                        accessibilityLabel={`Drag to reorder ${item.section_name}`}
+                      >
+                        <GripVertical size={20} color={theme.colors.textSecondary} />
+                      </Pressable>
+                      <Text style={[styles.manageSequenceOrder, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+                        {index + 1}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.manageSequenceName,
+                          {
+                            color: item.is_visible ? theme.colors.text : theme.colors.textSecondary,
+                            textDecorationLine: item.is_visible ? 'none' : 'line-through',
+                          },
+                        ]}
+                        numberOfLines={2}
+                        maxFontSizeMultiplier={1.3}
+                      >
+                        {item.section_name}
+                      </Text>
+                      <View style={styles.manageSequenceActions}>
+                        <TouchableOpacity
+                          onPress={() => toggleVisibility(item.id)}
+                          style={styles.manageSequenceEye}
+                        >
+                          {item.is_visible ? (
+                            <Eye size={18} color={theme.colors.primary} />
+                          ) : (
+                            <EyeOff size={18} color={theme.colors.textSecondary} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </ScaleDecorator>
+                );
+              }}
+            />
             <TouchableOpacity
               onPress={() => setManageSequenceModalVisible(false)}
               style={[styles.manageSequenceDoneButton, { backgroundColor: theme.colors.primary, borderTopColor: theme.colors.border }]}
@@ -6950,11 +6992,40 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 0,
   },
+  agendaCardDragging: {
+    opacity: 0.92,
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  sectionDragHandle: {
+    paddingRight: 10,
+    paddingTop: 2,
+    alignSelf: 'flex-start',
+  },
+  sectionDragHandleActive: {
+    opacity: 0.85,
+  },
+  sectionDragHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sectionDragHintText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 16,
+    gap: 4,
   },
   cardTitleRow: {
     flexDirection: 'row',
