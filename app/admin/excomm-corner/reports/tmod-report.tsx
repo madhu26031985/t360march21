@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, Mic, Target, FileText, CheckCircle2, Circle } from 'lucide-react-native';
+import { ArrowLeft, Calendar } from 'lucide-react-native';
 
 const toLocalDateStr = (d: Date) => {
   const y = d.getFullYear();
@@ -22,7 +22,6 @@ type MeetingData = {
   meeting_date: string;
   toastmaster_name: string | null;
   theme_name: string | null;
-  theme_summary: string | null;
 };
 
 export default function TMODReport() {
@@ -91,7 +90,6 @@ export default function TMODReport() {
           ),
           toastmaster_meeting_data (
             theme_of_the_day,
-            theme_summary,
             toastmaster_user_id
           )
         `)
@@ -108,7 +106,6 @@ export default function TMODReport() {
       const formattedMeetings: MeetingData[] = (data || []).map((meeting: any) => {
         let toastmasterName = null;
         let themeName = null;
-        let themeSummary = null;
         let tmodUserId = null;
 
         if (Array.isArray(meeting.app_meeting_roles_management)) {
@@ -122,13 +119,10 @@ export default function TMODReport() {
         }
 
         if (tmodUserId && Array.isArray(meeting.toastmaster_meeting_data) && meeting.toastmaster_meeting_data.length > 0) {
-          const sorted = [...meeting.toastmaster_meeting_data].sort(
-            (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          const entry = meeting.toastmaster_meeting_data.find(
+            (tmd: any) => tmd.toastmaster_user_id === tmodUserId
           );
-          const bookedTmodEntry = sorted.find((tmd: any) => tmd.toastmaster_user_id === tmodUserId);
-          const entry = bookedTmodEntry || sorted[0];
-          themeName = entry?.theme_of_the_day || null;
-          themeSummary = entry?.theme_summary || null;
+          themeName = entry?.theme_of_the_day || meeting.toastmaster_meeting_data[0]?.theme_of_the_day || null;
         }
 
         return {
@@ -137,7 +131,6 @@ export default function TMODReport() {
           meeting_date: meeting.meeting_date,
           toastmaster_name: toastmasterName,
           theme_name: themeName,
-          theme_summary: themeSummary,
         };
       });
 
@@ -153,15 +146,6 @@ export default function TMODReport() {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
-
-  const getDoneCount = (meeting: MeetingData): number => {
-    let count = 0;
-    if (meeting.theme_name) count++;
-    if (meeting.theme_summary) count++;
-    return count;
-  };
-
-  const TOTAL_ITEMS = 2;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -238,130 +222,58 @@ export default function TMODReport() {
               {meetings.length} meeting{meetings.length !== 1 ? 's' : ''} found
             </Text>
 
-            {meetings.map((meeting) => {
-              const doneCount = getDoneCount(meeting);
-              const progress = doneCount / TOTAL_ITEMS;
-              const themeCompleted = !!meeting.theme_name;
-              const summaryCompleted = !!meeting.theme_summary;
-              const summaryChars = meeting.theme_summary?.length ?? 0;
+            <View style={[styles.table, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <View style={[styles.tableHeader, { borderBottomColor: theme.colors.border }]}>
+                <Text style={[styles.tableHeaderCell, styles.colMeeting, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Meeting Number
+                </Text>
+                <Text style={[styles.tableHeaderCell, styles.colTheme, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Theme Name
+                </Text>
+                <Text style={[styles.tableHeaderCell, styles.colTmod, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  TMOD
+                </Text>
+                <Text style={[styles.tableHeaderCell, styles.colDate, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Date
+                </Text>
+              </View>
 
-              return (
-                <TouchableOpacity
-                  key={meeting.id}
-                  style={[styles.meetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                  onPress={() => router.push({ pathname: '/toastmaster-corner', params: { meetingId: meeting.id } })}
-                  activeOpacity={0.7}
-                >
-                  {/* Card header */}
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardHeaderLeft}>
-                      <View style={[styles.meetingNumberBadge, { backgroundColor: theme.colors.primary + '18' }]}>
-                        <Text style={[styles.meetingNumberText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                          #{meeting.meeting_number}
-                        </Text>
-                      </View>
-                      <View style={styles.dateRow}>
-                        <Calendar size={13} color={theme.colors.textSecondary} />
-                        <Text style={[styles.dateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                          {formatDate(meeting.meeting_date)}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.doneCountContainer}>
-                      <Text style={[styles.doneCountBold, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        {doneCount}/{TOTAL_ITEMS}
-                      </Text>
-                      <Text style={[styles.doneCountLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        {' '}done
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Progress bar */}
-                  <View style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        {
-                          backgroundColor: doneCount === TOTAL_ITEMS ? '#16a34a' : theme.colors.primary,
-                          width: `${progress * 100}%` as any,
-                        },
-                      ]}
-                    />
-                  </View>
-
-                  {/* TMOD row */}
-                  <View style={styles.tmodRow}>
-                    <View style={[styles.tmodAvatar, { backgroundColor: theme.colors.primary }]}>
-                      <Mic size={20} color="#ffffff" />
-                    </View>
-                    <View style={styles.tmodInfo}>
-                      <Text style={[styles.tmodRoleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        Toastmaster of the Day
-                      </Text>
-                      <Text style={[styles.tmodName, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        {meeting.toastmaster_name || 'Not assigned'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Checklist items */}
-                  <View style={[styles.checklistContainer, { borderColor: theme.colors.border }]}>
-                    {/* Theme row */}
-                    <View style={[styles.checklistRow, { borderBottomColor: theme.colors.border }]}>
-                      <View style={[styles.checklistLabelPill, { backgroundColor: theme.colors.background }]}>
-                        <Target size={14} color={theme.colors.text} />
-                        <Text style={[styles.checklistLabelText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                          Theme
-                        </Text>
-                      </View>
-                      <View style={styles.checklistRight}>
-                        {themeCompleted ? (
-                          <View style={styles.statusBadge}>
-                            <CheckCircle2 size={15} color="#16a34a" />
-                            <Text style={[styles.statusTextDone]} maxFontSizeMultiplier={1.3}>Completed</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.statusBadge}>
-                            <Circle size={15} color={theme.colors.textSecondary} />
-                            <Text style={[styles.statusTextPending, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Pending</Text>
-                          </View>
-                        )}
-                        <Text style={[styles.themeNameText, { color: theme.colors.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-                          {meeting.theme_name || '—'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* Theme Summary row */}
-                    <View style={styles.checklistRow}>
-                      <View style={[styles.checklistLabelPill, { backgroundColor: theme.colors.background }]}>
-                        <FileText size={14} color={theme.colors.text} />
-                        <Text style={[styles.checklistLabelText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                          Theme Summary
-                        </Text>
-                      </View>
-                      <View style={styles.checklistRight}>
-                        {summaryCompleted ? (
-                          <View style={styles.statusBadge}>
-                            <CheckCircle2 size={15} color="#16a34a" />
-                            <Text style={styles.statusTextDone} maxFontSizeMultiplier={1.3}>Completed</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.statusBadge}>
-                            <Circle size={15} color={theme.colors.textSecondary} />
-                            <Text style={[styles.statusTextPending, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Pending</Text>
-                          </View>
-                        )}
-                        <Text style={[styles.charCountPill, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                          {summaryChars} characters
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+              {meetings.map((meeting, index) => {
+                const isLast = index === meetings.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={meeting.id}
+                    style={[
+                      styles.tableRow,
+                      !isLast && { borderBottomColor: theme.colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
+                    ]}
+                    onPress={() => router.push({ pathname: '/toastmaster-corner', params: { meetingId: meeting.id } })}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={[styles.tableCell, styles.colMeeting, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                      #{meeting.meeting_number}
+                    </Text>
+                    <Text
+                      style={[styles.tableCell, styles.colTheme, { color: theme.colors.text }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      {meeting.theme_name || '—'}
+                    </Text>
+                    <Text
+                      style={[styles.tableCell, styles.colTmod, { color: theme.colors.text }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      {meeting.toastmaster_name || '—'}
+                    </Text>
+                    <Text style={[styles.tableCell, styles.colDate, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                      {formatDate(meeting.meeting_date)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         )}
 
@@ -440,116 +352,35 @@ const styles = StyleSheet.create({
   emptyDescription: { fontSize: 14, textAlign: 'center' },
   meetingsContainer: { paddingHorizontal: 16 },
   resultCount: { fontSize: 13, marginBottom: 12 },
-  meetingCard: {
-    borderRadius: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 10,
-  },
-  cardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  meetingNumberBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-  },
-  meetingNumberText: { fontSize: 13, fontWeight: '700' },
-  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  dateText: { fontSize: 13 },
-  doneCountContainer: { flexDirection: 'row', alignItems: 'baseline' },
-  doneCountBold: { fontSize: 15, fontWeight: '700' },
-  doneCountLabel: { fontSize: 13 },
-  progressTrack: {
-    height: 3,
-    marginHorizontal: 0,
-  },
-  progressFill: {
-    height: 3,
-    borderRadius: 2,
-  },
-  tmodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 14,
-    gap: 14,
-  },
-  tmodAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tmodInfo: { flex: 1 },
-  tmodRoleLabel: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
-  tmodName: { fontSize: 14 },
-  checklistContainer: {
-    marginHorizontal: 16,
-    marginBottom: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  checklistRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-  },
-  checklistLabelPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  table: {
     borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
-  checklistLabelText: { fontSize: 13, fontWeight: '600' },
-  checklistRight: {
-    flex: 1,
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  statusBadge: {
+  tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  statusTextDone: {
+  tableHeaderCell: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#16a34a',
+    fontWeight: '700',
   },
-  statusTextPending: {
-    fontSize: 13,
-    fontWeight: '500',
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 16,
   },
-  themeNameText: {
-    fontSize: 12,
-    maxWidth: 180,
+  tableCell: {
+    fontSize: 14,
+    fontWeight: '400',
   },
-  charCountPill: {
-    fontSize: 12,
-  },
+  colMeeting: { flex: 1.1 },
+  colTheme: { flex: 2.2, paddingRight: 8 },
+  colTmod: { flex: 1.4, paddingRight: 8 },
+  colDate: { flex: 1.3 },
   bottomSpacing: { height: 40 },
 });

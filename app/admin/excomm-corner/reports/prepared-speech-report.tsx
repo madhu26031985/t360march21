@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ArrowLeft, Calendar, User, BookOpen, Users, ChevronDown, Check, Building2 } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Users, ChevronDown, Check, Building2 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -23,35 +23,82 @@ const toLocalDateStr = (d: Date) => {
   return `${y}-${m}-${day}`;
 };
 
-interface SpeechData {
+type TimeRange = '0-3' | '4-6';
+
+type ReportRow = {
+  meetingId: string;
+  meeting_number: number;
+  meeting_date: string;
   speaker_name: string;
-  role_name: string;
   speech_title: string | null;
   pathway_name: string | null;
   pathway_level: number | null;
   project_number: string | null;
   project_name: string | null;
   evaluator_name: string | null;
-}
+};
 
-interface MeetingData {
-  id: string;
-  meeting_number: string;
-  meeting_date: string;
-  speeches: SpeechData[];
-}
-
-interface ClubMember {
+type ClubMember = {
   id: string;
   full_name: string;
-}
+};
 
-type TimeRange = '0-3' | '4-6';
+const cell = (value: string | null | undefined, fallback = '—') => {
+  const v = typeof value === 'string' ? value.trim() : value;
+  if (v === null || v === undefined || v === '') return fallback;
+  return String(v);
+};
+
+const getRoleSequenceNumber = (roleName: string) => {
+  const match = (roleName || '').match(/(\d+)$/);
+  return match ? parseInt(match[1], 10) : 999;
+};
+
+const isEvaluatorRole = (role: { role_name?: string; role_classification?: string }) => {
+  const roleName = (role.role_name || '').trim();
+  const classification = (role.role_classification || '').toLowerCase();
+  const isPairedByName = /^evaluator\s*\d+$/i.test(roleName);
+  const isSpeechEvaluatorClass =
+    classification === 'speech evaluvator' ||
+    classification === 'speech_evaluator' ||
+    classification === 'speech evaluator';
+  return isPairedByName || (isSpeechEvaluatorClass && /^evaluator/i.test(roleName));
+};
+
+const resolveEvaluatorName = (
+  roles: any[],
+  speakerRole: any,
+  pathwayInfo: { assigned_evaluator_id?: string | null; evaluator?: { full_name?: string } | null } | null
+): string | null => {
+  if (pathwayInfo?.evaluator?.full_name?.trim()) {
+    return pathwayInfo.evaluator.full_name.trim();
+  }
+
+  if (pathwayInfo?.assigned_evaluator_id) {
+    const fromRole = roles.find((r) => r.assigned_user_id === pathwayInfo.assigned_evaluator_id);
+    if (fromRole?.app_user_profiles?.full_name?.trim()) {
+      return fromRole.app_user_profiles.full_name.trim();
+    }
+  }
+
+  const slot = getRoleSequenceNumber(speakerRole.role_name || '');
+  const pairedEvaluator = roles.find(
+    (r) =>
+      isEvaluatorRole(r) &&
+      r.assigned_user_id &&
+      getRoleSequenceNumber(r.role_name || '') === slot
+  );
+  if (pairedEvaluator?.app_user_profiles?.full_name?.trim()) {
+    return pairedEvaluator.app_user_profiles.full_name.trim();
+  }
+
+  return null;
+};
 
 export default function PreparedSpeechReportScreen() {
   const { user } = useAuth();
   const { theme } = useTheme();
-  const [meetings, setMeetings] = useState<MeetingData[]>([]);
+  const [rows, setRows] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRange, setSelectedRange] = useState<TimeRange>('0-3');
   const [clubName, setClubName] = useState<string>('');
@@ -76,20 +123,21 @@ export default function PreparedSpeechReportScreen() {
 
   const loadClubData = async () => {
     if (!user?.currentClubId) return;
-
     try {
       const [clubRes, profileRes] = await Promise.all([
         supabase.from('clubs').select('name, club_number').eq('id', user.currentClubId).maybeSingle(),
         supabase.from('club_profiles').select('banner_color').eq('club_id', user.currentClubId).maybeSingle(),
       ]);
-      if (clubRes.data) { setClubName(clubRes.data.name); setClubNumber(clubRes.data.club_number); }
+      if (clubRes.data) {
+        setClubName(clubRes.data.name);
+        setClubNumber(clubRes.data.club_number);
+      }
       setBannerColor(profileRes.data?.banner_color || '#1e3a5f');
     } catch {}
   };
 
   const loadClubMembers = async () => {
     if (!user?.currentClubId) return;
-
     try {
       const { data, error } = await supabase
         .from('app_club_user_relationship')
@@ -113,7 +161,7 @@ export default function PreparedSpeechReportScreen() {
         }));
 
       setClubMembers(members);
-      setSelectedMembers(members.map(m => m.id));
+      setSelectedMembers(members.map((m) => m.id));
     } catch (error) {
       console.error('Error loading club members:', error);
     }
@@ -121,7 +169,6 @@ export default function PreparedSpeechReportScreen() {
 
   const loadMeetings = async () => {
     if (!user?.currentClubId) return;
-
     try {
       setLoading(true);
 
@@ -159,7 +206,10 @@ export default function PreparedSpeechReportScreen() {
             level,
             project_number,
             project_name,
-            assigned_evaluator_id
+            assigned_evaluator_id,
+            evaluator:app_user_profiles!fk_app_evaluation_pathway_assigned_evaluator_id (
+              full_name
+            )
           )
         `)
         .eq('club_id', user.currentClubId)
@@ -173,66 +223,45 @@ export default function PreparedSpeechReportScreen() {
         return;
       }
 
-      const formattedMeetings: MeetingData[] = (data || [])
-        .map((meeting: any) => {
-          const speeches: SpeechData[] = [];
+      const reportRows: ReportRow[] = [];
 
-          if (Array.isArray(meeting.app_meeting_roles_management)) {
-            const preparedSpeakers = meeting.app_meeting_roles_management.filter(
-              (role: any) =>
-                role.role_classification === 'Prepared Speaker' ||
-                role.role_classification === 'Ice Breaker'
-            );
+      (data || []).forEach((meeting: any) => {
+        if (!Array.isArray(meeting.app_meeting_roles_management)) return;
 
-            const evaluators = meeting.app_meeting_roles_management.filter(
-              (role: any) => role.role_classification === 'Speech evaluvator'
-            );
+        const preparedSpeakers = meeting.app_meeting_roles_management.filter(
+          (role: any) =>
+            (role.role_classification === 'Prepared Speaker' || role.role_classification === 'Ice Breaker') &&
+            role.assigned_user_id &&
+            selectedMembers.includes(role.assigned_user_id)
+        );
 
-            preparedSpeakers.forEach((speaker: any) => {
-              if (speaker.assigned_user_id && selectedMembers.includes(speaker.assigned_user_id)) {
-                const pathwayInfo = Array.isArray(meeting.app_evaluation_pathway)
-                  ? meeting.app_evaluation_pathway.find(
-                      (p: any) =>
-                        p.user_id === speaker.assigned_user_id &&
-                        p.role_name === speaker.role_name
-                    )
-                  : null;
+        const roles = meeting.app_meeting_roles_management;
 
-                console.log('Speaker:', speaker.role_name, speaker.app_user_profiles?.full_name);
-                console.log('Pathway Info:', pathwayInfo);
+        preparedSpeakers.forEach((speaker: any) => {
+          const pathwayInfo = Array.isArray(meeting.app_evaluation_pathway)
+            ? meeting.app_evaluation_pathway.find(
+                (p: any) => p.user_id === speaker.assigned_user_id && p.role_name === speaker.role_name
+              )
+            : null;
 
-                let evaluatorName = null;
-                if (pathwayInfo?.assigned_evaluator_id) {
-                  const evaluatorRole = meeting.app_meeting_roles_management.find(
-                    (r: any) => r.assigned_user_id === pathwayInfo.assigned_evaluator_id
-                  );
-                  evaluatorName = evaluatorRole?.app_user_profiles?.full_name || null;
-                }
+          const evaluatorName = resolveEvaluatorName(roles, speaker, pathwayInfo);
 
-                speeches.push({
-                  speaker_name: speaker.app_user_profiles?.full_name || 'Unknown',
-                  role_name: speaker.role_name,
-                  speech_title: pathwayInfo?.speech_title || null,
-                  pathway_name: pathwayInfo?.pathway_name || null,
-                  pathway_level: pathwayInfo?.level || null,
-                  project_number: pathwayInfo?.project_number || null,
-                  project_name: pathwayInfo?.project_name || null,
-                  evaluator_name: evaluatorName,
-                });
-              }
-            });
-          }
-
-          return {
-            id: meeting.id,
+          reportRows.push({
+            meetingId: meeting.id,
             meeting_number: meeting.meeting_number,
             meeting_date: meeting.meeting_date,
-            speeches,
-          };
-        })
-        .filter((meeting) => meeting.speeches.length > 0);
+            speaker_name: speaker.app_user_profiles?.full_name || 'Unknown',
+            speech_title: pathwayInfo?.speech_title || null,
+            pathway_name: pathwayInfo?.pathway_name || null,
+            pathway_level: pathwayInfo?.level ?? null,
+            project_number: pathwayInfo?.project_number || null,
+            project_name: pathwayInfo?.project_name || null,
+            evaluator_name: evaluatorName,
+          });
+        });
+      });
 
-      setMeetings(formattedMeetings);
+      setRows(reportRows);
     } catch (error) {
       console.error('Error loading meetings:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -251,15 +280,13 @@ export default function PreparedSpeechReportScreen() {
   };
 
   const toggleMemberSelection = (memberId: string) => {
-    setSelectedMembers(prev =>
-      prev.includes(memberId)
-        ? prev.filter(id => id !== memberId)
-        : [...prev, memberId]
+    setSelectedMembers((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
     );
   };
 
   const selectAllMembers = () => {
-    setSelectedMembers(clubMembers.map(m => m.id));
+    setSelectedMembers(clubMembers.map((m) => m.id));
   };
 
   const deselectAllMembers = () => {
@@ -272,44 +299,85 @@ export default function PreparedSpeechReportScreen() {
     return `${selectedMembers.length} member${selectedMembers.length > 1 ? 's' : ''} selected`;
   };
 
+  const columns: { key: string; label: string; width: number; render: (row: ReportRow) => string }[] = [
+    { key: 'meeting', label: 'Meeting No', width: 88, render: (r) => `#${r.meeting_number}` },
+    { key: 'date', label: 'Date', width: 108, render: (r) => formatDate(r.meeting_date) },
+    { key: 'speaker', label: 'Prepared Speaker', width: 140, render: (r) => r.speaker_name },
+    { key: 'title', label: 'Speech Title', width: 160, render: (r) => cell(r.speech_title) },
+    { key: 'pathway', label: 'Pathway', width: 140, render: (r) => cell(r.pathway_name) },
+    {
+      key: 'level',
+      label: 'Level',
+      width: 56,
+      render: (r) => (r.pathway_level != null ? `L${r.pathway_level}` : '—'),
+    },
+    { key: 'projectNo', label: 'Project No', width: 72, render: (r) => cell(r.project_number) },
+    { key: 'projectName', label: 'Project Name', width: 160, render: (r) => cell(r.project_name) },
+    {
+      key: 'evaluator',
+      label: 'Evaluator',
+      width: 120,
+      render: (r) => (r.evaluator_name?.trim() ? r.evaluator_name : 'Not assigned'),
+    },
+  ];
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>Prepared Speech Report</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+          Prepared Speech Report
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.clubBanner, { backgroundColor: bannerColor ?? 'transparent' }]}>
-          <Text style={styles.clubBannerName}>{clubName}</Text>
+          <Text style={styles.clubBannerName} maxFontSizeMultiplier={1.3}>{clubName}</Text>
           {clubNumber ? (
-            <Text style={styles.clubBannerNumber}>Club #{clubNumber}</Text>
+            <Text style={styles.clubBannerNumber} maxFontSizeMultiplier={1.3}>Club #{clubNumber}</Text>
           ) : null}
         </View>
 
         <View style={styles.filterContainer}>
           <TouchableOpacity
-            style={[styles.filterButton, selectedRange === '0-3' && styles.filterButtonActive]}
+            style={[
+              styles.filterButton,
+              {
+                backgroundColor: selectedRange === '0-3' ? theme.colors.primary : theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
             onPress={() => setSelectedRange('0-3')}
           >
             <Text
-              style={[styles.filterButtonText, selectedRange === '0-3' && styles.filterButtonTextActive]}
+              style={[
+                styles.filterButtonText,
+                { color: selectedRange === '0-3' ? '#ffffff' : theme.colors.text },
+              ]}
+              maxFontSizeMultiplier={1.3}
             >
               0-3 Months
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterButton, selectedRange === '4-6' && styles.filterButtonActive]}
+            style={[
+              styles.filterButton,
+              {
+                backgroundColor: selectedRange === '4-6' ? theme.colors.primary : theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
             onPress={() => setSelectedRange('4-6')}
           >
             <Text
-              style={[styles.filterButtonText, selectedRange === '4-6' && styles.filterButtonTextActive]}
+              style={[
+                styles.filterButtonText,
+                { color: selectedRange === '4-6' ? '#ffffff' : theme.colors.text },
+              ]}
+              maxFontSizeMultiplier={1.3}
             >
               4-6 Months
             </Text>
@@ -318,179 +386,144 @@ export default function PreparedSpeechReportScreen() {
 
         <View style={styles.filtersSection}>
           <TouchableOpacity
-            style={styles.dropdown}
+            style={[styles.dropdown, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
             onPress={() => setShowMemberDropdown(true)}
           >
-            <Users size={18} color="#6b7280" />
-            <Text style={styles.dropdownText}>{getMemberFilterText()}</Text>
-            <ChevronDown size={18} color="#6b7280" />
+            <Users size={18} color={theme.colors.textSecondary} />
+            <Text style={[styles.dropdownText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+              {getMemberFilterText()}
+            </Text>
+            <ChevronDown size={18} color={theme.colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
-      <Modal
-        visible={showMemberDropdown}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowMemberDropdown(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowMemberDropdown(false)}
+        <Modal
+          visible={showMemberDropdown}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowMemberDropdown(false)}
         >
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Filter by Member</Text>
-              <View style={styles.modalActions}>
-                <TouchableOpacity onPress={selectAllMembers} style={styles.modalActionButton}>
-                  <Text style={styles.modalActionText}>All</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={deselectAllMembers} style={styles.modalActionButton}>
-                  <Text style={styles.modalActionText}>None</Text>
-                </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowMemberDropdown(false)}
+          >
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
+                <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                  Filter by Member
+                </Text>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity onPress={selectAllMembers} style={styles.modalActionButton}>
+                    <Text style={[styles.modalActionText, { color: theme.colors.primary }]}>All</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={deselectAllMembers} style={styles.modalActionButton}>
+                    <Text style={[styles.modalActionText, { color: theme.colors.primary }]}>None</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
+              <ScrollView style={styles.modalList}>
+                {clubMembers.map((member) => (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={[styles.modalItem, { borderBottomColor: theme.colors.border }]}
+                    onPress={() => toggleMemberSelection(member.id)}
+                  >
+                    <Text style={[styles.modalItemText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
+                      {member.full_name}
+                    </Text>
+                    {selectedMembers.includes(member.id) && (
+                      <Check size={20} color={theme.colors.primary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
-            <ScrollView style={styles.modalList}>
-              {clubMembers.map((member) => (
-                <TouchableOpacity
-                  key={member.id}
-                  style={styles.modalItem}
-                  onPress={() => toggleMemberSelection(member.id)}
-                >
-                  <Text style={styles.modalItemText}>{member.full_name}</Text>
-                  {selectedMembers.includes(member.id) && (
-                    <Check size={20} color="#2563eb" />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+          </TouchableOpacity>
+        </Modal>
 
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#2563eb" />
-            <Text style={styles.loadingText}>Loading...</Text>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              Loading...
+            </Text>
           </View>
-        ) : meetings.length === 0 ? (
+        ) : rows.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Building2 size={48} color="#d1d5db" />
-            <Text style={styles.emptyText}>No prepared speeches found</Text>
+            <Building2 size={48} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              No prepared speeches found
+            </Text>
           </View>
         ) : (
-          <>
-            <Text style={styles.countText}>{meetings.length} meetings found</Text>
-            {meetings.map((meeting) => (
-              <View key={meeting.id} style={styles.meetingCard}>
-                <View style={styles.meetingHeader}>
-                  <TouchableOpacity
-                    style={styles.meetingNumberBadge}
-                    onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting.id } })}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.meetingNumberText}>#{meeting.meeting_number}</Text>
-                  </TouchableOpacity>
-                  <View style={styles.meetingDate}>
-                    <Calendar size={16} color="#6b7280" />
-                    <Text style={styles.meetingDateText}>{formatDate(meeting.meeting_date)}</Text>
-                  </View>
+          <View style={styles.tableSection}>
+            <Text style={[styles.countText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              {rows.length} speech{rows.length !== 1 ? 'es' : ''} found
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View style={[styles.table, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={[styles.tableHeader, { borderBottomColor: theme.colors.border }]}>
+                  {columns.map((col) => (
+                    <Text
+                      key={col.key}
+                      style={[
+                        styles.tableHeaderCell,
+                        { width: col.width, color: theme.colors.text },
+                      ]}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      {col.label}
+                    </Text>
+                  ))}
                 </View>
-
-                {meeting.speeches.map((speech, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.speechCard}
-                    onPress={() => router.push({ pathname: '/evaluation-corner', params: { meetingId: meeting.id } })}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.speechRow}>
-                      <User size={16} color="#2563eb" />
-                      <View style={styles.speechInfo}>
-                        <Text style={styles.speechLabel}>{speech.role_name}</Text>
-                        <Text style={styles.speechValue}>{speech.speaker_name}</Text>
-                      </View>
-                    </View>
-
-                    {speech.speech_title && (
-                      <View style={styles.detailRow}>
-                        <BookOpen size={16} color="#8b5cf6" />
-                        <View style={styles.speechInfo}>
-                          <Text style={styles.speechLabel}>Speech Title</Text>
-                          <Text style={styles.speechValue}>{speech.speech_title}</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {speech.pathway_name && (
-                      <View style={styles.detailRow}>
-                        <BookOpen size={16} color="#f59e0b" />
-                        <View style={styles.speechInfo}>
-                          <Text style={styles.speechLabel}>Pathway</Text>
-                          <Text style={styles.speechValue}>{speech.pathway_name}</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {speech.pathway_level && (
-                      <View style={styles.detailRow}>
-                        <BookOpen size={16} color="#06b6d4" />
-                        <View style={styles.speechInfo}>
-                          <Text style={styles.speechLabel}>Level</Text>
-                          <Text style={styles.speechValue}>L{speech.pathway_level}</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {speech.project_number && (
-                      <View style={styles.detailRow}>
-                        <BookOpen size={16} color="#ec4899" />
-                        <View style={styles.speechInfo}>
-                          <Text style={styles.speechLabel}>Project Number</Text>
-                          <Text style={styles.speechValue}>{speech.project_number}</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {speech.project_name && (
-                      <View style={styles.detailRow}>
-                        <BookOpen size={16} color="#14b8a6" />
-                        <View style={styles.speechInfo}>
-                          <Text style={styles.speechLabel}>Project Name</Text>
-                          <Text style={styles.speechValue}>{speech.project_name}</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    <View style={styles.speechRow}>
-                      <Users size={16} color="#10b981" />
-                      <View style={styles.speechInfo}>
-                        <Text style={styles.speechLabel}>Evaluator</Text>
+                {rows.map((row, index) => {
+                  const isLast = index === rows.length - 1;
+                  return (
+                    <TouchableOpacity
+                      key={`${row.meetingId}-${row.speaker_name}-${index}`}
+                      style={[
+                        styles.tableRow,
+                        !isLast && {
+                          borderBottomColor: theme.colors.border,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                        },
+                      ]}
+                      onPress={() =>
+                        router.push({ pathname: '/evaluation-corner', params: { meetingId: row.meetingId } })
+                      }
+                      activeOpacity={0.6}
+                    >
+                      {columns.map((col) => (
                         <Text
+                          key={col.key}
                           style={[
-                            styles.speechValue,
-                            !speech.evaluator_name && styles.notAssignedText,
+                            styles.tableCell,
+                            { width: col.width, color: theme.colors.text },
+                            col.key === 'evaluator' && !row.evaluator_name && styles.notAssignedCell,
                           ]}
+                          numberOfLines={col.key === 'title' || col.key === 'projectName' || col.key === 'speaker' ? 2 : 1}
+                          maxFontSizeMultiplier={1.2}
                         >
-                          {speech.evaluator_name || 'Not assigned'}
+                          {col.render(row)}
                         </Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                      ))}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            ))}
-          </>
+            </ScrollView>
+          </View>
         )}
+
+        <View style={styles.bottomSpacing} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -499,9 +532,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 0.5,
   },
-  backButton: {
-    padding: 8,
-  },
+  backButton: { padding: 8 },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -509,12 +540,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 16,
   },
-  headerSpacer: {
-    width: 40,
-  },
-  content: {
-    flex: 1,
-  },
+  headerSpacer: { width: 40 },
+  content: { flex: 1 },
   clubBanner: {
     paddingHorizontal: 24,
     paddingVertical: 24,
@@ -535,7 +562,7 @@ const styles = StyleSheet.create({
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     gap: 12,
   },
   filterButton: {
@@ -544,26 +571,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#fff',
     alignItems: 'center',
   },
-  filterButtonActive: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
-  },
-  filterButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-  filterButtonTextActive: {
-    color: '#fff',
-  },
+  filterButtonText: { fontSize: 14, fontWeight: '600' },
   filtersSection: {
     paddingHorizontal: 16,
     paddingBottom: 12,
-    gap: 12,
   },
   dropdown: {
     flexDirection: 'row',
@@ -572,14 +585,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#fff',
     gap: 8,
   },
   dropdownText: {
     flex: 1,
     fontSize: 14,
-    color: '#1a1a1a',
     fontWeight: '500',
   },
   modalOverlay: {
@@ -589,7 +599,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     width: '80%',
     maxHeight: '70%',
@@ -601,15 +610,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1a1a1a',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    flex: 1,
   },
   modalActions: {
     flexDirection: 'row',
@@ -624,7 +629,6 @@ const styles = StyleSheet.create({
   modalActionText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#2563eb',
   },
   modalList: {
     maxHeight: 400,
@@ -635,113 +639,63 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   modalItemText: {
     fontSize: 15,
-    color: '#1a1a1a',
   },
   loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 40,
+    justifyContent: 'center',
+    paddingVertical: 60,
     gap: 12,
   },
-  loadingText: {
-    fontSize: 15,
-    color: '#6b7280',
-  },
+  loadingText: { fontSize: 15 },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 40,
+    justifyContent: 'center',
+    paddingVertical: 60,
     gap: 12,
   },
-  emptyText: {
-    fontSize: 16,
-    color: '#6b7280',
+  emptyText: { fontSize: 16 },
+  tableSection: {
+    paddingHorizontal: 16,
   },
   countText: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginHorizontal: 16,
+    fontSize: 13,
     marginBottom: 12,
   },
-  meetingCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  meetingHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  meetingNumberBadge: {
-    backgroundColor: '#dbeafe',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  meetingNumberText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2563eb',
-  },
-  meetingDate: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  meetingDateText: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  speechCard: {
-    backgroundColor: '#f9fafb',
+  table: {
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    gap: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
-  speechRow: {
+  tableHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  speechInfo: {
-    flex: 1,
-  },
-  speechLabel: {
+  tableHeaderCell: {
     fontSize: 12,
-    color: '#6b7280',
-    marginBottom: 2,
+    fontWeight: '700',
+    paddingRight: 8,
   },
-  speechValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1a1a',
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
   },
-  notAssignedText: {
+  tableCell: {
+    fontSize: 13,
+    fontWeight: '400',
+    paddingRight: 8,
+  },
+  notAssignedCell: {
     color: '#9ca3af',
     fontStyle: 'italic',
   },
+  bottomSpacing: { height: 40 },
 });

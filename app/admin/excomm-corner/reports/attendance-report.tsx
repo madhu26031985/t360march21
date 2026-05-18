@@ -13,7 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, ChevronDown, ChevronUp, UserCircle, Home, Users, Calendar, Settings, Shield } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, UserCircle, Home, Users, Calendar, Settings, Shield, CheckCircle2, XCircle } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
@@ -36,16 +36,22 @@ type Member = {
   full_name: string;
 };
 
-type MemberAttendanceData = {
+type MeetingColumn = {
+  id: string;
+  meeting_number: string | number | null;
+  meeting_date: string;
+};
+
+type AttendanceGridRow = {
   member_id: string;
   member_name: string;
-  attended_count: number;
-  attended_meetings: Array<{
-    meeting_id: string;
-    meeting_date: string | null;
-    meeting_number: string | null;
-  }>;
+  total: number;
+  byMeeting: Record<string, boolean>;
 };
+
+const NAME_COL_WIDTH = 132;
+const MEETING_COL_WIDTH = 52;
+const TOTAL_COL_WIDTH = 56;
 
 export default function AttendanceReport() {
   const { theme } = useTheme();
@@ -62,9 +68,9 @@ export default function AttendanceReport() {
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
   const [selectedRange, setSelectedRange] = useState<'0-3' | '4-6'>('0-3');
-  const [attendanceData, setAttendanceData] = useState<MemberAttendanceData[]>([]);
+  const [meetingColumns, setMeetingColumns] = useState<MeetingColumn[]>([]);
+  const [gridRows, setGridRows] = useState<AttendanceGridRow[]>([]);
   const [bannerColor, setBannerColor] = useState<string | null>(null);
-  const [expandedMembers, setExpandedMembers] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadClubInfo();
@@ -75,9 +81,10 @@ export default function AttendanceReport() {
     if (selectedMembers.length > 0) {
       loadAttendanceData();
     } else {
-      setAttendanceData([]);
+      setMeetingColumns([]);
+      setGridRows([]);
     }
-  }, [selectedMembers, selectedRange]);
+  }, [selectedMembers, selectedRange, members]);
 
   const loadClubInfo = async () => {
     if (!user?.currentClubId) return;
@@ -154,142 +161,96 @@ export default function AttendanceReport() {
         endDate.setDate(endDate.getDate() - 1);
       }
 
-      const [attendanceRes, rolesRes] = await Promise.all([
+      const startStr = toLocalDateStr(startDate);
+      const endStr = toLocalDateStr(endDate);
+
+      const [meetingsRes, attendanceRes, rolesRes] = await Promise.all([
+        supabase
+          .from('app_club_meeting')
+          .select('id, meeting_number, meeting_date')
+          .eq('club_id', user.currentClubId)
+          .gte('meeting_date', startStr)
+          .lte('meeting_date', endStr)
+          .order('meeting_date', { ascending: false }),
         supabase
           .from('app_meeting_attendance')
-          .select(`
-            user_id,
-            meeting_id,
-            attendance_status,
-            meeting_date,
-            meeting:app_club_meeting!inner(
-              meeting_number,
-              meeting_date
-            )
-          `)
+          .select('user_id, meeting_id, attendance_status')
           .eq('club_id', user.currentClubId)
           .in('user_id', selectedMembers)
-          .eq('attendance_status', 'present')
-          .gte('meeting_date', toLocalDateStr(startDate))
-          .lte('meeting_date', toLocalDateStr(endDate)),
+          .in('attendance_status', ['present', 'late'])
+          .gte('meeting_date', startStr)
+          .lte('meeting_date', endStr),
         supabase
           .from('app_meeting_roles_management')
-          .select(`
-            assigned_user_id,
-            meeting_id,
-            booking_status,
-            meeting:app_club_meeting!inner(
-              meeting_number,
-              meeting_date
-            )
-          `)
+          .select('assigned_user_id, meeting_id, meeting:app_club_meeting!inner(meeting_date)')
           .eq('club_id', user.currentClubId)
           .in('assigned_user_id', selectedMembers)
           .eq('booking_status', 'booked')
-          .gte('meeting.meeting_date', toLocalDateStr(startDate))
-          .lte('meeting.meeting_date', toLocalDateStr(endDate)),
+          .gte('meeting.meeting_date', startStr)
+          .lte('meeting.meeting_date', endStr),
       ]);
 
-      if (attendanceRes.error || rolesRes.error) {
-        console.error('Error loading attendance data:', attendanceRes.error || rolesRes.error);
+      if (meetingsRes.error || attendanceRes.error || rolesRes.error) {
+        console.error(
+          'Error loading attendance data:',
+          meetingsRes.error || attendanceRes.error || rolesRes.error
+        );
         Alert.alert('Error', 'Failed to load attendance data');
         return;
       }
 
-      const attendanceMap = new Map<string, number>();
-      const meetingMap = new Map<string, Array<{ meeting_id: string; meeting_date: string | null; meeting_number: string | null }>>();
-      const seenUserMeeting = new Set<string>();
+      const columns: MeetingColumn[] = (meetingsRes.data || []).map((m) => ({
+        id: m.id,
+        meeting_number: m.meeting_number,
+        meeting_date: m.meeting_date,
+      }));
 
-      const addMeetingForMember = (
-        memberId: string | null | undefined,
-        meetingId: string | null | undefined,
-        meetingDate: string | null,
-        meetingNumber: string | null
-      ) => {
-        if (!memberId || !meetingId) return;
-        const uniqueKey = `${memberId}:${meetingId}`;
-        if (seenUserMeeting.has(uniqueKey)) return;
-        seenUserMeeting.add(uniqueKey);
-
-        attendanceMap.set(memberId, (attendanceMap.get(memberId) || 0) + 1);
-
-        const existingMeetings = meetingMap.get(memberId) || [];
-        existingMeetings.push({
-          meeting_id: meetingId,
-          meeting_date: meetingDate,
-          meeting_number: meetingNumber,
-        });
-        meetingMap.set(memberId, existingMeetings);
-      };
+      const presentKeys = new Set<string>();
 
       (attendanceRes.data || []).forEach((record: any) => {
-        if (!record.user_id) return;
-        const existingMeetings = meetingMap.get(record.user_id) || [];
-        const meetingObj = Array.isArray(record.meeting) ? record.meeting[0] : record.meeting;
-        if (existingMeetings) {
-          addMeetingForMember(
-            record.user_id,
-            record.meeting_id,
-            meetingObj?.meeting_date || record.meeting_date || null,
-            meetingObj?.meeting_number || null
-          );
+        if (record.user_id && record.meeting_id) {
+          presentKeys.add(`${record.user_id}:${record.meeting_id}`);
         }
       });
 
       (rolesRes.data || []).forEach((record: any) => {
-        const meetingObj = Array.isArray(record.meeting) ? record.meeting[0] : record.meeting;
-        addMeetingForMember(
-          record.assigned_user_id,
-          record.meeting_id,
-          meetingObj?.meeting_date || null,
-          meetingObj?.meeting_number || null
-        );
+        if (record.assigned_user_id && record.meeting_id) {
+          presentKeys.add(`${record.assigned_user_id}:${record.meeting_id}`);
+        }
       });
 
-      const memberDataList: MemberAttendanceData[] = selectedMembers
+      const rows: AttendanceGridRow[] = selectedMembers
         .map((memberId) => {
           const member = members.find((m) => m.id === memberId);
           if (!member) return null;
 
+          const byMeeting: Record<string, boolean> = {};
+          let total = 0;
+
+          columns.forEach((col) => {
+            const present = presentKeys.has(`${memberId}:${col.id}`);
+            byMeeting[col.id] = present;
+            if (present) total += 1;
+          });
+
           return {
             member_id: memberId,
             member_name: member.full_name,
-            attended_count: attendanceMap.get(memberId) || 0,
-            attended_meetings: (meetingMap.get(memberId) || []).sort((a, b) => {
-              const aTs = a.meeting_date ? new Date(a.meeting_date).getTime() : 0;
-              const bTs = b.meeting_date ? new Date(b.meeting_date).getTime() : 0;
-              return bTs - aTs;
-            }),
+            total,
+            byMeeting,
           };
         })
-        .filter(Boolean) as MemberAttendanceData[];
+        .filter(Boolean) as AttendanceGridRow[];
 
-      memberDataList.sort((a, b) => b.attended_count - a.attended_count);
+      rows.sort((a, b) => b.total - a.total || a.member_name.localeCompare(b.member_name));
 
-      setAttendanceData(memberDataList);
+      setMeetingColumns(columns);
+      setGridRows(rows);
     } catch (error) {
       console.error('Error loading attendance data:', error);
     } finally {
       setLoading(false);
     }
-  };
-
-  const toggleMemberExpansion = (memberId: string) => {
-    setExpandedMembers((prev) => ({
-      ...prev,
-      [memberId]: !prev[memberId],
-    }));
-  };
-
-  const formatMeetingDate = (dateStr: string | null) => {
-    if (!dateStr) return 'Date not available';
-    const parsed = new Date(dateStr);
-    if (Number.isNaN(parsed.getTime())) return dateStr;
-    return parsed.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
   };
 
   const toggleMember = (memberId: string) => {
@@ -451,61 +412,87 @@ export default function AttendanceReport() {
               Select members to view attendance report
             </Text>
           </View>
+        ) : meetingColumns.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Calendar size={64} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              No meetings in this period
+            </Text>
+          </View>
         ) : (
           <View style={styles.resultsContainer}>
-            {attendanceData.map((memberData) => {
-              const isExpanded = !!expandedMembers[memberData.member_id];
-              return (
-                <TouchableOpacity
-                  key={memberData.member_id}
-                  style={[styles.memberCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                  onPress={() => toggleMemberExpansion(memberData.member_id)}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.memberCardHeader}>
-                    <Text style={[styles.memberCardName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      {memberData.member_name}
+            <Text style={[styles.summaryText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
+              {meetingColumns.length} meeting{meetingColumns.length !== 1 ? 's' : ''} · {gridRows.length} member
+              {gridRows.length !== 1 ? 's' : ''}
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View style={[styles.gridTable, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={[styles.gridHeaderRow, { borderBottomColor: theme.colors.border }]}>
+                  <Text
+                    style={[styles.gridHeaderCell, styles.gridNameCell, { color: theme.colors.text }]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    Name
+                  </Text>
+                  {meetingColumns.map((col) => (
+                    <Text
+                      key={col.id}
+                      style={[styles.gridHeaderCell, styles.gridMeetingCell, { color: theme.colors.text }]}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      #{col.meeting_number ?? '—'}
                     </Text>
-                    <View style={styles.badgeWithIcon}>
-                      <View style={[styles.totalBadge, { backgroundColor: '#3b82f6' + '20' }]}>
-                        <Text style={[styles.totalBadgeText, { color: '#3b82f6' }]} maxFontSizeMultiplier={1.3}>
-                          {memberData.attended_count} meetings attended
-                        </Text>
-                      </View>
-                      {isExpanded ? (
-                        <ChevronUp size={16} color={theme.colors.textSecondary} />
-                      ) : (
-                        <ChevronDown size={16} color={theme.colors.textSecondary} />
-                      )}
-                    </View>
-                  </View>
-
-                  {isExpanded && (
-                    <View style={styles.meetingsList}>
-                      {memberData.attended_meetings.length === 0 ? (
-                        <Text style={[styles.emptyMeetingsText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                          No attended meetings in this period
-                        </Text>
-                      ) : (
-                        memberData.attended_meetings.map((meeting, idx) => (
-                          <View
-                            key={`${meeting.meeting_id}-${idx}`}
-                            style={[styles.meetingItemCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
-                          >
-                            <Text style={[styles.meetingItemTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                              Meeting #{meeting.meeting_number || '-'}
-                            </Text>
-                            <Text style={[styles.meetingItemDate, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                              {formatMeetingDate(meeting.meeting_date)}
-                            </Text>
+                  ))}
+                  <Text
+                    style={[styles.gridHeaderCell, styles.gridTotalCell, { color: theme.colors.text }]}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    Total
+                  </Text>
+                </View>
+                {gridRows.map((row, index) => {
+                  const isLast = index === gridRows.length - 1;
+                  return (
+                    <View
+                      key={row.member_id}
+                      style={[
+                        styles.gridDataRow,
+                        !isLast && {
+                          borderBottomColor: theme.colors.border,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.gridNameCell, styles.gridNameText, { color: theme.colors.text }]}
+                        numberOfLines={2}
+                        maxFontSizeMultiplier={1.2}
+                      >
+                        {row.member_name}
+                      </Text>
+                      {meetingColumns.map((col) => {
+                        const present = row.byMeeting[col.id];
+                        return (
+                          <View key={col.id} style={styles.gridMeetingCell}>
+                            {present ? (
+                              <CheckCircle2 size={18} color="#16a34a" />
+                            ) : (
+                              <XCircle size={18} color="#ef4444" />
+                            )}
                           </View>
-                        ))
-                      )}
+                        );
+                      })}
+                      <Text
+                        style={[styles.gridTotalCell, styles.gridTotalText, { color: theme.colors.text }]}
+                        maxFontSizeMultiplier={1.2}
+                      >
+                        {row.total}
+                      </Text>
                     </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         )}
 
@@ -732,66 +719,54 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginHorizontal: 16,
   },
-  memberCard: {
-    marginBottom: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
+  summaryText: {
+    fontSize: 13,
+    marginBottom: 12,
   },
-  memberCardHeader: {
+  gridTable: {
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  gridHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  badgeWithIcon: {
+  gridDataRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
   },
-  memberCardName: {
-    fontSize: 16,
+  gridHeaderCell: {
+    fontSize: 12,
     fontWeight: '700',
-    flex: 1,
+    textAlign: 'center',
   },
-  totalBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+  gridNameCell: {
+    width: NAME_COL_WIDTH,
+    textAlign: 'left',
+    paddingRight: 8,
   },
-  totalBadgeText: {
+  gridNameText: {
     fontSize: 13,
     fontWeight: '600',
   },
-  meetingsList: {
-    marginTop: 12,
-    gap: 8,
+  gridMeetingCell: {
+    width: MEETING_COL_WIDTH,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emptyMeetingsText: {
-    fontSize: 13,
-    fontStyle: 'italic',
+  gridTotalCell: {
+    width: TOTAL_COL_WIDTH,
+    textAlign: 'center',
   },
-  meetingItemCard: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  meetingItemTitle: {
+  gridTotalText: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  meetingItemDate: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '700',
   },
   bottomSpacing: {
     height: 40,

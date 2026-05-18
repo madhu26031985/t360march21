@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, BookOpen, FileText, CheckCircle2, Circle } from 'lucide-react-native';
+import { ArrowLeft, Calendar } from 'lucide-react-native';
 
 const toLocalDateStr = (d: Date) => {
   const y = d.getFullYear();
@@ -22,8 +22,6 @@ type MeetingData = {
   meeting_date: string;
   educational_speaker_name: string | null;
   speech_title: string | null;
-  summary: string | null;
-  notes: string | null;
 };
 
 export default function EducationalSpeakerReport() {
@@ -86,15 +84,13 @@ export default function EducationalSpeakerReport() {
           app_meeting_roles_management (
             role_name,
             assigned_user_id,
+            booking_status,
             app_user_profiles (
               full_name
             )
           ),
           app_meeting_educational_speaker (
             speech_title,
-            summary,
-            notes,
-            booking_status,
             speaker_user_id
           )
         `)
@@ -108,43 +104,52 @@ export default function EducationalSpeakerReport() {
         return;
       }
 
-      const formattedMeetings: MeetingData[] = (data || []).map((meeting: any) => {
-        let educationalSpeakerName = null;
-        let speechTitle = null;
-        let summary = null;
-        let notes = null;
+      const formattedMeetings: MeetingData[] = (data || [])
+        .map((meeting: any) => {
+          let educationalSpeakerName: string | null = null;
+          let speechTitle: string | null = null;
+          let assignedUserId: string | null = null;
 
-        if (Array.isArray(meeting.app_meeting_roles_management)) {
-          const esRole = meeting.app_meeting_roles_management.find(
-            (role: any) => role.role_name === 'Educational Speaker'
-          );
-          if (esRole && esRole.app_user_profiles) {
-            educationalSpeakerName = esRole.app_user_profiles.full_name;
+          if (Array.isArray(meeting.app_meeting_roles_management)) {
+            const esRole = meeting.app_meeting_roles_management.find(
+              (role: any) => role.role_name === 'Educational Speaker'
+            );
+            if (
+              esRole?.assigned_user_id &&
+              esRole.booking_status === 'booked' &&
+              esRole.app_user_profiles?.full_name
+            ) {
+              assignedUserId = esRole.assigned_user_id;
+              educationalSpeakerName = esRole.app_user_profiles.full_name;
+            }
           }
-        }
 
-        if (Array.isArray(meeting.app_meeting_educational_speaker)) {
-          const bookedSpeaker = meeting.app_meeting_educational_speaker.find(
-            (s: any) => s.booking_status === 'booked'
-          );
-          const entry = bookedSpeaker || meeting.app_meeting_educational_speaker[0];
-          if (entry) {
-            speechTitle = entry.speech_title || null;
-            summary = entry.summary || null;
-            notes = entry.notes || null;
+          if (Array.isArray(meeting.app_meeting_educational_speaker)) {
+            const entry = assignedUserId
+              ? meeting.app_meeting_educational_speaker.find(
+                  (s: any) => s.speaker_user_id === assignedUserId
+                )
+              : null;
+            const title = entry?.speech_title?.trim();
+            if (title) {
+              speechTitle = title;
+            } else {
+              const fallback = meeting.app_meeting_educational_speaker.find(
+                (s: any) => typeof s.speech_title === 'string' && s.speech_title.trim()
+              );
+              speechTitle = fallback?.speech_title?.trim() || null;
+            }
           }
-        }
 
-        return {
-          id: meeting.id,
-          meeting_number: meeting.meeting_number,
-          meeting_date: meeting.meeting_date,
-          educational_speaker_name: educationalSpeakerName,
-          speech_title: speechTitle,
-          summary,
-          notes,
-        };
-      });
+          return {
+            id: meeting.id,
+            meeting_number: meeting.meeting_number,
+            meeting_date: meeting.meeting_date,
+            educational_speaker_name: educationalSpeakerName,
+            speech_title: speechTitle,
+          };
+        })
+        .filter((meeting) => !!meeting.educational_speaker_name?.trim());
 
       setMeetings(formattedMeetings);
     } catch {
@@ -158,15 +163,6 @@ export default function EducationalSpeakerReport() {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
-
-  const getDoneCount = (meeting: MeetingData): number => {
-    let count = 0;
-    if (meeting.speech_title) count++;
-    if (meeting.summary) count++;
-    return count;
-  };
-
-  const TOTAL_ITEMS = 2;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -234,7 +230,7 @@ export default function EducationalSpeakerReport() {
               No Meetings Found
             </Text>
             <Text style={[styles.emptyDescription, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              No meetings found in the selected time period
+              No meetings with a booked Educational Speaker in this period
             </Text>
           </View>
         ) : (
@@ -243,125 +239,58 @@ export default function EducationalSpeakerReport() {
               {meetings.length} meeting{meetings.length !== 1 ? 's' : ''} found
             </Text>
 
-            {meetings.map((meeting) => {
-              const doneCount = getDoneCount(meeting);
-              const progress = doneCount / TOTAL_ITEMS;
-              const titleCompleted = !!meeting.speech_title;
-              const summaryCompleted = !!meeting.summary;
-              const summaryChars = meeting.summary?.length ?? 0;
+            <View style={[styles.table, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <View style={[styles.tableHeader, { borderBottomColor: theme.colors.border }]}>
+                <Text style={[styles.tableHeaderCell, styles.colMeeting, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Meeting Number
+                </Text>
+                <Text style={[styles.tableHeaderCell, styles.colTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Title
+                </Text>
+                <Text style={[styles.tableHeaderCell, styles.colSpeaker, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Speaker
+                </Text>
+                <Text style={[styles.tableHeaderCell, styles.colDate, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Date
+                </Text>
+              </View>
 
-              return (
-                <TouchableOpacity
-                  key={meeting.id}
-                  style={[styles.meetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                  onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting.id } })}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardHeaderLeft}>
-                      <View style={[styles.meetingNumberBadge, { backgroundColor: theme.colors.primary + '18' }]}>
-                        <Text style={[styles.meetingNumberText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                          #{meeting.meeting_number}
-                        </Text>
-                      </View>
-                      <View style={styles.dateRow}>
-                        <Calendar size={13} color={theme.colors.textSecondary} />
-                        <Text style={[styles.dateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                          {formatDate(meeting.meeting_date)}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.doneCountContainer}>
-                      <Text style={[styles.doneCountBold, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        {doneCount}/{TOTAL_ITEMS}
-                      </Text>
-                      <Text style={[styles.doneCountLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        {' '}done
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        {
-                          backgroundColor: doneCount === TOTAL_ITEMS ? '#16a34a' : theme.colors.primary,
-                          width: `${progress * 100}%` as any,
-                        },
-                      ]}
-                    />
-                  </View>
-
-                  <View style={styles.speakerRow}>
-                    <View style={[styles.speakerAvatar, { backgroundColor: theme.colors.primary }]}>
-                      <BookOpen size={20} color="#ffffff" />
-                    </View>
-                    <View style={styles.speakerInfo}>
-                      <Text style={[styles.speakerRoleLabel, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        Educational Speaker
-                      </Text>
-                      <Text style={[styles.speakerName, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        {meeting.educational_speaker_name || 'Not assigned'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={[styles.checklistContainer, { borderColor: theme.colors.border }]}>
-                    <View style={[styles.checklistRow, { borderBottomColor: theme.colors.border }]}>
-                      <View style={[styles.checklistLabelPill, { backgroundColor: theme.colors.background }]}>
-                        <BookOpen size={14} color={theme.colors.text} />
-                        <Text style={[styles.checklistLabelText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                          Title
-                        </Text>
-                      </View>
-                      <View style={styles.checklistRight}>
-                        {titleCompleted ? (
-                          <View style={styles.statusBadge}>
-                            <CheckCircle2 size={15} color="#16a34a" />
-                            <Text style={styles.statusTextDone} maxFontSizeMultiplier={1.3}>Completed</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.statusBadge}>
-                            <Circle size={15} color={theme.colors.textSecondary} />
-                            <Text style={[styles.statusTextPending, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Pending</Text>
-                          </View>
-                        )}
-                        <Text style={[styles.itemValueText, { color: theme.colors.textSecondary }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-                          {meeting.speech_title ? `Title: ${meeting.speech_title}` : '—'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.checklistRow}>
-                      <View style={[styles.checklistLabelPill, { backgroundColor: theme.colors.background }]}>
-                        <FileText size={14} color={theme.colors.text} />
-                        <Text style={[styles.checklistLabelText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                          Summary
-                        </Text>
-                      </View>
-                      <View style={styles.checklistRight}>
-                        {summaryCompleted ? (
-                          <View style={styles.statusBadge}>
-                            <CheckCircle2 size={15} color="#16a34a" />
-                            <Text style={styles.statusTextDone} maxFontSizeMultiplier={1.3}>Completed</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.statusBadge}>
-                            <Circle size={15} color={theme.colors.textSecondary} />
-                            <Text style={[styles.statusTextPending, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>Pending</Text>
-                          </View>
-                        )}
-                        <Text style={[styles.charCountPill, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                          {summaryChars} characters
-                        </Text>
-                      </View>
-                    </View>
-
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+              {meetings.map((meeting, index) => {
+                const isLast = index === meetings.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={meeting.id}
+                    style={[
+                      styles.tableRow,
+                      !isLast && { borderBottomColor: theme.colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
+                    ]}
+                    onPress={() => router.push({ pathname: '/educational-corner', params: { meetingId: meeting.id } })}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={[styles.tableCell, styles.colMeeting, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                      #{meeting.meeting_number}
+                    </Text>
+                    <Text
+                      style={[styles.tableCell, styles.colTitle, { color: theme.colors.text }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      {meeting.speech_title || '—'}
+                    </Text>
+                    <Text
+                      style={[styles.tableCell, styles.colSpeaker, { color: theme.colors.text }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      {meeting.educational_speaker_name || '—'}
+                    </Text>
+                    <Text style={[styles.tableCell, styles.colDate, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                      {formatDate(meeting.meeting_date)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         )}
 
@@ -440,116 +369,35 @@ const styles = StyleSheet.create({
   emptyDescription: { fontSize: 14, textAlign: 'center' },
   meetingsContainer: { paddingHorizontal: 16 },
   resultCount: { fontSize: 13, marginBottom: 12 },
-  meetingCard: {
-    borderRadius: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 10,
-  },
-  cardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  meetingNumberBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-  },
-  meetingNumberText: { fontSize: 13, fontWeight: '700' },
-  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  dateText: { fontSize: 13 },
-  doneCountContainer: { flexDirection: 'row', alignItems: 'baseline' },
-  doneCountBold: { fontSize: 15, fontWeight: '700' },
-  doneCountLabel: { fontSize: 13 },
-  progressTrack: {
-    height: 3,
-    marginHorizontal: 0,
-  },
-  progressFill: {
-    height: 3,
-    borderRadius: 2,
-  },
-  speakerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 14,
-    gap: 14,
-  },
-  speakerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  speakerInfo: { flex: 1 },
-  speakerRoleLabel: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
-  speakerName: { fontSize: 14 },
-  checklistContainer: {
-    marginHorizontal: 16,
-    marginBottom: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  checklistRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-  },
-  checklistLabelPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  table: {
     borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
-  checklistLabelText: { fontSize: 13, fontWeight: '600' },
-  checklistRight: {
-    flex: 1,
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  statusBadge: {
+  tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  statusTextDone: {
+  tableHeaderCell: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#16a34a',
+    fontWeight: '700',
   },
-  statusTextPending: {
-    fontSize: 13,
-    fontWeight: '500',
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 16,
   },
-  itemValueText: {
-    fontSize: 12,
-    maxWidth: 180,
+  tableCell: {
+    fontSize: 14,
+    fontWeight: '400',
   },
-  charCountPill: {
-    fontSize: 12,
-  },
+  colMeeting: { flex: 1.1 },
+  colTitle: { flex: 2.2, paddingRight: 8 },
+  colSpeaker: { flex: 1.4, paddingRight: 8 },
+  colDate: { flex: 1.3 },
   bottomSpacing: { height: 40 },
 });
