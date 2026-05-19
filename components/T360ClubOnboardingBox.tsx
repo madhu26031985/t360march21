@@ -25,6 +25,7 @@ type Props = {
 };
 
 export default function T360ClubOnboardingBox({ progress, loading }: Props) {
+  const [listExpanded, setListExpanded] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     create_club: true,
     setting_up: true,
@@ -33,7 +34,6 @@ export default function T360ClubOnboardingBox({ progress, loading }: Props) {
     meeting_management: false,
     meeting_agenda: false,
     voting_operations: false,
-    smart_insights_data: false,
   });
 
   const sectionStats = useMemo(
@@ -71,17 +71,30 @@ export default function T360ClubOnboardingBox({ progress, loading }: Props) {
               : `${progress.completedCount} of ${progress.totalCount} tasks complete`}
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.guideButton, { backgroundColor: N.accentSoft, borderColor: N.accentSoftBorder }]}
-          onPress={() => router.push('/t360-training')}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel="Open T360 User Guide onboarding guide"
-        >
-          <Text style={[styles.guideButtonText, { color: N.accent }]} maxFontSizeMultiplier={1.15}>
-            Onboarding guide
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.toggleButton, { backgroundColor: N.surface, borderColor: N.borderStrong }]}
+            onPress={() => setListExpanded((open) => !open)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={listExpanded ? 'Close onboarding checklist' : 'Open onboarding checklist'}
+          >
+            <Text style={[styles.toggleButtonText, { color: N.text }]} maxFontSizeMultiplier={1.15}>
+              {listExpanded ? 'Close' : 'Open'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.guideButton, { backgroundColor: N.accentSoft, borderColor: N.accentSoftBorder }]}
+            onPress={() => router.push('/t360-training')}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="Open T360 User Guide onboarding guide"
+          >
+            <Text style={[styles.guideButtonText, { color: N.accent }]} maxFontSizeMultiplier={1.15}>
+              Onboarding guide
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={[styles.progressTrack, { backgroundColor: N.border }]}>
@@ -96,7 +109,8 @@ export default function T360ClubOnboardingBox({ progress, loading }: Props) {
         />
       </View>
 
-      {progress.sections.map((section, sectionIndex) => {
+      {listExpanded
+        ? progress.sections.map((section, sectionIndex) => {
         const { tasksDone, tasksTotal, percent } = sectionStats[sectionIndex];
         const isOpen = expanded[section.id] ?? false;
         const sectionComplete = tasksDone === tasksTotal && tasksTotal > 0;
@@ -216,7 +230,8 @@ export default function T360ClubOnboardingBox({ progress, loading }: Props) {
               : null}
           </View>
         );
-      })}
+        })
+        : null}
     </View>
   );
 }
@@ -238,6 +253,23 @@ const styles = StyleSheet.create({
   headerTextCol: {
     flex: 1,
     minWidth: 0,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    flexShrink: 0,
+  },
+  toggleButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  toggleButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: -0.1,
   },
   guideButton: {
     paddingHorizontal: 10,
@@ -280,7 +312,7 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 0,
   },
   progressFill: {
     height: '100%',

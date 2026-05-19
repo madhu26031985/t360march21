@@ -31,7 +31,7 @@ export function getHomeRolePairDayIndex(date: Date = new Date()): number {
 }
 
 function roleLabelForInsight(category: InsightCategory): string {
-  return INSIGHT_ROW_LABELS[category].toLowerCase();
+  return INSIGHT_ROW_LABELS[category];
 }
 
 function formatRecencyLabel(category: InsightCategory, meetingDate: string): string {

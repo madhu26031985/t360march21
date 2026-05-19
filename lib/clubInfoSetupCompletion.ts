@@ -39,6 +39,9 @@ const SOCIAL_URL_FIELDS = [
   'website_url',
 ] as const;
 
+/** Onboarding: at least this many platform links counts as complete (displayed as 2/2). */
+export const CLUB_SOCIAL_MEDIA_ONBOARDING_REQUIRED = 2;
+
 /** Default FAQ entries seeded for every club (`default_club_faq_seed_json`). */
 export const CLUB_FAQ_DEFAULT_ITEM_COUNT = 50;
 
@@ -123,7 +126,9 @@ export function clubMeetingDetailsTabProgress(profile: ClubProfileSetupFields | 
 }
 
 export function clubSocialMediaProgress(profile: ClubProfileSetupFields | null | undefined): FieldProgress {
-  return countProfileFields(profile, SOCIAL_URL_FIELDS);
+  const filledCount = countProfileFields(profile, SOCIAL_URL_FIELDS).done;
+  const total = CLUB_SOCIAL_MEDIA_ONBOARDING_REQUIRED;
+  return { done: Math.min(filledCount, total), total };
 }
 
 /** Club FAQ — 50 default Q&A rows; each counts when question and answer are filled. */
@@ -176,10 +181,10 @@ export function isClubMeetingDetailsTabComplete(profile: ClubProfileSetupFields 
   );
 }
 
-/** Club Social Media screen — every platform link field filled. */
+/** Club Social Media — at least two platform links filled. */
 export function isClubSocialMediaComplete(profile: ClubProfileSetupFields | null | undefined): boolean {
-  if (!profile) return false;
-  return SOCIAL_URL_FIELDS.every((key) => filled(profile[key]));
+  const p = clubSocialMediaProgress(profile);
+  return p.total > 0 && p.done >= p.total;
 }
 
 /** Club FAQ — defaults loaded and at least one entry saved after review/edit. */

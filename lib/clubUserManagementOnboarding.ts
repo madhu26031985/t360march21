@@ -4,13 +4,12 @@ export type ClubInviteRow = { invitee_role?: string | null };
 export type ClubMemberRow = { role?: string | null };
 
 const TARGETS = {
-  invitesTotal: 7,
-  invitesMember: 3,
-  invitesExcomm: 2,
+  invitesMember: 2,
+  invitesExcomm: 1,
   invitesVisitingTm: 1,
   invitesGuest: 1,
   joinedMember: 2,
-  joinedExcomm: 2,
+  joinedExcomm: 1,
   joinedVisitingTm: 1,
   joinedGuest: 1,
   shareApp: 1,
@@ -29,7 +28,6 @@ function countJoinedByRole(members: ClubMemberRow[], role: string): number {
 }
 
 export type ClubUserManagementOnboardingProgress = {
-  invitesTotal: FieldProgress;
   invitesMemberRole: FieldProgress;
   invitesExcommRole: FieldProgress;
   invitesVisitingTm: FieldProgress;
@@ -47,7 +45,6 @@ export function computeClubUserManagementOnboarding(
   shareAppUsed: boolean
 ): ClubUserManagementOnboardingProgress {
   return {
-    invitesTotal: cappedProgress(invites.length, TARGETS.invitesTotal),
     invitesMemberRole: cappedProgress(countInvitesByRole(invites, 'member'), TARGETS.invitesMember),
     invitesExcommRole: cappedProgress(countInvitesByRole(invites, 'excomm'), TARGETS.invitesExcomm),
     invitesVisitingTm: cappedProgress(countInvitesByRole(invites, 'visiting_tm'), TARGETS.invitesVisitingTm),

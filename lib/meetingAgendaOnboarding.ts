@@ -11,16 +11,12 @@ export type MeetingAgendaMeetingRow = {
 export type MeetingAgendaOnboardingInput = {
   agendaItemCount: number;
   meetings: MeetingAgendaMeetingRow[];
-  agendaAutofillUsed: boolean;
-  agendaSequenceUsed: boolean;
   agendaBannerColorChanged: boolean;
 };
 
 export type MeetingAgendaOnboardingProgress = {
   agendaCreated: FieldProgress;
   agendaLinkShared: FieldProgress;
-  autoOptionUsed: FieldProgress;
-  manageSequenceUsed: FieldProgress;
   agendaBannerColorChanged: FieldProgress;
 };
 
@@ -45,8 +41,6 @@ export function computeMeetingAgendaOnboarding(
   return {
     agendaCreated: cappedProgress(input.agendaItemCount > 0 ? 1 : 0, 1),
     agendaLinkShared: cappedProgress(agendaLinkShared ? 1 : 0, 1),
-    autoOptionUsed: cappedProgress(input.agendaAutofillUsed ? 1 : 0, 1),
-    manageSequenceUsed: cappedProgress(input.agendaSequenceUsed ? 1 : 0, 1),
     agendaBannerColorChanged: cappedProgress(bannerChanged ? 1 : 0, 1),
   };
 }

@@ -11,6 +11,7 @@ import {
   CalendarDays,
   ChevronRight,
   GraduationCap,
+  HelpCircle,
   History,
   Info,
   Landmark,
@@ -129,10 +130,14 @@ function TrainingSection({
   );
 }
 
-const EXCOMM_COUNT = 6;
-const CLUB_OPS_COUNT = 3;
+const EXCOMM_START_COUNT = 1;
+const SETTING_UP_CLUB_COUNT = 3;
+const CLUB_USERS_EXCOMM_COUNT = 4;
+const MEETING_MANAGEMENT_COUNT = 2;
+const MEETING_AGENDA_AUTOMATION_COUNT = 1;
+const VOTING_MANAGEMENT_COUNT = 1;
 const ROLE_BOOKING_COUNT = 11;
-const MEMBER_COUNT = 7;
+const MEMBER_COUNT = 6;
 
 export default function T360TrainingScreen() {
   return (
@@ -171,14 +176,42 @@ export default function T360TrainingScreen() {
 
         <View style={[styles.insetDivider, { backgroundColor: N.border }]} />
 
-        <TrainingSection label="For ExComm Users" count={EXCOMM_COUNT} subtitle="Start Here">
+        <TrainingSection label="For ExComm Users" count={EXCOMM_START_COUNT} subtitle="Start Here">
           <TrainingRow
             icon={<Building2 size={17} color="#2563EB" strokeWidth={2} />}
             iconBackgroundColor="#EFF6FF"
             title="Create a Club"
             description="Set up your club in T360, manage roles, and get members onboard."
+            hideBottomBorder
             onPress={() => router.push('/t360-training-excomm-create-club')}
           />
+        </TrainingSection>
+
+        <TrainingSection label="Setting Up The Club" count={SETTING_UP_CLUB_COUNT}>
+          <TrainingRow
+            icon={<Info size={17} color="#334155" strokeWidth={2} />}
+            iconBackgroundColor="#F8FAFC"
+            title="Club Info"
+            description="Maintain official club details for members, guests, and the Club Tab."
+            onPress={() => router.push('/t360-training-club-info-admin')}
+          />
+          <TrainingRow
+            icon={<Share2 size={17} color="#C026D3" strokeWidth={2} />}
+            iconBackgroundColor="#FDF4FF"
+            title="Club Social Media"
+            description="EXCOMM updates in Admin Panel, platforms, My Clubs visibility, auto-save."
+            onPress={() => router.push('/t360-training-club-social-media')}
+          />
+          <TrainingRow
+            icon={<HelpCircle size={17} color="#0369A1" strokeWidth={2} />}
+            iconBackgroundColor="#ECFEFF"
+            title="Club FAQ"
+            description="Manage frequently asked questions for members and guests."
+            hideBottomBorder
+          />
+        </TrainingSection>
+
+        <TrainingSection label="Club User Management" count={CLUB_USERS_EXCOMM_COUNT}>
           <TrainingRow
             icon={<UserPlus size={17} color="#16A34A" strokeWidth={2} />}
             iconBackgroundColor="#F0FDF4"
@@ -194,38 +227,6 @@ export default function T360TrainingScreen() {
             onPress={() => router.push('/t360-training-excomm-manage-club-members')}
           />
           <TrainingRow
-            icon={<Calendar size={17} color="#0EA5E9" strokeWidth={2} />}
-            iconBackgroundColor="#F0F9FF"
-            title="Create & Manage Meeting"
-            description="Create, edit, modes, statuses, open limit, visibility, and roles."
-            onPress={() => router.push('/t360-training-excomm-manage-meetings')}
-          />
-          <TrainingRow
-            icon={<ListChecks size={17} color="#D97706" strokeWidth={2} />}
-            iconBackgroundColor="#FFFBEB"
-            title="Agenda Creator"
-            description="Visibility, layouts, auto fill, sharing, live updates, and FAQs."
-            onPress={() => router.push('/t360-training-excomm-agenda-creation')}
-          />
-          <TrainingRow
-            icon={<Vote size={17} color="#7C3AED" strokeWidth={2} />}
-            iconBackgroundColor="#F5F3FF"
-            title="Voting operations"
-            description="Fair, structured, anonymous voting from poll creation to results."
-            hideBottomBorder
-            onPress={() => router.push('/t360-training-excomm-voting-operations')}
-          />
-        </TrainingSection>
-
-        <TrainingSection label="Setting Up The Club" count={CLUB_OPS_COUNT}>
-          <TrainingRow
-            icon={<Info size={17} color="#334155" strokeWidth={2} />}
-            iconBackgroundColor="#F8FAFC"
-            title="Club Info"
-            description="Maintain official club details for members, guests, and the Club Tab."
-            onPress={() => router.push('/t360-training-club-info-admin')}
-          />
-          <TrainingRow
             icon={<Users size={17} color="#5B21B6" strokeWidth={2} />}
             iconBackgroundColor="#F5F3FF"
             title="Club ExComm"
@@ -233,12 +234,51 @@ export default function T360TrainingScreen() {
             onPress={() => router.push('/t360-training-club-excomm')}
           />
           <TrainingRow
-            icon={<Share2 size={17} color="#C026D3" strokeWidth={2} />}
-            iconBackgroundColor="#FDF4FF"
-            title="Club Social Media"
-            description="EXCOMM updates in Admin Panel, platforms, My Clubs visibility, auto-save."
+            icon={<Share2 size={17} color="#16A34A" strokeWidth={2} />}
+            iconBackgroundColor="#F0FDF4"
+            title="Share the App"
+            description="Share the T360 download link so members and guests can join your club."
             hideBottomBorder
-            onPress={() => router.push('/t360-training-club-social-media')}
+          />
+        </TrainingSection>
+
+        <TrainingSection label="Meeting Management" count={MEETING_MANAGEMENT_COUNT}>
+          <TrainingRow
+            icon={<Calendar size={17} color="#0EA5E9" strokeWidth={2} />}
+            iconBackgroundColor="#F0F9FF"
+            title="Create & Manage Meeting"
+            description="Create, edit, modes, statuses, open limit, visibility, and roles."
+            onPress={() => router.push('/t360-training-excomm-manage-meetings')}
+          />
+          <TrainingRow
+            icon={<History size={17} color="#0284C7" strokeWidth={2} />}
+            iconBackgroundColor="#F0F9FF"
+            title="Meeting History"
+            description="Completed meetings, agendas, role records, and historical club data."
+            hideBottomBorder
+            onPress={() => router.push('/t360-training-meeting-history')}
+          />
+        </TrainingSection>
+
+        <TrainingSection label="Meeting Agenda Automation" count={MEETING_AGENDA_AUTOMATION_COUNT}>
+          <TrainingRow
+            icon={<ListChecks size={17} color="#D97706" strokeWidth={2} />}
+            iconBackgroundColor="#FFFBEB"
+            title="Agenda Creator"
+            description="Visibility, layouts, auto fill, sharing, live updates, and FAQs."
+            hideBottomBorder
+            onPress={() => router.push('/t360-training-excomm-agenda-creation')}
+          />
+        </TrainingSection>
+
+        <TrainingSection label="Voting Management" count={VOTING_MANAGEMENT_COUNT}>
+          <TrainingRow
+            icon={<Vote size={17} color="#7C3AED" strokeWidth={2} />}
+            iconBackgroundColor="#F5F3FF"
+            title="Voting operations"
+            description="Fair, structured, anonymous voting from poll creation to results."
+            hideBottomBorder
+            onPress={() => router.push('/t360-training-excomm-voting-operations')}
           />
         </TrainingSection>
 
@@ -324,13 +364,6 @@ export default function T360TrainingScreen() {
         </TrainingSection>
 
         <TrainingSection label="Tab information" count={MEMBER_COUNT}>
-          <TrainingRow
-            icon={<History size={17} color="#0284C7" strokeWidth={2} />}
-            iconBackgroundColor="#F0F9FF"
-            title="Meeting History"
-            description="Completed meetings, agendas, role records, and historical club data."
-            onPress={() => router.push('/t360-training-meeting-history')}
-          />
           <TrainingRow
             icon={<User size={17} color="#BE185D" strokeWidth={2} />}
             iconBackgroundColor="#FDF2F8"

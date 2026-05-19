@@ -90,6 +90,7 @@ import { fetchClubHasCompletedMeeting } from '@/lib/clubTabLandingData';
 import {
   buildExcommOnboardingSectionAlerts,
   pickDailyExcommOnboardingInsights,
+  shouldSuppressExcommOnboardingMyTasksInsights,
   type ExcommOnboardingMyTasksSectionId,
 } from '@/lib/excommOnboardingHomeInsights';
 import {
@@ -1473,7 +1474,14 @@ export default function MyJourney() {
       setExcommOnboardingReady(false);
       return [];
     }
-    const progress = await fetchT360ClubOnboardingProgress(user.currentClubId, user.id);
+    const clubId = user.currentClubId;
+    if (await shouldSuppressExcommOnboardingMyTasksInsights(clubId)) {
+      setExcommOnboardingAlerts([]);
+      setExcommOnboardingReady(true);
+      return [];
+    }
+
+    const progress = await fetchT360ClubOnboardingProgress(clubId, user.id);
     const alerts = buildExcommOnboardingSectionAlerts(progress);
     setExcommOnboardingAlerts(alerts);
     setExcommOnboardingReady(true);

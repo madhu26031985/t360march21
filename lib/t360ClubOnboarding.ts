@@ -16,6 +16,8 @@ import { computeClubUserManagementOnboarding } from '@/lib/clubUserManagementOnb
 import { computeExcommClubOnboarding } from '@/lib/excommClubOnboarding';
 import {
   computeMeetingManagementOnboarding,
+  fetchAllClubMeetingRoles,
+  hasPreparedSpeechDetailsCaptured,
   type MeetingManagementOnboardingProgress,
 } from '@/lib/meetingManagementOnboarding';
 import {
@@ -27,18 +29,9 @@ import {
   type VotingOperationsOnboardingProgress,
 } from '@/lib/votingOperationsOnboarding';
 import {
-  getT360MyTasksUseCount,
-  getT360VpeSmartInsightUseCount,
-  hasT360AgendaAutofillUsed,
   hasT360AgendaBannerColorChanged,
-  hasT360AgendaSequenceUsed,
-  hasT360RoleMovedToAvailable,
-  hasT360RoleMovedToDeleted,
   hasT360ShareAppUsed,
-  hasT360VotingLinkShared,
 } from '@/lib/t360OnboardingLocalMarkers';
-import { computeSmartInsightsDataOnboarding } from '@/lib/smartInsightsDataOnboarding';
-
 export type T360OnboardingItem = {
   id: string;
   label: string;
@@ -108,7 +101,6 @@ function buildSections(input: {
   meetingManagement: MeetingManagementOnboardingProgress;
   meetingAgenda: MeetingAgendaOnboardingProgress;
   votingOperations: VotingOperationsOnboardingProgress;
-  smartInsightsData: ReturnType<typeof computeSmartInsightsDataOnboarding>;
 }): T360OnboardingSection[] {
   return [
     {
@@ -136,31 +128,22 @@ function buildSections(input: {
       id: 'user_management',
       title: 'Club user management',
       items: [
-        itemFromProgress('invites_total', '7 users invited', input.userManagement.invitesTotal),
-        itemFromProgress(
-          'invites_member',
-          '3 users with members roles invited',
-          input.userManagement.invitesMemberRole
-        ),
-        itemFromProgress(
-          'invites_excomm',
-          '2 users with excomm role invited',
-          input.userManagement.invitesExcommRole
-        ),
+        itemFromProgress('invites_member', '2 members invited', input.userManagement.invitesMemberRole),
+        itemFromProgress('invites_excomm', '1 ExComm invited', input.userManagement.invitesExcommRole),
         itemFromProgress(
           'invites_visiting_tm',
-          '1 visiting toastmaster invited',
+          '1 visiting Toastmaster invited',
           input.userManagement.invitesVisitingTm
         ),
         itemFromProgress('invites_guest', '1 guest invited', input.userManagement.invitesGuest),
-        itemFromProgress('joined_member', '2 members joined', input.userManagement.joinedMember),
-        itemFromProgress('joined_excomm', '2 excomms joined', input.userManagement.joinedExcomm),
+        itemFromProgress('joined_member', '2 members joined the club', input.userManagement.joinedMember),
+        itemFromProgress('joined_excomm', '1 ExComm joined the club', input.userManagement.joinedExcomm),
         itemFromProgress(
           'joined_visiting_tm',
-          '1 visiting toastmaster joined',
+          '1 visiting Toastmaster joined the club',
           input.userManagement.joinedVisitingTm
         ),
-        itemFromProgress('joined_guest', '1 guest joined', input.userManagement.joinedGuest),
+        itemFromProgress('joined_guest', '1 guest joined the club', input.userManagement.joinedGuest),
         itemFromProgress(
           'share_app_settings',
           'Used share app from settings',
@@ -184,12 +167,6 @@ function buildSections(input: {
       items: [
         itemFromProgress('agenda_created', 'Agenda created', input.meetingAgenda.agendaCreated),
         itemFromProgress('agenda_link_shared', 'Agenda link shared', input.meetingAgenda.agendaLinkShared),
-        itemFromProgress('agenda_auto_option', 'Auto option used', input.meetingAgenda.autoOptionUsed),
-        itemFromProgress(
-          'agenda_manage_sequence',
-          'Manage sequence used',
-          input.meetingAgenda.manageSequenceUsed
-        ),
         itemFromProgress(
           'agenda_banner_color',
           'Agenda banner color changed',
@@ -208,30 +185,7 @@ function buildSections(input: {
           '5 questions filled',
           input.votingOperations.fiveQuestionsFilled
         ),
-        itemFromProgress('voting_link_shared', 'Voting link shared', input.votingOperations.votingLinkShared),
         itemFromProgress('voting_closed', 'Voting closed', input.votingOperations.votingClosed),
-      ],
-    },
-    {
-      id: 'smart_insights_data',
-      title: 'Smart Insights & Data',
-      items: [
-        itemFromProgress(
-          'vpe_smart_insights_5',
-          'Smart Insights used 5 times by the VPE',
-          input.smartInsightsData.vpeSmartInsightsUsed
-        ),
-        itemFromProgress('my_tasks_10', 'My Tasks used 10 times', input.smartInsightsData.myTasksUsed),
-        itemFromProgress(
-          'attendance_marked_5',
-          'Attendance marked by 5 users',
-          input.smartInsightsData.attendanceMarkedByUsers
-        ),
-        itemFromProgress(
-          'role_completion_5',
-          'Role completion marked by 5 users',
-          input.smartInsightsData.roleCompletionMarkedByUsers
-        ),
       ],
     },
   ];
@@ -265,16 +219,6 @@ function buildMeetingManagementSection(
         { itemId: 'edit_meeting_once', label: 'Edit meeting used once', key: 'editMeetingUsedOnce' },
         { itemId: 'excomm_assigned_role', label: 'ExComm assigned a role', key: 'excommAssignedRole' },
         { itemId: 'excomm_reassigned_role', label: 'ExComm reassigned a role', key: 'excommReassignedRole' },
-        {
-          itemId: 'role_moved_deleted',
-          label: 'ExComm moved a role from Available to Deleted',
-          key: 'roleMovedToDeleted',
-        },
-        {
-          itemId: 'role_moved_available',
-          label: 'ExComm moved a role from Deleted to Available',
-          key: 'roleMovedToAvailable',
-        },
       ]),
       group('role_bookings', 'Role Bookings', [
         {
@@ -342,8 +286,6 @@ export const EMPTY_T360_CLUB_ONBOARDING: T360ClubOnboardingProgress = summarize(
     meetingManagement: computeMeetingManagementOnboarding({
       meetings: [],
       roles: [],
-      roleManuallyMovedToDeleted: false,
-      roleManuallyMovedToAvailable: false,
       timerReportCount: 0,
       grammarianReportPublished: false,
       ahCounterReportCount: 0,
@@ -355,27 +297,18 @@ export const EMPTY_T360_CLUB_ONBOARDING: T360ClubOnboardingProgress = summarize(
     meetingAgenda: computeMeetingAgendaOnboarding({
       agendaItemCount: 0,
       meetings: [],
-      agendaAutofillUsed: false,
-      agendaSequenceUsed: false,
       agendaBannerColorChanged: false,
     }),
     votingOperations: computeVotingOperationsOnboarding({
       pollCount: 0,
       distinctVoterCount: 0,
       distinctQuestionCount: 0,
-      votingLinkShared: false,
       pollClosedCount: 0,
-    }),
-    smartInsightsData: computeSmartInsightsDataOnboarding({
-      vpeSmartInsightUseCount: 0,
-      myTasksUseCount: 0,
-      attendanceMarkedMemberCount: 0,
-      roleCompletionMemberCount: 0,
     }),
   })
 );
 
-/** True when the current user created this club (show onboarding checklist). */
+/** True when the user may see the club onboarding checklist (creator or ExComm). */
 export async function shouldShowT360ClubOnboarding(
   clubId: string,
   userId: string
@@ -387,7 +320,17 @@ export async function shouldShowT360ClubOnboarding(
     .maybeSingle();
 
   if (error || !club) return false;
-  return club.created_by === userId;
+  if (club.created_by === userId) return true;
+
+  const { data: membership, error: membershipError } = await supabase
+    .from('app_club_user_relationship')
+    .select('role')
+    .eq('club_id', clubId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (membershipError || !membership) return false;
+  return membership.role === 'excomm';
 }
 
 /**
@@ -404,17 +347,9 @@ export async function fetchT360ClubOnboardingProgress(
     inviteRes,
     membersRes,
     meetingsRes,
-    rolesRes,
     pollsRes,
     shareAppUsed,
-    vpeSmartCount,
-    myTasksCount,
-    agendaAutofillUsed,
-    agendaSequenceUsed,
     agendaBannerChanged,
-    votingLinkShared,
-    roleMovedToDeleted,
-    roleMovedToAvailable,
   ] = await Promise.all([
     supabase
       .from('clubs')
@@ -471,22 +406,9 @@ export async function fetchT360ClubOnboardingProgress(
       .from('app_club_meeting')
       .select('id, created_at, updated_at, is_agenda_visible, club_info_banner_color')
       .eq('club_id', clubId),
-    supabase
-      .from('app_meeting_roles_management')
-      .select(
-        'role_name, assigned_user_id, booking_status, role_status, booked_at, created_at, updated_at, speech_title, is_completed'
-      )
-      .eq('club_id', clubId),
     supabase.from('polls').select('id, status').eq('club_id', clubId),
     hasT360ShareAppUsed(clubId, userId),
-    getT360VpeSmartInsightUseCount(clubId, userId),
-    getT360MyTasksUseCount(clubId, userId),
-    hasT360AgendaAutofillUsed(clubId, userId),
-    hasT360AgendaSequenceUsed(clubId, userId),
     hasT360AgendaBannerColorChanged(clubId, userId),
-    hasT360VotingLinkShared(clubId, userId),
-    hasT360RoleMovedToDeleted(clubId, userId),
-    hasT360RoleMovedToAvailable(clubId, userId),
   ]);
 
   const club = clubRes.data;
@@ -498,7 +420,7 @@ export async function fetchT360ClubOnboardingProgress(
 
   const members = membersRes.data ?? [];
   const meetings = meetingsRes.data ?? [];
-  const roles = rolesRes.data ?? [];
+  const roles = await fetchAllClubMeetingRoles(clubId);
   const meetingIds = meetings.map((m) => m.id);
   const polls = pollsRes.data ?? [];
   const pollIds = polls.map((p) => p.id);
@@ -515,7 +437,7 @@ export async function fetchT360ClubOnboardingProgress(
     toastmasterThemesRes,
     tableTopicsRes,
     grammarianWordsRes,
-    attendanceSnapshotsRes,
+    evaluationPathwayRes,
   ] = await Promise.all([
     meetingIds.length > 0
       ? supabase
@@ -562,26 +484,24 @@ export async function fetchT360ClubOnboardingProgress(
       ? supabase.from('table_topic_master_questions').select('id').in('meeting_id', meetingIds).limit(1)
       : Promise.resolve({ data: [] as { id: string }[] }),
     supabase.from('grammarian_word_of_the_day').select('word').eq('club_id', clubId),
-    supabase
-      .from('meeting_attendance_snapshots')
-      .select('user_id, attendance_marked_by')
-      .eq('club_id', clubId)
-      .not('attendance_marked_by', 'is', null),
+    meetingIds.length > 0
+      ? supabase
+          .from('app_evaluation_pathway')
+          .select(
+            'role_name, speech_title, pathway_name, project_name, level, evaluation_form, comments_for_evaluator'
+          )
+          .in('meeting_id', meetingIds)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ]);
 
   const invites = inviteRes.data ?? [];
   const userManagement = computeClubUserManagementOnboarding(invites, members, shareAppUsed);
   const excommManagement = computeExcommClubOnboarding(profileSetup);
 
-  const preparedSpeechDetailsUpdated = roles.some((r) => {
-    const name = (r.role_name ?? '').toLowerCase();
-    return (
-      name.includes('prepared') &&
-      name.includes('speaker') &&
-      typeof r.speech_title === 'string' &&
-      r.speech_title.trim().length > 0
-    );
-  });
+  const preparedSpeechDetailsUpdated = hasPreparedSpeechDetailsCaptured(
+    roles,
+    evaluationPathwayRes.data ?? []
+  );
 
   const toastmasterThemeUpdated = (toastmasterThemesRes.data ?? []).some(
     (row) => typeof row.theme_of_the_day === 'string' && row.theme_of_the_day.trim().length > 0
@@ -599,8 +519,6 @@ export async function fetchT360ClubOnboardingProgress(
   const meetingManagement = computeMeetingManagementOnboarding({
     meetings,
     roles,
-    roleManuallyMovedToDeleted: roleMovedToDeleted,
-    roleManuallyMovedToAvailable: roleMovedToAvailable,
     timerReportCount: timerReportRes.count ?? 0,
     grammarianReportPublished,
     ahCounterReportCount: ahCounterReportRes.count ?? 0,
@@ -610,29 +528,9 @@ export async function fetchT360ClubOnboardingProgress(
     tableTopicsQuestionsUpdated: (tableTopicsRes.data ?? []).length > 0,
   });
 
-  const attendanceMarkedMemberCount = new Set(
-    (attendanceSnapshotsRes.data ?? []).map((row) => row.user_id).filter(Boolean)
-  ).size;
-
-  const roleCompletionMemberCount = new Set(
-    roles
-      .filter((r) => r.is_completed && r.assigned_user_id)
-      .map((r) => r.assigned_user_id)
-      .filter(Boolean)
-  ).size;
-
-  const smartInsightsData = computeSmartInsightsDataOnboarding({
-    vpeSmartInsightUseCount: vpeSmartCount,
-    myTasksUseCount: myTasksCount,
-    attendanceMarkedMemberCount,
-    roleCompletionMemberCount,
-  });
-
   const meetingAgenda = computeMeetingAgendaOnboarding({
     agendaItemCount: agendaItemsRes.count ?? 0,
     meetings,
-    agendaAutofillUsed,
-    agendaSequenceUsed,
     agendaBannerColorChanged: agendaBannerChanged,
   });
 
@@ -648,7 +546,6 @@ export async function fetchT360ClubOnboardingProgress(
     pollCount: polls.length,
     distinctVoterCount,
     distinctQuestionCount,
-    votingLinkShared,
     pollClosedCount: polls.filter((p) => p.status === 'completed').length,
   });
 
@@ -662,7 +559,6 @@ export async function fetchT360ClubOnboardingProgress(
       meetingManagement,
       meetingAgenda,
       votingOperations,
-      smartInsightsData,
     })
   );
 }
