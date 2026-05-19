@@ -610,12 +610,12 @@ export default function InviteNewUser() {
             <ArrowLeft size={22} color={N.iconMuted} strokeWidth={2} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-            Invite Club User
+            Invite Club Users
           </Text>
           <TouchableOpacity
             style={styles.headerHelpButton}
             onPress={() => openTrainingKbFromCurrentScreen('/t360-training-excomm-invite-members')}
-            accessibilityLabel="Invite Club User help"
+            accessibilityLabel="Invite Club Users help"
             accessibilityRole="button"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >

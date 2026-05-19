@@ -690,10 +690,10 @@ export default function CreateMeeting() {
               <CheckCircle size={36} color="#2e7d32" />
             </View>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Meeting Created!
+              Meeting successfully created
             </Text>
             <Text style={[styles.modalBody, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              Your meeting has been created successfully.
+              Club users will be able to access the meeting from both Home tab and Meeting tab.
             </Text>
             <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: theme.colors.primary }]}
@@ -702,8 +702,37 @@ export default function CreateMeeting() {
                 router.replace('/admin/meeting-management');
               }}
             >
-              <Text style={styles.modalButtonText} maxFontSizeMultiplier={1.3}>Go to Create and Manage Meetings</Text>
+              <Text style={styles.modalButtonText} maxFontSizeMultiplier={1.3}>
+                Go to create and manage meeting tab
+              </Text>
+              <Text style={styles.modalButtonHint} maxFontSizeMultiplier={1.2}>
+                If you want to make changes
+              </Text>
             </TouchableOpacity>
+            <View style={styles.modalTabButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalTabButton, { borderColor: theme.colors.border }]}
+                onPress={() => {
+                  setShowSuccessModal(false);
+                  router.replace('/(tabs)');
+                }}
+              >
+                <Text style={[styles.modalTabButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Home tab
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalTabButton, { borderColor: theme.colors.border }]}
+                onPress={() => {
+                  setShowSuccessModal(false);
+                  router.replace('/(tabs)/meetings');
+                }}
+              >
+                <Text style={[styles.modalTabButtonText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+                  Meeting tab
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -905,18 +934,45 @@ const styles = StyleSheet.create({
   modalBody: {
     fontSize: 15,
     textAlign: 'center',
-    marginBottom: 28,
+    marginBottom: 20,
     lineHeight: 22,
   },
   modalButton: {
     width: '100%',
     paddingVertical: 14,
+    paddingHorizontal: 12,
     borderRadius: 10,
     alignItems: 'center',
+    marginBottom: 12,
   },
   modalButtonText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  modalButtonHint: {
+    color: 'rgba(255, 255, 255, 0.88)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  modalTabButtonRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+  },
+  modalTabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTabButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

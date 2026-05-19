@@ -17,7 +17,7 @@ const FS = 0.9;
 const NAVY = '#0F2942';
 const NAVY_ACCENT = '#1E40AF';
 
-const PATH_LINE = 'Admin Panel - Invite Club User - Invite Club User';
+const PATH_LINE = 'Admin Panel - Invite Club Users - Invite Club Users';
 
 const ROLE_CARDS: { title: string; body: string }[] = [
   { title: 'Member', body: 'A paid Toastmaster and member of your club.' },
@@ -48,7 +48,7 @@ const SEND_BEFORE_BULLETS = [
 const FAQS: { q: string; a: string }[] = [
   {
     q: 'Who can send invitations?',
-    a: 'Only authorized ExCom users can invite members from Invite Club User.',
+    a: 'Only authorized ExCom users can invite members from Invite Club Users.',
   },
   {
     q: 'Which roles can I assign when inviting?',
@@ -101,7 +101,7 @@ export default function T360TrainingExcommInviteMembersScreen() {
           <ArrowLeft size={Math.round(22 * FS)} color={N.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} maxFontSizeMultiplier={1.3}>
-          Invite Club User
+          Invite Club Users
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -120,7 +120,7 @@ export default function T360TrainingExcommInviteMembersScreen() {
           </View>
 
           <Text style={styles.docTitle} maxFontSizeMultiplier={1.35}>
-            Invite Club User
+            Invite Club Users
           </Text>
           <Text style={styles.lead} maxFontSizeMultiplier={1.3}>
             Onboard members, guests, ExCom members, visiting Toastmasters, and club leaders so they can access club
@@ -153,7 +153,7 @@ export default function T360TrainingExcommInviteMembersScreen() {
               </Text>
             </View>
             <Text style={styles.overviewBody} maxFontSizeMultiplier={1.25}>
-              The Invite Club User section allows ExCom users to invite members, guests, ExCom members, visiting
+              The Invite Club Users section allows ExCom users to invite members, guests, ExCom members, visiting
               Toastmasters, and club leaders to join the club in T360. Once invited, the person receives an email
               invitation. After accepting and signing in to T360, they can access the club and all related content from
               the app.
@@ -178,7 +178,7 @@ export default function T360TrainingExcommInviteMembersScreen() {
                 </Text>
               </View>
               <Text style={styles.lifecycleTitleNavy} maxFontSizeMultiplier={1.25}>
-                Navigate to Invite Club User
+                Navigate to Invite Club Users
               </Text>
             </View>
             <View style={styles.lifecycleBodyPad}>

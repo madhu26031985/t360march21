@@ -102,7 +102,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'Can I invite members from the Admin tab?',
-    a: 'Yes. Use Invite New Club Members to add members and assign roles.',
+    a: 'Yes. Use Invite Club Users to add members and assign roles.',
   },
   {
     q: 'Can I manage meetings here?',
@@ -249,7 +249,7 @@ export default function T360TrainingAdminOverviewScreen() {
           </Text>
 
           <Text style={styles.featureHeading} maxFontSizeMultiplier={1.25}>
-            👥 Invite New Club Members
+            👥 Invite Club Users
           </Text>
           <Text style={styles.body} maxFontSizeMultiplier={1.25}>
             Quickly invite members to join your club.

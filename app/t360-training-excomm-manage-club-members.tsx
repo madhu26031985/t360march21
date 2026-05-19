@@ -47,7 +47,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'Can a removed user be re-invited to the club?',
-    a: 'Yes. A removed user can be re-invited at any time using Invite Club User under the Admin Panel.',
+    a: 'Yes. A removed user can be re-invited at any time using Invite Club Users under the Admin Panel.',
   },
   {
     q: 'Where can I see all current club members and their roles?',

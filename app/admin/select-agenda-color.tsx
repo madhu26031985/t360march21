@@ -12,6 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, Check } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { markT360AgendaBannerColorChanged } from '@/lib/t360OnboardingLocalMarkers';
 import { supabase } from '@/lib/supabase';
 
 type ColorType = 'club_info' | 'datetime' | 'footer1' | 'footer2';
@@ -31,6 +33,7 @@ const BASIC_COLORS = [
 
 export default function SelectAgendaColorScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{
     meetingId: string;
     colorType: ColorType;
@@ -73,6 +76,10 @@ export default function SelectAgendaColorScreen() {
         .eq('id', params.meetingId);
 
       if (error) throw error;
+
+      if (user?.currentClubId && user?.id) {
+        await markT360AgendaBannerColorChanged(user.currentClubId, user.id);
+      }
 
       router.back();
     } catch (error) {

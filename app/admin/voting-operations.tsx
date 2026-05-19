@@ -23,6 +23,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
 import { buildPublicVoteUrl } from '@/lib/publicVoteLinks';
+import { markT360VotingLinkShared } from '@/lib/t360OnboardingLocalMarkers';
 import { ArrowLeft, Plus, Vote, Calendar, Users, X, Save, Trash2, ChartBar as BarChart3, Building2, Crown, User, Shield, Eye, UserCheck, Search, Sparkles, Share2, Info } from 'lucide-react-native';
 
 /** Notion-like palette: flat surfaces, hairline borders, muted text, accent blue (aligned with Book a Role primary chips). */
@@ -713,6 +714,10 @@ export default function VotingOperations() {
     if (!poll.public_token || poll.is_public === false) {
       Alert.alert('Link unavailable', 'This poll does not have a public voting link yet.');
       return;
+    }
+
+    if (user?.currentClubId && user?.id) {
+      void markT360VotingLinkShared(user.currentClubId, user.id);
     }
 
     const url = buildPublicVoteUrl({

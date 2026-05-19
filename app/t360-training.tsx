@@ -161,7 +161,7 @@ export default function T360TrainingScreen() {
             </Text>
           </View>
           <Text style={styles.heroTitle} maxFontSizeMultiplier={1.35}>
-            T360 training
+            T360 User Guide
           </Text>
           <Text style={styles.heroSubtitle} maxFontSizeMultiplier={1.3}>
             Step-by-step guides for ExComm leadership and everyday club participation — open any topic to learn how
@@ -182,7 +182,7 @@ export default function T360TrainingScreen() {
           <TrainingRow
             icon={<UserPlus size={17} color="#16A34A" strokeWidth={2} />}
             iconBackgroundColor="#F0FDF4"
-            title="Invite New Club Members"
+            title="Invite Club Users"
             description="Who can invite, roles, sending invites, and what invitees do next."
             onPress={() => router.push('/t360-training-excomm-invite-members')}
           />

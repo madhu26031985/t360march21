@@ -184,7 +184,7 @@ export default function AdminPanel() {
         return;
       }
 
-      const progress = await fetchT360ClubOnboardingProgress(clubId);
+      const progress = await fetchT360ClubOnboardingProgress(clubId, userId);
       setOnboardingProgress(progress);
       setShouldShowOnboarding(!progress.isComplete);
     } catch (e) {
@@ -289,7 +289,7 @@ export default function AdminPanel() {
       ? [
           {
             key: 'invite-club-users',
-            label: 'Invite Club User',
+            label: 'Invite Club Users',
             icon: <UserPlus size={18} color="#16A34A" strokeWidth={1.75} />,
             iconBackgroundColor: '#ECFDF5',
             onPress: () => router.push('/admin/invite-new-user'),

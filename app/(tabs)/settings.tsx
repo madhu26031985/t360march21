@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { markT360ShareAppUsed } from '@/lib/t360OnboardingLocalMarkers';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import {
@@ -164,6 +165,10 @@ export default function Settings() {
   const themedIcon = (Icon: typeof User, color: string, size = 18) => <Icon size={size} color={color} strokeWidth={1.75} />;
 
   const handleShareApp = async () => {
+    if (user?.currentClubId && user?.id) {
+      await markT360ShareAppUsed(user.currentClubId, user.id);
+    }
+
     try {
       const message = `Welcome to the T360 App! 👋
 

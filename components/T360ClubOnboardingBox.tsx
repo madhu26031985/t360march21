@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { router } from 'expo-router';
 import { ChevronDown, ChevronRight } from 'lucide-react-native';
-import type { T360ClubOnboardingProgress } from '@/lib/t360ClubOnboarding';
+import { sectionItems, type T360ClubOnboardingProgress } from '@/lib/t360ClubOnboarding';
 
 const N = {
   page: '#FBFBFA',
@@ -28,14 +29,22 @@ export default function T360ClubOnboardingBox({ progress, loading }: Props) {
     create_club: true,
     setting_up: true,
     user_management: false,
+    manage_club_excomm: false,
     meeting_management: false,
+    meeting_agenda: false,
+    voting_operations: false,
+    smart_insights_data: false,
   });
 
   const sectionStats = useMemo(
     () =>
       progress.sections.map((section) => {
-        const done = section.items.filter((i) => i.done).length;
-        return { done, total: section.items.length };
+        const items = sectionItems(section);
+        const tasksDone = items.filter((i) => i.done).length;
+        const tasksTotal = items.length;
+        const percent =
+          tasksTotal === 0 ? 0 : Math.round((tasksDone / tasksTotal) * 100);
+        return { tasksDone, tasksTotal, percent };
       }),
     [progress.sections]
   );
@@ -52,7 +61,7 @@ export default function T360ClubOnboardingBox({ progress, loading }: Props) {
             {progress.percent}%
           </Text>
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={styles.headerTextCol}>
           <Text style={[styles.title, { color: N.text }]} maxFontSizeMultiplier={1.2}>
             T360 onboarding
           </Text>
@@ -62,6 +71,17 @@ export default function T360ClubOnboardingBox({ progress, loading }: Props) {
               : `${progress.completedCount} of ${progress.totalCount} tasks complete`}
           </Text>
         </View>
+        <TouchableOpacity
+          style={[styles.guideButton, { backgroundColor: N.accentSoft, borderColor: N.accentSoftBorder }]}
+          onPress={() => router.push('/t360-training')}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel="Open T360 User Guide onboarding guide"
+        >
+          <Text style={[styles.guideButtonText, { color: N.accent }]} maxFontSizeMultiplier={1.15}>
+            Onboarding guide
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <View style={[styles.progressTrack, { backgroundColor: N.border }]}>
@@ -77,9 +97,9 @@ export default function T360ClubOnboardingBox({ progress, loading }: Props) {
       </View>
 
       {progress.sections.map((section, sectionIndex) => {
-        const { done, total } = sectionStats[sectionIndex];
+        const { tasksDone, tasksTotal, percent } = sectionStats[sectionIndex];
         const isOpen = expanded[section.id] ?? false;
-        const sectionComplete = done === total && total > 0;
+        const sectionComplete = tasksDone === tasksTotal && tasksTotal > 0;
 
         return (
           <View key={section.id} style={[styles.sectionBlock, { borderTopColor: N.border }]}>
@@ -102,44 +122,97 @@ export default function T360ClubOnboardingBox({ progress, loading }: Props) {
               >
                 {section.title}
               </Text>
-              <Text style={[styles.sectionCount, { color: N.textTertiary }]} maxFontSizeMultiplier={1.2}>
-                {done}/{total}
-              </Text>
+              <View style={styles.sectionCountWrap}>
+                <Text
+                  style={[
+                    styles.sectionCount,
+                    { color: sectionComplete ? N.success : N.textTertiary },
+                  ]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {tasksDone}/{tasksTotal}
+                </Text>
+                <Text
+                  style={[
+                    styles.sectionPercent,
+                    { color: sectionComplete ? N.success : N.textTertiary },
+                  ]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {percent}%
+                </Text>
+              </View>
             </TouchableOpacity>
 
             {isOpen
-              ? section.items.map((item) => (
-                  <View key={item.id} style={styles.itemRow}>
-                    <View
-                      style={[
-                        styles.check,
-                        item.done
-                          ? { backgroundColor: N.success }
-                          : { backgroundColor: N.surface, borderWidth: 1, borderColor: N.borderStrong },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.checkText,
-                          { color: item.done ? N.surface : N.textTertiary },
-                        ]}
-                        maxFontSizeMultiplier={1.2}
-                      >
-                        {item.done ? '✓' : ''}
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.itemLabel,
-                        { color: item.done ? N.textSecondary : N.text },
-                        item.done && styles.itemLabelDone,
-                      ]}
-                      maxFontSizeMultiplier={1.2}
-                    >
-                      {item.label}
-                    </Text>
-                  </View>
-                ))
+              ? (section.groups?.length
+                  ? section.groups.map((group) => (
+                      <View key={group.id} style={styles.groupBlock}>
+                        <Text style={[styles.groupTitle, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                          {group.title}
+                        </Text>
+                        {group.items.map((item) => (
+                          <View key={item.id} style={styles.itemRow}>
+                            <View
+                              style={[
+                                styles.check,
+                                item.done
+                                  ? { backgroundColor: N.success }
+                                  : {
+                                      backgroundColor: N.surface,
+                                      borderWidth: 1,
+                                      borderColor: N.borderStrong,
+                                    },
+                              ]}
+                            >
+                              <Text
+                                style={[styles.checkText, { color: item.done ? N.surface : N.textTertiary }]}
+                                maxFontSizeMultiplier={1.2}
+                              >
+                                {item.done ? '✓' : ''}
+                              </Text>
+                            </View>
+                            <Text
+                              style={[styles.itemLabel, { color: item.done ? N.success : N.text }]}
+                              maxFontSizeMultiplier={1.2}
+                            >
+                              {item.label}{' '}
+                              <Text style={[styles.itemProgress, { color: N.textTertiary }]}>
+                                ({item.fieldsDone}/{item.fieldsTotal})
+                              </Text>
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    ))
+                  : section.items.map((item) => (
+                      <View key={item.id} style={styles.itemRow}>
+                        <View
+                          style={[
+                            styles.check,
+                            item.done
+                              ? { backgroundColor: N.success }
+                              : { backgroundColor: N.surface, borderWidth: 1, borderColor: N.borderStrong },
+                          ]}
+                        >
+                          <Text
+                            style={[styles.checkText, { color: item.done ? N.surface : N.textTertiary }]}
+                            maxFontSizeMultiplier={1.2}
+                          >
+                            {item.done ? '✓' : ''}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[styles.itemLabel, { color: item.done ? N.success : N.text }]}
+                          maxFontSizeMultiplier={1.2}
+                        >
+                          {item.label}{' '}
+                          <Text style={[styles.itemProgress, { color: N.textTertiary }]}>
+                            ({item.fieldsDone}/{item.fieldsTotal})
+                          </Text>
+                        </Text>
+                      </View>
+                    )))
               : null}
           </View>
         );
@@ -158,9 +231,26 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
     gap: 12,
+  },
+  headerTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  guideButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+  },
+  guideButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: -0.1,
   },
   badge: {
     minWidth: 44,
@@ -201,6 +291,18 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     marginTop: 4,
   },
+  groupBlock: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  groupTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.02,
+    marginBottom: 4,
+    paddingLeft: 24,
+    textTransform: 'uppercase',
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -213,9 +315,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: -0.15,
   },
+  sectionCountWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   sectionCount: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  sectionPercent: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   itemRow: {
     flexDirection: 'row',
@@ -241,8 +352,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     letterSpacing: -0.1,
+    fontWeight: '500',
   },
-  itemLabelDone: {
-    textDecorationLine: 'line-through',
+  itemProgress: {
+    fontWeight: '400',
   },
 });

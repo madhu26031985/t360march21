@@ -12,7 +12,8 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import ClubProfileIncompleteModal from '@/components/ClubProfileIncompleteModal';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Building2,
@@ -61,6 +62,15 @@ import {
   shouldBackgroundRefreshClubTab,
   writeClubTabSession,
 } from '@/lib/clubTabSessionCache';
+import {
+  formatClubProfileIncompleteMessage,
+  getMissingClubProfileSections,
+} from '@/lib/clubProfileCompleteness';
+import { isUserExComm } from '@/lib/excommAccess';
+import {
+  recordClubProfileIncompletePromptShown,
+  shouldShowClubProfileIncompletePrompt,
+} from '@/lib/clubProfilePromptSchedule';
 import { DEFAULT_TOASTMASTERS_CLUB_MISSION } from '@/lib/defaultClubMission';
 import { avatarUrlForDisplay } from '@/lib/avatarDisplayUrl';
 import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
@@ -3334,6 +3344,53 @@ export default function MyClub() {
     router.push(featurePath as any);
   };
 
+  const isExComm = useMemo(() => isUserExComm(user), [user]);
+
+  const [profileIncompleteModalVisible, setProfileIncompleteModalVisible] = useState(false);
+  const [profileIncompleteMessage, setProfileIncompleteMessage] = useState('');
+  const profilePromptDismissedThisFocusRef = useRef(false);
+  const profilePromptAttemptedThisFocusRef = useRef(false);
+
+  const tryShowProfileIncompleteModal = useCallback(async () => {
+    if (!bundle || landingLoading || !isExComm || !user?.currentClubId || !user?.id) return;
+    if (profilePromptDismissedThisFocusRef.current || profilePromptAttemptedThisFocusRef.current) {
+      return;
+    }
+
+    const missing = getMissingClubProfileSections(bundle);
+    if (missing.length === 0) return;
+
+    profilePromptAttemptedThisFocusRef.current = true;
+
+    const allowed = await shouldShowClubProfileIncompletePrompt(user.currentClubId, user.id);
+    if (!allowed) return;
+
+    setProfileIncompleteMessage(formatClubProfileIncompleteMessage(missing));
+    setProfileIncompleteModalVisible(true);
+    void recordClubProfileIncompletePromptShown(user.currentClubId, user.id);
+  }, [bundle, landingLoading, isExComm, user?.currentClubId, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      profilePromptDismissedThisFocusRef.current = false;
+      profilePromptAttemptedThisFocusRef.current = false;
+      const delayMs = Platform.OS === 'web' ? 400 : 0;
+      const timer = setTimeout(() => {
+        void tryShowProfileIncompleteModal();
+      }, delayMs);
+      return () => clearTimeout(timer);
+    }, [tryShowProfileIncompleteModal, user?.currentClubId])
+  );
+
+  useEffect(() => {
+    if (landingLoading || !bundle) return;
+    const delayMs = Platform.OS === 'web' ? 400 : 0;
+    const timer = setTimeout(() => {
+      void tryShowProfileIncompleteModal();
+    }, delayMs);
+    return () => clearTimeout(timer);
+  }, [bundle, landingLoading, tryShowProfileIncompleteModal]);
+
   const socialLinks = useMemo(() => {
     const links: { key: string; label: string; url: string }[] = [];
     if (!social) return links;
@@ -3808,6 +3865,19 @@ export default function MyClub() {
           </View>
         )}
       </ScrollView>
+      <ClubProfileIncompleteModal
+        visible={profileIncompleteModalVisible}
+        message={profileIncompleteMessage}
+        onLater={() => {
+          profilePromptDismissedThisFocusRef.current = true;
+          setProfileIncompleteModalVisible(false);
+        }}
+        onOpenAdmin={() => {
+          profilePromptDismissedThisFocusRef.current = true;
+          setProfileIncompleteModalVisible(false);
+          router.push('/admin');
+        }}
+      />
     </SafeAreaView>
   );
 }

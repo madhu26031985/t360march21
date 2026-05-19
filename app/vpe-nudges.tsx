@@ -49,6 +49,7 @@ import {
   type EvaluationPathwaySpeechRow,
 } from '@/lib/vpePreparedSpeakerNudge';
 import { fetchVpeNudgesSnapshot, vpeNudgesQueryKeys } from '@/lib/vpeNudgesSnapshot';
+import { incrementT360VpeSmartInsightUse } from '@/lib/t360OnboardingLocalMarkers';
 import { supabase } from '@/lib/supabase';
 
 const VPE_CARD_SUBTITLE = 'Nudge members to book the role';
@@ -676,6 +677,9 @@ export default function VPENudgesScreen() {
    * Open WhatsApp directly with the prefilled text so VPE can send to any contact/group.
    */
   const shareWhatsApp = useCallback(async (text: string) => {
+    if (user?.currentClubId && user?.id) {
+      void incrementT360VpeSmartInsightUse(user.currentClubId, user.id);
+    }
     try {
       await Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`);
     } catch {
@@ -684,7 +688,7 @@ export default function VPENudgesScreen() {
         'Could not open WhatsApp. Use Copy and paste into WhatsApp.'
       );
     }
-  }, []);
+  }, [user?.currentClubId, user?.id]);
 
   useEffect(() => {
     const q = params.quickShare;

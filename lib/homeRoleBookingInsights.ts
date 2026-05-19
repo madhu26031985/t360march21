@@ -46,8 +46,11 @@ function formatRecencyLabel(category: InsightCategory, meetingDate: string): str
 /** Four insights for today: count + recency for each of the two daily roles. */
 export function buildHomeRoleBookingInsights(
   map: MyRoleInsightsMap,
-  date: Date = new Date()
+  date: Date = new Date(),
+  clubHasCompletedMeeting = false
 ): HomeRoleBookingInsight[] {
+  if (!clubHasCompletedMeeting) return [];
+
   const pair = HOME_DAILY_ROLE_PAIRS[getHomeRolePairDayIndex(date)];
   const out: HomeRoleBookingInsight[] = [];
 

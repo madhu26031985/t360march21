@@ -39,24 +39,106 @@ const SOCIAL_URL_FIELDS = [
   'website_url',
 ] as const;
 
+/** Default FAQ entries seeded for every club (`default_club_faq_seed_json`). */
+export const CLUB_FAQ_DEFAULT_ITEM_COUNT = 50;
+
 export type ClubFaqSetupRow = {
+  question?: string | null;
+  answer?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
+
+export type FieldProgress = { done: number; total: number };
 
 function filled(value: string | null | undefined): boolean {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-/** Club Info tab — mission, status, type, banner colour (name/number/charter are read-only). */
-export function isClubInfoTabComplete(profile: ClubProfileSetupFields | null | undefined): boolean {
-  if (!profile) return false;
-  return (
-    filled(profile.club_mission) &&
-    filled(profile.club_status) &&
-    filled(profile.club_type) &&
-    filled(profile.banner_color)
-  );
+function countProfileFields(
+  profile: ClubProfileSetupFields | null | undefined,
+  keys: readonly (keyof ClubProfileSetupFields)[]
+): FieldProgress {
+  const total = keys.length;
+  if (!profile || total === 0) return { done: 0, total };
+  const done = keys.filter((key) => filled(profile[key] as string | null | undefined)).length;
+  return { done, total };
+}
+
+function cappedProgress(done: number, total: number): FieldProgress {
+  return { done: Math.min(Math.max(0, done), total), total };
+}
+
+export function clubNameProgress(club: { name?: string | null } | null | undefined): FieldProgress {
+  return { done: filled(club?.name) ? 1 : 0, total: 1 };
+}
+
+export function clubCharterDateProgress(club: { charter_date?: string | null } | null | undefined): FieldProgress {
+  return { done: filled(club?.charter_date) ? 1 : 0, total: 1 };
+}
+
+export function clubNumberProgress(club: { club_number?: string | null } | null | undefined): FieldProgress {
+  return { done: filled(club?.club_number) ? 1 : 0, total: 1 };
+}
+
+/** Club Info tab — 7 fields (3 read-only on `clubs` + 4 on `club_profiles`; 6 typically filled at creation). */
+export function clubInfoTabProgress(
+  club: { name?: string | null; club_number?: string | null; charter_date?: string | null } | null | undefined,
+  profile: ClubProfileSetupFields | null | undefined
+): FieldProgress {
+  const total = 7;
+  let done = 0;
+  if (filled(club?.name)) done += 1;
+  if (filled(club?.club_number)) done += 1;
+  if (filled(club?.charter_date)) done += 1;
+  if (filled(profile?.club_mission)) done += 1;
+  if (filled(profile?.club_status)) done += 1;
+  if (filled(profile?.club_type)) done += 1;
+  if (filled(profile?.banner_color)) done += 1;
+  return { done, total };
+}
+
+export function clubLocationTabProgress(profile: ClubProfileSetupFields | null | undefined): FieldProgress {
+  return countProfileFields(profile, [
+    'country',
+    'time_zone',
+    'address',
+    'city',
+    'google_location_link',
+  ]);
+}
+
+export function clubMoreDetailsTabProgress(profile: ClubProfileSetupFields | null | undefined): FieldProgress {
+  return countProfileFields(profile, ['region', 'district', 'division', 'area']);
+}
+
+export function clubMeetingDetailsTabProgress(profile: ClubProfileSetupFields | null | undefined): FieldProgress {
+  return countProfileFields(profile, [
+    'meeting_day',
+    'meeting_frequency',
+    'meeting_start_time',
+    'meeting_end_time',
+    'meeting_type',
+  ]);
+}
+
+export function clubSocialMediaProgress(profile: ClubProfileSetupFields | null | undefined): FieldProgress {
+  return countProfileFields(profile, SOCIAL_URL_FIELDS);
+}
+
+/** Club FAQ — 50 default Q&A rows; each counts when question and answer are filled. */
+export function clubFaqProgress(rows: ClubFaqSetupRow[]): FieldProgress {
+  const filledCount = rows.filter((row) => filled(row.question) && filled(row.answer)).length;
+  return cappedProgress(filledCount, CLUB_FAQ_DEFAULT_ITEM_COUNT);
+}
+
+/** Club Info tab — all 7 fields filled (mission is the usual remaining item). */
+export function isClubInfoTabComplete(
+  club: { name?: string | null; club_number?: string | null; charter_date?: string | null } | null | undefined,
+  profile: ClubProfileSetupFields | null | undefined
+): boolean {
+  const p = clubInfoTabProgress(club, profile);
+  return p.done === p.total;
 }
 
 /** Club Location tab — country, time zone, address, city, map link. */
@@ -102,9 +184,8 @@ export function isClubSocialMediaComplete(profile: ClubProfileSetupFields | null
 
 /** Club FAQ — defaults loaded and at least one entry saved after review/edit. */
 export function isClubFaqComplete(rows: ClubFaqSetupRow[]): boolean {
-  if (rows.length === 0) return false;
-  return rows.some((row) => {
-    if (!row.updated_at || !row.created_at) return false;
-    return Math.abs(new Date(row.updated_at).getTime() - new Date(row.created_at).getTime()) > 60_000;
-  });
+  const p = clubFaqProgress(rows);
+  return p.total > 0 && p.done === p.total;
 }
+
+export { cappedProgress };

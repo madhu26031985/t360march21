@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -81,6 +81,7 @@ export function ClubMeetingDetailsContent({
   const [showStartTimeModal, setShowStartTimeModal] = useState(false);
   const [showEndTimeModal, setShowEndTimeModal] = useState(false);
   const [tempSelectedType, setTempSelectedType] = useState<string | null>(null);
+  const lastSavedSnapshotRef = useRef('');
 
   const dayOptions = [
     { value: 'Monday', label: 'Monday' },
@@ -106,6 +107,10 @@ export function ClubMeetingDetailsContent({
   ];
 
   useEffect(() => {
+    lastSavedSnapshotRef.current = '';
+  }, [user?.currentClubId]);
+
+  useEffect(() => {
     if (!user?.currentClubId) {
       setIsLoading(false);
       return;
@@ -122,6 +127,126 @@ export function ClubMeetingDetailsContent({
     }
     void loadClubMeetingDetails();
   }, [user?.currentClubId, embedded, prefetchedMeetingDetails]);
+
+  const getMeetingUpdatePayload = useCallback(
+    () => ({
+      meeting_day: meetingDetails.meeting_day || null,
+      meeting_frequency: meetingDetails.meeting_frequency || null,
+      meeting_start_time: meetingDetails.meeting_start_time || null,
+      meeting_end_time: meetingDetails.meeting_end_time || null,
+      meeting_type: meetingDetails.meeting_type || null,
+    }),
+    [meetingDetails]
+  );
+
+  const persistMeetingDetails = useCallback(
+    async (options?: { showSuccessAlert?: boolean }): Promise<boolean> => {
+      if (!user?.currentClubId) return false;
+
+      const { meeting_start_time, meeting_end_time } = meetingDetails;
+      if (
+        meeting_end_time &&
+        meeting_start_time &&
+        meeting_end_time <= meeting_start_time
+      ) {
+        return false;
+      }
+
+      setIsSaving(true);
+
+      try {
+        const updateData = {
+          ...getMeetingUpdatePayload(),
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: existingProfile, error: checkError } = await supabase
+          .from('club_profiles')
+          .select('id')
+          .eq('club_id', user.currentClubId)
+          .single();
+
+        if (checkError && checkError.code === 'PGRST116') {
+          const { error: createError } = await supabase.from('club_profiles').insert({
+            club_id: user.currentClubId,
+            ...updateData,
+            created_at: new Date().toISOString(),
+          });
+
+          if (createError) {
+            console.error('Error creating club profile:', createError);
+            if (options?.showSuccessAlert) {
+              Alert.alert('Error', 'Failed to save meeting details');
+            }
+            return false;
+          }
+        } else if (checkError) {
+          console.error('Error checking club profile:', checkError);
+          if (options?.showSuccessAlert) {
+            Alert.alert('Error', 'Database error occurred');
+          }
+          return false;
+        } else {
+          const { error: updateError } = await supabase
+            .from('club_profiles')
+            .update(updateData)
+            .eq('club_id', user.currentClubId);
+
+          if (updateError) {
+            console.error('Error updating club profile:', updateError);
+            if (options?.showSuccessAlert) {
+              Alert.alert('Error', 'Failed to save meeting details');
+            }
+            return false;
+          }
+        }
+
+        lastSavedSnapshotRef.current = JSON.stringify(getMeetingUpdatePayload());
+        void queryClient.invalidateQueries({
+          queryKey: clubInfoManagementQueryKeys.detail(user.currentClubId),
+        });
+
+        if (options?.showSuccessAlert) {
+          Alert.alert('Success', 'Club meeting details saved successfully!');
+        }
+        return true;
+      } catch (error) {
+        console.error('Error saving meeting details:', error);
+        if (options?.showSuccessAlert) {
+          Alert.alert('Error', 'An unexpected error occurred');
+        }
+        return false;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [getMeetingUpdatePayload, meetingDetails, queryClient, user?.currentClubId]
+  );
+
+  useEffect(() => {
+    if (!embedded || !user?.currentClubId || isLoading || isSaving) return;
+
+    const currentSnapshot = JSON.stringify(getMeetingUpdatePayload());
+    if (!lastSavedSnapshotRef.current) {
+      lastSavedSnapshotRef.current = currentSnapshot;
+      return;
+    }
+    if (currentSnapshot === lastSavedSnapshotRef.current) return;
+
+    const timeout = setTimeout(() => {
+      void persistMeetingDetails();
+    }, 700);
+
+    return () => clearTimeout(timeout);
+  }, [
+    embedded,
+    meetingDetails,
+    user?.currentClubId,
+    isLoading,
+    isSaving,
+    getMeetingUpdatePayload,
+    persistMeetingDetails,
+  ]);
 
   const loadClubMeetingDetails = async () => {
     if (!user?.currentClubId) {
@@ -147,7 +272,15 @@ export function ClubMeetingDetailsContent({
       }
 
       if (data) {
-        setMeetingDetails(data as any);
+        const loaded = data as ClubMeetingDetails;
+        setMeetingDetails(loaded);
+        lastSavedSnapshotRef.current = JSON.stringify({
+          meeting_day: loaded.meeting_day || null,
+          meeting_frequency: loaded.meeting_frequency || null,
+          meeting_start_time: loaded.meeting_start_time || null,
+          meeting_end_time: loaded.meeting_end_time || null,
+          meeting_type: loaded.meeting_type || null,
+        });
       }
     } catch (error) {
       console.error('Error loading club meeting details:', error);
@@ -244,71 +377,8 @@ export function ClubMeetingDetailsContent({
   };
 
   const handleSave = async () => {
-    if (!validateForm() || !user?.currentClubId) return;
-
-    setIsSaving(true);
-
-    try {
-      console.log('Saving club meeting details...');
-      
-      const updateData = {
-        meeting_day: meetingDetails.meeting_day,
-        meeting_frequency: meetingDetails.meeting_frequency,
-        meeting_start_time: meetingDetails.meeting_start_time,
-        meeting_end_time: meetingDetails.meeting_end_time,
-        meeting_type: meetingDetails.meeting_type,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Check if club profile exists
-      const { data: existingProfile, error: checkError } = await supabase
-        .from('club_profiles')
-        .select('id')
-        .eq('club_id', user.currentClubId)
-        .single();
-
-      if (checkError && checkError.code === 'PGRST116') {
-        // Create new club profile
-        const { error: createError } = await supabase
-          .from('club_profiles')
-          .insert({
-            club_id: user.currentClubId,
-            ...updateData,
-            created_at: new Date().toISOString(),
-          });
-
-        if (createError) {
-          console.error('Error creating club profile:', createError);
-          Alert.alert('Error', 'Failed to save meeting details');
-          return;
-        }
-        void queryClient.invalidateQueries({ queryKey: clubInfoManagementQueryKeys.detail(user.currentClubId) });
-      } else if (checkError) {
-        console.error('Error checking club profile:', checkError);
-        Alert.alert('Error', 'Database error occurred');
-        return;
-      } else {
-        // Update existing club profile
-        const { error: updateError } = await supabase
-          .from('club_profiles')
-          .update(updateData)
-          .eq('club_id', user.currentClubId);
-
-        if (updateError) {
-          console.error('Error updating club profile:', updateError);
-          Alert.alert('Error', 'Failed to save meeting details');
-          return;
-        }
-        void queryClient.invalidateQueries({ queryKey: clubInfoManagementQueryKeys.detail(user.currentClubId) });
-      }
-
-      Alert.alert('Success', 'Club meeting details saved successfully!');
-    } catch (error) {
-      console.error('Error saving meeting details:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
-    } finally {
-      setIsSaving(false);
-    }
+    if (!validateForm()) return;
+    await persistMeetingDetails({ showSuccessAlert: true });
   };
 
   const getRoleIcon = (role: string) => {
@@ -463,6 +533,11 @@ export function ClubMeetingDetailsContent({
               <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
                 Regular schedule, times, and how members attend.
               </Text>
+              {embedded ? (
+                <Text style={[styles.autoSaveHint, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                  {isSaving ? 'Saving…' : 'Changes save automatically.'}
+                </Text>
+              ) : null}
             </View>
           </View>
 
@@ -1103,6 +1178,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     marginTop: 4,
+  },
+  autoSaveHint: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   meetingScheduleLabel: {
     fontSize: 10,

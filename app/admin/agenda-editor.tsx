@@ -38,6 +38,10 @@ import type { PublicAgendaSkinId } from '@/lib/publicAgendaSkin';
 import { normalizeStoredPublicAgendaSkin } from '@/lib/publicAgendaSkin';
 import { buildAgendaWebUrl, buildShortAgendaWebUrl } from '@/lib/agendaWebLink';
 import {
+  markT360AgendaAutofillUsed,
+  markT360AgendaSequenceUsed,
+} from '@/lib/t360OnboardingLocalMarkers';
+import {
   ChevronLeft,
   Save,
   Clock,
@@ -328,6 +332,16 @@ const AGENDA_EDITOR_FOOTER_NAV_ICON_SIZE = 16;
 export default function AgendaEditor() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const recordAgendaAutofillOnboarding = () => {
+    if (user?.currentClubId && user?.id) {
+      void markT360AgendaAutofillUsed(user.currentClubId, user.id);
+    }
+  };
+  const recordAgendaSequenceOnboarding = () => {
+    if (user?.currentClubId && user?.id) {
+      void markT360AgendaSequenceUsed(user.currentClubId, user.id);
+    }
+  };
   const insets = useSafeAreaInsets();
   const footerNavBottomPad =
     Platform.OS === 'web'
@@ -1598,6 +1612,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillAgendaAssignmentFromSergeantAtArmsBooking = async (agendaItem: AgendaItem) => {
+    recordAgendaAutofillOnboarding();
     const applyBookedSaa = async (bookedUserId: string, bookedUserName: string) => {
       const { error: updateError } = await supabase
         .from('meeting_agenda_items')
@@ -1634,6 +1649,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillAgendaAssignmentFromPresidingOfficerBooking = async (triggerItemId: string) => {
+    recordAgendaAutofillOnboarding();
     const targetFilter = (item: AgendaItem) =>
       item.section_name.toLowerCase().includes('presiding officer') ||
       item.section_name.toLowerCase().includes('closing remarks') ||
@@ -1685,6 +1701,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillAgendaAssignmentFromToastmasterBooking = async (agendaItem: AgendaItem) => {
+    recordAgendaAutofillOnboarding();
     const applyBookedTmod = async (bookedUserId: string, bookedUserName: string) => {
       const { error: updateError } = await supabase
         .from('meeting_agenda_items')
@@ -1738,6 +1755,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillAgendaAssignmentFromGeneralEvaluatorBooking = async (triggerItemId: string) => {
+    recordAgendaAutofillOnboarding();
     try {
       setAutoFillItemId(triggerItemId);
       const booked = await fetchLatestBookedAssignee({ kind: 'eq_role', roleName: 'General Evaluator' });
@@ -1790,6 +1808,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillTagTeamFromBookedRoles = async (tagTeamAgendaItemId: string) => {
+    recordAgendaAutofillOnboarding();
     const tagItem = agendaItems.find(i => i.id === tagTeamAgendaItemId);
     if (!tagItem || !tagItem.section_name.toLowerCase().includes('tag team')) return;
 
@@ -1854,6 +1873,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillTagTeamReportFromBooking = async (agendaItem: AgendaItem) => {
+    recordAgendaAutofillOnboarding();
     const bookedRoleName = getBookedRoleNameForTagReportSection(agendaItem.section_name);
     if (!bookedRoleName) return;
 
@@ -1902,6 +1922,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillTableTopicsMasterFromBooking = async (agendaItem: AgendaItem) => {
+    recordAgendaAutofillOnboarding();
     const applyTtm = async (bookedUserId: string, bookedUserName: string) => {
       const { error: updateError } = await supabase
         .from('meeting_agenda_items')
@@ -1943,6 +1964,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillKeynoteSpeakerFromBooking = async (agendaItem: AgendaItem) => {
+    recordAgendaAutofillOnboarding();
     const applyKeynote = async (bookedUserId: string, bookedUserName: string) => {
       const { error: updateError } = await supabase
         .from('meeting_agenda_items')
@@ -1981,6 +2003,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillEducationalSpeakerFromBooking = async (agendaItem: AgendaItem) => {
+    recordAgendaAutofillOnboarding();
     const runFill = async (
       bookedUserId: string | null,
       bookedUserName: string | null,
@@ -2128,6 +2151,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillPreparedSpeechesFromPathway = async (agendaItem: AgendaItem) => {
+    recordAgendaAutofillOnboarding();
     const existing = parsePreparedSpeechesAgenda(agendaItem.prepared_speeches_agenda);
     const prevBySlot = (n: number) => existing.find(s => s.slot === n);
 
@@ -3080,6 +3104,7 @@ export default function AgendaEditor() {
 
   /** Pull theme from toastmaster_meeting_data (Toastmaster corner) into meeting agenda (app_club_meeting.theme). */
   const autoFillThemeFromToastmasterCorner = async () => {
+    recordAgendaAutofillOnboarding();
     if (themeFromCornerLoading) return;
     setThemeFromCornerLoading(true);
     try {
@@ -3108,6 +3133,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillEducationSpeechTitleFromEducationalCorner = async (agendaItemId: string) => {
+    recordAgendaAutofillOnboarding();
     if (educationTitleFromCornerLoading) return;
     setEducationTitleFromCornerLoading(true);
     try {
@@ -3197,6 +3223,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillKeynoteSpeechTitleFromCorner = async (agendaItem: AgendaItem) => {
+    recordAgendaAutofillOnboarding();
     if (keynoteTitleFromCornerLoading) return;
     setKeynoteTitleFromCornerLoading(true);
     try {
@@ -3236,6 +3263,7 @@ export default function AgendaEditor() {
   };
 
   const autoFillGrammarianCornerDailyHighlights = async (agendaItem: AgendaItem) => {
+    recordAgendaAutofillOnboarding();
     if (grammarianCornerAutoFillLoading) return;
     setGrammarianCornerAutoFillLoading(true);
     try {
@@ -3286,6 +3314,7 @@ export default function AgendaEditor() {
   /** Auto-fill assignments + corner details across the entire agenda. */
   const autoFillEntireAgenda = async () => {
     if (masterAutoFillLoading) return;
+    recordAgendaAutofillOnboarding();
     setMasterAutoFillLoading(true);
     const originalAlert = Alert.alert;
     (Alert as any).alert = () => {};
@@ -3587,6 +3616,7 @@ export default function AgendaEditor() {
     }
 
     recalculateAllTimes(reorderedItems);
+    recordAgendaSequenceOnboarding();
   };
 
   const moveItemUp = async (index: number) => {

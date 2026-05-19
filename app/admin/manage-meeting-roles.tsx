@@ -23,6 +23,10 @@ import {
   pairedSpeechSlotReconciliationTargets,
 } from '@/lib/preparedEvaluatorRolePairs';
 import {
+  markT360RoleMovedToAvailable,
+  markT360RoleMovedToDeleted,
+} from '@/lib/t360OnboardingLocalMarkers';
+import {
   ArrowLeft,
   Users,
   User,
@@ -647,6 +651,14 @@ export default function ManageMeetingRoles() {
 
         await loadMeetingRoles();
 
+        if (user?.currentClubId && user?.id) {
+          if (newStatus === 'Deleted') {
+            void markT360RoleMovedToDeleted(user.currentClubId, user.id);
+          } else {
+            void markT360RoleMovedToAvailable(user.currentClubId, user.id);
+          }
+        }
+
         const action = newStatus === 'Deleted' ? 'deleted and moved to deleted roles' : 'restored to available roles';
         const summary =
           roleNames.length > 1
@@ -658,7 +670,7 @@ export default function ManageMeetingRoles() {
         Alert.alert('Error', 'An unexpected error occurred');
       }
     },
-    [meetingId, loadMeetingRoles]
+    [meetingId, loadMeetingRoles, user?.currentClubId, user?.id]
   );
 
   const getRoleIcon = (role: string) => {

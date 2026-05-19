@@ -17,7 +17,7 @@ const FS = 0.9;
 const WHAT_YOU_CAN_DO = [
   'Manage your profile information',
   'Access web login and sharing options',
-  'Open in-app T360 training',
+  'Open in-app T360 User Guide',
   'Review privacy and security settings',
   'Stay updated with the latest app version',
 ];
@@ -126,7 +126,7 @@ export default function T360TrainingSettingsTabScreen() {
             application settings — helping you personalize your experience and stay connected.
           </Text>
           <Text style={styles.body} maxFontSizeMultiplier={1.25}>
-            You can update profile details, reach support via WhatsApp or Talk to Us, open T360 training, manage privacy
+            You can update profile details, reach support via WhatsApp or Talk to Us, open T360 User Guide, manage privacy
             settings, and more.
           </Text>
 
@@ -202,7 +202,7 @@ export default function T360TrainingSettingsTabScreen() {
           <CheckList lines={WEB_LOGIN_CHECKS} />
 
           <Text style={styles.featureHeading} maxFontSizeMultiplier={1.25}>
-            🎓 T360 Training
+            🎓 T360 User Guide
           </Text>
           <Text style={styles.body} maxFontSizeMultiplier={1.25}>
             Access learning materials and product guidance.

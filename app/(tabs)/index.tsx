@@ -80,18 +80,25 @@ import {
 import { fetchVpeNudgesSnapshot, vpeNudgesQueryKeys } from '@/lib/vpeNudgesSnapshot';
 import { computeVpeSmartDailyHomeReminder } from '@/lib/vpeSmartDailyHomeReminder';
 import { prefetchVpeNudges } from '@/lib/prefetchVpeNudges';
+import { incrementT360MyTasksUse } from '@/lib/t360OnboardingLocalMarkers';
 import { prefetchClubLandingCritical } from '@/lib/clubTabLandingData';
 import { prefetchMeetingsTabSession } from '@/lib/meetingsTabData';
 import { prefetchProfileSnapshot } from '@/lib/profileSnapshot';
 import { prefetchMyRoleInsightsPanel } from '@/components/MyRoleInsightsPanel';
 import OpenMeetingsHorizonCard from '@/components/OpenMeetingsHorizonCard';
+import { fetchClubHasCompletedMeeting } from '@/lib/clubTabLandingData';
+import {
+  buildExcommOnboardingSectionAlerts,
+  pickDailyExcommOnboardingInsights,
+  type ExcommOnboardingMyTasksSectionId,
+} from '@/lib/excommOnboardingHomeInsights';
 import {
   buildHomeRoleBookingInsights,
   type HomeRoleBookingInsight,
 } from '@/lib/homeRoleBookingInsights';
+import { fetchT360ClubOnboardingProgress } from '@/lib/t360ClubOnboarding';
 import {
   fetchMyRoleInsightsCached,
-  getCachedMyRoleInsights,
   type InsightCategory,
 } from '@/lib/myRoleInsights';
 import { prefetchMyAttendancePanel } from '@/components/MyAttendancePanel';
@@ -1326,37 +1333,15 @@ export default function MyJourney() {
 
   type MyTasksCarouselItem =
     | { kind: 'reminder'; key: PendingMeetingReminderKey; text: string }
-    | { kind: 'role_insight'; category: InsightCategory; text: string };
+    | { kind: 'role_insight'; category: InsightCategory; text: string }
+    | { kind: 'onboarding_insight'; sectionId: ExcommOnboardingMyTasksSectionId; text: string };
 
   const [roleBookingInsights, setRoleBookingInsights] = useState<HomeRoleBookingInsight[]>([]);
   const [roleBookingInsightsReady, setRoleBookingInsightsReady] = useState(false);
-
-  useEffect(() => {
-    if (!user?.currentClubId || !user?.id) {
-      setRoleBookingInsights([]);
-      setRoleBookingInsightsReady(false);
-      return;
-    }
-    const clubId = user.currentClubId;
-    const userId = user.id;
-    let cancelled = false;
-
-    const cached = getCachedMyRoleInsights(clubId, userId);
-    if (cached) {
-      setRoleBookingInsights(buildHomeRoleBookingInsights(cached.map));
-      setRoleBookingInsightsReady(true);
-    }
-
-    void fetchMyRoleInsightsCached(clubId, userId).then((payload) => {
-      if (cancelled) return;
-      setRoleBookingInsights(buildHomeRoleBookingInsights(payload.map));
-      setRoleBookingInsightsReady(true);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.currentClubId, user?.id]);
+  const [excommOnboardingAlerts, setExcommOnboardingAlerts] = useState<
+    ReturnType<typeof buildExcommOnboardingSectionAlerts>
+  >([]);
+  const [excommOnboardingReady, setExcommOnboardingReady] = useState(false);
 
   const pendingMeetingReminders = useMemo((): { key: PendingMeetingReminderKey; text: string }[] => {
     const name =
@@ -1466,23 +1451,6 @@ export default function MyJourney() {
     vpeNudgesSnapshot,
   ]);
 
-  const myTasksCarouselItems = useMemo((): MyTasksCarouselItem[] => {
-    if (pendingMeetingReminders.length > 0) {
-      return pendingMeetingReminders.map((r) => ({
-        kind: 'reminder',
-        key: r.key,
-        text: r.text,
-      }));
-    }
-    return roleBookingInsights.map((insight) => ({
-      kind: 'role_insight' as const,
-      category: insight.category,
-      text: insight.text,
-    }));
-  }, [pendingMeetingReminders, roleBookingInsights]);
-
-  const showRoleBookingInsights = pendingMeetingReminders.length === 0 && roleBookingInsights.length > 0;
-
   const userFirstName = useMemo(
     () =>
       (user?.fullName || '')
@@ -1498,6 +1466,121 @@ export default function MyJourney() {
     const fromField = user?.clubRole?.toLowerCase() === 'excomm';
     return fromList || fromField;
   }, [user?.clubs, user?.currentClubId, user?.clubRole]);
+
+  const loadExcommOnboardingAlerts = useCallback(async () => {
+    if (!user?.currentClubId || !user?.id) {
+      setExcommOnboardingAlerts([]);
+      setExcommOnboardingReady(false);
+      return [];
+    }
+    const progress = await fetchT360ClubOnboardingProgress(user.currentClubId, user.id);
+    const alerts = buildExcommOnboardingSectionAlerts(progress);
+    setExcommOnboardingAlerts(alerts);
+    setExcommOnboardingReady(true);
+    return alerts;
+  }, [user?.currentClubId, user?.id]);
+
+  useEffect(() => {
+    if (!user?.currentClubId || !user?.id) {
+      setExcommOnboardingAlerts([]);
+      setExcommOnboardingReady(false);
+      setRoleBookingInsights([]);
+      setRoleBookingInsightsReady(false);
+      return;
+    }
+
+    const clubId = user.currentClubId;
+    const userId = user.id;
+    let cancelled = false;
+
+    if (isExComm) {
+      setRoleBookingInsights([]);
+      setRoleBookingInsightsReady(false);
+      setExcommOnboardingReady(false);
+
+      void loadExcommOnboardingAlerts().then((alerts) => {
+        if (cancelled) return;
+        if (alerts.length > 0) {
+          setRoleBookingInsightsReady(true);
+          return;
+        }
+        void Promise.all([
+          fetchMyRoleInsightsCached(clubId, userId),
+          fetchClubHasCompletedMeeting(clubId),
+        ]).then(([payload, hasCompleted]) => {
+          if (cancelled) return;
+          setRoleBookingInsights(buildHomeRoleBookingInsights(payload.map, new Date(), hasCompleted));
+          setRoleBookingInsightsReady(true);
+        });
+      });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setExcommOnboardingAlerts([]);
+    setExcommOnboardingReady(true);
+
+    void Promise.all([
+      fetchMyRoleInsightsCached(clubId, userId),
+      fetchClubHasCompletedMeeting(clubId),
+    ]).then(([payload, hasCompleted]) => {
+      if (cancelled) return;
+      setRoleBookingInsights(buildHomeRoleBookingInsights(payload.map, new Date(), hasCompleted));
+      setRoleBookingInsightsReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.currentClubId, user?.id, isExComm, loadExcommOnboardingAlerts]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isExComm) return;
+      void loadExcommOnboardingAlerts();
+    }, [isExComm, loadExcommOnboardingAlerts])
+  );
+
+  const excommOnboardingDailyInsights = useMemo(
+    () => pickDailyExcommOnboardingInsights(excommOnboardingAlerts),
+    [excommOnboardingAlerts]
+  );
+
+  const showExcommOnboardingMyTasks = isExComm && excommOnboardingAlerts.length > 0;
+
+  const myTasksCarouselItems = useMemo((): MyTasksCarouselItem[] => {
+    if (showExcommOnboardingMyTasks) {
+      return excommOnboardingDailyInsights.map((insight) => ({
+        kind: 'onboarding_insight' as const,
+        sectionId: insight.sectionId,
+        text: insight.text,
+      }));
+    }
+    if (pendingMeetingReminders.length > 0) {
+      return pendingMeetingReminders.map((r) => ({
+        kind: 'reminder',
+        key: r.key,
+        text: r.text,
+      }));
+    }
+    return roleBookingInsights.map((insight) => ({
+      kind: 'role_insight' as const,
+      category: insight.category,
+      text: insight.text,
+    }));
+  }, [
+    showExcommOnboardingMyTasks,
+    excommOnboardingDailyInsights,
+    pendingMeetingReminders,
+    roleBookingInsights,
+  ]);
+
+  const showRoleBookingInsights =
+    !showExcommOnboardingMyTasks &&
+    pendingMeetingReminders.length === 0 &&
+    roleBookingInsights.length > 0;
 
   const canManageClubMeetings = isExComm || isVPEForCurrentClub;
 
@@ -1557,7 +1640,11 @@ export default function MyJourney() {
   }, [currentOpenMeetingId, user?.id]);
 
   const myTasksCarouselKey = myTasksCarouselItems
-    .map((item) => (item.kind === 'reminder' ? item.key : `${item.category}:${item.text}`))
+    .map((item) => {
+      if (item.kind === 'reminder') return item.key;
+      if (item.kind === 'onboarding_insight') return item.sectionId;
+      return `${item.category}:${item.text}`;
+    })
     .join('|');
 
   const [heroReminderSlide, setHeroReminderSlide] = useState(0);
@@ -1581,13 +1668,21 @@ export default function MyJourney() {
     heroReminderFade.value = withTiming(1, { duration: 400 });
   }, [heroReminderSlide, myTasksCarouselItems.length]);
 
+  const trackMyTasksUse = useCallback(() => {
+    if (user?.currentClubId && user?.id) {
+      void incrementT360MyTasksUse(user.currentClubId, user.id);
+    }
+  }, [user?.currentClubId, user?.id]);
+
   const openRoleInsightDetail = useCallback((category: InsightCategory) => {
+    trackMyTasksUse();
     void prefetchMyRoleInsightsPanel(user?.currentClubId, user?.id);
     router.push({ pathname: '/my-growth-role-detail', params: { category } });
-  }, [user?.currentClubId, user?.id]);
+  }, [user?.currentClubId, user?.id, trackMyTasksUse]);
 
   const openPendingReminderTarget = useCallback(
     (key: PendingMeetingReminderKey) => {
+      trackMyTasksUse();
       switch (key) {
         case 'profile_intro':
         case 'profile_picture':
@@ -1650,7 +1745,7 @@ export default function MyJourney() {
           break;
       }
     },
-    [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId, user?.fullName]
+    [currentOpenMeetingId, queryClient, user?.id, user?.currentClubId, user?.fullName, trackMyTasksUse]
   );
 
   const showMyProfilePending =
@@ -2128,7 +2223,14 @@ export default function MyJourney() {
                         description={
                           myTasksCarouselItems.length > 0 ? (
                             <View style={styles.myTasksInsightDesc}>
-                              {showRoleBookingInsights ? (
+                              {showExcommOnboardingMyTasks ? (
+                                <Text
+                                  style={[styles.myTasksInsightKicker, { color: theme.colors.textSecondary }]}
+                                  maxFontSizeMultiplier={1.2}
+                                >
+                                  Insights on onboarding
+                                </Text>
+                              ) : showRoleBookingInsights ? (
                                 <Text
                                   style={[styles.myTasksInsightKicker, { color: theme.colors.textSecondary }]}
                                   maxFontSizeMultiplier={1.2}
@@ -2142,6 +2244,10 @@ export default function MyJourney() {
                                 </Text>
                               </Animated.View>
                             </View>
+                          ) : isExComm && !excommOnboardingReady ? (
+                            <Text style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+                              Insights on onboarding…
+                            </Text>
                           ) : roleBookingInsightsReady ? (
                             <Text style={[styles.journeyListDesc, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
                               All set, champ! No tasks pending.
@@ -2158,7 +2264,12 @@ export default function MyJourney() {
                         onPress={() => {
                           const item = myTasksCarouselItems[heroReminderSlide];
                           if (!item) {
-                            if (roleBookingInsightsReady) setShowNoTasksModal(true);
+                            if (roleBookingInsightsReady || excommOnboardingReady) setShowNoTasksModal(true);
+                            return;
+                          }
+                          if (item.kind === 'onboarding_insight') {
+                            trackMyTasksUse();
+                            router.push('/admin');
                             return;
                           }
                           if (item.kind === 'role_insight') {
