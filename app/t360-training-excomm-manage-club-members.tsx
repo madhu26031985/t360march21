@@ -21,7 +21,7 @@ const N = {
 
 const FS = 0.9;
 
-const PATH_LINE = 'Admin Panel - Invite New Club Members - Manage Club Members';
+const PATH_LINE = 'Admin Panel - Manage Club Users - Manage Club Users';
 
 const ROLE_PILLS = ['Member', 'ExCom', 'Guest', 'Visiting Toastmaster', 'Club Leader'];
 
@@ -47,11 +47,11 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'Can a removed user be re-invited to the club?',
-    a: 'Yes. A removed user can be re-invited at any time using the Invite New Club Members feature under the Admin Panel.',
+    a: 'Yes. A removed user can be re-invited at any time using Invite Club User under the Admin Panel.',
   },
   {
     q: 'Where can I see all current club members and their roles?',
-    a: 'All club members and their assigned roles are listed in the Manage Club Members section under Admin Panel – Invite New Club Members – Manage Club Members.',
+    a: 'All club members and their assigned roles are listed in Manage Club Users under Admin Panel – Club User Management – Manage Club Users.',
   },
 ];
 
@@ -73,7 +73,7 @@ export default function T360TrainingExcommManageClubMembersScreen() {
           <ArrowLeft size={Math.round(22 * FS)} color={N.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} maxFontSizeMultiplier={1.3}>
-          Manage Club Members
+          Manage Club Users
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -91,7 +91,7 @@ export default function T360TrainingExcommManageClubMembersScreen() {
             </Text>
           </View>
           <Text style={styles.heroTitle} maxFontSizeMultiplier={1.35}>
-            Manage Club Members
+            Manage Club Users
           </Text>
           <Text style={styles.heroLead} maxFontSizeMultiplier={1.25}>
             View all club users, manage their roles, and remove members who are no longer associated with your club, all
@@ -132,7 +132,7 @@ export default function T360TrainingExcommManageClubMembersScreen() {
               </Text>
             </View>
             <Text style={styles.overviewBody} maxFontSizeMultiplier={1.25}>
-              The Manage Club Members section helps ExCom members manage all club users in one place. Here, ExCom users
+              The Manage Club Users section helps ExCom members manage all club users in one place. Here, ExCom users
               can view everyone who belongs to the club along with their assigned roles.
             </Text>
             <View style={styles.pillRow}>
@@ -209,7 +209,7 @@ export default function T360TrainingExcommManageClubMembersScreen() {
             <Text style={styles.body} maxFontSizeMultiplier={1.25}>
               If a person is no longer part of the club, ExCom members can remove them using the{' '}
               <Text style={styles.inlineBold}>Delete</Text>
-              {` option next to the user's record in the Manage Club Members section.`}
+              {` option next to the user's record in the Manage Club Users section.`}
             </Text>
             <View style={styles.noteRose}>
               <Text style={styles.noteRoseText} maxFontSizeMultiplier={1.2}>

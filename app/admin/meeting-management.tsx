@@ -538,12 +538,12 @@ export default function MeetingManagement() {
             <ArrowLeft size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-            Meeting Management
+            Create and Manage Meetings
           </Text>
           <TouchableOpacity
             style={styles.headerHelpButton}
             onPress={() => router.push('/t360-training-excomm-manage-meetings')}
-            accessibilityLabel="Meeting Management help"
+            accessibilityLabel="Create and Manage Meetings help"
             accessibilityRole="button"
           >
             <Info size={20} color={theme.colors.primary} />
@@ -609,15 +609,15 @@ export default function MeetingManagement() {
               onPress={handleAddMeeting}
               disabled={openMeetingsCount >= 3}
               activeOpacity={0.85}
-              accessibilityLabel="Create meeting"
-              accessibilityHint="Create a new meeting"
+              accessibilityLabel="Create and Manage Meetings"
+              accessibilityHint="Create or manage club meetings"
             >
               <View style={[styles.notionCreateIcon, { backgroundColor: theme.colors.primary + '14' }]}>
                 <Plus size={20} color={theme.colors.primary} strokeWidth={2.2} />
               </View>
               <View style={styles.notionCreateTextCol}>
                 <Text style={[styles.notionCreateTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-                  Create meeting
+                  Create and Manage Meetings
                 </Text>
                 <Text
                   style={[styles.notionCreateSubtext, { color: theme.colors.textSecondary }]}

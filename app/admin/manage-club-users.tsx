@@ -279,13 +279,13 @@ export default function ManageClubUsers() {
 
           <View style={[styles.notionGroup, { borderColor: N.border }]}>
             <NotionActionRow
-              title="Invite Club Users"
+              title="Invite Club User"
               description="Send invites and grow your club community."
               icon={<UserPlus size={18} color={ICON_TILE.invite.fg} strokeWidth={1.75} />}
               iconBackground={ICON_TILE.invite.bg}
               onPress={() => router.push('/admin/invite-new-user')}
               onHelpPress={() => router.push('/t360-training-excomm-invite-members')}
-              helpAccessibilityLabel="Invite Club Users help"
+              helpAccessibilityLabel="Invite Club User help"
             />
             <NotionActionRow
               title="Manage Club Users"

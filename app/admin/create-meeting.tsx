@@ -702,7 +702,7 @@ export default function CreateMeeting() {
                 router.replace('/admin/meeting-management');
               }}
             >
-              <Text style={styles.modalButtonText} maxFontSizeMultiplier={1.3}>Go to Meeting Management</Text>
+              <Text style={styles.modalButtonText} maxFontSizeMultiplier={1.3}>Go to Create and Manage Meetings</Text>
             </TouchableOpacity>
           </View>
         </View>

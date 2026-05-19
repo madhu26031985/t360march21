@@ -180,7 +180,7 @@ export default function ClubOperations() {
           />
           
           <FeatureCard
-            title="Club ExComm"
+            title="Manage ExComm Roles"
             description="Manage Executive Committee roles and assignments"
             icon={<Crown size={20} color="#0a66c2" />}
             onPress={() => {
@@ -319,7 +319,7 @@ export default function ClubOperations() {
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text, fontWeight: '600' }]} maxFontSizeMultiplier={1.3}>
-                Club ExComm
+                Manage ExComm Roles
               </Text>
 
               <Text style={[styles.infoModalText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>

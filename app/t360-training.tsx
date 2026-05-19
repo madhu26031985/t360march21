@@ -189,7 +189,7 @@ export default function T360TrainingScreen() {
           <TrainingRow
             icon={<UserCog size={17} color="#0369A1" strokeWidth={2} />}
             iconBackgroundColor="#ECFEFF"
-            title="Manage Club Members"
+            title="Manage Club Users"
             description="Roles, removals, accurate records, and FAQs for ExCom."
             onPress={() => router.push('/t360-training-excomm-manage-club-members')}
           />

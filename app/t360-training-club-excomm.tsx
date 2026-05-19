@@ -11,7 +11,6 @@ import {
   Medal,
   Phone,
   Search,
-  Settings2,
   Users,
 } from 'lucide-react-native';
 import { goBackOrReplace } from '@/lib/trainingBackNavigation';
@@ -42,13 +41,6 @@ const BEST_PRACTICE_ITEMS = [
   'Leadership changes happen',
   'A role becomes vacant',
   'A new member is assigned to an ExCom position',
-];
-
-const ACTION_CARDS: { title: string; body: string }[] = [
-  { title: 'Assign Members', body: 'Assign members to Executive Committee roles.' },
-  { title: 'Update Assignments', body: 'Modify role ownership whenever leadership changes.' },
-  { title: 'Remove Assignments', body: 'Remove members from ExCom roles if required.' },
-  { title: 'Manage Terms', body: 'Set Term Start & End Dates to keep leadership records accurate.' },
 ];
 
 const VISIBILITY_TAGS = ['Members', 'ExCom Members', 'Guests', 'Visiting Toastmasters'];
@@ -189,29 +181,6 @@ export default function T360TrainingClubExcommScreen() {
                 <View key={t} style={styles.visTag}>
                   <Text style={styles.visTagText} maxFontSizeMultiplier={1.1}>
                     {t}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          <View style={[styles.purplePanel, styles.purplePanelSpaced]}>
-            <View style={styles.purplePanelHead}>
-              <View style={styles.purpleIconWrap}>
-                <Settings2 size={16} color="#5B21B6" strokeWidth={2} />
-              </View>
-              <Text style={styles.purplePanelTitle} maxFontSizeMultiplier={1.15}>
-                WHAT CAN YOU DO IN CLUB EXCOM?
-              </Text>
-            </View>
-            <View style={styles.actionGrid}>
-              {ACTION_CARDS.map((ac) => (
-                <View key={ac.title} style={styles.actionCard}>
-                  <Text style={styles.actionCardTitle} maxFontSizeMultiplier={1.15}>
-                    {ac.title}
-                  </Text>
-                  <Text style={styles.actionCardBody} maxFontSizeMultiplier={1.1}>
-                    {ac.body}
                   </Text>
                 </View>
               ))}
@@ -456,9 +425,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
   },
-  purplePanelSpaced: {
-    marginTop: 12,
-  },
   purplePanelHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -507,32 +473,6 @@ const styles = StyleSheet.create({
     fontSize: 12 * FS,
     fontWeight: '700',
     color: '#4C1D95',
-  },
-  actionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 10,
-    marginTop: 4,
-  },
-  actionCard: {
-    width: '48%',
-    backgroundColor: 'rgba(91, 33, 182, 0.1)',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(91, 33, 182, 0.15)',
-  },
-  actionCardTitle: {
-    fontSize: 14 * FS,
-    fontWeight: '800',
-    color: '#5B21B6',
-    marginBottom: 6,
-  },
-  actionCardBody: {
-    fontSize: 12 * FS,
-    lineHeight: 17 * FS,
-    color: N.textSecondary,
   },
   tableSection: {
     marginTop: 22,

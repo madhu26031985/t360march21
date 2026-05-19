@@ -291,7 +291,7 @@ export default function AdminPanel() {
       ? [
           {
             key: 'meeting',
-            label: openMeetingCount > 0 ? 'Manage meetings' : 'Create meetings',
+            label: 'Create and Manage Meetings',
             icon: <CalendarPlus size={18} color="#2563EB" strokeWidth={1.75} />,
             iconBackgroundColor: '#EFF6FF',
             onPress: () => router.push('/admin/meeting-management'),
@@ -316,7 +316,7 @@ export default function AdminPanel() {
       ? [
           {
             key: 'invite-club-users',
-            label: 'Invite Club Users',
+            label: 'Invite Club User',
             icon: <UserPlus size={18} color="#16A34A" strokeWidth={1.75} />,
             iconBackgroundColor: '#ECFDF5',
             onPress: () => router.push('/admin/invite-new-user'),
@@ -508,7 +508,7 @@ export default function AdminPanel() {
                 <View style={[styles.sectionSpacer, { backgroundColor: 'transparent' }]} />
               ) : null}
               <Text style={[styles.adminMasterSectionTitle, { color: N.textSecondary }]} maxFontSizeMultiplier={1.2}>
-                Meeting Management
+                Create and Manage Meetings
               </Text>
               <NotionActionList items={meetingManagementItems} />
             </>

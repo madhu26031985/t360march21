@@ -160,7 +160,7 @@ export default function MeetingOperations() {
 
         <View style={styles.featuresGrid}>
           <FeatureCard
-            title="Create meetings"
+            title="Create and Manage Meetings"
             description="Schedule and edit meetings"
             icon={<CalendarPlus size={20} color="#0a66c2" />}
             onPress={() => router.push('/admin/meeting-management')}

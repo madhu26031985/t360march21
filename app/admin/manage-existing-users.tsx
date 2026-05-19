@@ -18,6 +18,7 @@ import {
   UserCheck,
   Building2,
   CircleCheck as CheckCircle,
+  Info,
 } from 'lucide-react-native';
 import { Image } from 'react-native';
 import React from 'react';
@@ -513,9 +514,17 @@ export default function ManageExistingUsers() {
           <ArrowLeft size={22} color={N.iconMuted} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: N.text }]} maxFontSizeMultiplier={1.3}>
-          Manage existing users
+          Manage Club Users
         </Text>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity
+          style={styles.headerHelpButton}
+          onPress={() => router.push('/t360-training-excomm-manage-club-members')}
+          accessibilityLabel="Manage Club Users help"
+          accessibilityRole="button"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Info size={20} color={N.accent} strokeWidth={2} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
@@ -696,8 +705,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     letterSpacing: -0.2,
   },
-  headerSpacer: {
+  headerHelpButton: {
     width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,

@@ -608,7 +608,7 @@ export default function ExCommManagement() {
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-              Club ExComm
+              Manage ExComm Roles
             </Text>
             {saveState === 'saving' && (
               <Text style={[styles.saveHint, { color: theme.colors.textSecondary }]}>Saving…</Text>
@@ -625,7 +625,7 @@ export default function ExCommManagement() {
             onPress={openClubExcommKb}
             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             accessibilityRole="button"
-            accessibilityLabel="Club ExComm knowledge base"
+            accessibilityLabel="Manage ExComm Roles knowledge base"
           >
             <Info size={21} color={theme.colors.primary} strokeWidth={2} />
           </TouchableOpacity>
