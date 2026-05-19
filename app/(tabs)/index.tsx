@@ -81,6 +81,7 @@ import { fetchVpeNudgesSnapshot, vpeNudgesQueryKeys } from '@/lib/vpeNudgesSnaps
 import { computeVpeSmartDailyHomeReminder } from '@/lib/vpeSmartDailyHomeReminder';
 import { prefetchVpeNudges } from '@/lib/prefetchVpeNudges';
 import { prefetchClubLandingCritical } from '@/lib/clubTabLandingData';
+import { prefetchMeetingsTabSession } from '@/lib/meetingsTabData';
 import { prefetchProfileSnapshot } from '@/lib/profileSnapshot';
 import { prefetchMyRoleInsightsPanel } from '@/components/MyRoleInsightsPanel';
 import OpenMeetingsHorizonCard from '@/components/OpenMeetingsHorizonCard';
@@ -1792,6 +1793,7 @@ export default function MyJourney() {
   useEffect(() => {
     if (!allowBackgroundPrefetch) return;
     prefetchClubLandingCritical(user?.currentClubId ?? null);
+    prefetchMeetingsTabSession(user?.currentClubId ?? null);
   }, [allowBackgroundPrefetch, user?.currentClubId]);
 
   useEffect(() => {

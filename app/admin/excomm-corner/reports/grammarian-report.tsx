@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, User, BookOpen, Quote, Lightbulb, ThumbsUp, TrendingUp, BarChart2, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Calendar } from 'lucide-react-native';
 
 const toLocalDateStr = (d: Date) => {
   const y = d.getFullYear();
@@ -16,24 +16,28 @@ const toLocalDateStr = (d: Date) => {
 
 type TimeFilter = '3months' | '6months';
 
-type MeetingData = {
-  id: string;
+type ReportRow = {
+  meetingId: string;
   meeting_number: number;
   meeting_date: string;
   grammarian_name: string | null;
-  has_word: boolean;
-  has_quote: boolean;
-  has_idiom: boolean;
-  has_good_usage: boolean;
-  has_improvements: boolean;
-  has_stats: boolean;
+  word_of_the_day: string | null;
+  quote_of_the_day: string | null;
+  idiom_of_the_day: string | null;
+  wotd_usage_count: number;
+};
+
+const cell = (value: string | null | undefined, fallback = '—') => {
+  const v = typeof value === 'string' ? value.trim() : value;
+  if (v === null || v === undefined || v === '') return fallback;
+  return String(v);
 };
 
 export default function GrammarianReport() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('3months');
-  const [meetings, setMeetings] = useState<MeetingData[]>([]);
+  const [rows, setRows] = useState<ReportRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [clubName, setClubName] = useState<string>('');
   const [clubNumber, setClubNumber] = useState<string | null>(null);
@@ -53,7 +57,10 @@ export default function GrammarianReport() {
         supabase.from('clubs').select('name, club_number').eq('id', user.currentClubId).maybeSingle(),
         supabase.from('club_profiles').select('banner_color').eq('club_id', user.currentClubId).maybeSingle(),
       ]);
-      if (clubRes.data) { setClubName(clubRes.data.name); setClubNumber(clubRes.data.club_number); }
+      if (clubRes.data) {
+        setClubName(clubRes.data.name);
+        setClubNumber(clubRes.data.club_number);
+      }
       setBannerColor(profileRes.data?.banner_color || '#1e3a5f');
     } catch {}
   };
@@ -82,7 +89,7 @@ export default function GrammarianReport() {
       const startStr = toLocalDateStr(startDate);
       const endStr = toLocalDateStr(endDate);
 
-      const [meetingsRes, rolesRes, wordsRes, quotesRes, idiomsRes, goodUsageRes, improvementsRes, statsRes] = await Promise.all([
+      const [meetingsRes, rolesRes, wordsRes, quotesRes, idiomsRes, usageRes] = await Promise.all([
         supabase
           .from('app_club_meeting')
           .select('id, meeting_number, meeting_date')
@@ -92,37 +99,25 @@ export default function GrammarianReport() {
           .order('meeting_date', { ascending: false }),
         supabase
           .from('app_meeting_roles_management')
-          .select('meeting_id, role_name, app_user_profiles(full_name)')
+          .select('meeting_id, assigned_user_id, booking_status, app_user_profiles(full_name)')
           .eq('club_id', user.currentClubId)
           .eq('role_name', 'Grammarian'),
         supabase
           .from('grammarian_word_of_the_day')
-          .select('meeting_id, is_published')
-          .eq('club_id', user.currentClubId)
-          .eq('is_published', true),
+          .select('meeting_id, word, is_published')
+          .eq('club_id', user.currentClubId),
         supabase
           .from('grammarian_quote_of_the_day')
-          .select('meeting_id, is_published')
-          .eq('club_id', user.currentClubId)
-          .eq('is_published', true),
+          .select('meeting_id, quote, is_published')
+          .eq('club_id', user.currentClubId),
         supabase
           .from('grammarian_idiom_of_the_day')
-          .select('meeting_id, is_published')
-          .eq('club_id', user.currentClubId)
-          .eq('is_published', true),
-        supabase
-          .from('grammarian_live_good_usage')
-          .select('meeting_id, is_published')
-          .eq('club_id', user.currentClubId)
-          .eq('is_published', true),
-        supabase
-          .from('grammarian_live_improvements')
-          .select('meeting_id, is_published')
-          .eq('club_id', user.currentClubId)
-          .eq('is_published', true),
+          .select('meeting_id, idiom, is_published')
+          .eq('club_id', user.currentClubId),
         supabase
           .from('grammarian_word_of_the_day_member_usage')
-          .select('grammarian_word_of_the_day(meeting_id)'),
+          .select('usage_count, grammarian_word_of_the_day!inner(meeting_id, club_id)')
+          .eq('grammarian_word_of_the_day.club_id', user.currentClubId),
       ]);
 
       if (meetingsRes.error) {
@@ -130,32 +125,62 @@ export default function GrammarianReport() {
         return;
       }
 
-      const wordMeetingIds = new Set((wordsRes.data || []).map((r: any) => r.meeting_id));
-      const quoteMeetingIds = new Set((quotesRes.data || []).map((r: any) => r.meeting_id));
-      const idiomMeetingIds = new Set((idiomsRes.data || []).map((r: any) => r.meeting_id));
-      const goodUsageMeetingIds = new Set((goodUsageRes.data || []).map((r: any) => r.meeting_id));
-      const improvementsMeetingIds = new Set((improvementsRes.data || []).map((r: any) => r.meeting_id));
-      const statsMeetingIds = new Set((statsRes.data || []).map((r: any) => (r.grammarian_word_of_the_day as any)?.meeting_id).filter(Boolean));
+      const meetingIds = new Set((meetingsRes.data || []).map((m) => m.id));
 
-      const rolesByMeeting = new Map<string, string | null>();
+      const pickPublishedText = (
+        items: { meeting_id: string; is_published?: boolean | null; [key: string]: unknown }[],
+        field: string
+      ) => {
+        const map = new Map<string, string>();
+        for (const row of items) {
+          if (!meetingIds.has(row.meeting_id)) continue;
+          const raw = row[field];
+          const text = typeof raw === 'string' ? raw.trim() : '';
+          if (!text) continue;
+          const existing = map.get(row.meeting_id);
+          if (!existing || row.is_published) {
+            map.set(row.meeting_id, text);
+          }
+        }
+        return map;
+      };
+
+      const wordsByMeeting = pickPublishedText(wordsRes.data || [], 'word');
+      const quotesByMeeting = pickPublishedText(quotesRes.data || [], 'quote');
+      const idiomsByMeeting = pickPublishedText(idiomsRes.data || [], 'idiom');
+
+      const usageByMeeting = new Map<string, number>();
+      (usageRes.data || []).forEach((row: any) => {
+        const meetingId = row.grammarian_word_of_the_day?.meeting_id;
+        if (!meetingId || !meetingIds.has(meetingId)) return;
+        const count = typeof row.usage_count === 'number' ? row.usage_count : 0;
+        usageByMeeting.set(meetingId, (usageByMeeting.get(meetingId) || 0) + count);
+      });
+
+      const grammarianByMeeting = new Map<string, string>();
       for (const role of (rolesRes.data || []) as any[]) {
-        rolesByMeeting.set(role.meeting_id, role.app_user_profiles?.full_name ?? null);
+        if (!meetingIds.has(role.meeting_id)) continue;
+        const name = role.app_user_profiles?.full_name?.trim();
+        if (!name) continue;
+        if (role.booking_status === 'booked' && role.assigned_user_id) {
+          grammarianByMeeting.set(role.meeting_id, name);
+        } else if (!grammarianByMeeting.has(role.meeting_id)) {
+          grammarianByMeeting.set(role.meeting_id, name);
+        }
       }
 
-      const formattedMeetings: MeetingData[] = (meetingsRes.data || []).map((meeting: any) => ({
-        id: meeting.id,
+      const reportRows: ReportRow[] = (meetingsRes.data || []).map((meeting) => ({
+        meetingId: meeting.id,
         meeting_number: meeting.meeting_number,
         meeting_date: meeting.meeting_date,
-        grammarian_name: rolesByMeeting.get(meeting.id) ?? null,
-        has_word: wordMeetingIds.has(meeting.id),
-        has_quote: quoteMeetingIds.has(meeting.id),
-        has_idiom: idiomMeetingIds.has(meeting.id),
-        has_good_usage: goodUsageMeetingIds.has(meeting.id),
-        has_improvements: improvementsMeetingIds.has(meeting.id),
-        has_stats: statsMeetingIds.has(meeting.id),
+        grammarian_name: grammarianByMeeting.get(meeting.id) ?? null,
+        word_of_the_day: wordsByMeeting.get(meeting.id) ?? null,
+        quote_of_the_day: quotesByMeeting.get(meeting.id) ?? null,
+        idiom_of_the_day: idiomsByMeeting.get(meeting.id) ?? null,
+        wotd_usage_count: usageByMeeting.get(meeting.id) ?? 0,
       }));
 
-      setMeetings(formattedMeetings);
+      setRows(reportRows);
     } catch (error) {
       console.error('Error loading meetings:', error);
     } finally {
@@ -172,26 +197,20 @@ export default function GrammarianReport() {
     });
   };
 
-  const completionScore = (meeting: MeetingData): number => {
-    const flags = [
-      meeting.has_word,
-      meeting.has_quote,
-      meeting.has_idiom,
-      meeting.has_good_usage,
-      meeting.has_improvements,
-      meeting.has_stats,
-    ];
-    return flags.filter(Boolean).length;
-  };
-
-  const indicators = [
-    { key: 'has_word', label: 'Word', icon: BookOpen },
-    { key: 'has_quote', label: 'Quote', icon: Quote },
-    { key: 'has_idiom', label: 'Idiom', icon: Lightbulb },
-    { key: 'has_good_usage', label: 'Good Usage', icon: ThumbsUp },
-    { key: 'has_improvements', label: 'Improvements', icon: TrendingUp },
-    { key: 'has_stats', label: 'Stats', icon: BarChart2 },
-  ] as const;
+  const columns: { key: string; label: string; width: number; render: (row: ReportRow) => string }[] = [
+    { key: 'meeting', label: 'Meeting No', width: 88, render: (r) => `#${r.meeting_number}` },
+    { key: 'date', label: 'Date', width: 108, render: (r) => formatDate(r.meeting_date) },
+    { key: 'grammarian', label: 'Grammarian', width: 120, render: (r) => cell(r.grammarian_name) },
+    { key: 'word', label: 'Word of the Day', width: 140, render: (r) => cell(r.word_of_the_day) },
+    { key: 'quote', label: 'Quote of the Day', width: 140, render: (r) => cell(r.quote_of_the_day) },
+    { key: 'idiom', label: 'Idiom of the Day', width: 140, render: (r) => cell(r.idiom_of_the_day) },
+    {
+      key: 'usage',
+      label: 'WOTD Usage',
+      width: 72,
+      render: (r) => (r.wotd_usage_count > 0 ? String(r.wotd_usage_count) : '—'),
+    },
+  ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -243,7 +262,7 @@ export default function GrammarianReport() {
               Loading meetings...
             </Text>
           </View>
-        ) : meetings.length === 0 ? (
+        ) : rows.length === 0 ? (
           <View style={[styles.emptyContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Calendar size={40} color={theme.colors.textSecondary} />
             <Text style={[styles.emptyTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -254,112 +273,53 @@ export default function GrammarianReport() {
             </Text>
           </View>
         ) : (
-          <View style={styles.meetingsContainer}>
+          <View style={styles.tableSection}>
             <Text style={[styles.resultCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              {meetings.length} meeting{meetings.length !== 1 ? 's' : ''} found
+              {rows.length} meeting{rows.length !== 1 ? 's' : ''} found
             </Text>
-
-            {meetings.map((meeting) => {
-              const score = completionScore(meeting);
-              const total = 6;
-              const pct = Math.round((score / total) * 100);
-
-              return (
-                <TouchableOpacity
-                  key={meeting.id}
-                  style={[styles.meetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                  onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: meeting.id } })}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.cardTop}>
-                    <View style={styles.cardTopLeft}>
-                      <View style={[styles.meetingNumberBadge, { backgroundColor: theme.colors.primary + '18' }]}>
-                        <Text style={[styles.meetingNumberText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                          #{meeting.meeting_number}
-                        </Text>
-                      </View>
-                      <View style={styles.dateRow}>
-                        <Calendar size={13} color={theme.colors.textSecondary} />
-                        <Text style={[styles.dateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                          {formatDate(meeting.meeting_date)}
-                        </Text>
-                      </View>
-                    </View>
-                    <ChevronRight size={18} color={theme.colors.textSecondary} />
-                  </View>
-
-                  <View style={[styles.grammarianRow, { borderTopColor: theme.colors.border }]}>
-                    <View style={[styles.grammarianIcon, { backgroundColor: theme.colors.primary + '15' }]}>
-                      <User size={14} color={theme.colors.primary} />
-                    </View>
-                    <View style={styles.grammarianInfo}>
-                      <Text style={[styles.grammarianLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        Grammarian
-                      </Text>
-                      <Text style={[styles.grammarianName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        {meeting.grammarian_name || 'Not assigned'}
-                      </Text>
-                    </View>
-                    <View style={styles.completionBadge}>
-                      <Text style={[styles.completionText, { color: pct === 100 ? '#16a34a' : pct > 0 ? theme.colors.primary : theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        {score}/{total}
-                      </Text>
-                      <Text style={[styles.completionLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        done
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={[styles.progressBarTrack, { backgroundColor: theme.colors.border }]}>
-                    <View
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View style={[styles.table, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={[styles.tableHeader, { borderBottomColor: theme.colors.border }]}>
+                  {columns.map((col) => (
+                    <Text
+                      key={col.key}
+                      style={[styles.tableHeaderCell, { width: col.width, color: theme.colors.text }]}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      {col.label}
+                    </Text>
+                  ))}
+                </View>
+                {rows.map((row, index) => {
+                  const isLast = index === rows.length - 1;
+                  return (
+                    <TouchableOpacity
+                      key={row.meetingId}
                       style={[
-                        styles.progressBarFill,
-                        {
-                          width: `${pct}%` as any,
-                          backgroundColor: pct === 100 ? '#16a34a' : theme.colors.primary,
+                        styles.tableRow,
+                        !isLast && {
+                          borderBottomColor: theme.colors.border,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
                         },
                       ]}
-                    />
-                  </View>
-
-                  <View style={styles.indicatorsGrid}>
-                    {indicators.map(({ key, label, icon: Icon }) => {
-                      const active = meeting[key as keyof MeetingData] as boolean;
-                      return (
-                        <View
-                          key={key}
-                          style={[
-                            styles.indicatorChip,
-                            {
-                              backgroundColor: active
-                                ? theme.colors.primary + '12'
-                                : theme.colors.background,
-                              borderColor: active
-                                ? theme.colors.primary + '40'
-                                : theme.colors.border,
-                            },
-                          ]}
+                      onPress={() => router.push({ pathname: '/grammarian', params: { meetingId: row.meetingId } })}
+                      activeOpacity={0.6}
+                    >
+                      {columns.map((col) => (
+                        <Text
+                          key={col.key}
+                          style={[styles.tableCell, { width: col.width, color: theme.colors.text }]}
+                          numberOfLines={col.key === 'word' || col.key === 'quote' || col.key === 'idiom' ? 2 : 1}
+                          maxFontSizeMultiplier={1.2}
                         >
-                          <Icon
-                            size={12}
-                            color={active ? theme.colors.primary : theme.colors.textSecondary}
-                          />
-                          <Text
-                            style={[
-                              styles.indicatorLabel,
-                              { color: active ? theme.colors.primary : theme.colors.textSecondary },
-                            ]}
-                            maxFontSizeMultiplier={1.3}
-                          >
-                            {label}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+                          {col.render(row)}
+                        </Text>
+                      ))}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         )}
 
@@ -370,9 +330,7 @@ export default function GrammarianReport() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -381,9 +339,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 0.5,
   },
-  backButton: {
-    padding: 8,
-  },
+  backButton: { padding: 8 },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -391,12 +347,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 16,
   },
-  headerSpacer: {
-    width: 40,
-  },
-  content: {
-    flex: 1,
-  },
+  headerSpacer: { width: 40 },
+  content: { flex: 1 },
   clubBanner: {
     paddingHorizontal: 24,
     paddingVertical: 24,
@@ -428,19 +380,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
-  filterButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  filterButtonText: { fontSize: 14, fontWeight: '600' },
   loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-  },
+  loadingText: { marginTop: 16, fontSize: 14 },
   emptyContainer: {
     marginHorizontal: 16,
     marginTop: 32,
@@ -460,121 +406,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  meetingsContainer: {
-    paddingHorizontal: 16,
-  },
-  resultCount: {
-    fontSize: 12,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    fontWeight: '500',
-  },
-  meetingCard: {
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  cardTopLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  meetingNumberBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  meetingNumberText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  dateText: {
-    fontSize: 13,
-  },
-  grammarianRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 0.5,
-    marginBottom: 12,
-  },
-  grammarianIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  grammarianInfo: {
-    flex: 1,
-  },
-  grammarianLabel: {
-    fontSize: 11,
-    marginBottom: 1,
-  },
-  grammarianName: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  completionBadge: {
-    alignItems: 'center',
-  },
-  completionText: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  completionLabel: {
-    fontSize: 10,
-    marginTop: 1,
-  },
-  progressBarTrack: {
-    height: 3,
-    borderRadius: 2,
-    marginBottom: 12,
+  tableSection: { paddingHorizontal: 16 },
+  resultCount: { fontSize: 13, marginBottom: 12 },
+  table: {
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
-  progressBarFill: {
-    height: 3,
-    borderRadius: 2,
-  },
-  indicatorsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  indicatorChip: {
+  tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  indicatorLabel: {
-    fontSize: 11,
-    fontWeight: '500',
+  tableHeaderCell: {
+    fontSize: 12,
+    fontWeight: '700',
+    paddingRight: 8,
   },
-  bottomSpacing: {
-    height: 40,
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
   },
+  tableCell: {
+    fontSize: 13,
+    fontWeight: '400',
+    paddingRight: 8,
+  },
+  bottomSpacing: { height: 40 },
 });

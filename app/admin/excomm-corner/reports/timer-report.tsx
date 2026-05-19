@@ -5,7 +5,8 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, User, ChevronRight, Clock, CheckCircle } from 'lucide-react-native';
+import { mapTimerReportSpeechCategoryToAggregate } from '@/lib/timerReportSpeechCategory';
+import { ArrowLeft, Calendar } from 'lucide-react-native';
 
 const toLocalDateStr = (d: Date) => {
   const y = d.getFullYear();
@@ -16,19 +17,30 @@ const toLocalDateStr = (d: Date) => {
 
 type TimeFilter = '3months' | '6months';
 
-type MeetingData = {
-  id: string;
+type ReportRow = {
+  meetingId: string;
   meeting_number: number;
   meeting_date: string;
   timer_name: string | null;
-  has_report: boolean;
+  prepared_speaker_count: number;
+  evaluator_count: number;
+  table_topic_speaker_count: number;
+  educational_speaker_count: number;
 };
+
+const cell = (value: string | null | undefined, fallback = '—') => {
+  const v = typeof value === 'string' ? value.trim() : value;
+  if (v === null || v === undefined || v === '') return fallback;
+  return String(v);
+};
+
+const countCell = (n: number) => (n > 0 ? String(n) : '0');
 
 export default function TimerReport() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('3months');
-  const [meetings, setMeetings] = useState<MeetingData[]>([]);
+  const [rows, setRows] = useState<ReportRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [clubName, setClubName] = useState<string>('');
   const [clubNumber, setClubNumber] = useState<string | null>(null);
@@ -48,7 +60,10 @@ export default function TimerReport() {
         supabase.from('clubs').select('name, club_number').eq('id', user.currentClubId).maybeSingle(),
         supabase.from('club_profiles').select('banner_color').eq('club_id', user.currentClubId).maybeSingle(),
       ]);
-      if (clubRes.data) { setClubName(clubRes.data.name); setClubNumber(clubRes.data.club_number); }
+      if (clubRes.data) {
+        setClubName(clubRes.data.name);
+        setClubNumber(clubRes.data.club_number);
+      }
       setBannerColor(profileRes.data?.banner_color || '#1e3a5f');
     } catch {}
   };
@@ -74,6 +89,9 @@ export default function TimerReport() {
         endDate.setDate(endDate.getDate() - 1);
       }
 
+      const startStr = toLocalDateStr(startDate);
+      const endStr = toLocalDateStr(endDate);
+
       const { data, error } = await supabase
         .from('app_club_meeting')
         .select(`
@@ -83,15 +101,18 @@ export default function TimerReport() {
           app_meeting_roles_management (
             role_name,
             assigned_user_id,
+            booking_status,
             app_user_profiles (
               full_name
             )
           ),
-          timer_reports ( id )
+          timer_reports (
+            speech_category
+          )
         `)
         .eq('club_id', user.currentClubId)
-        .gte('meeting_date', toLocalDateStr(startDate))
-        .lte('meeting_date', toLocalDateStr(endDate))
+        .gte('meeting_date', startStr)
+        .lte('meeting_date', endStr)
         .order('meeting_date', { ascending: false });
 
       if (error) {
@@ -99,29 +120,46 @@ export default function TimerReport() {
         return;
       }
 
-      const formattedMeetings: MeetingData[] = (data || []).map((meeting: any) => {
-        let timerName = null;
+      const reportRows: ReportRow[] = (data || []).map((meeting: any) => {
+        let timerName: string | null = null;
         if (Array.isArray(meeting.app_meeting_roles_management)) {
           const timerRole = meeting.app_meeting_roles_management.find(
             (role: any) => role.role_name === 'Timer'
           );
-          if (timerRole?.app_user_profiles) {
-            timerName = timerRole.app_user_profiles.full_name;
+          if (timerRole?.booking_status === 'booked' && timerRole.assigned_user_id) {
+            timerName = timerRole.app_user_profiles?.full_name?.trim() || null;
+          } else if (timerRole?.app_user_profiles?.full_name) {
+            timerName = timerRole.app_user_profiles.full_name.trim();
           }
         }
 
-        const hasReport = Array.isArray(meeting.timer_reports) && meeting.timer_reports.length > 0;
+        const counts = {
+          prepared_speeches: 0,
+          evaluation: 0,
+          table_topic_speakers: 0,
+          educational_speech: 0,
+        };
+
+        if (Array.isArray(meeting.timer_reports)) {
+          meeting.timer_reports.forEach((report: { speech_category?: string }) => {
+            const bucket = mapTimerReportSpeechCategoryToAggregate(report.speech_category || '');
+            if (bucket) counts[bucket] += 1;
+          });
+        }
 
         return {
-          id: meeting.id,
+          meetingId: meeting.id,
           meeting_number: meeting.meeting_number,
           meeting_date: meeting.meeting_date,
           timer_name: timerName,
-          has_report: hasReport,
+          prepared_speaker_count: counts.prepared_speeches,
+          evaluator_count: counts.evaluation,
+          table_topic_speaker_count: counts.table_topic_speakers,
+          educational_speaker_count: counts.educational_speech,
         };
       });
 
-      setMeetings(formattedMeetings);
+      setRows(reportRows);
     } catch (error) {
       console.error('Error loading meetings:', error);
     } finally {
@@ -137,6 +175,16 @@ export default function TimerReport() {
       year: 'numeric',
     });
   };
+
+  const columns: { key: string; label: string; width: number; render: (row: ReportRow) => string }[] = [
+    { key: 'meeting', label: 'Meeting No', width: 88, render: (r) => `#${r.meeting_number}` },
+    { key: 'date', label: 'Date', width: 108, render: (r) => formatDate(r.meeting_date) },
+    { key: 'timer', label: 'Timer', width: 120, render: (r) => cell(r.timer_name) },
+    { key: 'prepared', label: 'Prepared', width: 72, render: (r) => countCell(r.prepared_speaker_count) },
+    { key: 'evaluator', label: 'Evaluator', width: 72, render: (r) => countCell(r.evaluator_count) },
+    { key: 'tt', label: 'Table Topics', width: 88, render: (r) => countCell(r.table_topic_speaker_count) },
+    { key: 'edu', label: 'Educational', width: 88, render: (r) => countCell(r.educational_speaker_count) },
+  ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -188,7 +236,7 @@ export default function TimerReport() {
               Loading meetings...
             </Text>
           </View>
-        ) : meetings.length === 0 ? (
+        ) : rows.length === 0 ? (
           <View style={[styles.emptyContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Calendar size={40} color={theme.colors.textSecondary} />
             <Text style={[styles.emptyTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -199,74 +247,55 @@ export default function TimerReport() {
             </Text>
           </View>
         ) : (
-          <View style={styles.meetingsContainer}>
+          <View style={styles.tableSection}>
             <Text style={[styles.resultCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              {meetings.length} meeting{meetings.length !== 1 ? 's' : ''} found
+              {rows.length} meeting{rows.length !== 1 ? 's' : ''} found
             </Text>
-
-            {meetings.map((meeting) => (
-              <TouchableOpacity
-                key={meeting.id}
-                style={[styles.meetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                onPress={() => router.push({ pathname: '/timer-report-details', params: { meetingId: meeting.id } })}
-                activeOpacity={0.7}
-              >
-                <View style={styles.cardTop}>
-                  <View style={styles.cardTopLeft}>
-                    <View style={[styles.meetingNumberBadge, { backgroundColor: theme.colors.primary + '18' }]}>
-                      <Text style={[styles.meetingNumberText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                        #{meeting.meeting_number}
-                      </Text>
-                    </View>
-                    <View style={styles.dateRow}>
-                      <Calendar size={13} color={theme.colors.textSecondary} />
-                      <Text style={[styles.dateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        {formatDate(meeting.meeting_date)}
-                      </Text>
-                    </View>
-                  </View>
-                  <ChevronRight size={18} color={theme.colors.textSecondary} />
-                </View>
-
-                <View style={[styles.timerRow, { borderTopColor: theme.colors.border }]}>
-                  <View style={[styles.timerIcon, { backgroundColor: theme.colors.primary + '15' }]}>
-                    <User size={14} color={theme.colors.primary} />
-                  </View>
-                  <View style={styles.timerInfo}>
-                    <Text style={[styles.timerLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      Timer
-                    </Text>
-                    <Text style={[styles.timerName, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                      {meeting.timer_name || 'Not assigned'}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      {
-                        backgroundColor: meeting.has_report ? '#16a34a18' : '#f59e0b18',
-                        borderColor: meeting.has_report ? '#16a34a40' : '#f59e0b40',
-                      },
-                    ]}
-                  >
-                    {meeting.has_report ? (
-                      <CheckCircle size={12} color="#16a34a" />
-                    ) : (
-                      <Clock size={12} color="#f59e0b" />
-                    )}
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View style={[styles.table, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={[styles.tableHeader, { borderBottomColor: theme.colors.border }]}>
+                  {columns.map((col) => (
                     <Text
-                      style={[
-                        styles.statusText,
-                        { color: meeting.has_report ? '#16a34a' : '#f59e0b' },
-                      ]}
-                      maxFontSizeMultiplier={1.3}
+                      key={col.key}
+                      style={[styles.tableHeaderCell, { width: col.width, color: theme.colors.text }]}
+                      maxFontSizeMultiplier={1.2}
                     >
-                      {meeting.has_report ? 'Completed' : 'Pending'}
+                      {col.label}
                     </Text>
-                  </View>
+                  ))}
                 </View>
-              </TouchableOpacity>
-            ))}
+                {rows.map((row, index) => {
+                  const isLast = index === rows.length - 1;
+                  return (
+                    <TouchableOpacity
+                      key={row.meetingId}
+                      style={[
+                        styles.tableRow,
+                        !isLast && {
+                          borderBottomColor: theme.colors.border,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                        },
+                      ]}
+                      onPress={() =>
+                        router.push({ pathname: '/timer-report-details', params: { meetingId: row.meetingId } })
+                      }
+                      activeOpacity={0.6}
+                    >
+                      {columns.map((col) => (
+                        <Text
+                          key={col.key}
+                          style={[styles.tableCell, { width: col.width, color: theme.colors.text }]}
+                          numberOfLines={col.key === 'timer' ? 2 : 1}
+                          maxFontSizeMultiplier={1.2}
+                        >
+                          {col.render(row)}
+                        </Text>
+                      ))}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         )}
 
@@ -277,9 +306,7 @@ export default function TimerReport() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -288,9 +315,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 0.5,
   },
-  backButton: {
-    padding: 8,
-  },
+  backButton: { padding: 8 },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -298,12 +323,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 16,
   },
-  headerSpacer: {
-    width: 40,
-  },
-  content: {
-    flex: 1,
-  },
+  headerSpacer: { width: 40 },
+  content: { flex: 1 },
   clubBanner: {
     paddingHorizontal: 24,
     paddingVertical: 24,
@@ -335,19 +356,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
-  filterButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  filterButtonText: { fontSize: 14, fontWeight: '600' },
   loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-  },
+  loadingText: { marginTop: 16, fontSize: 14 },
   emptyContainer: {
     marginHorizontal: 16,
     marginTop: 32,
@@ -367,94 +382,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  meetingsContainer: {
-    paddingHorizontal: 16,
+  tableSection: { paddingHorizontal: 16 },
+  resultCount: { fontSize: 13, marginBottom: 12 },
+  table: {
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
-  resultCount: {
+  tableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  tableHeaderCell: {
     fontSize: 12,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    fontWeight: '500',
-  },
-  meetingCard: {
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  cardTopLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  meetingNumberBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  meetingNumberText: {
-    fontSize: 13,
     fontWeight: '700',
+    paddingRight: 8,
   },
-  dateRow: {
+  tableRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+    alignItems: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
   },
-  dateText: {
+  tableCell: {
     fontSize: 13,
+    fontWeight: '400',
+    paddingRight: 8,
   },
-  timerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 0.5,
-  },
-  timerIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  timerInfo: {
-    flex: 1,
-  },
-  timerLabel: {
-    fontSize: 11,
-    marginBottom: 1,
-  },
-  timerName: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  bottomSpacing: {
-    height: 40,
-  },
+  bottomSpacing: { height: 40 },
 });

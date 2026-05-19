@@ -38,17 +38,29 @@ import {
   Users,
   Youtube,
 } from 'lucide-react-native';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { ClubInfoManagementBundle, ClubSocialUrlsRow } from '@/lib/clubInfoManagementQuery';
 import {
   fetchClubLandingCritical,
   fetchClubHasCompletedMeeting,
+  fetchClubTabSecondarySnapshot,
+  fetchClubFaqItems,
   getCachedClubLandingCritical,
+  type ClubLandingCriticalPayload,
   type ExcommPreviewRow,
   type MemberPreview,
   type MemberPreviewClubRole,
 } from '@/lib/clubTabLandingData';
+import type { ClubTabSecondaryPayload, ClubTabSessionSnapshot } from '@/lib/clubTabSessionCache';
+import {
+  peekClubTabCriticalSync,
+  peekClubTabSession,
+  peekClubTabSessionForHydrate,
+  peekClubTabSessionStale,
+  shouldBackgroundRefreshClubTab,
+  writeClubTabSession,
+} from '@/lib/clubTabSessionCache';
 import { DEFAULT_TOASTMASTERS_CLUB_MISSION } from '@/lib/defaultClubMission';
 import { avatarUrlForDisplay } from '@/lib/avatarDisplayUrl';
 import { initialsFromName, useShouldLoadNetworkAvatars } from '@/lib/networkAvatarPolicy';
@@ -1416,7 +1428,7 @@ async function fetchAhCounterMeetingWiseLast6Months(clubId: string): Promise<AhC
   }
 }
 
-async function fetchClubSecondarySnapshotLast6Months(clubId: string): Promise<{
+function castSecondarySnapshot(payload: ClubTabSecondaryPayload): {
   educationalSpeeches: EducationalSpeechDeliveredRow[];
   toastmasterThemes: ToastmasterThemeDeliveredRow[];
   preparedSpeeches: PreparedSpeechDeliveredRow[];
@@ -1427,33 +1439,19 @@ async function fetchClubSecondarySnapshotLast6Months(clubId: string): Promise<{
   ahCounterMeetingWiseRows: AhCounterMeetingWiseRow[];
   tableTopicQuestionRows: ClubTableTopicQuestionRow[];
   generalEvaluatorScoringRows: GeneralEvaluatorScoringRow[];
-} | null> {
-  try {
-    const { data, error } = await (supabase as any).rpc('get_club_tab_secondary_snapshot', {
-      p_club_id: clubId,
-      p_months: 6,
-    });
-    if (error || !data || typeof data !== 'object') {
-      if (error) console.warn('Club secondary snapshot RPC:', error.message);
-      return null;
-    }
-    const root = data as Record<string, unknown>;
-    return {
-      educationalSpeeches: ((root.educationalSpeeches as EducationalSpeechDeliveredRow[] | null) ?? []),
-      toastmasterThemes: ((root.toastmasterThemes as ToastmasterThemeDeliveredRow[] | null) ?? []),
-      preparedSpeeches: ((root.preparedSpeeches as PreparedSpeechDeliveredRow[] | null) ?? []),
-      quoteRows: ((root.quoteRows as GrammarianPublishedCarouselRow[] | null) ?? []),
-      idiomRows: ((root.idiomRows as GrammarianPublishedCarouselRow[] | null) ?? []),
-      wotdRows: ((root.wotdRows as ClubWotdCarouselRow[] | null) ?? []),
-      timerMeetingWiseRows: ((root.timerMeetingWiseRows as TimerMeetingWiseRow[] | null) ?? []),
-      ahCounterMeetingWiseRows: ((root.ahCounterMeetingWiseRows as AhCounterMeetingWiseRow[] | null) ?? []),
-      tableTopicQuestionRows: ((root.tableTopicQuestionRows as ClubTableTopicQuestionRow[] | null) ?? []),
-      generalEvaluatorScoringRows: ((root.generalEvaluatorScoringRows as GeneralEvaluatorScoringRow[] | null) ?? []),
-    };
-  } catch (e) {
-    console.warn('Club secondary snapshot RPC load error:', e);
-    return null;
-  }
+} {
+  return {
+    educationalSpeeches: payload.educationalSpeeches as EducationalSpeechDeliveredRow[],
+    toastmasterThemes: payload.toastmasterThemes as ToastmasterThemeDeliveredRow[],
+    preparedSpeeches: payload.preparedSpeeches as PreparedSpeechDeliveredRow[],
+    quoteRows: payload.quoteRows as GrammarianPublishedCarouselRow[],
+    idiomRows: payload.idiomRows as GrammarianPublishedCarouselRow[],
+    wotdRows: payload.wotdRows as ClubWotdCarouselRow[],
+    timerMeetingWiseRows: payload.timerMeetingWiseRows as TimerMeetingWiseRow[],
+    ahCounterMeetingWiseRows: payload.ahCounterMeetingWiseRows as AhCounterMeetingWiseRow[],
+    tableTopicQuestionRows: payload.tableTopicQuestionRows as ClubTableTopicQuestionRow[],
+    generalEvaluatorScoringRows: payload.generalEvaluatorScoringRows as GeneralEvaluatorScoringRow[],
+  };
 }
 
 type EducationalSpeechDeliveredRow = {
@@ -2948,8 +2946,9 @@ function AhCounterMeetingWiseCarousel({
 }
 
 export default function MyClub() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const firstContentLoggedRef = useRef(false);
+  const clubPaintedFromCacheRef = useRef(false);
   const [bundle, setBundle] = useState<ClubInfoManagementBundle | null>(null);
   const [social, setSocial] = useState<ClubSocialUrlsRow | null>(null);
   const [excommPreview, setExcommPreview] = useState<ExcommPreviewRow[]>([]);
@@ -2977,11 +2976,69 @@ export default function MyClub() {
   const [generalEvaluatorScoringRows, setGeneralEvaluatorScoringRows] = useState<
     GeneralEvaluatorScoringRow[]
   >([]);
-  const [landingLoading, setLandingLoading] = useState(false);
+  const [landingLoading, setLandingLoading] = useState(true);
+  const [landingLoadFailed, setLandingLoadFailed] = useState(false);
   /** null = checking; hide meeting insights until at least one closed meeting exists. */
   const [clubHasCompletedMeeting, setClubHasCompletedMeeting] = useState<boolean | null>(null);
 
   const showClubMeetingInsights = clubHasCompletedMeeting === true;
+
+  const applyCritical = useCallback((critical: ClubLandingCriticalPayload) => {
+    setBundle(critical.bundle);
+    setSocial(critical.bundle.social);
+    setExcommPreview(critical.excomm);
+    setMembersPreview(critical.members);
+  }, []);
+
+  const applySecondary = useCallback((payload: ClubTabSecondaryPayload) => {
+    const cast = castSecondarySnapshot(payload);
+    setEducationalSpeechesDelivered(cast.educationalSpeeches);
+    setToastmasterThemesDelivered(cast.toastmasterThemes);
+    setPreparedSpeechesDelivered(cast.preparedSpeeches);
+    setClubFaqItems(payload.faqItems);
+    setClubQuoteRows(cast.quoteRows);
+    setClubIdiomRows(cast.idiomRows);
+    setClubWotdRows(cast.wotdRows);
+    setTimerMeetingWiseRows(cast.timerMeetingWiseRows);
+    setAhCounterMeetingWiseRows(cast.ahCounterMeetingWiseRows);
+    setTableTopicQuestionRows(cast.tableTopicQuestionRows);
+    setGeneralEvaluatorScoringRows(cast.generalEvaluatorScoringRows);
+  }, []);
+
+  /** Paint cached club UI before first browser paint to avoid empty-state flash. */
+  useLayoutEffect(() => {
+    const clubId = user?.currentClubId;
+    if (!clubId) {
+      clubPaintedFromCacheRef.current = false;
+      if (!authLoading) setLandingLoading(false);
+      return;
+    }
+
+    setLandingLoadFailed(false);
+    const sessionSnap = peekClubTabSessionForHydrate(clubId);
+    const critical = sessionSnap?.critical ?? peekClubTabCriticalSync(clubId);
+    let painted = false;
+
+    if (sessionSnap) {
+      setClubHasCompletedMeeting(sessionSnap.hasCompletedMeeting);
+      if (sessionSnap.hasCompletedMeeting && sessionSnap.secondary) {
+        applySecondary(sessionSnap.secondary);
+      }
+    }
+
+    if (critical) {
+      applyCritical(critical);
+      painted = true;
+    } else {
+      setBundle(null);
+      setSocial(null);
+      setExcommPreview([]);
+      setMembersPreview([]);
+    }
+
+    clubPaintedFromCacheRef.current = painted;
+    setLandingLoading(!painted);
+  }, [user?.currentClubId, authLoading, applyCritical, applySecondary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3004,105 +3061,99 @@ export default function MyClub() {
       setAhCounterMeetingWiseRows([]);
       setTableTopicQuestionRows([]);
       setGeneralEvaluatorScoringRows([]);
+      setLandingLoading(false);
       return;
     }
 
     const clubId = user.currentClubId;
 
-    setEducationalSpeechesDelivered([]);
-    setToastmasterThemesDelivered([]);
-    setPreparedSpeechesDelivered([]);
-    setClubFaqItems([]);
-    setClubQuoteRows([]);
-    setClubIdiomRows([]);
-    setClubWotdRows([]);
-    setTimerMeetingWiseRows([]);
-    setAhCounterMeetingWiseRows([]);
-    setTableTopicQuestionRows([]);
-    setGeneralEvaluatorScoringRows([]);
-    setClubStatsByDays({});
+    const sessionSnap = peekClubTabSessionForHydrate(clubId);
+    const hasPaintedUi = clubPaintedFromCacheRef.current || !!peekClubTabCriticalSync(clubId);
+
+    if (!sessionSnap && !hasPaintedUi) {
+      setEducationalSpeechesDelivered([]);
+      setToastmasterThemesDelivered([]);
+      setPreparedSpeechesDelivered([]);
+      setClubFaqItems([]);
+      setClubQuoteRows([]);
+      setClubIdiomRows([]);
+      setClubWotdRows([]);
+      setTimerMeetingWiseRows([]);
+      setAhCounterMeetingWiseRows([]);
+      setTableTopicQuestionRows([]);
+      setGeneralEvaluatorScoringRows([]);
+      setClubStatsByDays({});
+    }
+
+    const mergeSession = (
+      patch: Partial<Omit<ClubTabSessionSnapshot, 'clubId' | 'at'>>
+    ) => {
+      const base = peekClubTabSessionStale(clubId);
+      writeClubTabSession({
+        clubId,
+        at: Date.now(),
+        hasCompletedMeeting: patch.hasCompletedMeeting ?? base?.hasCompletedMeeting ?? false,
+        critical: patch.critical !== undefined ? patch.critical : (base?.critical ?? null),
+        secondary: patch.secondary !== undefined ? patch.secondary : (base?.secondary ?? null),
+      });
+    };
 
     const runCritical = async () => {
       const criticalStartMs = Date.now();
-      setLandingLoading(true);
+      const showSpinner = !hasPaintedUi;
+      if (showSpinner) setLandingLoading(true);
+      let criticalPayload: ClubLandingCriticalPayload | null = null;
       try {
         const warm = await getCachedClubLandingCritical(clubId);
         if (!cancelled && warm) {
-          setBundle(warm.bundle);
-          setSocial(warm.bundle.social);
-          setExcommPreview(warm.excomm);
-          setMembersPreview(warm.members);
-          // Keep spinner off while refreshing in background.
-          setLandingLoading(false);
+          applyCritical(warm);
+          criticalPayload = warm;
+          if (showSpinner) setLandingLoading(false);
         }
 
-        const { bundle: b, excomm, members: membersP } = await fetchClubLandingCritical(clubId, {
+        const loaded = await fetchClubLandingCritical(clubId, {
           bypassCache: !!warm,
         });
         if (cancelled) return;
-        setBundle(b);
-        setSocial(b.social);
-        setExcommPreview(excomm);
-        setMembersPreview(membersP);
+        applyCritical(loaded);
+        criticalPayload = loaded;
+        setLandingLoadFailed(false);
         console.log(
           '[club-perf] critical-loaded',
           JSON.stringify({ clubId, elapsedMs: Date.now() - criticalStartMs, fromWarmCache: !!warm })
         );
       } catch (e) {
         console.error('Club landing critical load error:', e);
-        if (!cancelled) {
+        if (!cancelled && !hasPaintedUi) {
           setBundle(null);
           setSocial(null);
           setExcommPreview([]);
           setMembersPreview([]);
+          setLandingLoadFailed(true);
         }
       } finally {
-        if (!cancelled) setLandingLoading(false);
+        if (!cancelled && showSpinner) setLandingLoading(false);
+      }
+      if (!cancelled && criticalPayload) {
+        mergeSession({ critical: criticalPayload });
       }
     };
 
-    const runSecondary = async () => {
+    const runSecondary = async (hasCompleted: boolean) => {
+      if (!hasCompleted) {
+        mergeSession({ secondary: null });
+        return;
+      }
       const secondaryStartMs = Date.now();
       try {
-        const rpcSnapshot = await fetchClubSecondarySnapshotLast6Months(clubId);
-        if (rpcSnapshot) {
+        const rpcRaw = await fetchClubTabSecondarySnapshot(clubId);
+        if (rpcRaw) {
           if (cancelled) return;
-          const faqRes = await supabase
-            .from('club_faq_items')
-            .select('id, question, answer')
-            .eq('club_id', clubId)
-            .order('sort_order', { ascending: true });
+          const faqItems = await fetchClubFaqItems(clubId);
           if (cancelled) return;
-
-          setEducationalSpeechesDelivered(rpcSnapshot.educationalSpeeches);
-          setToastmasterThemesDelivered(rpcSnapshot.toastmasterThemes);
-          setPreparedSpeechesDelivered(rpcSnapshot.preparedSpeeches);
-          if (faqRes.error) {
-            console.warn('Club FAQ load:', faqRes.error.message);
-            setClubFaqItems([]);
-          } else {
-            const faqRows = (faqRes.data as Array<{
-              id: string;
-              question: string | null;
-              answer: string | null;
-            }> | null) ?? [];
-            setClubFaqItems(
-              faqRows
-                .filter((r) => (r.question?.trim() || r.answer?.trim()))
-                .map((r) => ({
-                  id: r.id,
-                  question: (r.question ?? '').trim(),
-                  answer: (r.answer ?? '').trim(),
-                }))
-            );
-          }
-          setClubQuoteRows(rpcSnapshot.quoteRows);
-          setClubIdiomRows(rpcSnapshot.idiomRows);
-          setClubWotdRows(rpcSnapshot.wotdRows);
-          setTimerMeetingWiseRows(rpcSnapshot.timerMeetingWiseRows);
-          setAhCounterMeetingWiseRows(rpcSnapshot.ahCounterMeetingWiseRows);
-          setTableTopicQuestionRows(rpcSnapshot.tableTopicQuestionRows);
-          setGeneralEvaluatorScoringRows(rpcSnapshot.generalEvaluatorScoringRows);
+          const secondary: ClubTabSecondaryPayload = { ...rpcRaw, faqItems };
+          applySecondary(secondary);
+          mergeSession({ secondary });
           console.log(
             '[club-perf] secondary-loaded',
             JSON.stringify({ clubId, elapsedMs: Date.now() - secondaryStartMs, source: 'rpc' })
@@ -3119,7 +3170,7 @@ export default function MyClub() {
           edSpeeches,
           tmThemes,
           prepSpeeches,
-          faqRes,
+          faqItems,
           quoteRows,
           idiomRows,
           wotdRows,
@@ -3127,61 +3178,42 @@ export default function MyClub() {
           ahRows,
           tableTopicRows,
           geScoringRows,
-        ] =
-          await Promise.all([
-            fetchEducationalSpeechesDeliveredLast6Months(clubId),
-            fetchToastmasterThemesDeliveredLast6Months(clubId),
-            fetchPreparedSpeechesDeliveredLast6Months(clubId),
-            supabase
-              .from('club_faq_items')
-              .select('id, question, answer')
-              .eq('club_id', clubId)
-              .order('sort_order', { ascending: true }),
-            fetchPublishedClubQuotesRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
-            fetchPublishedClubIdiomsRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
-            fetchPublishedClubWordsLast6Months(clubId),
-            fetchTimerMeetingWiseLast6Months(clubId),
-            fetchAhCounterMeetingWiseLast6Months(clubId),
-            fetchClubTableTopicQuestions(clubId),
-            fetchGeneralEvaluatorScoringLast6Months(clubId),
-          ]);
+        ] = await Promise.all([
+          fetchEducationalSpeechesDeliveredLast6Months(clubId),
+          fetchToastmasterThemesDeliveredLast6Months(clubId),
+          fetchPreparedSpeechesDeliveredLast6Months(clubId),
+          fetchClubFaqItems(clubId),
+          fetchPublishedClubQuotesRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
+          fetchPublishedClubIdiomsRollingDays(clubId, GRAMMARIAN_PUBLISHED_LOOKBACK_DAYS),
+          fetchPublishedClubWordsLast6Months(clubId),
+          fetchTimerMeetingWiseLast6Months(clubId),
+          fetchAhCounterMeetingWiseLast6Months(clubId),
+          fetchClubTableTopicQuestions(clubId),
+          fetchGeneralEvaluatorScoringLast6Months(clubId),
+        ]);
         if (cancelled) return;
-        setEducationalSpeechesDelivered(edSpeeches);
-        setToastmasterThemesDelivered(tmThemes);
-        setPreparedSpeechesDelivered(prepSpeeches);
-        if (faqRes.error) {
-          console.warn('Club FAQ load:', faqRes.error.message);
-          setClubFaqItems([]);
-        } else {
-          const faqRows = (faqRes.data as Array<{
-            id: string;
-            question: string | null;
-            answer: string | null;
-          }> | null) ?? [];
-          setClubFaqItems(
-            faqRows
-              .filter((r) => (r.question?.trim() || r.answer?.trim()))
-              .map((r) => ({
-                id: r.id,
-                question: (r.question ?? '').trim(),
-                answer: (r.answer ?? '').trim(),
-              }))
-          );
-        }
-        setClubQuoteRows(quoteRows);
-        setClubIdiomRows(idiomRows);
-        setClubWotdRows(wotdRows);
-        setTimerMeetingWiseRows(timerRows);
-        setAhCounterMeetingWiseRows(ahRows);
-        setTableTopicQuestionRows(tableTopicRows);
-        setGeneralEvaluatorScoringRows(geScoringRows);
+        const secondary: ClubTabSecondaryPayload = {
+          educationalSpeeches: edSpeeches,
+          toastmasterThemes: tmThemes,
+          preparedSpeeches: prepSpeeches,
+          quoteRows,
+          idiomRows,
+          wotdRows,
+          timerMeetingWiseRows: timerRows,
+          ahCounterMeetingWiseRows: ahRows,
+          tableTopicQuestionRows: tableTopicRows,
+          generalEvaluatorScoringRows: geScoringRows,
+          faqItems,
+        };
+        applySecondary(secondary);
+        mergeSession({ secondary });
         console.log(
           '[club-perf] secondary-loaded',
           JSON.stringify({ clubId, elapsedMs: Date.now() - secondaryStartMs, source: 'legacy-fallback' })
         );
       } catch (e) {
         console.error('Club landing secondary load error:', e);
-        if (!cancelled) {
+        if (!cancelled && !sessionSnap?.secondary) {
           setEducationalSpeechesDelivered([]);
           setToastmasterThemesDelivered([]);
           setPreparedSpeechesDelivered([]);
@@ -3198,13 +3230,20 @@ export default function MyClub() {
     };
 
     const bootstrap = async () => {
-      const hasCompleted = await fetchClubHasCompletedMeeting(clubId);
+      const skipNetwork =
+        !!sessionSnap && peekClubTabSession(clubId) != null && !shouldBackgroundRefreshClubTab(clubId);
+      if (skipNetwork) return;
+
+      const hasCompleted =
+        sessionSnap?.hasCompletedMeeting ??
+        (await fetchClubHasCompletedMeeting(clubId));
       if (cancelled) return;
       setClubHasCompletedMeeting(hasCompleted);
-      void runCritical();
-      if (hasCompleted) {
-        void runSecondary();
-      }
+      mergeSession({ hasCompletedMeeting: hasCompleted });
+
+      await runCritical();
+      if (cancelled) return;
+      await runSecondary(hasCompleted);
     };
 
     void bootstrap();
@@ -3212,7 +3251,7 @@ export default function MyClub() {
     return () => {
       cancelled = true;
     };
-  }, [user?.currentClubId]);
+  }, [user?.currentClubId, applyCritical, applySecondary]);
 
   useEffect(() => {
     const clubId = user?.currentClubId;
@@ -3406,16 +3445,16 @@ export default function MyClub() {
           <Text style={styles.body} maxFontSizeMultiplier={1.3}>
             Please sign in to view your club.
           </Text>
+        ) : authLoading ? (
+          <View style={styles.loaderWrap}>
+            <ActivityIndicator color={C.cta} />
+            <Text style={styles.smallMuted} maxFontSizeMultiplier={1.2}>
+              Loading…
+            </Text>
+          </View>
         ) : user?.currentClubId ? (
           <>
-            {landingLoading && !bundle ? (
-              <View style={styles.loaderWrap}>
-                <ActivityIndicator color={C.cta} />
-                <Text style={styles.smallMuted} maxFontSizeMultiplier={1.2}>
-                  Loading…
-                </Text>
-              </View>
-            ) : bundle ? (
+            {bundle ? (
               <>
                 {/* Notion-style single top card: club, about, meeting grid, location */}
                 <View style={styles.clubTopSegment}>
@@ -3736,10 +3775,17 @@ export default function MyClub() {
                   </View>
                 </View>
               </>
-            ) : (
+            ) : landingLoadFailed ? (
               <View style={styles.card}>
                 <Text style={styles.body} maxFontSizeMultiplier={1.2}>
                   We couldn’t load club details. Try again later.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.loaderWrap}>
+                <ActivityIndicator color={C.cta} />
+                <Text style={styles.smallMuted} maxFontSizeMultiplier={1.2}>
+                  Loading…
                 </Text>
               </View>
             )}

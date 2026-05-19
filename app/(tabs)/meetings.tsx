@@ -14,27 +14,16 @@ import { MeetingRolesTabPanel } from '@/components/MeetingRolesTabPanel';
 import { MeetingActionsTabPanel } from '@/components/MeetingActionsTabPanel';
 import { MeetingEvaluationTabPanel } from '@/components/MeetingEvaluationTabPanel';
 import type { MeetingFlowTab } from '@/lib/meetingTabsCatalog';
+import { fetchMeetingsTabSnapshot } from '@/lib/meetingsTabData';
+import type { MeetingsTabMeeting, MeetingsTabSnapshot } from '@/lib/meetingsTabSessionCache';
+import {
+  peekMeetingsTabSession,
+  peekMeetingsTabSessionStale,
+  shouldBackgroundRefreshMeetingsTab,
+  writeMeetingsTabSession,
+} from '@/lib/meetingsTabSessionCache';
 
-/**
- * Survives Meeting tab screen remounts (common on web) so "Loading meetings…" does not flash on every tab switch.
- * Reset implicitly when switching clubs (different id).
- */
-let meetingsTabHydratedClubId: string | null = null;
-
-interface Meeting {
-  id: string;
-  meeting_title: string;
-  meeting_date: string;
-  meeting_number: string | null;
-  meeting_start_time: string | null;
-  meeting_end_time: string | null;
-  meeting_mode: string;
-  meeting_location: string | null;
-  meeting_link: string | null;
-  meeting_status: string;
-  meeting_day: string | null;
-  isPlaceholder?: boolean;
-}
+type Meeting = MeetingsTabMeeting;
 
 interface FeatureCardProps {
   title: string;
@@ -78,7 +67,7 @@ export default function ClubMeetings() {
   const [isLoading, setIsLoading] = useState(() => {
     const cid = user?.currentClubId;
     if (!cid) return false;
-    return meetingsTabHydratedClubId !== cid;
+    return peekMeetingsTabSessionStale(cid) == null;
   });
   const [hasOnlyOneOpenMeeting, setHasOnlyOneOpenMeeting] = useState(false);
   const [vpeName, setVpeName] = useState<string>('VPE');
@@ -121,13 +110,63 @@ export default function ClubMeetings() {
   const hasLoadedOnce = useRef<boolean>(false);
   const scrollRef = useRef<ScrollView>(null);
 
+  const applyMeetingsSnapshot = useCallback((snap: MeetingsTabSnapshot) => {
+    setCurrentMeeting(snap.currentMeeting);
+    setNextMeetings(snap.nextMeetings);
+    setMeetingHistory(snap.meetingHistory);
+    setHasOnlyOneOpenMeeting(snap.hasOnlyOneOpenMeeting);
+    setVpeName(snap.vpeName);
+  }, []);
+
+  const loadMeetingsTab = useCallback(
+    async (opts?: { showLoading?: boolean }) => {
+      if (!user?.currentClubId) {
+        setMeetingHistory([]);
+        setExpandedHistoryMeetingId(null);
+        if (!hasLoadedOnce.current) setIsLoading(false);
+        return;
+      }
+
+      const clubId = user.currentClubId;
+      const showSpinner = opts?.showLoading === true;
+      if (showSpinner) setIsLoading(true);
+
+      try {
+        const snap = await fetchMeetingsTabSnapshot(clubId);
+        applyMeetingsSnapshot(snap);
+        writeMeetingsTabSession(snap);
+      } catch (error) {
+        console.error('Error loading meetings:', error);
+      } finally {
+        hasLoadedOnce.current = true;
+        if (showSpinner) setIsLoading(false);
+      }
+    },
+    [user?.currentClubId, applyMeetingsSnapshot]
+  );
+
   useEffect(() => {
-    if (user?.currentClubId) {
-      Promise.all([loadOpenMeetings(), loadVPEInfo()]);
-    } else if (!hasLoadedOnce.current) {
+    if (!user?.currentClubId) {
+      if (!hasLoadedOnce.current) setIsLoading(false);
+      return;
+    }
+
+    const clubId = user.currentClubId;
+    const cached = peekMeetingsTabSession(clubId) ?? peekMeetingsTabSessionStale(clubId);
+    if (cached) {
+      applyMeetingsSnapshot(cached);
       setIsLoading(false);
     }
-  }, [user?.currentClubId]);
+
+    const skipNetwork =
+      !!cached && peekMeetingsTabSession(clubId) != null && !shouldBackgroundRefreshMeetingsTab(clubId);
+    if (skipNetwork) {
+      hasLoadedOnce.current = true;
+      return;
+    }
+
+    void loadMeetingsTab({ showLoading: !cached });
+  }, [user?.currentClubId, applyMeetingsSnapshot, loadMeetingsTab]);
 
   useEffect(() => {
     setOpenMeetingDetailExpanded(true);
@@ -188,11 +227,13 @@ export default function ClubMeetings() {
       lastRefreshTime.current = now;
 
       if (user?.currentClubId) {
-        const tasks: Promise<void>[] = [loadOpenMeetings(), loadVPEInfo()];
+        const clubId = user.currentClubId;
+        if (!shouldBackgroundRefreshMeetingsTab(clubId)) return;
+        const tasks: Promise<void>[] = [loadMeetingsTab()];
         if (isAuthenticated) tasks.push(refreshUserProfile());
         void Promise.all(tasks);
       }
-    }, [user?.currentClubId, isAuthenticated, refreshUserProfile])
+    }, [user?.currentClubId, isAuthenticated, refreshUserProfile, loadMeetingsTab])
   );
 
   useEffect(() => {
@@ -706,144 +747,6 @@ export default function ClubMeetings() {
       return typeof cleanup === 'function' ? cleanup : undefined;
     }, [refreshBookRoleAttention])
   );
-
-  const loadVPEInfo = async () => {
-    if (!user?.currentClubId) return;
-
-    setVpeName('VPE');
-
-    try {
-      // Optimized single query with join - fetches VPE name in one call
-      const { data: clubProfile, error } = await supabase
-        .from('club_profiles')
-        .select(`
-          vpe_id,
-          app_user_profiles!club_profiles_vpe_id_fkey (
-            full_name
-          )
-        `)
-        .eq('club_id', user.currentClubId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading VPE info:', error);
-        return;
-      }
-
-      // Access the joined VPE profile data
-      const vpeProfile = clubProfile?.app_user_profiles as { full_name: string } | null;
-      if (vpeProfile?.full_name) {
-        setVpeName(vpeProfile.full_name);
-      }
-    } catch (error) {
-      console.error('Error loading VPE info:', error);
-    }
-  };
-
-  const loadOpenMeetings = async () => {
-    if (!user?.currentClubId) {
-      setMeetingHistory([]);
-      setExpandedHistoryMeetingId(null);
-      if (!hasLoadedOnce.current) {
-        setIsLoading(false);
-      }
-      return;
-    }
-
-    const clubId = user.currentClubId;
-    const needsClubHydration = meetingsTabHydratedClubId !== clubId;
-    if (needsClubHydration) setIsLoading(true);
-
-    try {
-      const fourHoursAgo = new Date();
-      fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
-      const cutoffDate = fourHoursAgo.toISOString().split('T')[0];
-
-      const meetingSelect =
-        'id, meeting_title, meeting_date, meeting_number, meeting_start_time, meeting_end_time, meeting_mode, meeting_location, meeting_link, meeting_status, meeting_day';
-
-      const [openRes, historyRes] = await Promise.all([
-        supabase
-          .from('app_club_meeting')
-          .select(meetingSelect)
-          .eq('club_id', user.currentClubId)
-          .eq('meeting_status', 'open')
-          .gte('meeting_date', cutoffDate)
-          .order('meeting_date', { ascending: true })
-          .order('meeting_start_time', { ascending: true }),
-        supabase
-          .from('app_club_meeting')
-          .select(meetingSelect)
-          .eq('club_id', user.currentClubId)
-          .eq('meeting_status', 'close')
-          .order('meeting_date', { ascending: false })
-          .order('meeting_start_time', { ascending: false })
-          .limit(50),
-      ]);
-
-      const { data: openData, error: openError } = openRes;
-      const { data: historyData, error: historyError } = historyRes;
-
-      if (historyError) {
-        console.error('Error loading meeting history:', historyError);
-        setMeetingHistory([]);
-      } else {
-        setMeetingHistory(historyData || []);
-      }
-
-      if (openError) {
-        console.error('Error loading open meetings:', openError);
-        setIsLoading(false);
-        return;
-      }
-
-      const allOpenMeetings = openData || [];
-
-      const now = new Date();
-      const openMeetings = allOpenMeetings.filter(meeting => {
-        const meetingEndDateTime = new Date(`${meeting.meeting_date}T${meeting.meeting_end_time || '23:59:59'}`);
-        const hoursSinceMeetingEnd = (now.getTime() - meetingEndDateTime.getTime()) / (1000 * 60 * 60);
-        return hoursSinceMeetingEnd < 4;
-      });
-
-      if (openMeetings.length > 0) {
-        setCurrentMeeting(openMeetings[0]);
-        setHasOnlyOneOpenMeeting(openMeetings.length === 1);
-
-        const nextOpenMeetings = openMeetings.slice(1, 3);
-
-        const totalMeetingsNeeded = 3;
-        const placeholdersNeeded = Math.max(0, totalMeetingsNeeded - openMeetings.length);
-
-        const placeholders: Meeting[] = Array.from({ length: placeholdersNeeded }, (_, index) => ({
-          id: `placeholder-${index}`,
-          meeting_title: 'Coming Soon',
-          meeting_date: '',
-          meeting_number: null,
-          meeting_start_time: null,
-          meeting_end_time: null,
-          meeting_mode: '',
-          meeting_location: null,
-          meeting_link: null,
-          meeting_status: 'placeholder',
-          meeting_day: null,
-          isPlaceholder: true,
-        }));
-
-        setNextMeetings([...nextOpenMeetings, ...placeholders].slice(0, 2));
-      } else {
-        setCurrentMeeting(null);
-        setNextMeetings([]);
-        setHasOnlyOneOpenMeeting(false);
-      }
-    } catch (error) {
-      console.error('Error loading meetings:', error);
-    } finally {
-      hasLoadedOnce.current = true;
-      meetingsTabHydratedClubId = clubId;
-      if (needsClubHydration) setIsLoading(false);
-    }
-  };
 
   const handleNextMeetingPress = (meetingId: string) => {
     if (expandedNextMeeting === meetingId) {

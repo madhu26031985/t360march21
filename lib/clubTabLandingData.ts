@@ -11,6 +11,8 @@ import {
   type ClubExcommSlot,
   type ClubInfoManagementBundle,
 } from '@/lib/clubInfoManagementQuery';
+import type { ClubTabFaqItem, ClubTabSecondaryPayload, ClubTabSessionSnapshot } from '@/lib/clubTabSessionCache';
+import { writeClubTabSession } from '@/lib/clubTabSessionCache';
 
 const CACHE_TTL_MS = 90_000;
 const PERSISTED_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -167,6 +169,12 @@ let cache: { clubId: string; at: number; data: ClubLandingCriticalPayload } | nu
 
 export function invalidateClubLandingCriticalCache() {
   cache = null;
+}
+
+/** Synchronous read of in-memory critical cache (for instant Club tab hydrate). */
+export function peekClubLandingCriticalCache(clubId: string): ClubLandingCriticalPayload | null {
+  if (cache?.clubId === clubId) return cache.data;
+  return null;
 }
 
 async function readPersistedCritical(
@@ -329,10 +337,91 @@ export async function fetchClubLandingCritical(
 
 /** Fire-and-forget prefetch from Home (or elsewhere) so Club opens instantly. */
 export function prefetchClubLandingCritical(clubId: string | null | undefined): void {
+  prefetchClubTabSession(clubId);
+}
+
+export async function fetchClubFaqItems(clubId: string): Promise<ClubTabFaqItem[]> {
+  const { data, error } = await supabase
+    .from('club_faq_items')
+    .select('id, question, answer')
+    .eq('club_id', clubId)
+    .order('sort_order', { ascending: true });
+  if (error) {
+    console.warn('Club FAQ load:', error.message);
+    return [];
+  }
+  const faqRows = (data as Array<{ id: string; question: string | null; answer: string | null }> | null) ?? [];
+  return faqRows
+    .filter((r) => (r.question?.trim() || r.answer?.trim()))
+    .map((r) => ({
+      id: r.id,
+      question: (r.question ?? '').trim(),
+      answer: (r.answer ?? '').trim(),
+    }));
+}
+
+/** One RPC for Club tab carousels / meeting insights (last N months). */
+export async function fetchClubTabSecondarySnapshot(
+  clubId: string,
+  months = 6
+): Promise<ClubTabSecondaryPayload | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_club_tab_secondary_snapshot', {
+      p_club_id: clubId,
+      p_months: months,
+    });
+    if (error || !data || typeof data !== 'object') {
+      if (error) console.warn('Club secondary snapshot RPC:', error.message);
+      return null;
+    }
+    const root = data as Record<string, unknown>;
+    return {
+      educationalSpeeches: (root.educationalSpeeches as unknown[]) ?? [],
+      toastmasterThemes: (root.toastmasterThemes as unknown[]) ?? [],
+      preparedSpeeches: (root.preparedSpeeches as unknown[]) ?? [],
+      quoteRows: (root.quoteRows as unknown[]) ?? [],
+      idiomRows: (root.idiomRows as unknown[]) ?? [],
+      wotdRows: (root.wotdRows as unknown[]) ?? [],
+      timerMeetingWiseRows: (root.timerMeetingWiseRows as unknown[]) ?? [],
+      ahCounterMeetingWiseRows: (root.ahCounterMeetingWiseRows as unknown[]) ?? [],
+      tableTopicQuestionRows: (root.tableTopicQuestionRows as unknown[]) ?? [],
+      generalEvaluatorScoringRows: (root.generalEvaluatorScoringRows as unknown[]) ?? [],
+      faqItems: [],
+    };
+  } catch (e) {
+    console.warn('Club secondary snapshot RPC load error:', e);
+    return null;
+  }
+}
+
+/** Prefetch critical + secondary into session cache before user opens Club tab. */
+export function prefetchClubTabSession(clubId: string | null | undefined): void {
   if (!clubId) return;
-  void fetchClubLandingCritical(clubId).catch(() => {
-    /* ignore prefetch errors */
-  });
+  void (async () => {
+    try {
+      const [critical, hasCompleted] = await Promise.all([
+        fetchClubLandingCritical(clubId),
+        fetchClubHasCompletedMeeting(clubId),
+      ]);
+      let secondary: ClubTabSecondaryPayload | null = null;
+      if (hasCompleted) {
+        const snap = await fetchClubTabSecondarySnapshot(clubId);
+        if (snap) {
+          secondary = { ...snap, faqItems: await fetchClubFaqItems(clubId) };
+        }
+      }
+      const snapshot: ClubTabSessionSnapshot = {
+        clubId,
+        at: Date.now(),
+        hasCompletedMeeting: hasCompleted,
+        critical,
+        secondary,
+      };
+      writeClubTabSession(snapshot);
+    } catch {
+      /* ignore prefetch errors */
+    }
+  })();
 }
 
 /** True when the club has at least one closed (completed) meeting. */

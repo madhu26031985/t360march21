@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Calendar, User, ChevronRight } from 'lucide-react-native';
+import { computeGeRatingSummary, formatGeStarRating, type GeOverallRatingLabel } from '@/lib/generalEvaluatorRating';
+import { GeFiveStarRow } from '@/components/GeFiveStarRow';
+import { ArrowLeft, Calendar } from 'lucide-react-native';
 
 const toLocalDateStr = (d: Date) => {
   const y = d.getFullYear();
@@ -16,18 +18,33 @@ const toLocalDateStr = (d: Date) => {
 
 type TimeFilter = '3months' | '6months';
 
-type MeetingData = {
-  id: string;
+type ReportRow = {
+  meetingId: string;
   meeting_number: number;
   meeting_date: string;
   general_evaluator_name: string | null;
+  star_rating: number | null;
+  rating_label: GeOverallRatingLabel | null;
+};
+
+type TableColumn = {
+  key: string;
+  label: string;
+  width: number;
+  render: (row: ReportRow) => ReactNode;
+};
+
+const cell = (value: string | null | undefined, fallback = '—') => {
+  const v = typeof value === 'string' ? value.trim() : value;
+  if (v === null || v === undefined || v === '') return fallback;
+  return String(v);
 };
 
 export default function GEReport() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('3months');
-  const [meetings, setMeetings] = useState<MeetingData[]>([]);
+  const [rows, setRows] = useState<ReportRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [clubName, setClubName] = useState<string>('');
   const [clubNumber, setClubNumber] = useState<string | null>(null);
@@ -42,13 +59,15 @@ export default function GEReport() {
 
   const loadClubInfo = async () => {
     if (!user?.currentClubId) return;
-
     try {
       const [clubRes, profileRes] = await Promise.all([
         supabase.from('clubs').select('name, club_number').eq('id', user.currentClubId).maybeSingle(),
         supabase.from('club_profiles').select('banner_color').eq('club_id', user.currentClubId).maybeSingle(),
       ]);
-      if (clubRes.data) { setClubName(clubRes.data.name); setClubNumber(clubRes.data.club_number); }
+      if (clubRes.data) {
+        setClubName(clubRes.data.name);
+        setClubNumber(clubRes.data.club_number);
+      }
       setBannerColor(profileRes.data?.banner_color || '#1e3a5f');
     } catch {}
   };
@@ -85,9 +104,15 @@ export default function GEReport() {
           app_meeting_roles_management (
             role_name,
             assigned_user_id,
+            booking_status,
             app_user_profiles (
               full_name
             )
+          ),
+          app_meeting_ge (
+            evaluator_user_id,
+            evaluation_data,
+            booking_status
           )
         `)
         .eq('club_id', user.currentClubId)
@@ -101,28 +126,54 @@ export default function GEReport() {
         return;
       }
 
-      const formattedMeetings: MeetingData[] = (data || []).map((meeting: any) => {
-        let generalEvaluatorName = null;
+      const reportRows: ReportRow[] = (data || []).map((meeting: any) => {
+        let generalEvaluatorName: string | null = null;
+        let evaluatorUserId: string | null = null;
 
         if (Array.isArray(meeting.app_meeting_roles_management)) {
           const geRole = meeting.app_meeting_roles_management.find(
             (role: any) => role.role_name === 'General Evaluator'
           );
+          if (geRole?.assigned_user_id && geRole.app_user_profiles?.full_name) {
+            evaluatorUserId = geRole.assigned_user_id;
+            generalEvaluatorName = geRole.app_user_profiles.full_name.trim();
+          }
+        }
 
-          if (geRole && geRole.app_user_profiles) {
-            generalEvaluatorName = geRole.app_user_profiles.full_name;
+        let starRating: number | null = null;
+        let ratingLabel: GeOverallRatingLabel | null = null;
+        if (Array.isArray(meeting.app_meeting_ge)) {
+          const geRows = meeting.app_meeting_ge as {
+            evaluator_user_id?: string;
+            evaluation_data?: unknown;
+            booking_status?: string;
+          }[];
+          const match =
+            (evaluatorUserId
+              ? geRows.find((g) => g.evaluator_user_id === evaluatorUserId)
+              : null) ||
+            geRows.find((g) => g.booking_status === 'booked') ||
+            geRows[0];
+          if (match?.evaluation_data) {
+            const summary = computeGeRatingSummary(match.evaluation_data);
+            if (summary) {
+              starRating = summary.stars;
+              ratingLabel = summary.label;
+            }
           }
         }
 
         return {
-          id: meeting.id,
+          meetingId: meeting.id,
           meeting_number: meeting.meeting_number,
           meeting_date: meeting.meeting_date,
           general_evaluator_name: generalEvaluatorName,
+          star_rating: starRating,
+          rating_label: ratingLabel,
         };
       });
 
-      setMeetings(formattedMeetings);
+      setRows(reportRows);
     } catch (error) {
       console.error('Error loading meetings:', error);
       Alert.alert('Error', 'An unexpected error occurred');
@@ -139,6 +190,76 @@ export default function GEReport() {
       year: 'numeric',
     });
   };
+
+  const columns: TableColumn[] = [
+    {
+      key: 'meeting',
+      label: 'Meeting No',
+      width: 88,
+      render: (r) => (
+        <Text style={[styles.tableCellText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+          #{r.meeting_number}
+        </Text>
+      ),
+    },
+    {
+      key: 'date',
+      label: 'Date',
+      width: 108,
+      render: (r) => (
+        <Text style={[styles.tableCellText, { color: theme.colors.text }]} maxFontSizeMultiplier={1.2}>
+          {formatDate(r.meeting_date)}
+        </Text>
+      ),
+    },
+    {
+      key: 'ge',
+      label: 'General Evaluator',
+      width: 132,
+      render: (r) => (
+        <Text style={[styles.tableCellText, { color: theme.colors.text }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>
+          {cell(r.general_evaluator_name)}
+        </Text>
+      ),
+    },
+    {
+      key: 'stars',
+      label: 'Stars',
+      width: 118,
+      render: (r) =>
+        r.star_rating != null && r.star_rating > 0 ? (
+          <View style={styles.starsCell}>
+            {r.rating_label ? (
+              <Text style={[styles.ratingLabelText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.1}>
+                {r.rating_label}
+              </Text>
+            ) : null}
+            <GeFiveStarRow rating={r.star_rating} size={14} />
+          </View>
+        ) : (
+          <Text style={[styles.tableCellText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            —
+          </Text>
+        ),
+    },
+    {
+      key: 'rating',
+      label: 'Rating',
+      width: 72,
+      render: (r) =>
+        r.star_rating != null && r.star_rating > 0 ? (
+          <View style={[styles.ratingPill, { borderColor: theme.colors.primary + '55', backgroundColor: theme.colors.primary + '12' }]}>
+            <Text style={[styles.ratingPillText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.2}>
+              {formatGeStarRating(r.star_rating)}
+            </Text>
+          </View>
+        ) : (
+          <Text style={[styles.tableCellText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.2}>
+            —
+          </Text>
+        ),
+    },
+  ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -164,7 +285,6 @@ export default function GEReport() {
           <TouchableOpacity
             style={[
               styles.filterButton,
-              timeFilter === '3months' && styles.filterButtonActive,
               {
                 backgroundColor: timeFilter === '3months' ? theme.colors.primary : theme.colors.surface,
                 borderColor: theme.colors.border,
@@ -173,10 +293,7 @@ export default function GEReport() {
             onPress={() => setTimeFilter('3months')}
           >
             <Text
-              style={[
-                styles.filterButtonText,
-                { color: timeFilter === '3months' ? '#ffffff' : theme.colors.text },
-              ]}
+              style={[styles.filterButtonText, { color: timeFilter === '3months' ? '#ffffff' : theme.colors.text }]}
               maxFontSizeMultiplier={1.3}
             >
               0-3 Months
@@ -186,7 +303,6 @@ export default function GEReport() {
           <TouchableOpacity
             style={[
               styles.filterButton,
-              timeFilter === '6months' && styles.filterButtonActive,
               {
                 backgroundColor: timeFilter === '6months' ? theme.colors.primary : theme.colors.surface,
                 borderColor: theme.colors.border,
@@ -195,10 +311,7 @@ export default function GEReport() {
             onPress={() => setTimeFilter('6months')}
           >
             <Text
-              style={[
-                styles.filterButtonText,
-                { color: timeFilter === '6months' ? '#ffffff' : theme.colors.text },
-              ]}
+              style={[styles.filterButtonText, { color: timeFilter === '6months' ? '#ffffff' : theme.colors.text }]}
               maxFontSizeMultiplier={1.3}
             >
               4-6 Months
@@ -213,7 +326,7 @@ export default function GEReport() {
               Loading meetings...
             </Text>
           </View>
-        ) : meetings.length === 0 ? (
+        ) : rows.length === 0 ? (
           <View style={[styles.emptyContainer, { backgroundColor: theme.colors.surface }]}>
             <Calendar size={48} color={theme.colors.textSecondary} />
             <Text style={[styles.emptyTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
@@ -224,50 +337,50 @@ export default function GEReport() {
             </Text>
           </View>
         ) : (
-          <View style={styles.meetingsContainer}>
+          <View style={styles.tableSection}>
             <Text style={[styles.resultCount, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-              {meetings.length} meeting{meetings.length !== 1 ? 's' : ''} found
+              {rows.length} meeting{rows.length !== 1 ? 's' : ''} found
             </Text>
-
-            {meetings.map((meeting) => (
-              <TouchableOpacity
-                key={meeting.id}
-                style={[styles.meetingCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                onPress={() => router.push({ pathname: '/general-evaluator-report', params: { meetingId: meeting.id } })}
-                activeOpacity={0.7}
-              >
-                <View style={styles.meetingHeader}>
-                  <View style={[styles.meetingNumberBadge, { backgroundColor: theme.colors.primary + '20' }]}>
-                    <Text style={[styles.meetingNumberText, { color: theme.colors.primary }]} maxFontSizeMultiplier={1.3}>
-                      #{meeting.meeting_number}
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View style={[styles.table, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <View style={[styles.tableHeader, { borderBottomColor: theme.colors.border }]}>
+                  {columns.map((col) => (
+                    <Text
+                      key={col.key}
+                      style={[styles.tableHeaderCell, { width: col.width, color: theme.colors.text }]}
+                      maxFontSizeMultiplier={1.2}
+                    >
+                      {col.label}
                     </Text>
-                  </View>
-                  <View style={styles.dateContainer}>
-                    <Calendar size={14} color={theme.colors.textSecondary} />
-                    <Text style={[styles.dateText, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                      {formatDate(meeting.meeting_date)}
-                    </Text>
-                  </View>
+                  ))}
                 </View>
-
-                <View style={styles.meetingDetails}>
-                  <View style={styles.detailRow}>
-                    <View style={styles.detailIcon}>
-                      <User size={16} color={theme.colors.primary} />
-                    </View>
-                    <View style={styles.detailContent}>
-                      <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]} maxFontSizeMultiplier={1.3}>
-                        General Evaluator
-                      </Text>
-                      <Text style={[styles.detailValue, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-                        {meeting.general_evaluator_name || 'Not assigned'}
-                      </Text>
-                    </View>
-                    <ChevronRight size={16} color={theme.colors.textSecondary} />
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                {rows.map((row, index) => {
+                  const isLast = index === rows.length - 1;
+                  return (
+                    <TouchableOpacity
+                      key={row.meetingId}
+                      style={[
+                        styles.tableRow,
+                        !isLast && {
+                          borderBottomColor: theme.colors.border,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                        },
+                      ]}
+                      onPress={() =>
+                        router.push({ pathname: '/general-evaluator-report', params: { meetingId: row.meetingId } })
+                      }
+                      activeOpacity={0.6}
+                    >
+                      {columns.map((col) => (
+                        <View key={col.key} style={[styles.tableCell, { width: col.width }]}>
+                          {col.render(row)}
+                        </View>
+                      ))}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         )}
 
@@ -278,9 +391,7 @@ export default function GEReport() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -289,9 +400,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 0.5,
   },
-  backButton: {
-    padding: 8,
-  },
+  backButton: { padding: 8 },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -299,12 +408,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 16,
   },
-  headerSpacer: {
-    width: 40,
-  },
-  content: {
-    flex: 1,
-  },
+  headerSpacer: { width: 40 },
+  content: { flex: 1 },
   clubBanner: {
     paddingHorizontal: 24,
     paddingVertical: 24,
@@ -322,10 +427,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     textAlign: 'center',
   },
-  clubName: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -340,22 +441,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
-  filterButtonActive: {
-    borderWidth: 0,
-  },
-  filterButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  filterButtonText: { fontSize: 14, fontWeight: '600' },
   loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-  },
+  loadingText: { marginTop: 16, fontSize: 14 },
   emptyContainer: {
     marginHorizontal: 16,
     marginTop: 32,
@@ -363,83 +455,58 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
+  emptyTitle: { fontSize: 18, fontWeight: '600', marginTop: 16, marginBottom: 8 },
+  emptyDescription: { fontSize: 14, textAlign: 'center' },
+  tableSection: { paddingHorizontal: 16 },
+  resultCount: { fontSize: 13, marginBottom: 12 },
+  table: {
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
-  emptyDescription: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  meetingsContainer: {
-    paddingHorizontal: 16,
-  },
-  resultCount: {
-    fontSize: 13,
-    marginBottom: 12,
-  },
-  meetingCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  meetingHeader: {
+  tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  meetingNumberBadge: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  meetingNumberText: {
-    fontSize: 14,
+  tableHeaderCell: {
+    fontSize: 12,
     fontWeight: '700',
+    paddingRight: 8,
   },
-  dateContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dateText: {
-    fontSize: 13,
-  },
-  meetingDetails: {
-    gap: 12,
-  },
-  detailRow: {
+  tableRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
   },
-  detailIcon: {
-    marginRight: 12,
-    marginTop: 2,
+  tableCell: {
+    paddingRight: 8,
+    justifyContent: 'center',
   },
-  detailContent: {
-    flex: 1,
+  tableCellText: {
+    fontSize: 13,
+    fontWeight: '400',
   },
-  detailLabel: {
-    fontSize: 12,
-    marginBottom: 2,
+  starsCell: {
+    gap: 4,
   },
-  detailValue: {
-    fontSize: 15,
+  ratingLabelText: {
+    fontSize: 11,
     fontWeight: '600',
   },
-  bottomSpacing: {
-    height: 40,
+  ratingPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
   },
+  ratingPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  bottomSpacing: { height: 40 },
 });
