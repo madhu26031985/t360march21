@@ -1,9 +1,9 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { ClubReportsList } from '@/components/ClubReportsList';
+import { MeetingReportsGrid } from '@/components/MeetingReportsGrid';
 
 export default function MeetingReportsScreen() {
   const { theme } = useTheme();
@@ -19,9 +19,6 @@ export default function MeetingReportsScreen() {
         >
           <ArrowLeft size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.3}>
-          Meeting Reports
-        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -30,9 +27,10 @@ export default function MeetingReportsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <ClubReportsList theme={theme} onReportPress={(path) => router.push(path as any)} />
-        </View>
+        <MeetingReportsGrid
+          theme={theme}
+          onReportPress={(path) => router.push(path as any)}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -56,23 +54,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-  },
   headerSpacer: {
-    width: 40,
-    height: 40,
+    flex: 1,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-  },
-  card: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 0,
-    overflow: 'hidden',
+    paddingBottom: 32,
   },
 });

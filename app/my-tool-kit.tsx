@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import {
@@ -14,6 +14,7 @@ import {
   FileText,
   HelpCircle,
   BookOpen,
+  Calendar,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCallback, useState, useMemo, type ReactNode } from 'react';
@@ -321,6 +322,14 @@ export default function MyToolKitScreen() {
                 icon={<BookOpen size={18} color="#2383E2" strokeWidth={1.75} />}
                 iconBackgroundColor={N.accentSoft}
                 onPress={() => router.push('/t360-training')}
+              />
+              <NotionRow
+                label="Need help setting up T360?"
+                icon={<Calendar size={18} color="#D97706" strokeWidth={1.75} />}
+                iconBackgroundColor="#FEF3C7"
+                onPress={() => {
+                  void Linking.openURL('https://calendly.com/t360-support/demo');
+                }}
                 isLast
               />
             </View>

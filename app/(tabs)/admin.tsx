@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,7 @@ import {
   ChevronRight,
   HelpCircle,
   BookOpen,
+  Calendar,
 } from 'lucide-react-native';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import { EXCOMM_UI } from '@/lib/excommUiTokens';
@@ -387,6 +388,15 @@ export default function AdminPanel() {
                     icon: <BookOpen size={18} color="#2383E2" strokeWidth={1.75} />,
                     iconBackgroundColor: N.accentSoft,
                     onPress: () => router.push('/t360-training'),
+                  },
+                  {
+                    key: 't360-setup-help',
+                    label: 'Need help setting up T360?',
+                    icon: <Calendar size={18} color="#D97706" strokeWidth={1.75} />,
+                    iconBackgroundColor: '#FEF3C7',
+                    onPress: () => {
+                      void Linking.openURL('https://calendly.com/t360-support/demo');
+                    },
                   },
                 ]}
               />

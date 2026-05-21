@@ -7,7 +7,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { prefetchToastmasterCorner } from '@/lib/prefetchToastmasterCorner';
-import { Building2, Clock, Lock, FileText, ChevronRight, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react-native';
+import { Building2, Clock, Lock, FileText, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { MeetingReportsGrid } from '@/components/MeetingReportsGrid';
 import ClubSwitcher from '@/components/ClubSwitcher';
 import OpenMeetingsHorizonCard from '@/components/OpenMeetingsHorizonCard';
 import { MeetingRolesTabPanel } from '@/components/MeetingRolesTabPanel';
@@ -1219,67 +1220,44 @@ export default function ClubMeetings() {
 
           <View style={[styles.meetingsMasterDivider, { backgroundColor: theme.colors.border }]} />
           <View style={styles.meetingsQuickLinksSection}>
-            <View style={styles.meetingsQuickLinksRow}>
-              <TouchableOpacity
-                style={[
-                  styles.meetingsQuickLinkBox,
-                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                ]}
-                onPress={() => router.push('/meeting-history')}
-                activeOpacity={0.8}
-                accessibilityLabel="Open meeting history page"
-              >
-                <View style={styles.meetingsQuickLinkRow}>
-                  <View style={[styles.meetingsQuickLinkIcon, { backgroundColor: theme.colors.textSecondary + '12' }]}>
-                    <Clock size={16} color="#6366F1" />
-                  </View>
-                  <View style={styles.meetingsQuickLinkTextCol}>
-                    <Text style={[styles.meetingsQuickLinkTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-                      Meeting History
-                    </Text>
-                    <Text
-                      style={[styles.meetingsQuickLinkSubtitle, { color: theme.colors.textSecondary }]}
-                      maxFontSizeMultiplier={1.2}
-                      numberOfLines={2}
-                    >
-                      {isLoading
-                        ? 'Loading…'
-                        : `${meetingHistory.length} completed meeting${meetingHistory.length === 1 ? '' : 's'}`}
-                    </Text>
-                  </View>
-                  <ChevronRight size={14} color={theme.colors.textSecondary} />
+            <TouchableOpacity
+              style={[
+                styles.meetingsQuickLinkBox,
+                styles.meetingsQuickLinkBoxFull,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              ]}
+              onPress={() => router.push('/meeting-history')}
+              activeOpacity={0.8}
+              accessibilityLabel="Open meeting history page"
+            >
+              <View style={styles.meetingsQuickLinkRow}>
+                <View style={[styles.meetingsQuickLinkIcon, { backgroundColor: theme.colors.textSecondary + '12' }]}>
+                  <Clock size={16} color="#6366F1" />
                 </View>
-              </TouchableOpacity>
+                <View style={styles.meetingsQuickLinkTextCol}>
+                  <Text style={[styles.meetingsQuickLinkTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
+                    Meeting History
+                  </Text>
+                  <Text
+                    style={[styles.meetingsQuickLinkSubtitle, { color: theme.colors.textSecondary }]}
+                    maxFontSizeMultiplier={1.2}
+                    numberOfLines={2}
+                  >
+                    {isLoading
+                      ? 'Loading…'
+                      : `${meetingHistory.length} completed meeting${meetingHistory.length === 1 ? '' : 's'}`}
+                  </Text>
+                </View>
+                <ChevronRight size={14} color={theme.colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
+          </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.meetingsQuickLinkBox,
-                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                ]}
-                onPress={() => router.push('/meeting-reports')}
-                activeOpacity={0.8}
-                accessibilityLabel="Open meeting reports page"
-              >
-                <View style={styles.meetingsQuickLinkRow}>
-                  <View style={[styles.meetingsQuickLinkIcon, { backgroundColor: theme.colors.textSecondary + '12' }]}>
-                    <ClipboardList size={16} color="#0EA5E9" />
-                  </View>
-                  <View style={styles.meetingsQuickLinkTextCol}>
-                    <Text style={[styles.meetingsQuickLinkTitle, { color: theme.colors.text }]} maxFontSizeMultiplier={1.25}>
-                      Meeting Reports
-                    </Text>
-                    <Text
-                      style={[styles.meetingsQuickLinkSubtitle, { color: theme.colors.textSecondary }]}
-                      maxFontSizeMultiplier={1.2}
-                      numberOfLines={2}
-                    >
-                      Historical reports available
-                    </Text>
-                  </View>
-                  <ChevronRight size={14} color={theme.colors.textSecondary} />
-                </View>
-              </TouchableOpacity>
-            </View>
+          <View style={[styles.meetingsReportsSection, { borderTopColor: theme.colors.border }]}>
+            <MeetingReportsGrid
+              theme={theme}
+              onReportPress={(path) => router.push(path as Href)}
+            />
           </View>
 
           </View>
@@ -1771,6 +1749,15 @@ const styles = StyleSheet.create({
   },
   meetingsQuickLinksSection: {
     paddingBottom: 8,
+  },
+  meetingsQuickLinkBoxFull: {
+    flex: undefined,
+    width: '100%',
+  },
+  meetingsReportsSection: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   meetingsQuickLinksRow: {
     flexDirection: 'row',

@@ -472,7 +472,7 @@ Welcome to a seamless digital experience! 🚀`;
               <SettingItem
                 icon={themedIcon(Calendar, '#D97706')}
                 iconBackgroundColor="#FEF3C7"
-                title="Book a Call"
+                title="Need help setting up T360?"
                 description="Schedule a call with our team"
                 onPress={handleTalkToUs}
               />

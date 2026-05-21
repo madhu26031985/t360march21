@@ -2092,13 +2092,13 @@ export default function MyJourney() {
                 </Text>
               </TouchableOpacity>
             </View>
-            {isExComm && user?.currentClubId ? (
+            {user?.currentClubId ? (
               <TouchableOpacity
                 style={[styles.toolkitHeaderButton, { backgroundColor: N.surfaceSoft, borderColor: N.border }]}
-                onPress={() => router.push('/my-tool-kit')}
+                onPress={() => router.push(isExComm ? '/my-tool-kit' : '/t360-training')}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel="Open My tool kit"
+                accessibilityLabel={isExComm ? 'Open Excomm Quick access' : 'Open T360 user guide'}
               >
                 <Briefcase size={18} color={N.iconStrong} strokeWidth={2} />
               </TouchableOpacity>
